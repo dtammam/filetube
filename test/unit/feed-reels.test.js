@@ -125,9 +125,9 @@ test('K3 b: parseNavToc reads the toc nav (not landmarks) in document order, hre
   const nav = '<html><body><nav epub:type="landmarks"><ol><li><a href="x.xhtml" epub:type="bodymatter">Body</a></li></ol></nav>'
     + '<nav epub:type="toc" id="toc"><ol><li><a href="text/one.xhtml#s1"><span>Chapter</span> <b>One</b> &amp; more</a><ol><li><a href="text/one.xhtml#s2">Part</a></li></ol></li><li><a href="../two.xhtml">Two</a></li></ol></nav></body></html>';
   assert.deepStrictEqual(opf.parseNavToc(nav, 'OEBPS/nav/nav.xhtml'), [
-    { href: 'OEBPS/nav/text/one.xhtml', label: 'Chapter One & more' },
-    { href: 'OEBPS/nav/text/one.xhtml', label: 'Part' },
-    { href: 'OEBPS/two.xhtml', label: 'Two' },
+    { href: 'OEBPS/nav/text/one.xhtml', label: 'Chapter One & more', depth: 1 },
+    { href: 'OEBPS/nav/text/one.xhtml', label: 'Part', depth: 2 },
+    { href: 'OEBPS/two.xhtml', label: 'Two', depth: 1 },
   ]);
   assert.deepStrictEqual(opf.parseNavToc('<nav epub:type="landmarks"><a href="a">A</a></nav>', 'n.xhtml'), [], 'no toc nav');
   assert.deepStrictEqual(opf.parseNavToc('', 'n'), []);
@@ -140,9 +140,9 @@ test('K3 b: parseNcxToc reads each navPoint\'s OWN label and content (a parent b
     + '<navPoint id="c"><navLabel><text>Broken</text></navLabel></navPoint>'
     + '<navPoint id="d"><navLabel><text>2.</text></navLabel><content src="Text/c2.xhtml"/></navPoint></navMap></ncx>';
   assert.deepStrictEqual(opf.parseNcxToc(ncx, 'OEBPS/toc.ncx'), [
-    { href: 'OEBPS/Text/p1.xhtml', label: 'Part One' },
-    { href: 'OEBPS/Text/c1.xhtml', label: '1. The Ferry' },
-    { href: 'OEBPS/Text/c2.xhtml', label: '2.' },
+    { href: 'OEBPS/Text/p1.xhtml', label: 'Part One', depth: 1 },
+    { href: 'OEBPS/Text/c1.xhtml', label: '1. The Ferry', depth: 2 },
+    { href: 'OEBPS/Text/c2.xhtml', label: '2.', depth: 1 },
   ], 'a point with no content is skipped, never given its child\'s src');
   // hostile input stays linear (each shape once rescanned the rest of the document per tag: quadratic): unclosed points, anchors
   // with no '>', anchors with no '</a>', points with no label - a full 256 KB each, then a quarter of it: the time must scale ~4x,
@@ -969,5 +969,75 @@ test('gate r1 (K3 b): chapter names - a well-formed numeral in one case reads "C
   assert.deepStrictEqual([0, 1, 2, 3, 4].map(labelOf), ['Chapter XII', 'Civil', 'Mix', '', 'Chapter iv']);
   const oneFile = mk([{ href: 'all.xhtml', label: 'Cover' }, { href: 'all.xhtml', label: 'Chapter 1' }, { href: 'all.xhtml', label: 'Chapter 2' }], ['all.xhtml']);
   assert.strictEqual(oneFile(0), '', 'a whole book in one file: no one name (it said "Cover" on every page)');
-  assert.deepStrictEqual(opf.parseNavToc('<nav epub:type="toc"><ol><li><a href="c.xhtml"><span>XII</span>.</a></li></ol></nav>', 'OEBPS/nav.xhtml'), [{ href: 'OEBPS/c.xhtml', label: 'XII.' }], 'markup inside a label leaves no stray space');
+  assert.deepStrictEqual(opf.parseNavToc('<nav epub:type="toc"><ol><li><a href="c.xhtml"><span>XII</span>.</a></li></ol></nav>', 'OEBPS/nav.xhtml'), [{ href: 'OEBPS/c.xhtml', label: 'XII.', depth: 1 }], 'markup inside a label leaves no stray space');
+});
+
+// ==== gate r2 fixes ===========================================================================================================
+
+test('gate r2 (qa W1 = adversary W1): a chapter whose sections are listed under it in the same file keeps its name (the shallowest entry names the file)', () => {
+  const { chapterLabeler } = require('../../lib/books/excerpt');
+  const nav = '<nav epub:type="toc"><ol>'
+    + '<li><a href="t/ch1.xhtml">Chapter 1: Origins</a><ol><li><a href="t/ch1.xhtml#s1">1.1 Early days</a></li><li><a href="t/ch1.xhtml#s2">1.2 Later</a></li></ol></li>'
+    + '<li><a href="t/ch2.xhtml">Chapter 2: Growth</a><ol><li><a href="t/ch2.xhtml#s1">2.1 Roots</a></li></ol></li>'
+    + '<li><a href="t/ch3.xhtml">Chapter 3: Plain</a></li></ol></nav>';
+  const toc = opf.parseNavToc(nav, 'OEBPS/nav.xhtml');
+  const labelOf = chapterLabeler({ packageInfo: () => ({ toc }), loadBlocks: () => [] }, ['t/ch1.xhtml', 't/ch1b.xhtml', 't/ch2.xhtml', 't/ch3.xhtml'].map((h, i) => ({ idref: 'i' + i, href: 'OEBPS/' + h })));
+  assert.deepStrictEqual([0, 1, 2, 3].map(labelOf), ['Chapter 1: Origins', 'Chapter 1: Origins', 'Chapter 2: Growth', 'Chapter 3: Plain']);
+  // the same shape through the NCX (nested navPoints)
+  const ncx = '<ncx><navMap><navPoint><navLabel><text>Chapter 1: Origins</text></navLabel><content src="t/ch1.xhtml"/>'
+    + '<navPoint><navLabel><text>1.1 Early days</text></navLabel><content src="t/ch1.xhtml#s1"/></navPoint></navPoint>'
+    + '<navPoint><navLabel><text>Chapter 2: Growth</text></navLabel><content src="t/ch2.xhtml"/></navPoint></navMap></ncx>';
+  const toc2 = opf.parseNcxToc(ncx, 'OEBPS/toc.ncx');
+  const label2 = chapterLabeler({ packageInfo: () => ({ toc: toc2 }), loadBlocks: () => [] }, [{ idref: 'a', href: 'OEBPS/t/ch1.xhtml' }, { idref: 'b', href: 'OEBPS/t/ch2.xhtml' }]);
+  assert.deepStrictEqual([0, 1].map(label2), ['Chapter 1: Origins', 'Chapter 2: Growth']);
+  // a whole book in one file (every chapter top level in it): still no one name
+  const one = opf.parseNavToc('<nav epub:type="toc"><ol><li><a href="all.xhtml#a">Cover</a></li><li><a href="all.xhtml#b">Chapter 1</a></li></ol></nav>', 'nav.xhtml');
+  assert.strictEqual(chapterLabeler({ packageInfo: () => ({ toc: one }), loadBlocks: () => [] }, [{ idref: 'x', href: 'all.xhtml' }])(0), '');
+});
+
+test('gate r2 (adversary W2): a card made active early (a quarter) and then SETTLED on is counted when it is left - every real swipe', async () => {
+  const r = flowRealm([VID, POD, Object.assign({}, VID, { id: 'v9' })]);
+  try {
+    await startRealm(r); r.show(0); r.timeAt(450);
+    // a real swipe to the episode: 26%, 70%, 100%
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    fireRatios(r, [[0, 0.3], [1, 0.7]]); await r.settle(2);
+    fireRatios(r, [[0, 0], [1, 1]]); await r.settle(2);
+    assert.strictEqual(recapCards(r), 1, 'the video');
+    // and on from the episode the same way
+    fireRatios(r, [[1, 0.74], [2, 0.26]]); await r.settle(2);
+    fireRatios(r, [[1, 0.3], [2, 0.7]]); await r.settle(2);
+    assert.strictEqual(recapCards(r), 2, 'the episode it settled on is counted too');
+  } finally { r.close(); }
+});
+
+test('gate r2 (adversary W3): Keep listening on a song card hands its tally to Music (once, that song) - the Feed half of one listen = one play', async () => {
+  const r = flowRealm([WHOLE, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    playFrom(r, 0, 33);
+    assert.deepStrictEqual(playsOf(r), ['t2 play'], 'the Feed counted the play at 30 s');
+    r.$$('.feed-card')[0].querySelector('.feed-card__title').click(); await r.settle();
+    const hand = r.w.FileTube.musicPlayCountHandoff;
+    assert.ok(hand, 'handed over');
+    assert.strictEqual(hand.id, 't2');
+    assert.strictEqual(hand.played, true);
+    assert.ok(hand.listened >= 32 && hand.listened <= 34, 'what was heard: ' + hand.listened);
+    assert.ok(Math.abs(Date.now() - hand.at) < 5000);
+  } finally { r.close(); }
+});
+
+test('gate r2 (adversary S1): a Done card whose slice ended with its FILE, come back to, opens just before the end - never the slice again', async () => {
+  const TAIL = Object.assign({}, VID, { startAt: 1100, endAt: 1200, duration: 1200 });
+  const r = flowRealm([TAIL, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(1150);
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(2);
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    fireRatios(r, [[0, 0.88], [1, 0.12]]); await r.settle(2);
+    const back = r.loads.filter((l) => l.id === 'v1').pop();
+    assert.strictEqual(back.data.startAt, 1199.5, 'half a second before the end (the player would start the file over AT the end)');
+    assert.strictEqual(advanceBtn(r, 0), null);
+  } finally { r.close(); }
 });

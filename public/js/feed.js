@@ -2331,9 +2331,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // at a quarter of a swipe that then springs back: it must not start its slice again)
       if (!act.done && typeof act.lastTime === 'number' && act.lastTime > startAt + 1 && (endAtOf(card) === null || act.lastTime < endAtOf(card))) data.startAt = act.lastTime;
       // ...and a card come back to after its Done state (gate r1 adversary S3) opens at its slice's end, where the end check pauses it
-      // again - never its slice from the start, and never on past its end. It does not count down again: the user came back to it.
-      else if (act.done && !act.ended && endAtOf(card) !== null && isFinite(endAtOf(card))) {
-        data.startAt = endAtOf(card);
+      // again - never its slice from the start, and never on past its end. A slice that ended with its FILE (gate r2 adversary S1)
+      // opens half a second before the end (at the very end the player starts the file over) and ends again. It does not count down
+      // again: the user came back to it.
+      else if (act.done && endAtOf(card) !== null && isFinite(endAtOf(card))) {
+        data.startAt = act.ended ? Math.max(startAt, endAtOf(card) - 0.5) : endAtOf(card);
         node.removeAttribute('data-done');
         node.setAttribute('data-advance-stay', '');
       }
