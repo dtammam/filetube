@@ -89,6 +89,14 @@ function feedRealm(o) {
   }, { get(t, p) { return p in t ? t[p] : () => undefined; } });
   const toasts = [];
   w.__harness = { register: (name, h) => { if (name === 'feed') registered = h; }, player, navigate: (u) => { loads.push({ navigate: u }); } };
+  // v1.384.0: `host` ({ capabilities }) installs the fake native host and loads the REAL adapter first, as a shell does (host: null = the
+  // adapter with no host, a browser); omitted = neither, exactly as before. The recorder is r.fakeHost.
+  let fakeHost = null;
+  if (opts.host !== undefined) {
+    const { installFakeHost } = require('./fake-host');
+    if (opts.host) fakeHost = installFakeHost(w, opts.host);
+    w.eval(read('public/js/host-adapter.js'));
+  }
   const srcs = ['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/feed-settings.js', 'public/js/common.js'].map(read);
   srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate; window.ui.toast = function (m, o) { window.__toasts.push(typeof m === \'string\' ? m : \'[not a string: \' + typeof m + \']\'); window.__toastOpts.push(o || null); return { dismiss: function () {} }; };');
   w.__toasts = toasts;
@@ -112,6 +120,7 @@ function feedRealm(o) {
   return {
     w, doc: w.document, $: (s) => w.document.querySelector(s), $$: (s) => Array.from(w.document.querySelectorAll(s)), fetches, loads, toasts, root, settle, show, media, observers, intervals, advance, tickIntervals, timeAt,
     realSetInterval,
+    fakeHost,
     calls: (method, prefix) => fetches.filter((f) => f.method === method && f.url.indexOf(prefix) === 0),
     init: () => { if (!registered) throw new Error('feed.js did not register'); registered.init(root); },
     destroy: () => registered.destroy(),

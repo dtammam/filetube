@@ -2123,6 +2123,40 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
+    // ---- v1.384.0 (native bridge D7): a snap tick for a USER swipe, in a native host only ---------------------------
+    // setActive() has no source argument, and the countdown, "Hide this" and a rebuild reach it through the same observer
+    // as a swipe. So the tick is decided HERE, where a swipe is known to have SETTLED: a scroll-gesture input on the stack
+    // (a finger that moved more than FEED_SNAP_MOVE_PX, or a wheel) within FEED_SNAP_INPUT_MS, AND the settled card is a
+    // different one from the last settled card. A tap on a control (Hide this, the menu, Keep watching) is not a scroll
+    // gesture, a quarter swipe that springs back settles on the card it left (same card: no tick), the first card is the
+    // baseline (no tick), and an auto-advance has no gesture behind it. With no host nothing below is even attached.
+    var FEED_SNAP_INPUT_MS = 1000;
+    var FEED_SNAP_MOVE_PX = 10;
+    var snapHost = (window.FileTube && window.FileTube.host && window.FileTube.host.has('haptics')) ? window.FileTube.host : null;
+    var lastScrollGestureAt = 0;
+    var snapSettled = -1; // the card the last settle landed on
+    var touchFrom = null;
+    if (snapHost) {
+      stack.addEventListener('touchstart', function (e) {
+        var t = e.touches && e.touches[0];
+        touchFrom = t ? { x: t.clientX, y: t.clientY } : null;
+      }, { passive: true, signal: signal });
+      stack.addEventListener('touchmove', function (e) {
+        var t = e.touches && e.touches[0];
+        if (!t || !touchFrom) return;
+        if (Math.abs(t.clientX - touchFrom.x) > FEED_SNAP_MOVE_PX || Math.abs(t.clientY - touchFrom.y) > FEED_SNAP_MOVE_PX) lastScrollGestureAt = Date.now();
+      }, { passive: true, signal: signal });
+      stack.addEventListener('wheel', function () { lastScrollGestureAt = Date.now(); }, { passive: true, signal: signal });
+    }
+    function noteSettled(index) {
+      if (!snapHost || index === snapSettled) return;
+      var was = snapSettled;
+      snapSettled = index;
+      if (was < 0) return;
+      if (Date.now() - lastScrollGestureAt > FEED_SNAP_INPUT_MS) return;
+      snapHost.post('haptics.tick', { style: 'snap' });
+    }
+
     // ---- the active card ---------------------------------------------------------
     var ratios = {};
     function onIntersect(entries) {
@@ -2144,7 +2178,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var next = windingDown ? feedActiveIndex(list) : feedNextActive(list, activeIndex);
       if (next >= 0 && next !== activeIndex) setActive(next, (ratios[next] || 0) < FEED_ACTIVE_RATIO);
       // the swipe settled on the new card: the card left at a quarter is left for good (its count, a song's skip)
-      if (activeIndex >= 0 && (ratios[activeIndex] || 0) >= FEED_ACTIVE_RATIO) { settledOn[activeIndex] = true; settleLeave(); }
+      if (activeIndex >= 0 && (ratios[activeIndex] || 0) >= FEED_ACTIVE_RATIO) { settledOn[activeIndex] = true; settleLeave(); noteSettled(activeIndex); }
     }
 
     // v1.383.0 (K2 b, gate r1 adversary W1 / W2): the card left at a quarter swipe is paused (and a book card's pages read are

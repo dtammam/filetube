@@ -127,6 +127,8 @@
     if (!doc || !doc.documentElement || typeof win.addEventListener !== 'function') return null;
     var off = [], open = false, probe = null, raf = null, capTimer = null, closing = false, lastWritten = null;
     function standalone() {
+      // v1.384.0 (native bridge D10): the iOS app is an edge-to-edge full-screen app like the home-screen one; appLike() = standalone OR a host
+      try { if (win.FileTube && win.FileTube.host && typeof win.FileTube.host.appLike === 'function') return win.FileTube.host.appLike(); } catch (_) { /* none */ }
       try { if (win.navigator && win.navigator.standalone === true) return true; } catch (_) { /* none */ }
       try { return !!(win.matchMedia && win.matchMedia('(display-mode: standalone)').matches); } catch (_) { return false; }
     }
