@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network'];
 
   // Web to native. cap = the capability that must be announced (null = always). fields: the allowed
   // fields; req = required; a field spec is one of { is: 'string'|'number'|'object', min, max } /
@@ -25,6 +25,10 @@
     'battery.subscribe': { cap: 'battery', fields: {} },
     'battery.unsubscribe': { cap: 'battery', fields: {} },
     'host.openServerSettings': { cap: 'serverSettings', fields: {} },
+    'statusBar.hide': { cap: 'statusBar', fields: {} },
+    'statusBar.show': { cap: 'statusBar', fields: {} },
+    'network.subscribe': { cap: 'network', fields: {} },
+    'network.unsubscribe': { cap: 'network', fields: {} },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -35,6 +39,16 @@
         state: { enum: ['unplugged', 'charging', 'full', 'unknown'], req: true },
       },
     },
+    // v1.385.0. `connection` (not `type`: the envelope's own `type` is 'network'). A future connection kind this
+    // web does not know is read as 'other' (`lenient`), never dropped, so the glyph cannot go stale on it.
+    network: {
+      lenient: { connection: 'other' },
+      fields: {
+        connection: { enum: ['wifi', 'cellular', 'wired', 'other', 'none'], req: true },
+        constrained: { is: 'boolean' },
+        expensive: { is: 'boolean' },
+      },
+    },
   };
 
   function fieldOk(spec, v) {
@@ -43,6 +57,7 @@
     if (spec.enum) return spec.enum.indexOf(v) >= 0;
     if (spec.is === 'number') return typeof v === 'number' && isFinite(v) && (spec.min === undefined || v >= spec.min) && (spec.max === undefined || v <= spec.max);
     if (spec.is === 'string') return typeof v === 'string';
+    if (spec.is === 'boolean') return typeof v === 'boolean';
     if (spec.is === 'object') return !!v && typeof v === 'object' && (!spec.props || fieldsOk(spec.props, v));
     return false;
   }
@@ -107,6 +122,22 @@
         try {
           var d = ev && ev.detail;
           if (!d || typeof d !== 'object' || d.v !== 1 || d.type !== type) return;
+          var len = EVENTS[type].lenient;
+          if (len) {
+            for (var lk in len) {
+              if (Object.prototype.hasOwnProperty.call(len, lk) && typeof d[lk] === 'string' && EVENTS[type].fields[lk].enum.indexOf(d[lk]) < 0) {
+                var c = {}; for (var ck in d) c[ck] = d[ck]; c[lk] = len[lk]; d = c;
+              }
+            }
+          }
+          // An OPTIONAL field that does not fit is dropped, never the whole event (a bad `constrained` must not
+          // swallow a real `connection` change and leave the page showing a stale value).
+          var flds = EVENTS[type].fields;
+          for (var ok in flds) {
+            if (Object.prototype.hasOwnProperty.call(flds, ok) && !flds[ok].req && d[ok] !== undefined && !fieldOk(flds[ok], d[ok])) {
+              var c2 = {}; for (var ck2 in d) c2[ck2] = d[ck2]; delete c2[ok]; d = c2;
+            }
+          }
           if (!fieldsOk(EVENTS[type].fields, d)) return;
           fn(pick(EVENTS[type].fields, d));
         } catch (_) { /* a bad event or a throwing listener never breaks the page */ }

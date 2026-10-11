@@ -8949,6 +8949,12 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-playind{ --mms-g-size:var(--pk-fs-status-mark); font-size:var(--pk-fs-status-mark); color:var(--pk-s-sub); }
+  /* v1.385.0: the time and the connection mark (the app only: drawn by skin-surface.js drawBar when the host announces
+     statusBar / network). The right cluster never shrinks, so the TITLE gives (ellipsis); the clock never truncates. */
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-clock{ flex:none; white-space:nowrap; font-size:var(--pk-fs-status-mark); font-weight:var(--fw-bold); font-variant-numeric:tabular-nums; color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-conn{ flex:none; display:inline-grid; color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-conn .mms-g{ --mms-g-size:var(--pk-fs-status-mark); width:var(--mms-g-size); height:var(--mms-g-size); fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-conn.is-constrained{ opacity:.55; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-batt{ width:var(--pk-batt-w); height:var(--pk-batt-h); flex:none; overflow:hidden; background:var(--pk-s-paper); border:1px solid var(--pk-s-batt-line); border-radius:var(--mms-ipod-r-sm); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-batt i{ display:block; height:100%; width:var(--pk-batt-level); background:linear-gradient(var(--pk-s-batt1), var(--pk-s-batt2)); }
   /* Now Playing view */
