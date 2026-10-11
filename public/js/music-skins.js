@@ -1284,6 +1284,99 @@
       '<div class="ipm-art" aria-hidden="true">' + art + '</div></div>' + renderJumpLayers(v.jump) + '</div>';
   }
 
+  // ---- v1.386.0 speed pass (W2): a skin's photos are ready BEFORE it is shown ----------------------------------------
+  // Dean: picking the Transparent Coil showed "a weird picture, and then all of a sudden the image shows" - the
+  // skin's board and ring photos (CSS url()s, ~360 KB) only started downloading when the new skin's class landed,
+  // so the frame painted without them first. skinArtUrls(id) reads the photos a skin paints from the LOADED
+  // stylesheets themselves (every url() in a rule that names one of the skin's classes), resolved exactly as the
+  // stylesheet resolves them, versioned query included, so the request below is the one the CSS will reuse; no
+  // hand-kept list can drift from the CSS. The sideways-board variants (custom properties ending -r90 / -r270) are
+  // only wanted while the screen is landscape. warmSkinArt(ids) starts the downloads (the picker's Skin list
+  // opening); whenSkinArtReady(id, capMs) resolves once every photo is downloaded AND decoded, or at the cap, so a
+  // pick can keep the current look on screen until the new one can paint whole.
+  var SKIN_ART_TURNED = /-r(?:90|270)$/;
+  var skinArtImgs = {}; // url -> Promise<Image|null> (the Image is kept so its decoded picture stays in memory)
+  var skinArtDone = {}; // url -> true once downloaded and decoded
+  function escRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function skinArtClasses(id) {
+    var s = skinById(id);
+    if (!s) return [];
+    var out = ['mms-' + s.id];
+    if (s.base) out.push('mms-' + s.base);
+    if (s.look) out.push('mms-look-' + s.look);
+    return out;
+  }
+  function urlsInValue(value, base, into) {
+    var re = /url\(\s*(['"]?)([^'")\s]+)\1\s*\)/g;
+    var m;
+    while ((m = re.exec(String(value || '')))) {
+      if (/^data:/i.test(m[2])) continue;
+      try { into[new URL(m[2], base).href] = true; } catch (_) { /* unparseable: skip */ }
+    }
+  }
+  function skinArtUrls(id, opts) {
+    var o = opts || {};
+    var doc = o.doc || (typeof document !== 'undefined' ? document : null);
+    if (!doc || !doc.styleSheets) return [];
+    var landscape = typeof o.landscape === 'boolean' ? o.landscape
+      : !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
+    var classes = skinArtClasses(id);
+    if (!classes.length) return [];
+    var sel = new RegExp('\\.(?:' + classes.map(escRe).join('|') + ')(?![\\w-])');
+    var found = {};
+    function walk(rules, base) {
+      for (var i = 0; rules && i < rules.length; i++) {
+        var r = rules[i];
+        if (r.cssRules && !r.selectorText) { walk(r.cssRules, base); continue; } // @media / @supports / @layer
+        if (!r.selectorText || !sel.test(r.selectorText) || !r.style) continue;
+        for (var j = 0; j < r.style.length; j++) {
+          var name = r.style[j];
+          if (!landscape && SKIN_ART_TURNED.test(name)) continue;
+          urlsInValue(r.style.getPropertyValue(name), base, found);
+        }
+      }
+    }
+    for (var k = 0; k < doc.styleSheets.length; k++) {
+      var sheet = doc.styleSheets[k];
+      var rules = null;
+      try { rules = sheet.cssRules; } catch (_) { continue; } // a cross-origin sheet is unreadable: it holds no skin art
+      walk(rules, sheet.href || doc.baseURI);
+    }
+    return Object.keys(found);
+  }
+  function loadSkinArt(url) {
+    if (!skinArtImgs[url]) {
+      var p;
+      try {
+        var img = new Image();
+        img.decoding = 'async';
+        p = new Promise(function (resolve) {
+          var settle = function () { skinArtDone[url] = true; resolve(img); };
+          img.onload = function () {
+            if (typeof img.decode === 'function') img.decode().then(settle, settle); else settle();
+          };
+          img.onerror = function () { delete skinArtImgs[url]; resolve(null); }; // a failed photo never blocks a pick, and is retried next time
+        });
+        img.src = url;
+      } catch (_) { p = Promise.resolve(null); }
+      skinArtImgs[url] = p;
+    }
+    return skinArtImgs[url];
+  }
+  function warmSkinArt(ids, opts) {
+    (ids || []).forEach(function (id) { skinArtUrls(id, opts).forEach(loadSkinArt); });
+  }
+  // null when there is nothing to wait for (the skin paints no photos, or they are all decoded already): the caller
+  // then applies the pick at once, exactly as before this wave.
+  function whenSkinArtReady(id, capMs, opts) {
+    var urls = skinArtUrls(id, opts);
+    if (urls.every(function (u) { return skinArtDone[u]; })) return null;
+    var all = Promise.all(urls.map(loadSkinArt)).then(function () { return true; });
+    var cap = Number(capMs) > 0 ? Number(capMs) : 4000;
+    return Promise.race([all, new Promise(function (resolve) { setTimeout(function () { resolve(false); }, cap); })]);
+  }
+  var SKIN_ART_CAP_MS = 4000; // the longest a pick keeps the old look while the new skin's photos download
+
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
@@ -1305,6 +1398,7 @@
     menuLetterAt: menuLetterAt, menuLetterJump: menuLetterJump, menuLetterTargets: menuLetterTargets,
     menuLetterable: menuLetterable, menuSortIsAlpha: menuSortIsAlpha, renderMenuJump: renderJumpLayers,
     MENU_LETTERS: MENU_LETTERS, MENU_LETTER_MIN: MENU_LETTER_MIN, RECENT_ARTISTS_MAX: RECENT_ARTISTS_MAX, RECENT_ALBUMS_MAX: RECENT_ALBUMS_MAX,
+    skinArtUrls: skinArtUrls, warmSkinArt: warmSkinArt, whenSkinArtReady: whenSkinArtReady, SKIN_ART_CAP_MS: SKIN_ART_CAP_MS, // v1.386.0
     shuffleGlyph: shuffleGlyph, // v1.368.0: the sticker's Shuffle mode row draws the same mark (the .icon-shuffle mask is retired)
     _esc: esc, _pct: pct,
   };
