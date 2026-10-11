@@ -130,6 +130,14 @@
               }
             }
           }
+          // An OPTIONAL field that does not fit is dropped, never the whole event (a bad `constrained` must not
+          // swallow a real `connection` change and leave the page showing a stale value).
+          var flds = EVENTS[type].fields;
+          for (var ok in flds) {
+            if (Object.prototype.hasOwnProperty.call(flds, ok) && !flds[ok].req && d[ok] !== undefined && !fieldOk(flds[ok], d[ok])) {
+              var c2 = {}; for (var ck2 in d) c2[ck2] = d[ck2]; delete c2[ok]; d = c2;
+            }
+          }
           if (!fieldsOk(EVENTS[type].fields, d)) return;
           fn(pick(EVENTS[type].fields, d));
         } catch (_) { /* a bad event or a throwing listener never breaks the page */ }

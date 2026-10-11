@@ -247,6 +247,7 @@ test('v1.385.0: the network event is validated as data; an unknown connection ki
   assert.deepEqual(got, [
     { connection: 'wifi', constrained: true, expensive: false },
     { connection: 'other' },
-  ]);
+    { connection: 'cellular' },
+  ], 'a bad optional field is dropped, never the connection change with it');
   win.close();
 });

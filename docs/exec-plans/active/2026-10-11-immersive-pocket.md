@@ -3,8 +3,8 @@ plan: immersive-pocket
 harness: v2 · full
 branch: feat/v1.385.0-immersive-pocket
 anchor: spec
-status: Building (W1 + W2 code landed; W3 close-out next)
-next: full suite, W3 close-out, then the gate
+status: Gate round 2 (r1 fixes applied)
+next: delta re-confirm with the same seats, then release
 design: the iOS Root's contract proposal (2026-10-11), confirmed by Dean to the FileTube Root ("Yes, all in one release"). Base main = v1.384.0.
 builder: standard (the contract shape and every seam are fixed here, on top of v1.384.0's mapped registry)
 gate: not yet run (FULL: adversary, qa, security-brief - a contract change and native-facing calls)
@@ -91,8 +91,15 @@ tag's "Publish Docker Image" green; then tell the FileTube Root (SendMessage "Fi
 re-pin the contract and announce the two capabilities.
 
 ## 7. Evidence (builder fills)
-- Seams (file:line), conformance output, no-host equality, the re-send test, row measurements at 320 / 390, suites, gate rounds,
-  device checks owed.
+- Seams (file:line, at the gate-r1 fix commit): contract = docs/references/native-bridge.v1.schema.json + host-adapter.js (MESSAGES :28-31, EVENTS network :44, `lenient` + optional-field drop in `on`); music-skins.js :89 connGlyph (own-property table, unknown = none); skin-surface.js :605 sbShow, :610 orientApply (rotation only), :689 barApply (status bar hide/show, the one network subscription, the minute timeout), :721 hostReleaseAll (pagehide), :729 hostReassert (pageshow), :730 hostBindPage, :1982 drawBar, :1996 barOwner (hide follows a panel that draws its own bar), :1997 hostSync.
+- Conformance: test/unit/native-bridge-contract.test.js (field `connection`, renamed from `type`: envelope collision, Dean + both Roots 2026-10-11). Re-send: native-bridge-immersive.test.js replays the posts into a host model that "releases" on pagehide; a persisted pageshow restores exactly the wanted holds once, nothing after Pocket closed. No-host equality: identical panel DOM, no timers, no clock. The new Rules paragraph in native-bridge.md carries the Root's wording.
+- Row measurements at 320 / 390: NOT measured (the repo's status-bar probe cannot inject a host); by construction the right cluster is flex:none/nowrap and the title takes the shrink (existing ellipsis rule). Device check owed.
+- Suites: full `npm test` Node 22.23.1 at 8d1d31ed: 12253 tests, 12240 pass, 0 fail, 13 skipped. Gate r1 @8d1d31ed: security-brief APPROVED, qa APPROVED, adversary CHANGES (W1 Cider / Nordic would lose iOS's bar with nothing in its place; W2 stale glyph after reopen and a bad optional field dropping the whole network event) - both fixed; test gaps (clock timeout on pagehide, listener leak, glyph fallback) bound.
+- Device checks owed: docs/DEVICE-CHECKS.md "The immersive Pocket (v1.385.0)" (6).
 
 ## 8. Out of scope
 Signal bars (no iOS API); anything native; changing the PWA; a clock outside Pocket.
+
+Gate: APPROVED r1 @8d1d31ed — security-brief
+Gate: APPROVED r1 @8d1d31ed — qa
+Gate: CHANGES r1 @8d1d31ed — adversary

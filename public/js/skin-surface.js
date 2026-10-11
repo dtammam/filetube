@@ -566,8 +566,9 @@
   // ==== v1.384.0 / v1.385.0 (native bridge): POCKET IMMERSIVE = the host's rotation lock, status bar and network ======
   // When a native host announces `orientation`, the FULL player (a main-document panel wearing mms-full, shown) locks the
   // app to portrait and every exit unlocks it - unless the per-device Sideways setting is on (never lock then). When it
-  // announces `statusBar` (v1.385.0), the same "full player showing" owners hide iOS's own status bar and every exit shows
-  // it again; Sideways does NOT block that (a sideways Pocket is still immersive). The web's own upright drawing
+  // announces `statusBar` (v1.385.0), a full player that draws its OWN status bar (the Click skins' .ip-status-rt: the bar
+  // owners below) hides iOS's and every exit shows it again - a skin with no bar of its own (Cider, Nordic) keeps iOS's, so
+  // the time and battery never vanish; Sideways does NOT block it (a sideways Pocket is still immersive). The web's own upright drawing
   // (html.pk-upright, music-skins.js markUprightClass / turnOf) is untouched: it is the browser path.
   // The state is MODULE-level because two engines can exist at once (music + podcasts views, a skin preview) and the phone
   // has one rotation and one status bar: held while ANY owner shows, released when none does. The exits are caught three
@@ -608,18 +609,11 @@
   }
   function orientApply() {
     var oh = orientHost();
-    var sh = statusHost();
-    if (!oh && !sh) return;
+    if (!oh) return;
     orientOwners = orientOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
-    if (oh) {
-      var want = orientOwners.length > 0 && !orientSidewaysOn();
-      if (want && !orientLocked) { orientLocked = true; oh.post('orientation.lock', { orientation: 'portrait' }); }
-      else if (!want) orientUnlock(oh);
-    }
-    if (sh) {
-      if (orientOwners.length > 0 && !sbHidden) { sbHidden = true; sh.post('statusBar.hide'); }
-      else if (!orientOwners.length) sbShow(sh);
-    }
+    var want = orientOwners.length > 0 && !orientSidewaysOn();
+    if (want && !orientLocked) { orientLocked = true; oh.post('orientation.lock', { orientation: 'portrait' }); }
+    else if (!want) orientUnlock(oh);
     hostPollSync();
   }
   // The battery (D8) is the same shape: ONE subscription while ANY engine's status bar shows (two engines can exist at once:
@@ -681,6 +675,7 @@
     if (!barSubbed) return;
     barSubbed = false;
     if (barOff) { barOff(); barOff = null; }
+    barNet = null; // a reopened bar must never show the kind from before it closed
     if (h) h.post('network.unsubscribe');
   }
   function barClockStop() { if (barClockTimer && typeof window !== 'undefined') { window.clearTimeout(barClockTimer); barClockTimer = null; } }
@@ -696,14 +691,19 @@
     if (!sh) return;
     barOwners = barOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
     var nh = networkHost();
+    var sbWant = barOwners.length > 0;
+    if (sbWant && !sbHidden) { sbHidden = true; sh.post('statusBar.hide'); }
+    else if (!sbWant) sbShow(sh);
     if (barOwners.length && nh && !barSubbed) {
       barSubbed = true;
       barOff = nh.on('network', function (d) { barNet = d || null; barDrawAll(); });
       nh.post('network.subscribe');
     } else if (!barOwners.length || !nh) barDrop(nh);
     if (barOwners.length) {
-      barClock = barClockText();
-      if (!barClockTimer && typeof window !== 'undefined') barClockTimer = window.setTimeout(barClockTick, 60000 - (Date.now() % 60000) + 50);
+      if (!barClockTimer && typeof window !== 'undefined') {
+        barClock = barClockText(); // the minute timeout re-reads it; the 1 s poll never does
+        barClockTimer = window.setTimeout(barClockTick, 60000 - (Date.now() % 60000) + 50);
+      }
       barDrawAll(); // re-applied after every repaint / remount
     } else barClockStop();
     hostPollSync();
@@ -1996,7 +1996,7 @@
     var barOwner = { showing: function () { return fullPlayerShowing() && !!panel.querySelector('.ip-status-rt'); }, draw: drawBar };
     function hostSync() {
       if (!inMainDoc) return;
-      if (orientHost() || statusHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
+      if (orientHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
       if (batteryHost()) { if (battOwner.showing()) battClaim(battOwner); else battRelease(battOwner); }
       if (statusHost()) { if (barOwner.showing()) barClaim(barOwner); else barRelease(barOwner); }
     }

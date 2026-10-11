@@ -231,3 +231,56 @@ test('D6: no host and a host without the new capabilities draw an identical pane
     assert.strictEqual(a.clock.live(), 0, 'no host: no timers');
   } finally { a.restore(); c.restore(); }
 });
+
+test('gate r1 W1: a skin with no status bar of its own (Cider, Nordic) keeps iOS\'s bar; only a bar that replaces it hides it', () => {
+  for (const skin of ['apple', 'spotify']) {
+    const b = boot({ host: ALL });
+    try {
+      const e = b.make('panel', skin);
+      b.fake.clear(); e.paint();
+      assert.ok(!b.panel.querySelector('.ip-status-rt'), skin + ' draws no ip status bar');
+      assert.deepStrictEqual(sb(b), [], skin + ': iOS\'s bar is not hidden when nothing replaces it');
+      assert.deepStrictEqual(nw(b), []);
+      assert.deepStrictEqual(b.fake.of('orientation.lock').length, 1, 'the rotation lock still applies');
+    } finally { b.restore(); }
+  }
+});
+
+test('gate r1 W2: a bad optional field never swallows the connection change; a reopened bar never shows the old kind', async () => {
+  const b = boot({ host: ALL });
+  try {
+    b.engine.paint();
+    net(b, { connection: 'wifi' });
+    net(b, { connection: 'cellular', constrained: 'yes' });
+    assert.strictEqual(rt(b).querySelector('.ip-conn').getAttribute('data-conn'), 'cellular');
+    assert.ok(!rt(b).querySelector('.ip-conn').classList.contains('is-constrained'));
+    net(b, { connection: 7 }); net(b, {});
+    assert.strictEqual(rt(b).querySelector('.ip-conn').getAttribute('data-conn'), 'cellular', 'garbage changes nothing');
+    b.panel.hidden = true; await flushMO();
+    b.panel.hidden = false;
+    b.engine.paint();
+    assert.strictEqual(rt(b).querySelector('.ip-conn').getAttribute('data-conn'), 'none', 'reopened before the first report: the no-connection mark, not the old kind');
+  } finally { b.restore(); }
+});
+
+test('gate r1: pagehide stops the clock timeout and drops the host listeners; a cycle never stacks them; an unknown mark kind is the none mark', () => {
+  const b = boot({ host: ALL });
+  try {
+    let adds = 0; let removes = 0; const clears = [];
+    const ae = b.win.addEventListener.bind(b.win); const re = b.win.removeEventListener.bind(b.win);
+    b.win.addEventListener = (t, ...r) => { if (t === 'filetube-host') adds++; return ae(t, ...r); };
+    b.win.removeEventListener = (t, ...r) => { if (t === 'filetube-host') removes++; return re(t, ...r); };
+    const ct = b.win.clearTimeout.bind(b.win);
+    b.win.clearTimeout = (id) => { clears.push(id); return ct(id); };
+    b.engine.paint();
+    assert.strictEqual(adds, 2, 'one battery + one network listener');
+    b.win.dispatchEvent(new b.win.Event('pagehide'));
+    assert.strictEqual(removes, 2, 'both dropped on release');
+    assert.strictEqual(clears.length, 1, 'the clock timeout is cleared on pagehide');
+    for (let i = 0; i < 3; i++) { b.win.dispatchEvent(new b.win.Event('pageshow')); b.win.dispatchEvent(new b.win.Event('pagehide')); }
+    assert.strictEqual(adds - removes, 0, 'cycles never leak a listener');
+    const SK = b.win.FileTubeMusicSkins;
+    assert.strictEqual(SK.connGlyph('bogus'), SK.connGlyph('none'));
+    assert.strictEqual(SK.connGlyph('constructor'), SK.connGlyph('none'));
+  } finally { b.restore(); }
+});
