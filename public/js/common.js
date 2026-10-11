@@ -8537,6 +8537,11 @@ function shouldRestoreSession(stored, currentPath, nowMs, isStandalone, origin) 
 function isStandaloneDisplay() {
   if (typeof window === 'undefined') return false;
   try {
+    // v1.384.0 (native bridge D10): the iOS app is an installed full-screen app too - the cold-start restore of the last page and its
+    // clear on Home apply there as on the home-screen PWA. appLike() = standalone OR a native host; in a browser it is the very same
+    // check as below, so a browser's answer does not change (host-adapter.js is the one door; without it the old check stands).
+    const host = window.FileTube && window.FileTube.host;
+    if (host && typeof host.appLike === 'function') return host.appLike();
     return Boolean(
       (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || window.navigator.standalone === true,

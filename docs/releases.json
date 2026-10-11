@@ -3652,5 +3652,11 @@
     "date": "2026-10-11",
     "title": "Feed reels and speed: cards that move on and start on their own, song clips, music while you read, and book chapters named right",
     "intent": "When a video, episode or song card finishes, the Feed now moves to the next one after a two-second countdown (touch the card to stay; Settings > Feed > Auto-advance turns it off), and a swipe starts the next card playing at once. Tap a card's title or its channel or show line any time to open the full item, still playing. Songs play as 45-second clips from about a third in (30 s, 60 s or the whole song in Settings), and a clip you hear to the end counts as a play. Book cards now play music from a station while you read, with a chip to like the song, mute it or change the station. Books name their chapters the way the book does (no more \"Chapter 6\" for a book's first chapter), and Start over on a book card shows its first chapter at once, with Undo putting your page back."
+  },
+  {
+    "version": "1.384.0",
+    "date": "2026-10-11",
+    "title": "Ready for the iPhone app: FileTube now talks to its app",
+    "intent": "Nothing changes in your browser or home-screen app. Inside the new FileTube iPhone app, Pocket stays upright by locking the phone's rotation, the click wheel and Feed swipes give real taps, Pocket's battery shows your phone's real level, Settings has a Server address row, and the app can check your server before you sign in."
   }
 ]

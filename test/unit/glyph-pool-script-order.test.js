@@ -94,3 +94,15 @@ test('glyph-pool.js is loaded BEFORE common.js in every shell', () => {
   assert.deepEqual(wrong, [],
     'the registry must execute before common.js:\n' + wrong.join('\n'));
 });
+
+// ---- v1.384.0: the host adapter loads on every shell that loads common.js, before glyph-pool.js ----------------
+const ADAPTER_TAG = /<script[^>]+src="\/js\/host-adapter\.js"/;
+test('every shell that loads common.js loads host-adapter.js first (the one door to a native host)', () => {
+  const bad = [];
+  for (const p of CONSUMERS) {
+    const src = fs.readFileSync(p, 'utf8');
+    const a = src.search(ADAPTER_TAG);
+    if (a < 0 || a > src.search(POOL_TAG)) bad.push(path.relative(REPO, p));
+  }
+  assert.deepEqual(bad, [], `shells missing host-adapter.js (or loading it after glyph-pool.js): ${bad.join(', ')}`);
+});

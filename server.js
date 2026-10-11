@@ -4732,6 +4732,14 @@ function customLogoMimeKey(variant) {
   return variant === 'dark' ? 'customLogoDarkMime' : 'customLogoMime';
 }
 
+// v1.384.0: the native host's pre-load check (docs/references/native-bridge.md section 4). Public by
+// lib/auth/gate.js ALLOW_EXACT (registered here, AFTER the gate, so the route census still proves every
+// other route is gated). Exactly three keys and nothing else: no user data, no paths, no configuration.
+app.get('/api/host-info', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ app: 'filetube', version: APP_VERSION, bridge: { min: 1, max: 1 } });
+});
+
 // Serves the uploaded logo (404 when none is set -- the client's boot check
 // treats that as "keep the text logo"). `no-cache` so a replacement shows up
 // on the next load without a stale-cache fight.

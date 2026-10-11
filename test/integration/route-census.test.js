@@ -131,6 +131,9 @@ test('route census: the documented allowlist IS reachable pre-auth (positive con
   // v1.364.0 gate r1: login.html and welcome.html load these two; refused, every sign-in logged two failed loads.
   assert.equal(await probeGated('GET', '/js/glyph-pool.js'), false, 'the sign-in pages load the glyph registry signed out');
   assert.equal(await probeGated('GET', '/js/prefs-sync.js'), false, 'the sign-in pages load the prefs agent signed out');
+  assert.equal(await probeGated('GET', '/js/host-adapter.js'), false, 'v1.384.0: login.html and welcome.html load the host adapter signed out');
+  assert.equal(await probeGated('GET', '/api/host-info'), false, 'v1.384.0: the iOS app checks the server before it can sign in');
+  assert.equal(await probeGated('GET', '/api/auth/me'), true, 'the one public /api GET is host-info, not its neighbours');
   assert.equal(await probeGated('GET', '/js/main.js'), true, 'the app scripts stay gated');
   assert.equal(await probeGated('GET', '/filetube-worker.js'), false, 'v1.66: the SW update check fetches this itself; a 401 body in the SW slot is the login.js failure shape one layer down');
   // The retired worker paths are NOT allowlisted - nothing is served there,

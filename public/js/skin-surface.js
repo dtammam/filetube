@@ -563,6 +563,103 @@
     try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
   }
 
+  // ==== v1.384.0 (native bridge D5): POCKET UPRIGHT = the host's rotation lock ============================
+  // When a native host announces `orientation`, the FULL player (a main-document panel wearing mms-full, shown) locks the
+  // app to portrait and every exit unlocks it - unless the per-device Sideways setting is on (never lock then). The web's
+  // own upright drawing (html.pk-upright, music-skins.js markUprightClass / turnOf) is untouched: it is the browser path.
+  // The state is MODULE-level because two engines can exist at once (music + podcasts views, a skin preview) and the phone
+  // has one rotation: it is locked while ANY owner shows, unlocked when none does. The exits are caught three ways, so
+  // no teardown nobody wrote can strand the lock (the v1.256 ghost-lock lesson): the engine's own seams (paint, destroy,
+  // a MutationObserver on hidden/class), reflect() on every playback tick, and a 1 s self-heal poll that runs ONLY while
+  // locked and drops any owner whose panel left the page (view swap, innerHTML reset, a thrown render). pagehide unlocks
+  // (the phone leaves the page); pageshow re-applies. Idempotent both ways: a double unlock is harmless to the host.
+  var orientOwners = [];
+  var orientLocked = false;
+  var orientTimer = null;
+  var orientPageBound = false;
+  function orientHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('orientation')) ? h : null;
+  }
+  function orientSidewaysOn() {
+    var SK = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+    try { return !!(SK && typeof SK.pocketSideways === 'function' && SK.pocketSideways(window.localStorage)); } catch (_) { return false; }
+  }
+  function orientUnlock(h) {
+    if (!orientLocked) return;
+    orientLocked = false;
+    h.post('orientation.unlock');
+  }
+  function orientApply() {
+    var h = orientHost();
+    if (!h) return;
+    orientOwners = orientOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    var want = orientOwners.length > 0 && !orientSidewaysOn();
+    if (want && !orientLocked) { orientLocked = true; h.post('orientation.lock', { orientation: 'portrait' }); }
+    else if (!want) orientUnlock(h);
+    hostPollSync();
+  }
+  // The battery (D8) is the same shape: ONE subscription while ANY engine's status bar shows (two engines can exist at once:
+  // one engine's destroy must not unsubscribe the other's bar), dropped by the same self-heal poll when a bar leaves the page
+  // with no engine call. Each owner is { showing(), draw(level) }; the host's level is kept here and drawn on every owner.
+  var battOwners = [];
+  var battSubbed = false;
+  var battOff = null;
+  var battLevel = null; // the last level the host reported (0..1) or null (unknown: today's drawing)
+  function batteryHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('battery')) ? h : null;
+  }
+  function battApply() {
+    var h = batteryHost();
+    if (!h) return;
+    battOwners = battOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    if (battOwners.length && !battSubbed) {
+      battSubbed = true;
+      battOff = h.on('battery', function (d) {
+        battLevel = (d && typeof d.level === 'number' && isFinite(d.level)) ? d.level : null;
+        battOwners.forEach(function (o) { o.draw(battLevel); });
+      });
+      h.post('battery.subscribe');
+    } else if (!battOwners.length && battSubbed) {
+      battSubbed = false;
+      if (battOff) { battOff(); battOff = null; }
+      h.post('battery.unsubscribe');
+    }
+    battOwners.forEach(function (o) { o.draw(battLevel); }); // re-applied after every repaint / remount
+    hostPollSync();
+  }
+  function battClaim(owner) { if (battOwners.indexOf(owner) < 0) battOwners.push(owner); battApply(); }
+  function battRelease(owner) { var i = battOwners.indexOf(owner); if (i >= 0) battOwners.splice(i, 1); battApply(); }
+  // ONE 1 s self-heal poll for both registries, running only while either has an owner
+  function hostPollSync() {
+    var need = orientOwners.length > 0 || battOwners.length > 0 || orientLocked || battSubbed;
+    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); }, 1000);
+    else if (!need && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
+  }
+  function orientBindPage() {
+    if (orientPageBound || typeof window === 'undefined') return;
+    orientPageBound = true;
+    try {
+      window.addEventListener('pagehide', function () {
+        var h = orientHost();
+        if (h) orientUnlock(h);
+        if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
+      });
+      window.addEventListener('pageshow', orientApply);
+    } catch (_) { /* a bare harness */ }
+  }
+  function orientClaim(owner) {
+    if (orientOwners.indexOf(owner) < 0) orientOwners.push(owner);
+    orientBindPage();
+    orientApply();
+  }
+  function orientRelease(owner) {
+    var i = orientOwners.indexOf(owner);
+    if (i >= 0) orientOwners.splice(i, 1);
+    orientApply();
+  }
+
   // ==== POCKET MENUS: the controller (Dean 2026-09-24) =======================================
   // The Click family drives a real menu tree with the wheel: rotation moves the
   // highlight (the SAME onMove cursor branch and haptic path the song list uses - no second
@@ -1776,6 +1873,34 @@
     // Dean wants pop-out Extras (2026-09-02) - that lifts WITH doc-aware shared dialogs, a
     // queued wave (see the plan doc's queue); until then this gate stays.
     var inMainDoc = (typeof document !== 'undefined') && doc === document;
+    // v1.384.0 (native bridge D5 + D8): this engine's two host seams, both inert without a host (hostSync
+    // returns at once) and both main-document only (a pop-out is another window with no host of its own).
+    // `showing` = the full player is on the glass; the status-bar battery is drawn only on the Click structure.
+    function fullPlayerShowing() { return !!(inMainDoc && bound && panel.isConnected && !panel.hidden && panel.classList.contains('mms-full')); }
+    var orientOwner = { showing: fullPlayerShowing };
+    var hostWatch = null;     // a MutationObserver on the panel's hidden/class (an exit with no engine call)
+    // --pk-batt-level is declared on the .mms-ipod PANEL itself (style.css), which beats a value inherited from html,
+    // so the live level is written there (never on .ip-batt i: ipScreen rebuilds it on every repaint). An unknown
+    // level (null) removes the inline value, so today's drawing (the static 82%) comes back.
+    function drawBattery(level) {
+      var target = panel.classList.contains('mms-ipod') ? panel : (panel.querySelector('.mms-ipod') || panel);
+      if (level === null) { target.style.removeProperty('--pk-batt-level'); return; }
+      var pct = Math.round(Math.min(1, Math.max(0, level)) * 100);
+      target.style.setProperty('--pk-batt-level', pct + '%');
+    }
+    var battOwner = { showing: function () { return fullPlayerShowing() && !!panel.querySelector('.ip-batt'); }, draw: drawBattery };
+    function hostSync() {
+      if (!inMainDoc) return;
+      if (orientHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
+      if (batteryHost()) { if (battOwner.showing()) battClaim(battOwner); else battRelease(battOwner); }
+    }
+    function watchHost() {
+      if (hostWatch || !inMainDoc) return;
+      var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+      if (!MO || !(orientHost() || batteryHost())) return;
+      hostWatch = new MO(function () { hostSync(); });
+      try { hostWatch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hostWatch = null; }
+    }
     // Addendum C: the menus' Extras > Games > Brick rides the view's Brick hook (the sticker's own
     // Brick row was removed in v1.333, so this is now its only entry), under the SAME gate (main document only - v1.270 slim W4: the game mounts on the
     // IN-TAB engine's LCD, and wire() is per-view, not per-surface). The pop-out gets no hook, so
@@ -1927,7 +2052,7 @@
         c.timer = null;
         if (centerHold !== c) return;
         var ok = centerHoldArmable() && wheel.isConnected;
-        if (ok) hapticLetterTick(c.hap, { clientX: c.x0, clientY: c.y0 }); // the wheel's own tick, once, where it ticks
+        if (ok) hapticLetterTick(c.hap, { clientX: c.x0, clientY: c.y0 }, 'detent'); // the wheel's own tick, once, where it ticks
         clearCenterHold();
         if (!ok) return;
         wheelSuppressClick = true; // the release's click is swallowed (MENU hold's way)
@@ -1995,6 +2120,7 @@
     // Byte-for-behaviour with music.js reflectSkin: reads the element, never assumes music.
     function reflect() {
       healGhostLock(); // v1.256: the lock must never outlive its ghost (the v1.227 leak class)
+      hostSync(); // v1.384.0: the same structural check for the host's rotation lock and battery (a no-op without a host)
       if (!panel || !panel.classList.contains('mms-full')) return;
       var mp = hostCtl('media-player'); if (!mp) return;
       // SWAP the play-button GLYPH (not just a class) - byte-for-behaviour with music.js
@@ -2712,6 +2838,7 @@
         raf(function () { applyMarquee(); });
       }
       if (!bound) bind();
+      hostSync(); // v1.384.0: the full player is up (bound is true from here): lock portrait, subscribe the battery
     }
 
     // ---- the delegated click proxy (transport/seek/list/menu) ----
@@ -2730,6 +2857,7 @@
         win.addEventListener('orientationchange', onViewportChange);
       } catch (_) { /* a detached fixture window */ }
       if (inMainDoc) { try { doc.addEventListener('filetube:autostart', onAutoStartChange); } catch (_) { /* a detached fixture */ } } // v1.334
+      watchHost(); // v1.384.0
     }
     function onMenuScroll(e) { if (pocket) pocket.onScroll(e); }
     function onDocVisibility() { if (pocket) pocket.onVisibility(); }
@@ -2884,7 +3012,31 @@
     var bodyScrollLock = null;
     var bodyLockOwner = 'skin-ghost:' + (++skinLockSeq);
     var wheelTakeover = null; // v1.270: see the dispatches in MENU, Select and the move handler
+    // v1.384.0 (native bridge, plan D6): a native host that announces `haptics` plays the wheel's ticks itself
+    // (Core Haptics), so the switch-tracking trick below stays OFF: hapticCapable() is false (the ghost never
+    // mounts: no arming cover, no body-scroll carve-out) and each haptic function opens with a HOST BRANCH,
+    // BEFORE its ghost guard (there is no ghost to guard on). Returns the adapter, or null in every browser.
+    function hostHaptics() {
+      var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+      return (h && h.has('haptics')) ? h : null;
+    }
+    // ONE place decides "a detent was crossed": the accumulated rotation against the config's Detent step,
+    // through the HAPTIC_MIN_MS throttle (a throttled detent is dropped, never queued). The ghost engine
+    // flips its bias on it and the host posts a tick on it, for EVERY engine (the sweep path keeps no detent
+    // counter of its own). Returns true when at least one detent was counted AND passed the throttle.
+    function hapticDetentsCrossed(st, absD) {
+      st.hapAccum += absD;
+      var crossed = false;
+      var step = st.detentDeg || HAPTIC_STEP_DEG; // v1.303: the config's Detent (default 3.75)
+      while (st.hapAccum >= step) {
+        st.hapAccum -= step;
+        var now = nowMs();
+        if (now - st.hapLast >= HAPTIC_MIN_MS) { crossed = true; st.hapLast = now; } // throttle: drop, never queue
+      }
+      return crossed;
+    }
     function hapticCapable() {
+      if (hostHaptics()) return false;
       try {
         var probe = doc.createElement('input');
         return ('switch' in probe) && ('ontouchstart' in win);
@@ -3068,6 +3220,12 @@
       return e.target;
     }
     function hapticGestureStart(st, e) {
+      var hh = hostHaptics();
+      if (hh) { // the host branch (before the ghost guard: the host path never has a ghost)
+        st.hapAccum = 0; st.hapLast = 0;
+        if (st.buzz !== false) hh.post('haptics.prepare');
+        return;
+      }
       if (!wheelGhost || !wheelGhost.isConnected) return;
       st.hapAccum = 0; st.hapLast = 0; st.hapBias = 1;
       st.turn = panelTurn(); // read once per gesture (a computed-style read per move would cost a recalc)
@@ -3103,6 +3261,12 @@
       wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
     }
     function hapticOnMove(st, e, absD, signedD, lettered) {
+      var hh = hostHaptics();
+      if (hh) { // the host branch: in LETTER mode nothing per degree (the letter tick covers it), as the ghost path
+        if (st.buzz === false || lettered) return;
+        if (hapticDetentsCrossed(st, absD)) hh.post('haptics.tick', { style: 'detent' });
+        return;
+      }
       if (!wheelGhost || !wheelGhost.isConnected) return;
       if (st.buzz === false) return; // v1.303: buzz off -> no haptic
       // quick scroll: in LETTER mode the ghost/switch only rides under the finger - the tick is
@@ -3118,20 +3282,24 @@
         hapticPlaceSweep(st, e.clientX, e.clientY);
         return;
       }
-      st.hapAccum += absD;
-      var flip = false;
-      var step = st.detentDeg || HAPTIC_STEP_DEG; // v1.303: the config's Detent (default 3.75)
-      while (st.hapAccum >= step) {
-        st.hapAccum -= step;
-        var now = nowMs();
-        if (now - st.hapLast >= HAPTIC_MIN_MS) { flip = true; st.hapLast = now; } // throttle: drop, never queue
-      }
+      var flip = hapticDetentsCrossed(st, absD);
       hapticPlaceGhost(st, e.clientX, e.clientY, flip);
     }
     // Quick scroll: ONE tick per letter the detent crossed. Ghost: one bias flip (the same 8 ms
     // floor drops, never queues). Sweep: the switch's phase moves to the middle of the next
     // half-period of the SHARED sweepOffset sine, so its midline is crossed exactly once.
-    function hapticLetterTick(st, e) {
+    // `style` is the HOST tick's style: 'letter' for a real letter crossing (the default), 'detent' for the two
+    // HOLD fires that share this function (the centre hold, the MENU hold-to-home). The ghost path ignores it.
+    function hapticLetterTick(st, e, style) {
+      var hh = hostHaptics();
+      if (hh) { // the host branch: the same HAPTIC_MIN_MS drop-never-queue throttle as the ghost's bias flip
+        if (st.buzz === false) return;
+        var t = nowMs();
+        if (t - st.hapLast < HAPTIC_MIN_MS) return;
+        st.hapLast = t;
+        hh.post('haptics.tick', { style: style || 'letter' });
+        return;
+      }
       if (!wheelGhost || !wheelGhost.isConnected || st.buzz === false) return;
       if (st.engine === 'sweep') {
         var det = st.detentDeg || HAPTIC_STEP_DEG;
@@ -3266,7 +3434,7 @@
             st.homeTimer = null;
             if (st.ended || st.moved || wheelSpin !== st || wheelTakeover) return;
             if (!st.wheel.isConnected || !panel.classList.contains('mms-full')) { endWheel(st, false); return; }
-            hapticLetterTick(st, { clientX: st.x0, clientY: st.y0 }); // the wheel's own tick, where it ticks
+            hapticLetterTick(st, { clientX: st.x0, clientY: st.y0 }, 'detent'); // the wheel's own tick, where it ticks
             endWheel(st, true);
             goHome();
           }, HOME_HOLD_MS);
@@ -3430,6 +3598,9 @@
       unwatchGhostSize();
       wheelGhost = null;
       bound = false;
+      // v1.384.0: the host seams die with the surface (bound is false now, so fullPlayerShowing() is false)
+      if (hostWatch) { try { hostWatch.disconnect(); } catch (_) { /* gone */ } hostWatch = null; }
+      if (inMainDoc) { orientRelease(orientOwner); battRelease(battOwner); }
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
       // podcasts<->music swap must never strand the frozen-scroll cover).
       try { doc.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }
