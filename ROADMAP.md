@@ -807,6 +807,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### CI slim (on top of v1.383.0, 2026-10-11)
+
+- The pipeline gives the same protection with far fewer repeated runs: no CI run on the push to main (the PR just tested that tree), the
+  Docker publish qualifies on Node 22 only, Node 24 gates every PR in CI only, the PR suite runs in four Node 22 shards plus one Node 24 job
+  with lint once, and the pre-commit hook runs only the unit tests related to the staged files (falling back to the whole suite when unsure).
+  Local verification is Node 22.23.1 only. Visual reuse of the PR's screenshots was already in place. No app change, no version bump.
+
 ### v1.383.0 - Feed reels and speed: cards that move on and start on their own, song clips, music while you read, and book chapters named right (2026-10-11)
 
 - Built off this box by another agent (W1-W5), imported by patch and finished here: re-measured from scratch (dual suites, a mutant
