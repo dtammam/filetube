@@ -328,8 +328,9 @@ test('W3 view (D7): past the last page the next pages come from the excerpt rout
     for (let i = 0; i < 3; i++) { r.advance(6000); swipe(r, stage, 300, 200); }
     await r.settle();
     const gets = r.calls('GET', '/api/books/bk1/excerpt');
-    assert.strictEqual(gets.length, 1);
-    assert.strictEqual(gets[0].url, '/api/books/bk1/excerpt?spine=0&block=6&continuation=1', 'from the card\'s next, never re-stamping the serve');
+    // v1.383.0 (K2 a): ONE request for the pages after the card (asked for while its last page showed, and the turn took that
+    // answer), then the pages after THOSE, warmed while the new last page shows
+    assert.deepStrictEqual(gets.map((g) => g.url), ['/api/books/bk1/excerpt?spine=0&block=6&continuation=1', '/api/books/bk1/excerpt?spine=0&block=8&continuation=1'], 'from the card\'s next, never re-stamping the serve');
     assert.strictEqual(readout(r), 'Page 4 of 4');
     assert.deepStrictEqual(firstWords(r), ['b6w0', 'b7w0']);
     r.advance(6000);
@@ -476,6 +477,13 @@ function startOverRealm(cards, routes) {
     route: (m, u, body) => {
       if (u === '/api/feed/start-over') return routes.start ? routes.start(body) : { status: 200, body: { ok: true, token: 'a'.repeat(24), previous: {} } };
       if (u === '/api/feed/start-over/undo') return routes.undo ? routes.undo(body) : { status: 200, body: { ok: true } };
+      // v1.383.0 (K7 c): the stored place the confirm names - by default the card's own (nothing moved it since it was served)
+      if (u.indexOf('/api/feed/start-over/place?') === 0) {
+        if (routes.place) return routes.place(u);
+        const id = decodeURIComponent(/[?&]id=([^&]*)/.exec(u)[1]);
+        const c = cards.find((x) => x.id === id) || {};
+        return { status: 200, body: { ok: true, nothing: false, sec: Number(c.media === 'podcast' ? c.position : c.progress) || 0, chapterLabel: c.chapterLabel || '' } };
+      }
       return null;
     },
   });

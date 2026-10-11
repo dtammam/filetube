@@ -1350,8 +1350,15 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!item || typeof item.id !== 'string' || !item.id || item.listen) return;
     var isChapter = item.source === 'library-chapter';
     var was = Object.prototype.hasOwnProperty.call(done, item.id) ? done[item.id] : null;
-    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, started: false,
-      played: !!(was && was.played), finished: !!(was && was.finished), chapters: chapters, done: done };
+    // v1.383.0 (Feed K5, gate r1 adversary W3): a song carried over from a Feed card (Keep listening, its title) is the SAME listen -
+    // the tally starts from what the Feed heard and counted, once, for that song only
+    var FT = window.FileTube;
+    var hand = FT && FT.musicPlayCountHandoff;
+    if (FT) FT.musicPlayCountHandoff = null;
+    if (!(hand && hand.id === item.id && Date.now() - (Number(hand.at) || 0) < 30000)) hand = null; // the Feed's own carry-over, not a later play
+    var heard = hand ? Math.max(0, Number(hand.listened) || 0) : 0;
+    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: heard, lastT: null, started: heard > 0,
+      played: !!(was && was.played) || !!(hand && hand.played), finished: !!(was && was.finished) || !!(hand && hand.finished), chapters: chapters, done: done };
   }
   function playCountMark(pc, field) {
     pc[field] = true;
@@ -1372,11 +1379,21 @@ if (typeof module !== 'undefined' && module.exports) {
     var pc = playCount;
     if (pc && !pc.finished) playCountMark(pc, 'finished');
   }
+  // v1.383.0 (Feed reels, plan docs/exec-plans/completed/2026-10-10-feed-reels.md K5 / K6): the tally belongs to the load MUSIC
+  // made. Its listeners sit on the shared element for good, so once another surface loads into that element (a Feed card, a song
+  // under a book card, the watch page) every tick of THAT playback was counted to the last Music song - plays and finishes it
+  // never had. The tally is let go, silently (another surface taking the player is not a rejection of the song): here when the
+  // player holds another item, and by the Feed before each of its loads (it may play the very song Music last had).
+  function playCountRelease() { playCount = null; }
+  function playCountBaseId(id) { return String(id).replace(/::c\d+$/, ''); }
   // One timeupdate: `t` the element's position (file-absolute), `dur` its duration (for a plain
   // track whose item carried no length).
   function playCountTick(t, dur) {
     var pc = playCount;
     if (!pc || !isFinite(t)) return;
+    var P = window.FileTube && window.FileTube.player;
+    var playerId = P && typeof P.currentId === 'string' ? P.currentId : null;
+    if (playerId !== null && playCountBaseId(playerId) !== playCountBaseId(pc.id)) { playCountRelease(); return; }
     // a chaptered file rolled into another segment (the view may be away: nothing else would notice)
     if (pc.chapters) {
       var cur = null;
@@ -6026,6 +6043,7 @@ if (typeof module !== 'undefined' && module.exports) {
     activePopStateHandler = null;
   }
 
+  if (window.FileTube) window.FileTube.musicPlayCountRelease = playCountRelease; // v1.383.0: the Feed lets the tally go before its loads
   if (window.FileTube && typeof window.FileTube.registerView === 'function') {
     window.FileTube.registerView('music', {
       init: init,

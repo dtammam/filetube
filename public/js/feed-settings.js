@@ -1,4 +1,5 @@
-// FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; D13-D14 moved out).
+// FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; v1.383.0, plan
+// docs/exec-plans/completed/2026-10-10-feed-reels.md K1 Auto-advance, K5 Song clip, K6 Music while reading).
 //
 // The ONE reading of the Feed's synced settings, shared by the server (lib/feed/api.js requires this file), the Feed
 // view (public/js/feed.js) and the Settings > Feed page (public/js/setup.js). Two synced keys (lib/prefs-allowlist.js
@@ -24,7 +25,15 @@
   // D5: the lengths, in seconds; 0 = the whole chapter (a video; library audio follows the video reel).
   var VIDEO_REELS = [30, 60, 90, 120, 0];
   var PODCAST_SLICES = [60, 120, 240];
-  var DEFAULTS = { reel: 60, slice: 120 };
+  // v1.383.0 (K5 = v1.382.0 D13): a song card plays a clip of this many seconds from a third in; 0 = the whole song
+  var SONG_CLIPS = [30, 45, 60, 0];
+  var DEFAULTS = { reel: 60, slice: 120, clip: 45 };
+  // v1.383.0 (K6 = v1.382.0 D14): music under book cards plays from this station (a v1.378.0 station key: 's:lofi', 'favorites',
+  // 'c:<id>' ...); '' = chosen for you (the first that exists of MUSIC_STATION_ORDER). Bounded in BYTES so the whole value stays
+  // under SETTINGS_MAX_BYTES with every other field at its longest (the v1.382.0 gate's 593-byte CJK case): a longer key (a
+  // genre name of 40+ CJK characters) reads as chosen for you
+  var STATION_MAX = 120;
+  var MUSIC_STATION_ORDER = ['s:chill', 's:lofi', 's:jazz', 'g:ambient', 'favorites'];
   var VIDEO_NO_CHAPTER_SEC = 120; // D5: "Whole chapter" on a video without chapters = 2 min
   var SETTINGS_MAX_BYTES = 512; // the synced pref's value cap (lib/prefs-allowlist.js PREF_VALUE_MAX_BYTES)
   // D11: Fewer from
@@ -63,6 +72,12 @@
       where: where,
       reel: pick(VIDEO_REELS, r.reel, DEFAULTS.reel),
       slice: pick(PODCAST_SLICES, r.slice, DEFAULTS.slice),
+      clip: pick(SONG_CLIPS, r.clip, DEFAULTS.clip),
+      // v1.383.0 (K1): a finished media card moves on to the next one by itself - on unless switched off (only false is off)
+      advance: r.advance !== false,
+      // v1.383.0 (K6): music while reading - on unless switched off; its station a plain short key, else chosen for you
+      music: r.music !== false,
+      station: typeof r.station === 'string' && utf8Bytes(r.station) <= STATION_MAX && !hasControl(r.station) ? r.station.trim() : '',
     };
   }
 
@@ -75,7 +90,10 @@
       if (s.which[k] !== 'both') { out.which = out.which || {}; out.which[k] = s.which[k]; }
       if (s.where[k] !== 'saved') { out.where = out.where || {}; out.where[k] = s.where[k]; }
     });
-    ['reel', 'slice'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
+    ['reel', 'slice', 'clip'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
+    if (!s.advance) out.advance = false;
+    if (!s.music) out.music = false;
+    if (s.station) out.station = s.station;
     return JSON.stringify(out);
   }
 
@@ -155,7 +173,8 @@
 
   var api = {
     SETTINGS_KEY: SETTINGS_KEY, FEWER_KEY: FEWER_KEY, KINDS: KINDS, KIND_LABELS: KIND_LABELS, CHOICE_KINDS: CHOICE_KINDS,
-    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES,
+    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES, SONG_CLIPS: SONG_CLIPS,
+    STATION_MAX: STATION_MAX, MUSIC_STATION_ORDER: MUSIC_STATION_ORDER,
     DEFAULTS: DEFAULTS, VIDEO_NO_CHAPTER_SEC: VIDEO_NO_CHAPTER_SEC, SETTINGS_MAX_BYTES: SETTINGS_MAX_BYTES,
     FEWER_TYPES: FEWER_TYPES, FEWER_MAX: FEWER_MAX, FEWER_NAME_MAX: FEWER_NAME_MAX, FEWER_WEIGHT: FEWER_WEIGHT, FEWER_MAX_BYTES: FEWER_MAX_BYTES,
     normalize: normalize, serialize: serialize, isOn: isOn,
