@@ -819,6 +819,12 @@
           <p class="setup-note" id="device-name-note">Only this browser. Shown in Speakers and when this device controls another. Leave blank to use the automatic name.</p>
           <div id="device-name-status" class="action-status setup-status" aria-live="polite"></div>
         </div>
+        <!-- v1.387.0 offline playback (plan D1): the phones paired with this account through the FileTube app. The rows are built by setup.js from GET /api/devices (name, added, last used); each Remove is DELETE /api/devices/:id. Shown to every signed-in user: it is where a lost phone is cut off from a laptop. -->
+        <div class="setup-group" id="devices-group">
+          <h3 class="setup-heading">Devices</h3>
+          <div id="devices-list" class="devices-list" aria-live="polite">Loading devices...</div>
+          <p class="setup-note">Phones set up for offline playback in the FileTube app. Remove one and that phone stops at once; it has to be set up again.</p>
+        </div>
       </details>
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me confirms the role; the server enforces it regardless). -->
       <details class="setup-box setup-sec sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>

@@ -293,6 +293,12 @@ const createUserStore = require('./lib/auth/store');
 const authGateLib = require('./lib/auth/gate');
 const visibility = require('./lib/auth/visibility'); // v1.80 RBAC: the ONE visibility decision
 const userStore = createUserStore(dbAdapter);
+// v1.387.0 offline playback (plan D1): the per-device tokens the iOS app pairs with
+// (lib/auth/devices.js: sha256 rows bound to the user row, the live-response
+// registry that ends a revoked phone's open download). The gate's Bearer branch
+// reads it; the /api/devices routes write it.
+const createDeviceStore = require('./lib/auth/devices').createDeviceStore;
+const deviceStore = createDeviceStore(dbAdapter, { generateSecret: authCrypto.generateSecret, tokensEqual: authCrypto.tokensEqual });
 // Wave 1 of the relational-migration arc (v1.291): the per-item view counter
 // left the document model for its own table (lib/media/viewCounts.js). Every
 // runtime read/write of a view count goes through this store - never
@@ -3153,6 +3159,7 @@ const authGate = authGateLib.createAuthGate({
   cookieName: AUTH_COOKIE_NAME,
   trustProxy: TRUST_PROXY,
   apiToken: API_TOKEN, // the Shortcut token for POST /api/ytdlp/download
+  devices: deviceStore, // v1.387.0: `Authorization: Bearer ftd_...` sets req.user from the paired phone's row
 });
 app.use(authGate);
 
@@ -3214,7 +3221,10 @@ function createMutationAuditMiddleware(log = null) {
       audited = true;
       const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
       const incomplete = res.writableEnded ? '' : ' incomplete';
-      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}`);
+      // v1.387.0: a mutation a paired phone made names the device (req.user is the account; the
+      // device id says WHICH phone, so a revoke can be aimed).
+      const via = req.authVia === 'device' && req.deviceId ? ` via=device:${req.deviceId}` : '';
+      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}${via}`);
     };
     res.on('finish', emit);
     res.on('close', emit);
@@ -3276,6 +3286,7 @@ authRoutes.registerRoutes(app, {
   avatarInfo, // GET /api/auth/me merges the photo's presence + cache-bust version
   booksDb,
   clearSessionCookie,
+  deviceStore, // v1.387.0: pairing, listing and revoking the per-device tokens
   // The user-delete cascade drops that user's staged (un-flushed) pings before
   // the row goes, so no flush batch ever carries a vanished user_id.
   dropPendingProgressForUser,
@@ -7601,6 +7612,7 @@ module.exports = {
   __setPushGuardLookupForTests,
   pushDelivery,
   userStore,
+  deviceStore, // v1.387.0: tests pair and revoke directly
   AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
   // boundary (22.13 = first unflagged node:sqlite) is testable without

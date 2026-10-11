@@ -146,6 +146,8 @@ const READ = {
   '/api/users': 'ADMIN',
   '/api/users/:id/avatar': 'NO_CONTENT',
   '/api/users/:id/restrictions': 'ADMIN',
+  '/api/users/:id/devices': 'ADMIN', // v1.387.0 offline D1: a user's paired phones (name, platform, dates - never the token or its hash); requireAdmin; proven in device-tokens.test.js
+  '/api/devices': 'OWN_STATE', // v1.387.0 offline D1: the caller's own paired phones (cookie only; a device token is 403); never the token or its hash; proven in device-tokens.test.js
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)

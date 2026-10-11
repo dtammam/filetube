@@ -76,3 +76,29 @@ test('normal completion: exactly one line (finish+close both fire; the once-guar
     await new Promise((r) => server.close(r));
   }
 });
+
+// v1.387.0 offline playback (plan D1): a mutation a paired phone made names the device
+// (`via=device:<id>`), so a revoke can be aimed at the right phone. A cookie session's line is unchanged.
+test('v1.387.0: a device-token request appends via=device:<id>; a session request does not', async () => {
+  const { lines, log } = collectLines();
+  const app = express();
+  app.use((req, res, next) => {
+    if (req.headers['x-test-device']) { req.user = { username: 'kid' }; req.authVia = 'device'; req.deviceId = Number(req.headers['x-test-device']); }
+    else req.user = { username: 'kid' };
+    next();
+  });
+  app.use(createMutationAuditMiddleware(log));
+  app.post('/x', (req, res) => res.status(204).end());
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    await fetch(`${base}/x`, { method: 'POST', headers: { 'x-test-device': '7' } });
+    await fetch(`${base}/x`, { method: 'POST' });
+    assert.ok(await pollFor(() => lines.length >= 2));
+    assert.match(lines[0], /^\[audit\] \S+ POST \/x 204 user=kid via=device:7$/);
+    assert.match(lines[1], /^\[audit\] \S+ POST \/x 204 user=kid$/);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((r) => server.close(r));
+  }
+});

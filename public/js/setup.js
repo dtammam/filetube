@@ -3889,6 +3889,9 @@ async function initAccountSection(signal) {
     }, { signal });
   }
 
+  // v1.387.0 offline playback (plan D1): the phones paired with this account, for every signed-in user.
+  wireDevicesSection(signal);
+
   if (me.user.role === 'admin') {
     const usersBox = document.getElementById('users-box');
     if (usersBox) usersBox.hidden = false;
@@ -4078,6 +4081,9 @@ function buildUserActions(user, me, signal, rowEl) {
   }
   addBtn('role', user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
   addBtn('subscriptions', user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
+  // v1.387.0 offline playback (plan D1): the user's paired phones, with Remove and Remove all (a
+  // kid's lost phone is cut off from here). Every user can have phones, admins included.
+  addBtn('devices', 'Devices', () => openDevicesPanel(user, rowEl, signal));
   // v1.80 RBAC: per-user library access. Only members are restrictable (an admin
   // always sees everything), so the editor is offered for members only.
   if (user.role !== 'admin') {
@@ -4094,6 +4100,133 @@ function buildUserActions(user, me, signal, rowEl) {
     }), 'danger');
   }
   return actions;
+}
+
+// ---- v1.387.0 offline playback (plan D1): the paired phones ----------------------------
+// One renderer for both surfaces: Settings > Account > Devices (the caller's own, GET
+// /api/devices, Remove = DELETE /api/devices/:id) and the admin Users panel's per-user
+// expando (GET /api/users/:id/devices, Remove = DELETE /api/users/:id/devices/:deviceId,
+// plus Remove all = DELETE /api/users/:id/devices). Text only (textContent, never
+// innerHTML): a device name is user-typed. Dates: "added <date>", "last used <relative>"
+// (common.js formatRelativeTime when it is loaded; "never" for a phone that has not
+// called yet). Each Remove confirms first (confirmDestructive) and re-fetches after.
+function deviceLastUsedText(d) {
+  if (!d || !d.lastUsedAt) return 'never used';
+  const ms = Date.parse(d.lastUsedAt);
+  if (!Number.isFinite(ms)) return 'last used: unknown';
+  return 'last used ' + (typeof formatRelativeTime === 'function' ? formatRelativeTime(ms) : new Date(ms).toLocaleString());
+}
+function deviceAddedText(d) {
+  const ms = d && d.createdAt ? Date.parse(d.createdAt) : NaN;
+  return 'added ' + (Number.isFinite(ms) ? new Date(ms).toLocaleDateString() : 'unknown');
+}
+const DEVICES_EMPTY_TEXT = 'No devices. Devices appear here when the FileTube app is set up for offline playback.';
+// Render the device rows into `host`. `opts`: { doc, signal, onRemove(device) -> Promise<Response>,
+// onRemoveAll?() -> Promise<Response>, refresh() }. `devices` null = the load failed.
+function renderDeviceRows(host, devices, opts) {
+  const doc = (opts && opts.doc) || document;
+  const el = (tag, cls, text) => { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  host.textContent = '';
+  if (!Array.isArray(devices)) { host.appendChild(el('p', 'setup-note devices-error', 'Could not load the devices.')); return; }
+  if (devices.length === 0) { host.appendChild(el('p', 'setup-note devices-empty', DEVICES_EMPTY_TEXT)); return; }
+  const list = el('div', 'ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped');
+  list.setAttribute('role', 'list');
+  const removeOne = async (d) => {
+    const yes = await confirmDestructive({
+      title: 'Remove ' + (d.name || 'this device') + '?',
+      body: 'That phone stops offline playback at once and has to be set up again in the app. Nothing on the phone is deleted by this.',
+      confirmLabel: 'Remove',
+    });
+    if (!yes) return;
+    try {
+      const r = await opts.onRemove(d);
+      if (!r || !r.ok) { settingsNotice('Could not remove that device.'); return; }
+      settingsNotice('Device removed.', 'success');
+    } catch (_) { settingsNotice('Could not remove that device (network error).'); return; }
+    if (typeof opts.refresh === 'function') opts.refresh();
+  };
+  for (const d of devices) {
+    const row = el('div', 'ui-row ui-row--default');
+    row.setAttribute('role', 'listitem');
+    row.setAttribute('data-device-id', String(d.id));
+    row.appendChild(el('span', 'ui-row__lead'));
+    row.appendChild(el('span', 'ui-row__media'));
+    const body = el('span', 'ui-row__body');
+    body.appendChild(el('span', 'ui-row__title', d.name || 'Device'));
+    body.appendChild(el('span', 'ui-row__subtitle', deviceAddedText(d) + ' · ' + deviceLastUsedText(d)));
+    row.appendChild(body);
+    row.appendChild(el('span', 'ui-row__aside'));
+    const actions = el('span', 'ui-row__actions');
+    const btn = el('button', 'ui-btn ui-btn--danger ui-btn--sm');
+    btn.type = 'button';
+    btn.setAttribute('data-device-remove', String(d.id));
+    btn.appendChild(el('span', 'ui-btn__label', 'Remove'));
+    btn.addEventListener('click', () => removeOne(d), opts && opts.signal ? { signal: opts.signal } : undefined);
+    actions.appendChild(btn);
+    row.appendChild(actions);
+    list.appendChild(row);
+  }
+  host.appendChild(list);
+  if (typeof opts.onRemoveAll === 'function') {
+    const all = el('button', 'ui-btn ui-btn--danger ui-btn--sm devices-remove-all');
+    all.type = 'button';
+    all.setAttribute('data-device-remove-all', '1');
+    all.appendChild(el('span', 'ui-btn__label', 'Remove all devices'));
+    all.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Remove all devices?',
+        body: 'Every phone paired with this account stops offline playback at once. Each has to be set up again in the app.',
+        confirmLabel: 'Remove all',
+      });
+      if (!yes) return;
+      try {
+        const r = await opts.onRemoveAll();
+        if (!r || !r.ok) { settingsNotice('Could not remove the devices.'); return; }
+        settingsNotice('All devices removed.', 'success');
+      } catch (_) { settingsNotice('Could not remove the devices (network error).'); return; }
+      if (typeof opts.refresh === 'function') opts.refresh();
+    }, opts && opts.signal ? { signal: opts.signal } : undefined);
+    host.appendChild(all);
+  }
+}
+// Settings > Account > Devices: the caller's own phones.
+async function wireDevicesSection(signal, win) {
+  const w = win || window;
+  const host = w.document.getElementById('devices-list');
+  if (!host) return;
+  let devices = null;
+  try {
+    const r = await fetch('/api/devices');
+    if (r.ok) { const j = await r.json(); devices = Array.isArray(j.devices) ? j.devices : null; }
+  } catch (_) { /* rendered as the error line */ }
+  renderDeviceRows(host, devices, {
+    doc: w.document, signal,
+    onRemove: (d) => fetch('/api/devices/' + encodeURIComponent(d.id), { method: 'DELETE' }),
+    refresh: () => wireDevicesSection(signal, win),
+  });
+}
+// The admin Users panel: one user's phones under their row (toggle), with Remove all.
+async function openDevicesPanel(user, row, signal) {
+  const existing = row.querySelector('.devices-panel');
+  if (existing) { existing.remove(); return; } // toggle
+  const panel = document.createElement('div');
+  panel.className = 'access-editor devices-panel';
+  panel.textContent = 'Loading devices...';
+  row.appendChild(panel);
+  const load = async () => {
+    let devices = null;
+    try {
+      const r = await fetch('/api/users/' + encodeURIComponent(user.id) + '/devices');
+      if (r.ok) { const j = await r.json(); devices = Array.isArray(j.devices) ? j.devices : null; }
+    } catch (_) { /* rendered as the error line */ }
+    renderDeviceRows(panel, devices, {
+      doc: document, signal,
+      onRemove: (d) => fetch('/api/users/' + encodeURIComponent(user.id) + '/devices/' + encodeURIComponent(d.id), { method: 'DELETE' }),
+      onRemoveAll: () => fetch('/api/users/' + encodeURIComponent(user.id) + '/devices', { method: 'DELETE' }),
+      refresh: load,
+    });
+  };
+  await load();
 }
 
 // v1.80 RBAC: the per-user access editor. Blocklist (see-all-except-checked) or
@@ -5555,6 +5688,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // password reset through ui.prompt; settings-forms-sweep.test.js drives each REAL wiring
     // with the REAL ui.js (no path reaches its request without the confirm resolving true).
     confirmDestructive, wireStaticControls, wireRestoreControls, initAccountSection,
+    // v1.387.0 offline playback (plan D1): the paired phones (Settings > Account and the admin Users panel).
+    wireDevicesSection, renderDeviceRows, openDevicesPanel, DEVICES_EMPTY_TEXT,
     renderStickerPicker, renderTranscriptAiPromptsEditor, wireLogoControls, loadBookConfig,
     wireBookFolderControls,
   };
