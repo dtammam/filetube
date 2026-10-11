@@ -1,10 +1,9 @@
 name: CI
 
 on:
-  # A PR branch runs once, through `pull_request`; `push` covers main (the merged result).
-  # Both on every branch ran each check twice per push and queued the legs for free runners.
-  push:
-    branches: ['main']
+  # A PR runs once, through `pull_request`, on the merge result. There is deliberately NO
+  # `push` trigger: a push to main re-ran the same suite on the same tree the PR just tested
+  # (ci slim, 2026-10-11). The tag and main (edge) publishes carry their own qualify.
   pull_request:
 
 permissions:

@@ -140,6 +140,20 @@ test('docker-publish: the audit gate is MIRRORED onto the release path (QA W2 - 
   assert.doesNotMatch(jobBody, /npm ci/, 'lockfile-only here too');
 });
 
+test('ci slim R1: CI runs on pull_request only (a main push re-tested the tree the PR just tested)', () => {
+  const on = yaml.load(raw('.github/workflows/ci.yml')).on;
+  assert.ok(on.pull_request !== undefined, 'ci.yml still runs on pull_request');
+  assert.equal(on.push, undefined, 'ci.yml must not trigger on push');
+});
+
+test('ci slim R1: publish still needs a Node 22 qualify, on the tag lane and the main (edge) lane', () => {
+  const wf = yaml.load(raw('.github/workflows/docker-publish.yml'));
+  assert.deepEqual(wf.jobs.qualify.strategy.matrix['node-version'], ['22'], 'qualify runs on Node 22 only (production is node:22-alpine)');
+  assert.ok(wf.jobs.publish.needs.includes('qualify'), 'publish needs qualify - no image ships without it');
+  assert.ok(wf.on.push.branches.includes('main') && wf.on.push.tags, 'both the edge lane and the tag lane still publish');
+  assert.match(PUBLISH, /npm test 2>&1/, 'qualify runs the full suite');
+});
+
 test('docker-publish: single-arch by decision - no QEMU, no platforms key (intake decision 6)', () => {
   assert.doesNotMatch(PUBLISH, /setup-qemu/);
   assert.doesNotMatch(PUBLISH, /platforms:/);
