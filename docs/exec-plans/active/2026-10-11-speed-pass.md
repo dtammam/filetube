@@ -3,11 +3,11 @@ plan: speed-pass
 harness: v2 · full
 branch: perf/v1.386.0-speed-pass
 anchor: outcome
-status: Gate:CHANGES r2 @576a6bc8
-next: gate r3 delta re-confirm (Dean chose: fix both, full r3) on the r2 fix commits
+status: Gate:APPROVED r3 @499e8660
+next: close-out commit (plan complete, the r3 suggestions), delta re-confirm, PR, CI, Root merges on Dean's word
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
-gate: not yet run (FULL: adversary, qa - caching mistakes ship stale code to every device)
+gate: APPROVED r3 @499e8660 (adversary, qa, security-brief)
 ---
 
 # v1.386.0: speed pass - the skin picker shows the right picture at once, the music library is responsive
@@ -114,6 +114,26 @@ Gate: CHANGES r2 @576a6bc8 - adversary
 - r1 W2 (Pocket path unbound): fixed. Re-run against test/unit/pocket-skins-menu.test.js: K1, K2, K3, K11, MENU race, warm-every-highlight, warm-inside-the-tap, previewWarmed-never-reset all killed. D10 (hot route back to read()) and the albumart variant killed by music-shared-snapshot-routes; the Recently added tiebreak flip killed; data_version dropped from the key killed.
 - CRITICAL (new, introduced by the pickHold fix; wrong look that persists) public/js/skin-surface.js onSkinChosen/onPreview: pickHold is cleared only in the Pocket pick callback, so a sticker chip pick that supersedes a waiting Pocket Select (same 'pick' channel) leaves pickHold set forever, and every later onPreview(null) paints the stale held skin. Repro (race3.js, transparent photos delayed 3 s, Chromium and WebKit): skin ipod; Pocket Extras > Skins > Custom > 5G > Select Transparent Coil; within the wait, sticker > Skin > ipod-2004; MENU x4 out of the Skins levels: panel `mms-ipod`, saved `ipod-2004`; still `mms-ipod` after pause/play. Base ends `mms-ipod mms-ipod-2004`; r1 sha also correct. Fix: clear pickHold when any pick starts (whenSkinArt('pick', ...) or the sticker path) or when its pick is superseded; add the sticker-supersedes-Pocket case to pocket-skins-menu.test.js.
 - WARNING (the r1 W1 fix is unbound) public/js/music-skins.js skinArtIndex: deleting the cache return (`if (cached && cached.key === key) return cached.index;`) leaves skin-art-ready + pocket-skins-menu + skin-surface at 97 pass / 0 fail, and browser-cost's skinsPageOpenMs cannot see it (the warm now runs after the tap). Uncached, every skinArtUrls rebuilds (60-271 ms each) and the idle warm of 131 skins blocks for seconds. Bind it: count cssRules reads across two skinArtUrls calls on the stand-in CSSOM. Also unbound: the sticker Skin-page warm (r1 K7 on the sticker path, removing `warmSkinArtList()` at the Skin page survives) and the index key (key = sheet count only survives).
+
+Gate: APPROVED r3 @499e8660 - security-brief (delta re-confirm of 576a6bc8..499e8660 from head source; no Bash, so no git diff of my own; scope is the coordinator's delta list)
+- public/js/music-skins.js skinArtIndex (lines 1334-1337): the new `style.cssText` url( pre-check only skips rules; it adds no new URL source. Cross-origin sheets are still skipped, only `.mms-*` rules are indexed, and the only sink is still `Image().src` of URLs the CSS already names. No new security surface.
+- public/js/skin-surface.js releasePickHold (line 1941): local state only, no I/O, no network, no DOM injection. The adversary's r2 CRITICAL (a stale held look) is a correctness bug, not a security one, and is theirs to re-verify.
+- No server, auth, static-serving or SQL change reported; the r2 analysis carries forward. r1 SUGGESTION (liked-route existence oracle) remains a ROADMAP Planned > Bugs entry.
+
+Gate: APPROVED r3 @499e8660 - qa
+- r2 suggestions, both fixed. (1) The untested hold clear is now covered: my 7 r3 mutants on releasePickHold and its callers were all killed by name (always clearing the preview, the sticker callback skipping the release, the Select callback skipping it, the release keeping pickHold, no hold at Select, the url() prefilter dropped, the sticker warm run inside the tap). (2) A landing Select keeps a live preview of another row (bound by "keeps that live preview").
+- The adversary's r2 CRITICAL (a sticker pick over a waiting Select): the fix holds in my jsdom probe as well. Sticker pick held, Select released first, then the sticker lands, then MENU x3 and a repaint: the sticker's skin stays and the old held look never comes back.
+- The url() prefilter reads `style.cssText`. Run in real Chromium AND WebKit against the served stylesheets, the index still finds photos for exactly the 3 Transparent skins (the Coil's board and ring), so WebKit serialising custom properties does not hide them.
+- Instruments on the 499e8660 sandbox (git-initialised): npm test tests 12317 / pass 12305 / fail 1 / skipped 11. The one failure is progress-coalescer "AC4.1: a burst of N rapid pings..." in a file this branch never touched, the known timing flake; alone it went 23/23, 22/23, 23/23. lint 0 errors (6 pre-existing common.js warnings), lint:ui OK, overlay 0 violations. Section 6's prose numbers check against `table.js` on results/after-skin-r3.jsonl (0 ms in all 8 cells, Skin page 2-7 ms, VPN first pick 244-287 ms).
+- SUGGESTION (whole skin, cursor desync only): releasePickHold drops the preview when it equals the held look. So if the Select was made while the target's own preview was still waiting (the hold is the OLD skin) and the user then previews the OLD row, the landing Select shows the saved skin under a cursor on the old row until the next nudge (jsdom probe D).
+- SUGGESTION docs: "once cached 37-45 ms in Chromium" includes the home COLD row (45); the cached rows are 37-39.
+
+Gate: APPROVED r3 @499e8660 - adversary
+- Instruments (git-initialised `git archive 499e8660` copy, Node 22.23.1, load avg 3-20): npm test exit 0, tests 12317 / pass 12306 / fail 0 / skipped 11. lib/ is unchanged since r2 (r2's differential, proof 12/12 and both negative controls stand).
+- r2 CRITICAL (stale pickHold): fixed as prescribed. race3 (Pocket Select of the Coil waiting, sticker pick ipod-2004, MENU x4, pause/play) now ends `mms-ipod mms-ipod-2004` with saved `ipod-2004` in Chromium and WebKit, the same as base; the sticker pick paints ipod-2004 at once. Mutants killed: sticker release removed, Pocket release removed, release always drops the preview, release keeps pickHold, MENU race.
+- r2 WARNING (index cache unbound): fixed. Killed: cache return removed, key = sheet count only, sticker Skin-page warm removed, url( prefilter inverted.
+- Re-measured (sync ms, head vs base, same session): sticker Skin page open 25-32 vs 31-53 (Chromium 4x) and 3-12 vs 1-9 (WebKit); Pocket Classic > 4G entry 36 vs 11 (Chromium) and 60 vs 9 (WebKit); index build alone 266 ms (Chromium 4x) / 59 ms (WebKit) at load avg ~19 (the builder's 15-16 / 63-98 ms was quieter). Once per page, accepted as disclosed. Pocket Select of the Coil: 0 ms without photos in both engines.
+- SUGGESTION (shipped code correct, order unbound): moving the sticker callback's releasePickHold() after setActiveSkin + onSkinChange survives every test (98 pass / 0 fail). In WebKit that mutant paints the held `mms-ipod` right after the sticker pick of ipod-2004 until the next preview change. The race test asserts only after MENU; also assert the panel class right after the sticker pick lands.
 
 ## 5. Release
 docs/RELEASING.md + AGENTS.md; close the plan in the same PR (`node scripts/plan-complete.js
