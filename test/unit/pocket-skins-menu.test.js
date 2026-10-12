@@ -424,3 +424,22 @@ test('v1.386.0 (gate r2 qa): after a waited Select lands, previewing another row
     assert.strictEqual(shows(b), id);
   } finally { b.restore(); }
 });
+
+test('v1.386.0 (gate r2 qa): a waited Select that lands while the user previews another row keeps that live preview', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b); // 'ipod', previewed at once
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]')); // waits; holds ipod-black
+    wheelBy(b, 40); // the user moves on to preview ipod-black (no wait for it)
+    assert.strictEqual(shows(b), 'ipod-black');
+    release();
+    await settle();
+    assert.strictEqual(stored(b), id, 'the Select saved its skin');
+    assert.strictEqual(shows(b), 'ipod-black', 'the live preview stays on screen (not wiped by the landing pick)');
+    pressMenu(b);
+    assert.strictEqual(shows(b), id, 'leaving the preview shows the saved skin');
+  } finally { b.restore(); }
+});
