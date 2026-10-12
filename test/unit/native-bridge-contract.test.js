@@ -389,3 +389,28 @@ test('v1.387.0 (Dean): host.app carries the announced app identity (name, versio
     dom.window.close();
   }
 });
+
+test('v1.387.1: downloadsAddFailed is validated as data - all three fields required, any add kind passes, an unknown error reads as other, an unknown kind or a bad id drops the event, unknown fields never leave', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['downloads'] });
+  const got = [];
+  host.on('downloadsAddFailed', (d) => got.push(d));
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'Floyd\u001fWall', error: 'network', sneaky: 1 });
+  for (const kind of ['track', 'podcastEpisode', 'video', 'tvEpisode', 'tvSeason']) fake.emit({ v: 1, type: 'downloadsAddFailed', kind, id: 'x', error: 'notPlayable' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'a', error: 'cosmic' }); // -> other
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'book', id: 'a', error: 'network' }); // unknown kind drops
+  fake.emit({ v: 1, type: 'downloadsAddFailed', id: 'a', error: 'network' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', error: 'network' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'a' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: '', error: 'network' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'x'.repeat(513), error: 'network' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'x'.repeat(512), error: 'network' });
+  fake.emit({ v: 2, type: 'downloadsAddFailed', kind: 'album', id: 'a', error: 'network' });
+  assert.deepEqual(got.map((d) => [d.kind, d.id.length > 100 ? 'long' : d.id, d.error]), [
+    ['album', 'Floyd\u001fWall', 'network'],
+    ['track', 'x', 'notPlayable'], ['podcastEpisode', 'x', 'notPlayable'], ['video', 'x', 'notPlayable'], ['tvEpisode', 'x', 'notPlayable'], ['tvSeason', 'x', 'notPlayable'],
+    ['album', 'a', 'other'],
+    ['album', 'long', 'network'],
+  ]);
+  assert.ok(!('sneaky' in got[0]), 'unknown fields never reach the listener');
+  win.close();
+});

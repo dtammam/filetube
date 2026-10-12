@@ -3676,5 +3676,11 @@
     "date": "2026-10-12",
     "title": "Offline playback arrives on the server: the FileTube iPhone app can take your music, podcasts, videos and shows with you",
     "intent": "Nothing changes in your browser or home-screen app, except a new Devices list under Settings > Account (where a lost phone can be cut off from any computer). In the FileTube iPhone app, once its next version lands, you can mark an album, a podcast episode, a video or a whole TV season for offline playback: the phone downloads them, plays them with no network, and what you listened to or watched offline counts when you are back online, without ever overwriting a newer position from another device. A family member's account can only take along what it can already see."
+  },
+  {
+    "version": "1.387.1",
+    "date": "2026-10-12",
+    "title": "The FileTube iPhone app now tells you why an album or season could not be saved for offline",
+    "intent": "When you tap Make available offline on an album or a TV season and it cannot start at all (no connection, the item is gone, or the phone was removed), the app now shows the reason right away instead of silently staying as it was. Tapping again tries again. Nothing changes in your browser or home-screen app."
   }
 ]

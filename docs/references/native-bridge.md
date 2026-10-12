@@ -67,6 +67,7 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `network` | `connection: 'wifi' \| 'cellular' \| 'wired' \| 'other' \| 'none'` (required), optional `constrained: boolean` (Low Data Mode), `expensive: boolean` | on subscribe, then on every change |
 
 | `download` | one ITEM: `kind: 'track' \| 'podcastEpisode' \| 'video' \| 'tvEpisode'`, `id`, `state: 'none' \| 'queued' \| 'downloading' \| 'paused' \| 'waitingForWifi' \| 'done' \| 'failed'` (required); optional `progress` 0..1, `bytes`, `totalBytes`, `error: 'network' \| 'storageFull' \| 'revoked' \| 'notOnServer' \| 'notReady' \| 'notPlayable' \| 'other'` (only with `failed`; `notPlayable` = the server's 409 or the app's own AVURLAsset.isPlayable check, terminal), `localSrc` (only with `done`), `parentKind: 'album' \| 'tvSeason'` + `parentId` (only for a member of an album or season add) | after a subscribe, on every change of an item (v1.387.0) |
+| `downloadsAddFailed` | `kind` (any `downloads.add` kind), `id` (string, 1..512, the id the web sent), `error` (the `download` error enum), all required | once per `downloads.add` that cannot produce any member (an `album` / `tvSeason`) or cannot start (a single item that never reached a `download` event) (v1.387.1) |
 | `downloadsSnapshot` | `items`: an array (at most 10000) of the `download` fields above, one element per item the phone holds or is working on | once, in answer to every `downloads.subscribe` |
 
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
@@ -84,6 +85,14 @@ it are deltas. `localSrc` is an opaque string: the web uses it ONLY as an audio 
 for artwork or a canvas (a 360 video never uses it: a cross-origin texture would taint the canvas); native serves it with 206 +
 Content-Range through its own URL scheme (`filetube-local:` today). If FileTube ever adds a CSP, `media-src` must allow the app's
 scheme (tech-debt tracker item 154).
+
+**An add that fails as a whole (v1.387.1).** `downloadsAddFailed { kind, id, error }` tells the web that a `downloads.add` produced
+nothing: the server was unreachable, the album or season is gone, the manifest could not be read, or the device was removed.
+Native sends it ONCE per failed add, with the `kind` and `id` exactly as the web sent them; a retry is a new add and may fail
+again with a new event. It is add-only: older pages ignore the unknown type, an unknown `error` reads as `other`, an unknown
+`kind` drops the event. It is not part of `downloadsSnapshot` (a failed add holds nothing on the phone), and native keeps owning
+the state. The web shows the reason (a toast once, and on the item's menu or pill) until the next add of it, any `download` event for it (or for a member of
+it), a snapshot, or pagehide. A container whose members exist keeps rolling up from them; the failure never hides real progress.
 
 ## 4. Server side: `/api/host-info`
 

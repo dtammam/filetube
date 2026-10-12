@@ -580,6 +580,10 @@ function chapterStamp(seconds) {
 // playerCanModifyLibrary since v1.81, and a member without it who retypes thirty
 // titles only to be 403'd on save has lost all of it to an affordance the rest of
 // the app would never have shown them (QA WARNING-3).
+// v1.387.1: the album pill, one builder for the first render and for the in-place repaint on an offline change.
+function drillOfflinePillHtml(entry) {
+  return '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-offline" data-offline-action="' + escapeMusicHtml(entry.id) + '"' + (entry.errorText ? ' title="' + escapeMusicHtml(entry.errorText) + '"' : '') + '>' + songIconHtml(entry.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline') + '<span class="ui-btn__label">' + escapeMusicHtml(entry.label) + '</span></button>';
+}
 function buildDrillHeaderHtml(drill, tracks, opts) {
   tracks = Array.isArray(tracks) ? tracks : [];
   var isAlbum = !!(drill && drill.type === 'album');
@@ -627,7 +631,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // v1.387.0 offline playback (plan D6): an album's "Make available offline" / "Remove offline copy" pill, ONLY when
     // opts.offline carries the module's entry (the host announced `downloads`; a browser renders no pill).
     (isAlbum && drill && drill.key && opts && opts.offline && typeof opts.offline.id === 'string'
-      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-offline" data-offline-action="' + escapeMusicHtml(opts.offline.id) + '">' + songIconHtml(opts.offline.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline') + '<span class="ui-btn__label">' + escapeMusicHtml(opts.offline.label) + '</span></button>'
+      ? drillOfflinePillHtml(opts.offline)
       : '') +
     // v1.352 L3 (Dean's ruling: a pill in this row): copy this album's or artist's music link
     (musicDrillLink(drill)
@@ -1168,7 +1172,7 @@ if (typeof module !== 'undefined' && module.exports) {
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the iPod's album order
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId, musicArtV,
-    drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+    drillYear, drillAlbumCount, buildDrillHeaderHtml, drillOfflinePillHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     buildStationCardHtml, buildStationsShelfHtml, buildNewStationCardHtml, splitStationList, stationIsCustom, // v1.378.0 stations
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -3843,6 +3847,19 @@ if (typeof module !== 'undefined' && module.exports) {
       var off = window.FileTube && window.FileTube.offline;
       if (!off || !off.enabled || !drill || drill.type !== 'album' || !drill.key) return null;
       return off.menuEntry('album', drill.key);
+    }
+    // v1.387.1: the pill is built once per render, so a state change (progress, done, a failed add) repaints it in place.
+    var offDrill = window.FileTube && window.FileTube.offline;
+    if (offDrill && offDrill.enabled) {
+      var stopDrillSync = offDrill.onChange(function (k) {
+        if (!content.isConnected) { stopDrillSync(); return; } // the view was left
+        if (k !== null && k !== 'album' && k !== 'track') return;
+        var pill = content.querySelector('.music-drill-offline');
+        var entry = pill ? drillOfflineEntry() : null;
+        if (!entry) return;
+        var html = drillOfflinePillHtml(entry);
+        if (pill.outerHTML !== html) pill.outerHTML = html;
+      });
     }
     function renderDrillView() {
       content.innerHTML =
