@@ -260,3 +260,188 @@ test('the Settings tile is static CSS: no player, image, or canvas per tile; one
   assert.match(body, /skinSwatchClasses\(/);
   assert.match(js, /function skinSwatchClasses\(s\) \{[^}]*'skin-swatch mms-'/, 'the swatch carries the skin id class');
 });
+
+// ---- v1.386.0 speed pass (gate r1 W2, adversary + qa): the Pocket half of "a skin is never shown without its
+// photos". The registry's whenSkinArtReady is replaced by a HELD promise per id the test releases; warmSkinArt is
+// counted. Binds: the preview waits, Select waits (and holds the old look through a repaint and through MENU), a dead
+// surface is never repainted, and the photos are started once per visit to the list, not on every highlight.
+function holdPocketArt(b) {
+  const held = {};
+  const spy = { warms: 0 };
+  b.S.whenSkinArtReady = (id) => (held[id] ? held[id].p : null);
+  b.S.warmSkinArt = () => { spy.warms += 1; };
+  const hold = (id) => { let resolve; const p = new Promise((r) => { resolve = r; }); held[id] = { p }; return () => { delete held[id]; resolve(true); }; };
+  return { hold, spy };
+}
+const settle = () => new Promise((r) => setImmediate(r));
+// which 5G colorway the panel shows: 'ipod-black' carries its own class; White ('ipod') is the base class alone
+const shows = (b) => (P(b).classList.contains('mms-ipod-black') ? 'ipod-black' : (P(b).classList.contains('mms-ipod') ? 'ipod' : null));
+function pickTarget(b) { // the colorway two notches away from the saved one, and its id
+  wheelBy(b, -40);
+  const id = idOfLabel(cursorLabel(b));
+  assert.ok(id && id !== 'ipod-black', 'the wheel moved onto another colorway');
+  return id;
+}
+
+test('v1.386.0: the Pocket preview waits for the highlighted skin\'s photos; the saved look stays until they are ready', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    hold('ipod'); // the colorway the wheel lands on (the only other one in the 5G pool)
+    openClickColorways(b);
+    const id = pickTarget(b);
+    assert.strictEqual(id, 'ipod');
+    assert.strictEqual(shows(b), 'ipod-black', 'not previewed before its photos');
+    await settle();
+    assert.strictEqual(shows(b), 'ipod-black', 'still held');
+  } finally { b.restore(); }
+});
+
+test('v1.386.0: Select waits for the photos, holding the old look through a repaint and through MENU; then saves the repaint', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b); // previewed at once (nothing held yet)
+    assert.strictEqual(shows(b), id);
+    // now its photos are "not ready" for the Select (a new hold on the same id)
+    const release = hold(id);
+    pressMenu(b); // leave the preview first: the panel shows the saved skin again
+    assert.strictEqual(shows(b), 'ipod-black');
+    tapLabel(b, '5G (2005)'); // back in (MENU left the menu on the Classic level)
+    wheelBy(b, -40);
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    assert.strictEqual(stored(b), id, 'the menu saved the pick');
+    assert.strictEqual(b.spy.changed, 0, 'no repaint before the photos');
+    b.engine.paint(); // a repaint in the gap (a track change)
+    assert.strictEqual(shows(b), 'ipod-black', 'the repaint keeps the held look');
+    pressMenu(b); // MENU before the photos land (gate r1 qa): leaving the preview must not uncover the saved skin
+    assert.strictEqual(shows(b), 'ipod-black', 'MENU keeps the held look');
+    release();
+    await settle();
+    assert.strictEqual(b.spy.changed, 1, 'repainted once the photos are ready');
+    assert.strictEqual(shows(b), id, 'the saved skin shows');
+  } finally { b.restore(); }
+});
+
+test('v1.386.0: Select with NO preview shown yet (the first highlight still waiting on its photos) still holds the painted look', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    hold('ipod-black'); // the list opens on the saved colorway: its preview waits too, so nothing is previewed
+    const release = hold('ipod');
+    openClickColorways(b);
+    const id = pickTarget(b);
+    assert.strictEqual(id, 'ipod');
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    assert.strictEqual(stored(b), 'ipod', 'saved');
+    b.engine.paint(); // a repaint in the gap: without the hold it would draw the saved skin, photos not ready
+    assert.strictEqual(shows(b), 'ipod-black', 'the painted look is held');
+    release();
+    await settle();
+    assert.strictEqual(shows(b), 'ipod');
+    assert.strictEqual(b.spy.changed, 1);
+  } finally { b.restore(); }
+});
+
+test('v1.386.0: a Select still waiting when the surface dies saves but never repaints it', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b);
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    b.engine.destroy();
+    release();
+    await settle();
+    assert.strictEqual(stored(b), id);
+    assert.strictEqual(b.spy.changed, 0, 'a dead surface is never repainted');
+  } finally { b.restore(); }
+});
+
+test('v1.386.0: the Skins list starts every skin\'s photos once per visit, after the tap (never inside it), not on every highlight', async () => {
+  const b = boot();
+  const idle = () => new Promise((r) => setTimeout(r, 120)); // jsdom has no requestIdleCallback: the engine's 50 ms fallback
+  try {
+    const { spy } = holdPocketArt(b);
+    openClickColorways(b);
+    assert.strictEqual(spy.warms, 0, 'nothing runs inside the tap that opened the list');
+    await idle();
+    assert.strictEqual(spy.warms, 1, 'entering the list starts them once the page is idle');
+    wheelBy(b, -40); wheelBy(b, 40); wheelBy(b, -40);
+    await idle();
+    assert.strictEqual(spy.warms, 1, 'moving the highlight does not start them again');
+    pressMenu(b); // out of the colorways (the preview ends)
+    tapLabel(b, '5G (2005)');
+    await idle();
+    assert.strictEqual(spy.warms, 2, 'a new visit starts them again (a cheap index lookup)');
+  } finally { b.restore(); }
+});
+
+// gate r2 (adversary CRITICAL): a sticker chip pick that supersedes a Pocket Select still waiting on its photos must end
+// that Select's hold - the superseded pick's own callback never runs. Before the fix the held look stayed on screen after
+// every MENU (the saved skin was the sticker's, the panel showed the old one).
+const stickerPick = (b, id) => {
+  tap(b, P(b).querySelector('[data-skin-sticker]'));
+  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-skins]'));
+  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-pick="' + id + '"]'));
+};
+test('v1.386.0 (gate r2): a sticker pick over a waiting Pocket Select lands, and MENU never brings the held look back', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b); // previewed at once
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]')); // waits on its photos; holds the painted look
+    stickerPick(b, 'ipod-2004'); // nothing to wait for: lands at once and supersedes the Select
+    assert.strictEqual(stored(b), 'ipod-2004');
+    // gate r3 (adversary): the hold is released BEFORE the sticker pick repaints, so its own repaint already shows it
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'the sticker pick shows at once: ' + P(b).className);
+    for (let i = 0; i < 4; i++) pressMenu(b); // out of every Skins level (each ends a preview)
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'the sticker pick shows: ' + P(b).className);
+    release();
+    await settle();
+    assert.strictEqual(stored(b), 'ipod-2004', 'the superseded Select never lands over it');
+    b.engine.paint();
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'and a repaint keeps it');
+  } finally { b.restore(); }
+});
+
+test('v1.386.0 (gate r2 qa): after a waited Select lands, previewing another row and MENU shows the SAVED skin (the hold is gone)', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b);
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    release();
+    await settle();
+    assert.strictEqual(shows(b), id);
+    wheelBy(b, 40); // preview the other row (ipod-black)
+    assert.strictEqual(shows(b), 'ipod-black');
+    pressMenu(b); // leave the preview: the saved skin, never the old held one
+    assert.strictEqual(shows(b), id);
+  } finally { b.restore(); }
+});
+
+test('v1.386.0 (gate r2 qa): a waited Select that lands while the user previews another row keeps that live preview', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b); // 'ipod', previewed at once
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]')); // waits; holds ipod-black
+    wheelBy(b, 40); // the user moves on to preview ipod-black (no wait for it)
+    assert.strictEqual(shows(b), 'ipod-black');
+    release();
+    await settle();
+    assert.strictEqual(stored(b), id, 'the Select saved its skin');
+    assert.strictEqual(shows(b), 'ipod-black', 'the live preview stays on screen (not wiped by the landing pick)');
+    pressMenu(b);
+    assert.strictEqual(shows(b), id, 'leaving the preview shows the saved skin');
+  } finally { b.restore(); }
+});

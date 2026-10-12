@@ -1,0 +1,12 @@
+{"check":"chromium first open runs build A","ok":true,"js":"A","css":"A"}
+{"check":"chromium re-open serves both files from cache (no request)","ok":true,"r":{"js":"A","css":"A"},"requests":[]}
+{"check":"chromium after a release the next ordinary open runs build B (JS and CSS)","ok":true,"js":"B","css":"B"}
+{"check":"chromium each changed file fetched once under its new version","ok":true,"requests":[[200,"/js/icons.js?v=7d89085f75c685d9"],[200,"/css/style.css?v=51d54e5367c81327"]]}
+{"check":"chromium an old stamp after a release answers the new bytes, revalidated (never immutable)","ok":true,"old":[{"u":"/js/icons.js?v=9b5bb64eae565003","cc":"no-cache","build":"B"},{"u":"/css/style.css?v=5db39ed19f853b51","cc":"no-cache","build":"B"}]}
+{"check":"chromium an edit on a running server reaches the next open","ok":true,"js":"C","css":"C"}
+{"check":"webkit first open runs build A","ok":true,"js":"A","css":"A"}
+{"check":"webkit re-open serves both files from cache (no request)","ok":true,"r":{"js":"A","css":"A"},"requests":[]}
+{"check":"webkit after a release the next ordinary open runs build B (JS and CSS)","ok":true,"js":"B","css":"B"}
+{"check":"webkit each changed file fetched once under its new version","ok":true,"requests":[[200,"/js/icons.js?v=7d89085f75c685d9"],[200,"/css/style.css?v=51d54e5367c81327"]]}
+{"check":"webkit an old stamp after a release answers the new bytes, revalidated (never immutable)","ok":true,"old":[{"u":"/js/icons.js?v=9b5bb64eae565003","cc":"no-cache","build":"B"},{"u":"/css/style.css?v=5db39ed19f853b51","cc":"no-cache","build":"B"}]}
+{"check":"webkit an edit on a running server reaches the next open","ok":true,"js":"C","css":"C"}

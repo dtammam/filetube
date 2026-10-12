@@ -163,7 +163,7 @@ test('source lock: the route surface never names the music tables or the dead do
   assert.ok(!/musicStore\.readMusic\(/.test(surface), 'every read view moved to musicDb.read()');
   assert.ok(!/musicStore\.ensureMusic\((db|fresh|freshDb)\)/.test(surface), 'no ensureMusic over the doc object');
   assert.strictEqual((surface.match(/musicDb\.mutate\(/g) || []).length, 3, 'the scan merge, the config POST and the channel-mark route - the three writers');
-  assert.ok((surface.match(/musicDb\.read\(\)/g) || []).length + (surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length + (surface.match(/musicDb\.readPart\(/g) || []).length >= 30, 'the reads (snapshots + the point queries + the one-table reads of gate pass B)');
+  assert.ok((surface.match(/musicDb\.read\(\)/g) || []).length + (surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length + (surface.match(/musicDb\.readPart\(/g) || []).length + (surface.match(/musicDb\.readPartShared\('tracks'\)/g) || []).length >= 30, 'the reads (snapshots + the point queries + the one-table reads of gate pass B + v1.386.0\'s shared track snapshot)');
   assert.ok((surface.match(/musicDb\.parts\.tracks\.get\(/g) || []).length >= 4 && (surface.match(/musicDb\.readPart\('channels'\)/g) || []).length >= 2, 'gate pass B: single-track lookups are point queries; the mark readers read one table');
   assert.ok(/bundle\.music = musicDb\.read\(\)/.test(surface), 'the bundle reads the tables');
 });

@@ -116,11 +116,11 @@ the same means that part is fine; double or more means that part is a real cost.
 | **RTT pipe-only (median)** | The same, minus the time the server spent | Same reading as above, with the server's share removed: this is the network alone. | network minus server compute |
 | **Server compute (avg)** | Time the server itself spent per request | Should be about the same in every run. If it is high in the baseline too, the box is slow and the VPN is not to blame. | rules the BOX in or out |
 | **Throughput @20MB** | Download speed of a 20 MB file from home | The pipe is thin. Compare with your home upload speed: if they match, home upload is the ceiling. If the VPN number is far below both, the tunnel is throttling. Video needs more than its own bitrate here or it stalls. | mobile rendition / home-upload cap |
-| **Compression wire size** | A typical page of data, sent plain vs compressed (shown as plain → brotli, with the saving) | This is what compression WOULD save; FileTube does not compress today. A large saving matters most when throughput is low. | brotli / gzip |
+| **Compression wire size** | A typical page of data, sent plain vs compressed (shown as plain → brotli, with the saving) | What compression saves. Since v1.386.0 FileTube compresses its own files and large lists (the probe still measures a plain request, so the row reads the same). A large saving matters most when throughput is low. | brotli / gzip |
 | **Nav fan-out (worst view)** | Requests needed for the busiest page you visited ("28 API reqs, 59 total, 80 ms") | Many requests times a slow round trip = a slow page. If RTT is high and this count is high, fewer requests per page is the fix. | aggregated bootstrap endpoint |
 | **Time-to-first-frame** | From "load the video" to "it plays", in the Open a video scenario | Long here while throughput is fine points at the files themselves (see 5.1). Long with low throughput is the pipe. | confirms faststart is fine |
 | **Stalls (60s play)** | How often the video paused to wait for data in the Play ~60s scenario, and for how long | Stalls on the VPN but not at home: the pipe cannot keep up with the file's bitrate (FileTube plays the original file; there is no lower-quality version). | adaptive bitrate |
-| **Cold vs warm Home** | Home's load time on a fresh open vs a reload | Both slow on the VPN: each page re-checks every file with the server (the app's files are served "no-cache", so every load revalidates). | service-worker shell/thumb caching |
+| **Cold vs warm Home** | Home's load time on a fresh open vs a reload | Both slow on the VPN: before v1.386.0 each page re-checked every file with the server; since then the app's files are cached until a release changes them, so a warm load re-checks only the page itself and its data. | service-worker shell/thumb caching |
 
 A row shows "-" when nothing in that run feeds it (Stalls needs **Play ~60s untouched (stalls)**;
 Time-to-first-frame needs **Open a video (time-to-first-frame)**). **Cold vs warm Home** is different: a
@@ -189,7 +189,7 @@ Said plainly, so a gap is not mistaken for a clean result:
 
 - No record of how much data the app uses over time (no data-usage accounting).
 - No server log of slow requests; the timing header exists only while the diagnostics switch is on.
-- No compression of its own (the Compression delta row shows what it would save; it does not turn it on).
+- (Since v1.386.0 FileTube compresses its scripts, styles and large lists itself; the Compression delta row still measures a plain request.)
 - No offline or cached copy of pages or thumbnails on the phone.
 - No lower-quality version of a video, no quality picker and no data-saver setting: every video plays at
   its original size.

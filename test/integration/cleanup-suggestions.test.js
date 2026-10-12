@@ -116,7 +116,8 @@ test('GET /cleanup serves the shell with the cleanup view root and script (a dee
   assert.strictEqual(res.status, 200);
   const html = await res.text();
   assert.match(html, /<div id="view-root" data-view="cleanup">/);
-  assert.match(html, /<script src="\/js\/cleanup\.js"><\/script>/);
+  // v1.386.0: the shell names each script by the hash of its bytes (lib/staticAssets.js)
+  assert.match(html, /<script src="\/js\/cleanup\.js\?v=[0-9a-f]{16}"><\/script>/);
   assert.match(html, /<title>Clean up - FileTube<\/title>/);
   assert.ok(!/history\.js/.test(html), 'the History view script is not loaded here');
   assert.match(html, /<header/, 'the shared header comes along');

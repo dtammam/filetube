@@ -1923,6 +1923,48 @@
     var previewSkin = null;
     var paintedSkinId = null;
     function getSkinId() { return previewSkin || baseGetSkinId(); }
+    // v1.386.0 (W2): a picked skin's photos (the Transparent board and ring) are downloaded and decoded BEFORE the
+    // panel shows it, so the frame never paints without them (Dean: "a weird picture, and then all of a sudden the
+    // image shows"). SKINS.whenSkinArtReady answers null when there is nothing to wait for (no photos, or decoded
+    // already) and the pick applies at once as before; otherwise the current look stays until the photos are ready
+    // or SKINS.SKIN_ART_CAP_MS passes. A newer request on the same channel ('pick': the sticker's chips and the
+    // Pocket's Select; 'preview': the Pocket's highlight) supersedes a waiting one; the channels never cancel each
+    // other (a Select's re-synced preview of the same skin must not drop the Select's repaint).
+    var skinArtSeq = { pick: 0, preview: 0 };
+    var surfaceGone = false;
+    var pickHold = null;        // the look a waiting Pocket Select holds on screen (null when none waits)
+    var previewWarmed = false;  // the Pocket Skins list's photos were started for this visit
+    // The pick that LANDS (the 'pick' channel's newest: a Pocket Select or a sticker chip) ends any hold, whichever of them
+    // set it - a superseded pick's callback never runs, so the hold must not depend on it (gate r2 adversary CRITICAL: a
+    // sticker pick over a waiting Select left the held look on screen after every MENU). A preview of another row the user
+    // moved to meanwhile is kept; only the held look is dropped.
+    function releasePickHold() {
+      if (pickHold !== null && previewSkin === pickHold) previewSkin = null;
+      pickHold = null;
+    }
+    function whenSkinArt(channel, id, go) {
+      var mine = ++skinArtSeq[channel];
+      var ready = null;
+      try { ready = (id && typeof SKINS.whenSkinArtReady === 'function') ? SKINS.whenSkinArtReady(id, SKINS.SKIN_ART_CAP_MS, { doc: doc }) : null; } catch (_) { ready = null; }
+      if (!ready) { go(true); return; }
+      var done = function () { if (mine === skinArtSeq[channel]) go(!surfaceGone); };
+      ready.then(done, done);
+    }
+    // gate r1 (adversary W1): the warm runs when the page is idle, never inside the tap that opens the list (its first
+    // call per page builds the stylesheet index)
+    function whenIdle(fn) {
+      var run = function () { if (!surfaceGone) fn(); };
+      try {
+        if (win && typeof win.requestIdleCallback === 'function') win.requestIdleCallback(run, { timeout: 500 });
+        else (win || window).setTimeout(run, 50);
+      } catch (_) { run(); }
+    }
+    function warmSkinArtList() {
+      whenIdle(function () {
+        try { if (typeof SKINS.warmSkinArt === 'function') SKINS.warmSkinArt((SKINS.SKINS || []).map(function (x) { return x.id; }), { doc: doc }); } catch (_) { /* a warm is best-effort */ }
+      });
+    }
+
     function swapSkinClasses(id) {
       if (!panel.classList.contains('mms-full') || paintedSkinId === null || id === paintedSkinId) return;
       var from = SKINS.panelClass(paintedSkinId).split(' ');
@@ -2025,10 +2067,25 @@
     var pocket = (config.menu && typeof config.menu.load === 'function')
       ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames, lighting: lighting,
         skinsAvailable: function () { return !!(stickerCfg && typeof stickerCfg.onSkinChange === 'function'); },
-        onPreview: function (id) { previewSkin = (id && SKINS.menuStyle(id) === 'click') ? id : null; swapSkinClasses(getSkinId()); },
+        onPreview: function (id) {
+          var next = (id && SKINS.menuStyle(id) === 'click') ? id : null;
+          // the Skins list opened: start every skin's photos ONCE per visit, not on every highlight (gate r1 W1)
+          if (next && !previewWarmed) { previewWarmed = true; warmSkinArtList(); }
+          if (!next) previewWarmed = false;
+          // v1.386.0: the preview shows once the previewed skin's photos can paint (leaving the preview is at once).
+          // While a Select is still waiting on its photos (pickHold), leaving the preview keeps the held look - the
+          // saved skin must not paint before its photos (gate r1 qa: MENU pressed before the Coil's photos landed).
+          whenSkinArt('preview', next, function () { previewSkin = next || pickHold; swapSkinClasses(getSkinId()); });
+        },
         onSkinChosen: function () {
-          previewSkin = null;
-          if (stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
+          // v1.386.0: the saved skin repaints once its photos can paint; until then the panel holds what it shows now
+          // (the menu has already saved the new id, so a repaint in the gap would otherwise draw it without them)
+          pickHold = paintedSkinId || null;
+          if (pickHold) previewSkin = pickHold;
+          whenSkinArt('pick', baseGetSkinId(), function (live) {
+            releasePickHold(); // a live preview the user moved to meanwhile stays (gate r2 qa)
+            if (live && stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
+          });
         },
         takeoverLive: function () { return !!wheelTakeover; },
         onVolume: function () { openVolume(); }, // v1.353: the Speakers menu's Volume row
@@ -2506,6 +2563,7 @@
       if (!menu) return;
       extrasMenu.cancelPending(); // (a stale Extras fetch never lands on this page)
       menu.setAttribute('data-sm-page', 'skins');
+      warmSkinArtList(); // v1.386.0: start every listed skin's photos while the list is read
       stickerReturnSel = '[data-skin-skins]'; // #281 (c): Back returns focus to the row that opened this page
       menu.innerHTML = extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">Skin</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + skinChipsHtml(false) + '</div></div>';
       focusInMenu('[data-skin-extras-back]'); // #281 (c): the page opens on its Back, never on BODY
@@ -2730,9 +2788,13 @@
       var pick = e.target.closest('[data-skin-pick]');
       if (pick) {
         var sid = pick.getAttribute('data-skin-pick');
-        if (typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
         closeStickerMenu();
-        if (typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // re-render with the new skin
+        // v1.386.0: saved and painted once its photos can paint (at once when it has none or they are decoded)
+        whenSkinArt('pick', sid, function (live) {
+          releasePickHold(); // a sticker pick that superseded a waiting Pocket Select ends its hold (gate r2 adversary CRITICAL)
+          if (typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
+          if (live && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // re-render with the new skin
+        });
         return true;
       }
       // v1.258.1 slim-gate W1: a tap on the menu's own DEAD SPACE (headings, section
@@ -3682,6 +3744,7 @@
       clearCenterHold();      // v1.364.0 (W2a): a pending center hold dies with the surface
       hideLcdNote();          // ...and so does its LCD note's timer
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
+      surfaceGone = true;     // v1.386.0: a pick still waiting on its photos saves, but never repaints a dead surface
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
