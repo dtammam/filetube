@@ -306,8 +306,12 @@ test('clock correction: a phone a year AHEAD is refused with 400 restamp (more t
 
 test('visibility with DIVERGING restriction kinds: a hidden video (folder), a library track under a hidden folder, a native track under a blocked path, a hidden podcast show and a blocked tv path each refuse {gone} with NOTHING written - cookie and device token alike; an unknown id is gone too', async () => {
   const now = Date.now();
-  const events = [ev('video', 'hid', 10, now), ev('track', 'audHidden', 10, now), { kind: 'track', id: hiddenTrack.id, positionSec: 10, durationSec: 200, at: now }, ev('podcastEpisode', epHidden, 10, now), ev('tvEpisode', 'blk', 10, now), ev('video', 'nope', 10, now), ev('video', 'v1', 10, now)];
+  // Each pass carries its OWN moment: the visible event is replayed through the cookie and then the token, and the product's
+  // strict newer-wins rule reads a second event at the SAME moment as older (only request latency ever let it land).
+  let pass = 0;
   for (const headers of [{ Cookie: kid.cookie }, { Cookie: '', Authorization: `Bearer ${kidToken}` }]) {
+    const at = now - (1 - pass++) * SEC; // the cookie pass a second earlier, the token pass at now (later tests write at a later now)
+    const events = [ev('video', 'hid', 10, at), ev('track', 'audHidden', 10, at), { kind: 'track', id: hiddenTrack.id, positionSec: 10, durationSec: 200, at }, ev('podcastEpisode', epHidden, 10, at), ev('tvEpisode', 'blk', 10, at), ev('video', 'nope', 10, at), ev('video', 'v1', 10, at)];
     const r = await sync(events, { headers });
     assert.strictEqual(r.status, 200);
     assert.deepStrictEqual(r.body.results.map((x) => (x.applied ? 'applied' : x.reason)), ['gone', 'gone', 'gone', 'gone', 'gone', 'gone', 'applied']);
