@@ -83,18 +83,29 @@ function planScenes(opts) {
 
 // Check id -> its in-page collector and pure evaluator. HDR / NAV (sweep S1) are the chrome's
 // rendered contracts (checks.js); G1-G3 take the surface's optional `scope` selector.
-const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader, POP: checks.collectPopover, BLD: checks.collectPlayerBleed, VPM: checks.collectVPM };
-const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader, POP: checks.evalPopover, BLD: checks.evalPlayerBleed, VPM: checks.evalVPM };
+const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader, POP: checks.collectPopover, HPOP: checks.collectHeaderPopover, BLD: checks.collectPlayerBleed, VPM: checks.collectVPM };
+const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader, POP: checks.evalPopover, HPOP: checks.evalHeaderPopover, BLD: checks.evalPlayerBleed, VPM: checks.evalVPM };
 
-async function measureScene(env, scene, mutationCss) {
+// A JS mutant: serve `file` (a /js/ path) with `from` replaced by `to`; fails loudly if the needle moved.
+async function mutateJs(page, m) {
+  await page.route((u) => u.pathname === m.file, async (route) => {
+    const resp = await route.fetch();
+    const src = await resp.text();
+    if (!src.includes(m.from)) throw new Error('geometry mutant: the needle is not in ' + m.file + ': ' + m.from);
+    await route.fulfill({ response: resp, body: src.replace(m.from, () => m.to) });
+  });
+}
+
+async function measureScene(env, scene, mutationCss, mutationJs) {
   const surf = SURFACES.find((s) => s.id === scene.surface);
   const { ctx, page } = await capture.newScenePage(env.browser, { vp: scene.vp, mode: scene.mode, era: scene.era, storageState: env.st,
     tag: { scene: 'geometry:' + sceneId(scene) }, record: env.record, clockMs: env.FX.viewNow, dpr: 1 });
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
   try {
+    if (mutationJs) await mutateJs(page, mutationJs);
     await page.goto(env.base + surf.path(env.FX, scene.era, scene.mode), { waitUntil: 'networkidle', timeout: 20000 });
-    if (surf.open) await surf.open(page, scene.vp, { capture });
+    if (surf.open) await surf.open(page, scene.vp, { capture, FX: env.FX });
     await page.waitForSelector(surf.ready, { state: 'attached', timeout: 10000 });
     await page.addStyleTag({ content: capture.FREEZE_CSS + (mutationCss || '') });
     await page.evaluate(() => (document.fonts ? document.fonts.ready.then(() => true) : true));
@@ -104,7 +115,7 @@ async function measureScene(env, scene, mutationCss) {
       if (env.only && !env.only.includes(c)) continue;
       // G1 takes the surface's `g1` options (group / actions, checks.js collectG1) with its scope;
       // POP takes the surface's `anchor` (the control that opened the menu).
-      const arg = c === 'POP' ? { anchor: surf.anchor || null } : (c === 'G1' && surf.g1 ? { scope: surf.scope || null, ...surf.g1 } : surf.scope || null);
+      const arg = (c === 'POP' || c === 'HPOP') ? { anchor: surf.anchor || null } : (c === 'G1' && surf.g1 ? { scope: surf.scope || null, ...surf.g1 } : surf.scope || null);
       const data = await page.evaluate(COLLECT[c], arg);
       const ev = EVALUATE[c](data);
       const floor = (surf.min && surf.min[c]) || {};
@@ -245,6 +256,7 @@ function describe(check, ev) {
   if (check === 'NAV') return `(${m.tabs} tabs)`;
   if (check === 'SHD') return `(${m.headers} sheet headers, ${m.titleless} titleless)`;
   if (check === 'POP') return `(${m.rows} menu rows)`;
+  if (check === 'HPOP') return `(${m.panels} header panel)`;
   if (check === 'BLD') return `(${m.player} player)`;
   return `(${m.groups} groups)`;
 }
@@ -304,16 +316,16 @@ async function main() {
           console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} ${name} (VPM): ${red.length} red of ${vpmControl.length} cells, want exactly ${want.size}; missed [${missed.join(' ')}] extra [${extra.join(' ')}] control red [${controlRed.join(' ')}]`);
           continue;
         }
-        const run = async (css) => {
+        const run = async (css, js) => {
           if (m.check === 'G4') {
             const seq = G4_SEQUENCES.find((s) => s.id === m.target.sequence);
             return unexpectedOnly(`G4/${seq.id}/${m.target.mode}`, (await runSequence(env, seq, m.target.mode, css)).failures);
           }
-          const { res } = await measureScene({ ...env, only: [m.check] }, m.target, css);
+          const { res } = await measureScene({ ...env, only: [m.check] }, m.target, css, js || null);
           return unexpectedOnly(`${m.check}/${sceneId(m.target)}`, res[m.check].failures.concat(res[m.check].vacuous));
         };
         const control = await run('');
-        const mutated = await run(m.css);
+        const mutated = await run(m.css || '', m.js || null);
         const red = mutated.length > 0;
         const ok = red && control.length === 0;
         if (!ok) survived++;
@@ -350,12 +362,12 @@ async function main() {
 
     const mutation = opts.mutate ? MUTATIONS[opts.mutate] : null;
     const results = [];
-    const sceneChecks = ['G1', 'G2', 'G3', 'HDR', 'NAV', 'SHD', 'POP', 'BLD'];
-    const scenes = (opts.only && !opts.only.some((c) => sceneChecks.includes(c))) ? [] : planScenes(opts);
+    const sceneChecks = ['G1', 'G2', 'G3', 'HDR', 'NAV', 'SHD', 'POP', 'HPOP', 'BLD'];
+    const scenes = (opts.only && !opts.only.some((c) => sceneChecks.includes(c))) ? [] : planScenes(opts).filter((sc) => !opts.only || SURFACES.find((x) => x.id === sc.surface).checks.some((c) => opts.only.includes(c)));
     for (const scene of scenes) {
       let out;
       try {
-        out = await measureScene(env, scene, mutation && mutation.check !== 'VPM' ? mutation.css : '');
+        out = await measureScene(env, scene, mutation && mutation.check !== 'VPM' ? mutation.css : '', mutation && mutation.check !== 'VPM' ? mutation.js : null);
       } catch (e) {
         results.push({ id: `LOAD/${sceneId(scene)}`, failures: [`the scene did not load: ${String(e).split('\n')[0]}`] });
         continue;

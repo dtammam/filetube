@@ -3066,7 +3066,7 @@ select {
 .oneoff-form {
   display: grid;
   gap: var(--space-6);
-  padding: 0 var(--space-8);
+  padding: var(--space-2) var(--space-8);
 }
 .oneoff-form > .oneoff-modal-status {
   margin: 0;

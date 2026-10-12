@@ -150,6 +150,18 @@ const MUTATIONS = {
     check: 'POP', target: { surface: 'card-menu', era: '2005', mode: 'light', vp: 'phone' },
     css: '.ui-sheet--bottom.is-open{transform:translateY(200px)!important}',
   },
+  // ---- v1.387.3: the desktop header panels (HPOP) ----
+  // HPOP: the panel is left-anchored again (the pre-v1.387.3 rule): it ends short of the avatar.
+  'hpop-left-anchored': {
+    check: 'HPOP', target: { surface: 'hpop-account', era: '2021', mode: 'dark', vp: 'desktop' },
+    css: '.ui-sheet--popover-end{left:var(--ui-anchor-x)!important;right:auto!important}',
+  },
+  // HPOP: ui.js re-places a popover from scratch each time its size changes (no held side), so the
+  // notifications panel jumps up over the bell when its rows arrive.
+  'hpop-jump-on-load': {
+    check: 'HPOP', target: { surface: 'hpop-notifications', era: '2014', mode: 'light', vp: 'desktop' },
+    css: '', js: { file: '/js/ui.js', from: 'var held = heldSide && h > 0 && band.hi > band.lo;', to: 'var held = false;' },
+  },
   // ---- v1.359: the phone player edge to edge (BLD) ----
   // BLD: the v1.314 gutter padding comes back, so the player is inset 16px each side again.
   'bld-gutter-back': {

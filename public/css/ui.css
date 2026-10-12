@@ -770,6 +770,15 @@ button.ui-row:focus-visible,
   max-width: var(--panel-w);
   border-radius: var(--r-md);
   transform: scale(0.98);
+  transform-origin: top left;
+}
+/* An anchor in the right half of the window (every header button): the panel's right edge lines
+   up with the anchor's (--ui-anchor-r, ui.js), never nearer the window's edge than the gap, and
+   it grows from its top-right corner. The % is the layout viewport, so a scrollbar is not counted. */
+.ui-sheet--popover-end {
+  left: auto;
+  right: max(var(--space-4), calc(100% - var(--ui-anchor-r, 100%)));
+  transform-origin: top right;
 }
 .ui-sheet--dialog {
   inset: 0;
