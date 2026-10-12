@@ -293,6 +293,12 @@ const createUserStore = require('./lib/auth/store');
 const authGateLib = require('./lib/auth/gate');
 const visibility = require('./lib/auth/visibility'); // v1.80 RBAC: the ONE visibility decision
 const userStore = createUserStore(dbAdapter);
+// v1.387.0 offline playback (plan D1): the per-device tokens the iOS app pairs with
+// (lib/auth/devices.js: sha256 rows bound to the user row, the live-response
+// registry that ends a revoked phone's open download). The gate's Bearer branch
+// reads it; the /api/devices routes write it.
+const createDeviceStore = require('./lib/auth/devices').createDeviceStore;
+const deviceStore = createDeviceStore(dbAdapter, { generateSecret: authCrypto.generateSecret, tokensEqual: authCrypto.tokensEqual });
 // Wave 1 of the relational-migration arc (v1.291): the per-item view counter
 // left the document model for its own table (lib/media/viewCounts.js). Every
 // runtime read/write of a view count goes through this store - never
@@ -982,6 +988,16 @@ function __resetDatabaseForTests() {
   return replacePersistedState(null).then(() => {
     try { userStore.__clearUserStateForTests(); } catch (_) { /* user tables absent in an odd harness */ }
   });
+}
+// Test-only (v1.387.0 W3): HOLD the write chain. Every updateDatabase mutator queued after this call waits
+// until the returned release() runs, so a race test can take a flush's snapshot, let a request arrive and
+// enqueue its own mutator BEHIND the flush, and only then let both commit in chain order (LESSONS 2: a race
+// test's precondition is event-loop order, never timing).
+function __holdWriteChainForTests() {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  dbWriteChain = dbWriteChain.then(() => gate);
+  return release;
 }
 // Test-only: wipe users (the auth-flow suite's zero-users precondition).
 function __clearUsersForTests() {
@@ -3156,6 +3172,7 @@ const authGate = authGateLib.createAuthGate({
   cookieName: AUTH_COOKIE_NAME,
   trustProxy: TRUST_PROXY,
   apiToken: API_TOKEN, // the Shortcut token for POST /api/ytdlp/download
+  devices: deviceStore, // v1.387.0: `Authorization: Bearer ftd_...` sets req.user from the paired phone's row
 });
 app.use(authGate);
 
@@ -3217,7 +3234,10 @@ function createMutationAuditMiddleware(log = null) {
       audited = true;
       const who = (req.user && (req.user.username || req.user.name || req.user.id)) || req.auditActor || 'unauthenticated';
       const incomplete = res.writableEnded ? '' : ' incomplete';
-      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}`);
+      // v1.387.0: a mutation a paired phone made names the device (req.user is the account; the
+      // device id says WHICH phone, so a revoke can be aimed).
+      const via = req.authVia === 'device' && req.deviceId ? ` via=device:${req.deviceId}` : '';
+      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}${via}`);
     };
     res.on('finish', emit);
     res.on('close', emit);
@@ -3279,6 +3299,7 @@ authRoutes.registerRoutes(app, {
   avatarInfo, // GET /api/auth/me merges the photo's presence + cache-bust version
   booksDb,
   clearSessionCookie,
+  deviceStore, // v1.387.0: pairing, listing and revoking the per-device tokens
   // The user-delete cascade drops that user's staged (un-flushed) pings before
   // the row goes, so no flush batch ever carries a vanished user_id.
   dropPendingProgressForUser,
@@ -4621,7 +4642,7 @@ function foldersOverlap(a, b) {
 }
 
 const tvRoutes = require('./lib/tv/routes'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
-tvRoutes.registerRoutes(app, {
+const tvRouteHandles = tvRoutes.registerRoutes(app, {
   DATA_DIR,
   TRANSCODE_CRF,
   TRANSCODE_DIR, // the SHARED transcode cache the tv renditions + sidecars live in
@@ -4658,6 +4679,56 @@ tvRoutes.registerRoutes(app, {
   videoQuery,
   visibleConfigRoots,
   visibleTvEpisodes, // shared with GET /api/search
+});
+
+// ---- v1.387.0 offline playback (plan D2 + D3 + D4): the manifest, the file route, status, progress sync.
+// lib/offline/routes.js owns the bodies; every item resolves through the visibility wrappers above. The
+// HEVC codec TAG is not stored anywhere (the scan asks ffprobe only for codec_name), so the manifest runs a
+// lazy, cached, single-flight ffprobe for it (never a per-item db.metadata field, LESSONS 9); a probe that
+// cannot answer reads as "unknown" and the item takes the transcode side.
+function probeHevcTag(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) return resolve(null);
+    const args = ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,codec_tag_string', '-of', 'json', filePath];
+    execFile('ffprobe', args, { timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err) return resolve(null);
+      try {
+        const j = JSON.parse(stdout);
+        const s = Array.isArray(j.streams) && j.streams[0];
+        resolve(s && typeof s.codec_tag_string === 'string' ? s.codec_tag_string.toLowerCase() : null);
+      } catch { resolve(null); }
+    });
+  });
+}
+const offlineRoutes = require('./lib/offline/routes');
+offlineRoutes.registerRoutes(app, {
+  fs, path, mime,
+  getCachedDatabase, musicDb, tvDb, podcastsDb, userStore,
+  mediaVisibleTo, trackVisibleTo, podcastEpisodeVisibleTo, tvEpisodeVisibleTo,
+  projectedLibraryTracks,
+  effectiveProgress, effectiveMusicProgress,
+  resolveItemChapters,
+  findSubtitleSidecar: (filePath) => subtitles.findSubtitleSidecar(filePath),
+  transcodedPath, queueTranscode,
+  tvRenditionPath: tvRouteHandles.tvRenditionPath, queueTvTranscode: tvRouteHandles.queueTvTranscode,
+  tvTranscodeHasFailed: tvRouteHandles.tvTranscodeHasFailed, // a failed tv job is terminal to the offline route (409), never a 503 loop
+  ffmpegIsAvailable: () => ffmpegAvailable, // LIVE reader (the boot probe flips it later)
+  markServed,
+  // The /episode route's own confinement: the podcasts root is read the way that route reads it.
+  podcastEpisodeConfined: (ep) => podcasts.isConfinedUnderRoot(ep.filePath, podcasts.resolvePodcastsRoot(null, { dataDir: DATA_DIR })),
+  probeHevcTag,
+  podcastContentTypes: podcasts.CONTENT_TYPES,
+  musicContentTypes: musicRoutes.MUSIC_CONTENT_TYPES,
+  tvContentTypes: tvRouteHandles.TV_CONTENT_TYPES,
+  // W3 (plan D4): the sync runs as ONE mutator on the write chain and reads the LIVE buffers inside it.
+  updateDatabase,
+  pendingProgress,
+  pendingMusicProgress,
+  pendingProgressKey,
+  flushPendingProgress, // gate r1 (adversary CRITICAL): flushed in the handler's tick, ahead of its mutator
+  flushPendingMusicProgress,
+  watchedPct: videoQuery.WATCHED_PCT,
+  podcastPlayedRatio: 0.95, // lib/podcasts/index.js applyPodcastProgress's latch
 });
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
@@ -7581,6 +7652,7 @@ module.exports = {
   // it produces a genuine cookie exactly like a browser login would.
   __mintTestSession,
   __clearUsersForTests,
+  __holdWriteChainForTests, // v1.387.0 W3: the offline sync's chain-order tests
   // Wave 1 (relational-migration arc): the media view-count store, exported
   // so integration tests seed and read counts through the SAME API the
   // routes use (the doc-model `viewCounts` key is refused by the save-lock).
@@ -7611,6 +7683,7 @@ module.exports = {
   __setPushGuardLookupForTests,
   pushDelivery,
   userStore,
+  deviceStore, // v1.387.0: tests pair and revoke directly
   AUTH_COOKIE_NAME,
   // v1.42 AC7: the Node-floor predicate, exported so the boot check's
   // boundary (22.13 = first unflagged node:sqlite) is testable without
@@ -7761,6 +7834,7 @@ module.exports = {
   TRANSCODE_CACHE_MAX_BYTES,
   TRANSCODE_CRF,
   TRANSCODE_DIR,
+  recentlyServed, // v1.387.0: tests assert the offline file route marks the served file live (LRU protection)
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,

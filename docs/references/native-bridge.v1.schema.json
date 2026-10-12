@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads"] }
         }
       }
     },
@@ -44,8 +44,30 @@
         { "properties": { "type": { "const": "statusBar.hide" } } },
         { "properties": { "type": { "const": "statusBar.show" } } },
         { "properties": { "type": { "const": "network.subscribe" } } },
-        { "properties": { "type": { "const": "network.unsubscribe" } } }
+        { "properties": { "type": { "const": "network.unsubscribe" } } },
+        { "properties": { "type": { "const": "downloads.add" }, "kind": { "enum": ["track", "album", "podcastEpisode", "video", "tvEpisode", "tvSeason"] }, "id": { "type": "string", "minLength": 1, "maxLength": 512 } }, "required": ["kind", "id"] },
+        { "properties": { "type": { "const": "downloads.remove" }, "kind": { "enum": ["track", "album", "podcastEpisode", "video", "tvEpisode", "tvSeason"] }, "id": { "type": "string", "minLength": 1, "maxLength": 512 } }, "required": ["kind", "id"] },
+        { "properties": { "type": { "const": "downloads.subscribe" } } },
+        { "properties": { "type": { "const": "downloads.unsubscribe" } } },
+        { "properties": { "type": { "const": "downloads.show" } } }
       ]
+    },
+    "downloadItem": {
+      "description": "One downloaded (or downloading) ITEM as native reports it: the fields of a 'download' event and of each 'downloadsSnapshot' element. kind is always a single-item kind; an album or season add reports its members, each carrying parentKind + parentId (FileTube Root ruling, 2026-10-11). state 'none' = not on the phone (removed, gone, cancelled). error only with 'failed'; localSrc only with 'done' (an opaque URL the web uses ONLY as a media element src). progress 0..1.",
+      "type": "object",
+      "required": ["kind", "id", "state"],
+      "properties": {
+        "kind": { "enum": ["track", "podcastEpisode", "video", "tvEpisode"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "state": { "enum": ["none", "queued", "downloading", "paused", "waitingForWifi", "done", "failed"] },
+        "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+        "bytes": { "type": "number", "minimum": 0 },
+        "totalBytes": { "type": "number", "minimum": 0 },
+        "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "notPlayable", "other"] },
+        "localSrc": { "type": "string", "minLength": 1 },
+        "parentKind": { "enum": ["album", "tvSeason"] },
+        "parentId": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
     },
     "nativeToWeb": {
       "description": "event.detail of a 'filetube-host' CustomEvent native dispatches on window.",
@@ -69,6 +91,29 @@
             "expensive": { "type": "boolean" }
           },
           "required": ["connection"]
+        },
+        {
+          "properties": {
+            "type": { "const": "download" },
+            "kind": { "enum": ["track", "podcastEpisode", "video", "tvEpisode"] },
+            "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "state": { "enum": ["none", "queued", "downloading", "paused", "waitingForWifi", "done", "failed"] },
+            "progress": { "type": "number", "minimum": 0, "maximum": 1 },
+            "bytes": { "type": "number", "minimum": 0 },
+            "totalBytes": { "type": "number", "minimum": 0 },
+            "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "notPlayable", "other"] },
+            "localSrc": { "type": "string", "minLength": 1 },
+            "parentKind": { "enum": ["album", "tvSeason"] },
+            "parentId": { "type": "string", "minLength": 1, "maxLength": 512 }
+          },
+          "required": ["kind", "id", "state"]
+        },
+        {
+          "properties": {
+            "type": { "const": "downloadsSnapshot" },
+            "items": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/downloadItem" } }
+          },
+          "required": ["items"]
         }
       ]
     },

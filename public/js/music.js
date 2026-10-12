@@ -624,6 +624,11 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     ((drill && drill.key && (drill.type === 'album' || drill.type === 'artist'))
       ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-radio">' + songIconHtml('radio') + '<span class="ui-btn__label">Radio</span></button>'
       : '') +
+    // v1.387.0 offline playback (plan D6): an album's "Make available offline" / "Remove offline copy" pill, ONLY when
+    // opts.offline carries the module's entry (the host announced `downloads`; a browser renders no pill).
+    (isAlbum && drill && drill.key && opts && opts.offline && typeof opts.offline.id === 'string'
+      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-offline" data-offline-action="' + escapeMusicHtml(opts.offline.id) + '">' + songIconHtml(opts.offline.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline') + '<span class="ui-btn__label">' + escapeMusicHtml(opts.offline.label) + '</span></button>'
+      : '') +
     // v1.352 L3 (Dean's ruling: a pill in this row): copy this album's or artist's music link
     (musicDrillLink(drill)
       ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-copylink" data-link="' + escapeMusicHtml(musicDrillLink(drill)) + '">' + songIconHtml('content_copy') + '<span class="ui-btn__label">Copy link</span></button>'
@@ -3832,11 +3837,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // big header scrolls out (the IntersectionObserver toggles `.collapsed`).
     // v1.373.0: an album page in album order numbers its tracks (another sort would number them out of order)
     function drillNumbersTracks() { return !!drill && drill.type === 'album' && sortForTab('drill-album') === 'album-order'; }
+    // v1.387.0 offline playback: the album drill's offline pill entry (null in a browser or for an artist drill); the
+    // album id is the albumKeyFor value the album page already uses (plan D2).
+    function drillOfflineEntry() {
+      var off = window.FileTube && window.FileTube.offline;
+      if (!off || !off.enabled || !drill || drill.type !== 'album' || !drill.key) return null;
+      return off.menuEntry('album', drill.key);
+    }
     function renderDrillView() {
       content.innerHTML =
         '<div class="music-drill">' +
         buildStickyBarHtml(drill, queue) +
-        buildDrillHeaderHtml(drill, queue, { canEditChapters: musicCanModifyLibrary }) +
+        buildDrillHeaderHtml(drill, queue, { canEditChapters: musicCanModifyLibrary, offline: drillOfflineEntry() }) +
         '<div class="music-drill-sentinel" aria-hidden="true"></div>' +
         SONG_LIST_OPEN + queue.map(function (it, i) { return buildSongRowHtml(it, i, { trackNumbers: drillNumbersTracks() }); }).join('') + '</div>' +
         '</div>';
@@ -4032,6 +4044,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (e.target.closest('.music-drill-radio')) { // v1.368.0: Start radio from this album / artist
         startRadio(radioSeedForDrill(drill));
+        return;
+      }
+      var offlinePill = e.target.closest('.music-drill-offline'); // v1.387.0 offline playback: the album pill
+      if (offlinePill) {
+        var offApi = window.FileTube && window.FileTube.offline;
+        if (offApi && offApi.enabled && drill && drill.key) offApi.runMenuAction(offlinePill.getAttribute('data-offline-action'), 'album', drill.key);
         return;
       }
       // v1.273 (Dean): rename a chaptered album's "songs". The chapters ARE the track
@@ -4388,6 +4406,14 @@ if (typeof module !== 'undefined' && module.exports) {
         { label: 'Add to queue', icon: 'playlist_add', onSelect: function () { queueIt('end'); } },
         { label: 'Save to device', icon: 'download', onSelect: function () { saveTrackToDevice(id); } },
       ];
+      // v1.387.0 offline playback (plan D6): beside Save to device, only when the host announced `downloads`. A chapter
+      // row's id is the row's own; the server resolves it to the parent file (correction 5).
+      var off = window.FileTube && window.FileTube.offline;
+      if (off && off.enabled) {
+        var oe = off.menuEntry('track', id);
+        items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline', onSelect: function () { off.runMenuAction(oe.id, 'track', id); } });
+        if (oe.errorText) items.push({ label: oe.errorText, icon: 'error', disabled: true });
+      }
       if (item.artist) {
         items.push({ label: 'Go to artist', icon: 'account_circle', onSelect: function () {
           openDrill({ type: 'artist', key: item.artist, label: item.artist }).catch(function () {});
@@ -5044,13 +5070,16 @@ if (typeof module !== 'undefined' && module.exports) {
       var attempts = 0;
       var MAX_ATTEMPTS = 40; // ~60s at 1.5s spacing
       setStatus('Preparing “' + item.title + '”…');
+      // v1.387.0 offline playback: a track the phone holds plays from its copy - there is no server rendition to wait
+      // for, so the readiness probe is answered locally and the ONE loadTrack path below runs at once.
+      var offLocal = window.FileTube && window.FileTube.offline && window.FileTube.offline.enabled ? window.FileTube.offline.localSrcFor(['track'], item.id) : null;
       function poll() {
         if (gen !== playGen) return; // a newer tap superseded this one
         // A 1-byte ranged GET (not HEAD): when the rendition is READY the route
         // answers 206 having read a single byte; a HEAD would run the whole
         // file through sendRangeable's stream (no body sent, but the full disk
         // read still happens). While transcoding it's a small 503 JSON.
-        fetch('/track/' + item.id, { headers: { Range: 'bytes=0-0' } })
+        (offLocal ? Promise.resolve({ ok: true }) : fetch('/track/' + item.id, { headers: { Range: 'bytes=0-0' } }))
           .then(function (res) {
             if (res.body && res.body.cancel) { try { res.body.cancel(); } catch (_) { /* ignore */ } }
             if (gen !== playGen) return;

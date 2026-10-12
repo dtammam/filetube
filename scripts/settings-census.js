@@ -75,6 +75,7 @@ const SAVE = {
 const HOSTS = {
   'bottombar-editor': [D, 'all'], 'music-channels-list': ['/api/folders/music-flag', 'library-write'],
   'trash-list': ['/api/trash/:id', 'all'], 'feed-hidden-list': ['/api/feed-hidden/:id', 'all'],
+  'devices-list': ['/api/devices/:id', 'all'], // v1.387.0: the paired phones' Remove buttons (setup.js renderDeviceRows)
 };
 
 function census(html) {
