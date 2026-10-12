@@ -90,6 +90,9 @@
     // REPLACES its map with it; download events after it are deltas. The same lenient mapping applies to each
     // element, and a bad element drops THAT element, not the snapshot; more than 10000 elements drops the whole
     // event (the app never sends one).
+    // v1.387.1: an add that failed as a whole (a container that produced no member, a single item that never reached a
+    // `download` event). id is the id the web sent; an unknown error reads as 'other', an unknown kind drops the event.
+    downloadsAddFailed: { lenient: { error: 'other' }, fields: { kind: { enum: DOWNLOAD_KINDS.slice(), req: true }, id: { is: 'string', min: 1, max: 512, req: true }, error: { enum: DOWNLOAD_ERRORS.slice(), req: true } } },
     downloadsSnapshot: { fields: { items: { is: 'array', req: true, max: 10000, items: { is: 'object', props: downloadItemFields(), lenient: DOWNLOAD_LENIENT } } } },
   };
 

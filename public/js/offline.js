@@ -60,9 +60,12 @@
     var enabled = !!(host && typeof host.has === 'function' && host.has('downloads'));
     var map = Object.create(null); // key -> item (the download fields native sent)
     var children = Object.create(null); // parent key -> { childKey: true }
+    // v1.387.1: adds that failed as a whole (`downloadsAddFailed`): key -> { state:'failed', error }. Holds nothing on the
+    // phone, so it is never part of the map or a snapshot; real members and items always win over it (state()).
+    var failedAdds = Object.create(null);
     var listeners = [];
     var subscribed = false;
-    var offDownload = null, offSnapshot = null;
+    var offDownload = null, offSnapshot = null, offAddFailed = null;
 
     function notify(kind, id) {
       for (var i = 0; i < listeners.length; i++) { try { listeners[i](kind, id); } catch (_) { /* a listener bug never breaks the page */ } }
@@ -85,20 +88,32 @@
     function replace(items) {
       map = Object.create(null);
       children = Object.create(null);
+      failedAdds = Object.create(null); // a snapshot replaces the world
       for (var i = 0; i < items.length; i++) put(items[i]);
       notify(null, null); // everything may have changed
     }
 
+    // Forget the failed add for (kind, id): under its normalized key and under the raw one the event carried.
+    function clearFailed(kind, id) {
+      if (!kind || id === undefined || id === null) return false;
+      var a = keyOf(kind, id), b = kind + ':' + id;
+      var had = !!(failedAdds[a] || failedAdds[b]);
+      delete failedAdds[a]; delete failedAdds[b];
+      return had;
+    }
+    function failedState(k) { return failedAdds[k] ? { state: 'failed', error: failedAdds[k].error } : { state: 'none' }; }
+
     function state(kind, id) {
       if (!enabled || KINDS.indexOf(kind) < 0) return { state: 'none' };
       if (COLLECTIONS[kind]) {
-        var kids = children[keyOf(kind, id)];
+        var key = keyOf(kind, id);
+        var kids = children[key];
         var members = [];
         if (kids) for (var ck in kids) { if (map[ck]) members.push(map[ck]); }
-        return rollUp(members);
+        return members.length ? rollUp(members) : failedState(key);
       }
       var it = map[keyOf(kind, id)];
-      if (!it) return { state: 'none' };
+      if (!it) return failedState(keyOf(kind, id));
       var out = { state: it.state };
       if (typeof it.progress === 'number') out.progress = it.progress;
       if (it.error) out.error = it.error;
@@ -116,7 +131,13 @@
       }
       return null;
     }
-    function add(kind, id) { return enabled && KINDS.indexOf(kind) >= 0 ? host.post('downloads.add', { kind: kind, id: normalizeId(kind, id) }) : false; }
+    function add(kind, id) {
+      if (!enabled || KINDS.indexOf(kind) < 0) return false;
+      var sent = host.post('downloads.add', { kind: kind, id: normalizeId(kind, id) });
+      // A retry is a new add: the old failure goes, and the menu shows the plain label until native answers.
+      if (sent && clearFailed(kind, id)) notify(kind, id);
+      return sent;
+    }
     function remove(kind, id) { return enabled && KINDS.indexOf(kind) >= 0 ? host.post('downloads.remove', { kind: kind, id: normalizeId(kind, id) }) : false; }
     function show() { return enabled ? host.post('downloads.show') : false; }
     function onChange(fn) {
@@ -128,7 +149,18 @@
     function subscribe() {
       if (!enabled || subscribed) return;
       subscribed = true;
-      offDownload = host.on('download', function (d) { put(d); notify(d.kind, d.id); });
+      offDownload = host.on('download', function (d) {
+        put(d);
+        // Any event for the item, or for the album / season it belongs to, proves the add started: the failure is stale.
+        clearFailed(d.kind, d.id);
+        if (d.parentKind && d.parentId) clearFailed(d.parentKind, d.parentId);
+        notify(d.kind, d.id);
+        if (d.parentKind && d.parentId) notify(d.parentKind, d.parentId);
+      });
+      offAddFailed = host.on('downloadsAddFailed', function (d) {
+        failedAdds[d.kind + ':' + d.id] = { state: 'failed', error: d.error };
+        notify(d.kind, d.id);
+      });
       offSnapshot = host.on('downloadsSnapshot', function (d) { replace(d.items || []); });
       host.post('downloads.subscribe');
     }
@@ -138,6 +170,8 @@
       host.post('downloads.unsubscribe');
       if (offDownload) { offDownload(); offDownload = null; }
       if (offSnapshot) { offSnapshot(); offSnapshot = null; }
+      if (offAddFailed) { offAddFailed(); offAddFailed = null; }
+      failedAdds = Object.create(null);
     }
 
     // ---- the words a menu shows for a state ------------------------------------------------------------------
