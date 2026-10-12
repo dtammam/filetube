@@ -1331,6 +1331,10 @@
         if (r.cssRules && !r.selectorText) { walk(r.cssRules, base); continue; } // @media / @supports / @layer
         var sel = r.selectorText;
         if (!sel || sel.indexOf('.mms-') < 0 || !r.style) continue;
+        // one read of the rule's declaration text skips the (many) rules that carry no url() at all, before any
+        // per-property read (gate r2: the index build is the first preview tap's cost, once per page)
+        var text = r.style.cssText;
+        if (typeof text === 'string' && text.indexOf('url(') < 0) continue;
         var urls = [];
         for (var j = 0; j < r.style.length; j++) {
           var name = r.style[j];

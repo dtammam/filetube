@@ -378,3 +378,49 @@ test('v1.386.0: the Skins list starts every skin\'s photos once per visit, after
     assert.strictEqual(spy.warms, 2, 'a new visit starts them again (a cheap index lookup)');
   } finally { b.restore(); }
 });
+
+// gate r2 (adversary CRITICAL): a sticker chip pick that supersedes a Pocket Select still waiting on its photos must end
+// that Select's hold - the superseded pick's own callback never runs. Before the fix the held look stayed on screen after
+// every MENU (the saved skin was the sticker's, the panel showed the old one).
+const stickerPick = (b, id) => {
+  tap(b, P(b).querySelector('[data-skin-sticker]'));
+  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-skins]'));
+  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-pick="' + id + '"]'));
+};
+test('v1.386.0 (gate r2): a sticker pick over a waiting Pocket Select lands, and MENU never brings the held look back', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b); // previewed at once
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]')); // waits on its photos; holds the painted look
+    stickerPick(b, 'ipod-2004'); // nothing to wait for: lands at once and supersedes the Select
+    assert.strictEqual(stored(b), 'ipod-2004');
+    for (let i = 0; i < 4; i++) pressMenu(b); // out of every Skins level (each ends a preview)
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'the sticker pick shows: ' + P(b).className);
+    release();
+    await settle();
+    assert.strictEqual(stored(b), 'ipod-2004', 'the superseded Select never lands over it');
+    b.engine.paint();
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'and a repaint keeps it');
+  } finally { b.restore(); }
+});
+
+test('v1.386.0 (gate r2 qa): after a waited Select lands, previewing another row and MENU shows the SAVED skin (the hold is gone)', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    openClickColorways(b);
+    const id = pickTarget(b);
+    const release = hold(id);
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    release();
+    await settle();
+    assert.strictEqual(shows(b), id);
+    wheelBy(b, 40); // preview the other row (ipod-black)
+    assert.strictEqual(shows(b), 'ipod-black');
+    pressMenu(b); // leave the preview: the saved skin, never the old held one
+    assert.strictEqual(shows(b), id);
+  } finally { b.restore(); }
+});

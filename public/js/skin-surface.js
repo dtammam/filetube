@@ -1934,6 +1934,14 @@
     var surfaceGone = false;
     var pickHold = null;        // the look a waiting Pocket Select holds on screen (null when none waits)
     var previewWarmed = false;  // the Pocket Skins list's photos were started for this visit
+    // The pick that LANDS (the 'pick' channel's newest: a Pocket Select or a sticker chip) ends any hold, whichever of them
+    // set it - a superseded pick's callback never runs, so the hold must not depend on it (gate r2 adversary CRITICAL: a
+    // sticker pick over a waiting Select left the held look on screen after every MENU). A preview of another row the user
+    // moved to meanwhile is kept; only the held look is dropped.
+    function releasePickHold() {
+      if (pickHold !== null && previewSkin === pickHold) previewSkin = null;
+      pickHold = null;
+    }
     function whenSkinArt(channel, id, go) {
       var mine = ++skinArtSeq[channel];
       var ready = null;
@@ -1944,16 +1952,19 @@
     }
     // gate r1 (adversary W1): the warm runs when the page is idle, never inside the tap that opens the list (its first
     // call per page builds the stylesheet index)
-    function warmSkinArtList() {
-      var run = function () {
-        if (surfaceGone) return;
-        try { if (typeof SKINS.warmSkinArt === 'function') SKINS.warmSkinArt((SKINS.SKINS || []).map(function (x) { return x.id; }), { doc: doc }); } catch (_) { /* a warm is best-effort */ }
-      };
+    function whenIdle(fn) {
+      var run = function () { if (!surfaceGone) fn(); };
       try {
         if (win && typeof win.requestIdleCallback === 'function') win.requestIdleCallback(run, { timeout: 500 });
         else (win || window).setTimeout(run, 50);
       } catch (_) { run(); }
     }
+    function warmSkinArtList() {
+      whenIdle(function () {
+        try { if (typeof SKINS.warmSkinArt === 'function') SKINS.warmSkinArt((SKINS.SKINS || []).map(function (x) { return x.id; }), { doc: doc }); } catch (_) { /* a warm is best-effort */ }
+      });
+    }
+
     function swapSkinClasses(id) {
       if (!panel.classList.contains('mms-full') || paintedSkinId === null || id === paintedSkinId) return;
       var from = SKINS.panelClass(paintedSkinId).split(' ');
@@ -2072,8 +2083,7 @@
           pickHold = paintedSkinId || null;
           if (pickHold) previewSkin = pickHold;
           whenSkinArt('pick', baseGetSkinId(), function (live) {
-            pickHold = null;
-            previewSkin = null;
+            releasePickHold(); // a live preview the user moved to meanwhile stays (gate r2 qa)
             if (live && stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
           });
         },
@@ -2781,6 +2791,7 @@
         closeStickerMenu();
         // v1.386.0: saved and painted once its photos can paint (at once when it has none or they are decoded)
         whenSkinArt('pick', sid, function (live) {
+          releasePickHold(); // a sticker pick that superseded a waiting Pocket Select ends its hold (gate r2 adversary CRITICAL)
           if (typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
           if (live && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // re-render with the new skin
         });

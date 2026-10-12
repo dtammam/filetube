@@ -2140,3 +2140,19 @@ test('v1.386.0 sticker pick: a later pick supersedes a waiting one; a pick waiti
     assert.strictEqual(b.spy.skinChange, 1, 'a dead surface is never repainted');
   } finally { b.restoreAll(); }
 });
+
+test('v1.386.0 (gate r2): the sticker Skin page warms the photos after its tap, never inside it', async () => {
+  const b = bootSticker({});
+  try {
+    const S = b.dom.window.FileTubeMusicSkins;
+    const spy = { warms: 0 };
+    S.warmSkinArt = () => { spy.warms += 1; };
+    const idle = () => new Promise((r) => setTimeout(r, 120)); // jsdom: the engine's 50 ms fallback for requestIdleCallback
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]'));
+    assert.strictEqual(spy.warms, 0, 'nothing heavy inside the tap that opened the Skin page');
+    await idle();
+    assert.strictEqual(spy.warms, 1, 'the Skin page started the photos');
+  } finally { b.restoreAll(); }
+});

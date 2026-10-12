@@ -116,3 +116,45 @@ test('whenSkinArtReady: a failed photo never blocks the pick (and is asked again
     assert.ok(Date.now() - t0 >= 25);
   } finally { img.restore(); }
 });
+
+// gate r2 (adversary WARNING): the index is built ONCE per document and stylesheet set - without the cache every lookup
+// re-walks every rule (60-270 ms each), and the idle warm of every skin would block the page for seconds.
+function countingDoc(rules, href) {
+  const doc = { baseURI: 'http://h/music', reads: 0, styleSheets: [] };
+  const sheet = { href: href || SHEET };
+  Object.defineProperty(sheet, 'cssRules', { get() { doc.reads += 1; return rules; } });
+  doc.styleSheets.push(sheet);
+  return doc;
+}
+test('the stylesheet index: one walk per document across every lookup and warm', () => {
+  const S = fresh();
+  const doc = countingDoc(COIL_RULES);
+  S.skinArtUrls('ipod-custom5-transparent-black', { doc, landscape: false });
+  assert.strictEqual(doc.reads, 1, 'the first lookup walks once');
+  for (let i = 0; i < 5; i++) S.skinArtUrls('ipod-custom5-transparent-coil', { doc, landscape: false });
+  S.skinArtUrls('ipod-custom5-transparent', { doc, landscape: true });
+  assert.strictEqual(doc.reads, 1, 'lookups reuse it');
+  assert.ok(S.skinArtUrls('ipod-custom5-transparent-coil', { doc, landscape: false }).includes('http://h/assets/skins/transparent-ring.webp?v=dddd'));
+});
+test('the stylesheet index is rebuilt when the set of sheets changes, even at the same count (a new stamp = a new href)', () => {
+  const S = fresh();
+  const doc = countingDoc(COIL_RULES);
+  S.skinArtUrls('ipod-custom5-transparent-coil', { doc, landscape: false });
+  assert.strictEqual(doc.reads, 1);
+  const moved = [rule('.mms-ipod-custom5-transparent-coil', { '--pk-c-board': 'url(../assets/skins/new-board.webp?v=ffff)' })];
+  const sheet2 = { href: 'http://h/css/style.css?v=9999888877776666' };
+  Object.defineProperty(sheet2, 'cssRules', { get() { doc.reads += 1; return moved; } });
+  doc.styleSheets[0] = sheet2; // same count, another stylesheet version
+  assert.deepStrictEqual(S.skinArtUrls('ipod-custom5-transparent-coil', { doc, landscape: false }), ['http://h/assets/skins/new-board.webp?v=ffff']);
+  assert.strictEqual(doc.reads, 2, 'rebuilt once for the new sheet');
+});
+
+test('the index reads a rule\'s properties only when its declaration text carries a url() (the per-page build stays cheap)', () => {
+  const S = fresh();
+  let propReads = 0;
+  const mk = (sel, props) => { const r = rule(sel, props); const g = r.style.getPropertyValue; r.style.getPropertyValue = (n) => { propReads += 1; return g(n); };
+    r.style.cssText = Object.keys(props).map((k) => k + ': ' + props[k]).join('; '); return r; };
+  const doc = docWith([mk('.mms-ipod-custom5-transparent-coil', { '--a': 'red', '--b': 'blue' }), mk('.mms-ipod-custom5-transparent-coil .x', { '--c': 'url(/assets/skins/x.webp)' })]);
+  assert.deepStrictEqual(S.skinArtUrls('ipod-custom5-transparent-coil', { doc, landscape: false }), ['http://h/assets/skins/x.webp']);
+  assert.strictEqual(propReads, 1, 'only the url() rule\'s one property was read');
+});
