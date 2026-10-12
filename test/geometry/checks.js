@@ -522,6 +522,44 @@ function evalPopover(d, tol = TOL) {
   return { measured: { rows: d.rows.length }, failures };
 }
 
+// HPOP (v1.387.3, Dean: "I'd like it to be consistent"): a desktop header panel (Account,
+// Notifications, Queue, Home's Sort) opens under its button with its RIGHT edge on the button's
+// right edge (|panel right - button right| <= 1px), and its top at the end equals its top at
+// open: the rows arriving never move it. `window.__hpop.top0` is the placed top the scene read
+// the moment the panel appeared, before its rows (scenes.js openHeaderPopover). Runs in the page;
+// takes {anchor}.
+function collectHeaderPopover(arg) {
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  const sheets = document.querySelectorAll('.ui-sheet.is-open');
+  const s = sheets[sheets.length - 1];
+  const anchorEl = arg && arg.anchor ? document.querySelector(arg.anchor) : null;
+  if (!s) return { sheet: null };
+  const first = window.__hpop ? parseFloat(window.__hpop.top0) : NaN;
+  return {
+    popover: s.classList.contains('ui-sheet--popover'),
+    sheet: box(s),
+    anchor: anchorEl ? box(anchorEl) : null,
+    top0: first,
+    topNow: parseFloat(s.style.getPropertyValue('--ui-pop-top')),
+  };
+}
+
+// -> { measured: {panels}, failures: [string] }
+function evalHeaderPopover(d) {
+  const failures = [];
+  const r2 = (v) => Math.round(v * 100) / 100;
+  if (!d || !d.sheet) return { measured: { panels: 0 }, failures: ['no open panel'] };
+  if (!d.popover) failures.push('the panel is not a popover (a desktop header panel is)');
+  if (!d.anchor) failures.push('the button was not found');
+  else {
+    const dr = (d.sheet.x + d.sheet.w) - (d.anchor.x + d.anchor.w);
+    if (Math.abs(dr) > 1) failures.push(`the panel's right edge is ${r2(dr)}px from its button's right edge (panel ${r2(d.sheet.x + d.sheet.w)}, button ${r2(d.anchor.x + d.anchor.w)})`);
+  }
+  if (!isFinite(d.top0)) failures.push('VACUOUS: the scene never read the panel\'s top at open');
+  else if (Math.abs(d.topNow - d.top0) > 0.5) failures.push(`the panel jumped: top ${r2(d.top0)} at open, ${r2(d.topNow)} after its rows loaded`);
+  return { measured: { panels: 1 }, failures };
+}
+
 // BLD (v1.359, Dean: the phone player spans the screen side to side like YouTube): the watch
 // page's inline player against the page. On the phone (<= 768px) the wrapper starts at the
 // stage's left safe-area inset (0 in portrait) and is exactly as wide as the viewport less the
@@ -665,5 +703,5 @@ function evalVPM(d) {
 }
 
 module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
-  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover, collectPlayerBleed, evalPlayerBleed,
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover, collectHeaderPopover, evalHeaderPopover, collectPlayerBleed, evalPlayerBleed,
   collectVPM, evalVPM };

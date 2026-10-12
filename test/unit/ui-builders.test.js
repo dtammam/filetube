@@ -38,7 +38,7 @@ function clock() { mock.timers.enable({ apis: ['setTimeout'] }); return mock.tim
 afterEach(() => { mock.timers.reset(); });
 
 // Every element under root carries no inline style except the listed custom properties.
-const ALLOWED_PROPS = new Set(['--p', '--ui-anchor-x', '--ui-anchor-y', '--ui-pop-top', '--ui-pop-max-h', '--ui-drag']);
+const ALLOWED_PROPS = new Set(['--p', '--ui-anchor-x', '--ui-anchor-y', '--ui-anchor-r', '--ui-pop-top', '--ui-pop-max-h', '--ui-drag']);
 function assertNoInlineStyle(root) {
   const all = [root, ...root.querySelectorAll('*')];
   for (const n of all) {
@@ -540,6 +540,50 @@ test('placePopover: below if it fits, else flipped above, else shifted into the 
   assert.deepStrictEqual(ui.placePopover(a, 300, 0, 0), { top: 528, maxH: null, side: 'below' });
 });
 
+test('holdPopoverSide: below stays on the anchor bottom and caps; above stays on the anchor top and caps', () => {
+  const a = { top: 8, bottom: 45 };
+  assert.deepStrictEqual(ui.holdPopoverSide('below', a, 100, 20, 500), { top: 45, maxH: null });
+  assert.deepStrictEqual(ui.holdPopoverSide('below', a, 455, 20, 500), { top: 45, maxH: null }, 'exactly the room (500 - 45)');
+  assert.deepStrictEqual(ui.holdPopoverSide('below', a, 900, 20, 500), { top: 45, maxH: 455 }, 'too tall: it never moves up, the body scrolls');
+  const b = { top: 496, bottom: 528 };
+  assert.deepStrictEqual(ui.holdPopoverSide('above', b, 300, 20, 792), { top: 196, maxH: null });
+  assert.deepStrictEqual(ui.holdPopoverSide('above', b, 900, 20, 792), { top: 20, maxH: 476 });
+});
+
+test('ui.sheet popover: a right-half anchor gets the -end class (right edges line up); a left-half one does not; the held side survives growth', () => {
+  clock();
+  const { doc, win } = page();
+  Object.defineProperty(doc.documentElement, 'clientWidth', { configurable: true, get() { return 1280; } });
+  let natural = 40;
+  Object.defineProperty(win.HTMLElement.prototype, 'offsetHeight', { configurable: true,
+    get() { return this.classList && this.classList.contains('ui-sheet') ? natural : 0; } });
+  win.visualViewport = { offsetTop: 0, height: 500 };
+  const observers = [];
+  win.ResizeObserver = class { constructor(cb) { this.cb = cb; observers.push(this); } observe() {} disconnect() {} };
+  const anchor = doc.getElementById('opener');
+  anchor.getBoundingClientRect = () => ({ left: 1228, top: 8, right: 1264, bottom: 45.5, width: 36, height: 37.5 });
+  const pop = ui.sheet({ variant: 'popover', title: 'Bell', anchor, doc, win }).open();
+  assert.ok(pop.el.classList.contains('ui-sheet--popover-end'));
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-anchor-r'), '1264px');
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'below');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '45.5px');
+  natural = 600; // the rows arrive: taller than the room below (500 - 45.5), where it used to jump up over the bell
+  observers[0].cb([]);
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'below');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '45.5px', 'top never moves while it loads');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '454.5px', 'it scrolls inside instead');
+  win.visualViewport = { offsetTop: 0, height: 30 }; // the band shrinks past the anchor: no room to cap into
+  observers[0].cb([]);
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'scroll', 'a non-positive cap falls back to a fresh placement');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '30px');
+  assertNoInlineStyle(pop.el);
+  pop.close();
+  anchor.getBoundingClientRect = () => ({ left: 100, top: 8, right: 136, bottom: 45.5, width: 36, height: 37.5 });
+  const left = ui.sheet({ variant: 'popover', title: 'L', anchor, doc, win }).open();
+  assert.strictEqual(left.el.classList.contains('ui-sheet--popover-end'), false, 'left half: the left-anchored rule stands');
+  delete win.HTMLElement.prototype.offsetHeight;
+});
+
 test('ui.sheet popover: placed at open from the live band (visualViewport, safe areas, gap); re-placed when its size changes; the observer ends with the sheet', () => {
   clock();
   const { doc, win } = page();
@@ -566,16 +610,17 @@ test('ui.sheet popover: placed at open from the live band (visualViewport, safe 
   // the keyboard (or a zoom) shrinks the visual viewport, and the rows grow past both sides
   assert.strictEqual(observers.length, 1);
   assert.ok(observers[0].on, 'watching while open');
+  // v1.387.3: the side it opened on (above) is held for its whole open life; growth caps its height, it never swaps sides
   win.visualViewport = { offsetTop: 100, height: 600 }; // band [120, 692]
   natural = 900;
   observers[0].cb([]);
-  assert.strictEqual(pop.el.getAttribute('data-placement'), 'scroll');
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'above');
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '120px');
-  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '572px');
-  natural = 100; // it shrinks again: the cap is lifted before measuring, so it goes back below
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '376px', 'capped to the room above the anchor (496 - 120)');
+  natural = 100; // it shrinks again: the cap is lifted before measuring, and it hangs from the anchor's top again
   observers[0].cb([]);
-  assert.strictEqual(pop.el.getAttribute('data-placement'), 'below');
-  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '528px');
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'above');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '396px');
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '', 'the cap is gone');
   assertNoInlineStyle(pop.el);
   pop.close();
@@ -600,6 +645,7 @@ test('ui.sheet variants: bottom has the grab first; popover has a clear scrim an
   assert.deepStrictEqual(classes(pop.scrim), ['ui-scrim', 'ui-scrim--clear']);
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-anchor-x'), '120px');
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-anchor-y'), '72px');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-anchor-r'), '160px');
   assert.strictEqual(pop.el.querySelector('.ui-sheet__grab'), null);
   assertNoInlineStyle(pop.el);
 
@@ -1120,7 +1166,7 @@ test('source lock: no inline visual style (only the listed custom properties) an
   const styleUses = code.match(/\.style\b[^;\n]*/g) || [];
   assert.ok(styleUses.length > 0, 'anti-vacuity: the file does write custom properties');
   for (const u of styleUses) {
-    assert.match(u, /^\.style\.(setProperty|removeProperty)\('--(p|ui-anchor-x|ui-anchor-y|ui-pop-top|ui-pop-max-h|ui-drag)'/, 'forbidden style use: ' + u);
+    assert.match(u, /^\.style\.(setProperty|removeProperty)\('--(p|ui-anchor-x|ui-anchor-y|ui-anchor-r|ui-pop-top|ui-pop-max-h|ui-drag)'/, 'forbidden style use: ' + u);
   }
   assert.doesNotMatch(code, /cssText/);
   assert.doesNotMatch(code, /setAttribute\(\s*['"]style['"]/);

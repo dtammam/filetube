@@ -15,7 +15,7 @@
 //   ready: a selector that exists once the surface rendered,
 //   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts, SHD,
 //           the sheet header - sweep S9, and POP, an open menu's reach - gate r1),
-//   anchor: POP only - a selector for the control that opened the menu,
+//   anchor: POP / HPOP only - a selector for the control that opened the menu,
 //   scope: a selector the G1-G3 collectors measure inside (default: the whole page),
 //   min: anti-vacuity floors - a check that measured fewer lists/rows/items/groups than this
 //        FAILS as vacuous (a renamed class must not turn a check into a silent pass),
@@ -25,6 +25,47 @@
 
 const ERAS = ['2021', '2014', '2009', '2005'];
 const MODES = ['light', 'dark'];
+
+// Drives a header panel open on a 1280x500 desktop for HPOP: reads the placed top the moment the
+// panel appears (a MutationObserver callback runs before the rows' fetch answers) into
+// window.__hpop, delays the panels' own fetches, clicks, and waits for the rows. `queue`: put one
+// item in the queue first so the header's queue button exists.
+function openHeaderPopover(trigger, rows, queue) {
+  return async (page, vp, { capture, FX }) => {
+    await page.setViewportSize({ width: 1280, height: 500 });
+    // The fixture is read-only (no POST): a queue with one entry is answered in the page, and the rows are delayed.
+    await page.route(/\/api\/(notifications|queue)(\?|$)/, async (route) => {
+      await new Promise((r) => setTimeout(r, 300));
+      if (queue && /\/api\/queue(\?|$)/.test(route.request().url()) && route.request().method() === 'GET') {
+        const item = { title: 'Queued video', name: 'Queued video', channelName: 'Library', hasThumbnail: false };
+        return route.fulfill({ json: { entries: [{ uid: 'q1', mediaId: FX.video, kind: 'media', item }], pointerUid: 'q1', updatedAt: 1 } });
+      }
+      if (rows && /\/api\/notifications(\?|$)/.test(route.request().url()) && route.request().method() === 'GET') {
+        // enough rows to be taller than the room below the bell at 500px, whatever the seed holds
+        const resp = await route.fetch();
+        const body = await resp.json();
+        const items = Array.isArray(body.items) ? body.items : [];
+        const many = [];
+        for (let i = 0; items.length && many.length < 14; i++) many.push({ ...items[i % items.length], id: String(items[i % items.length].id) + '-x' + i });
+        return route.fulfill({ response: resp, json: { ...body, items: many } });
+      }
+      await route.continue();
+    });
+    if (queue) await page.evaluate(() => window.eval('refreshQueueChrome()'));
+    await page.waitForSelector(trigger, { state: 'visible', timeout: 12000 });
+    await page.evaluate(() => {
+      window.__hpop = null;
+      new MutationObserver(() => {
+        const s = document.querySelector('.ui-sheet--popover');
+        if (s && !window.__hpop) window.__hpop = { top0: s.style.getPropertyValue('--ui-pop-top') };
+      }).observe(document.body, { childList: true });
+    });
+    await capture.tap(page, trigger, vp);
+    await page.waitForSelector('.ui-sheet.is-open', { timeout: 8000 });
+    if (rows) await page.waitForSelector(rows, { timeout: 10000 });
+    await page.waitForTimeout(900); // the delayed fetches land, the open transition settles
+  };
+}
 
 const SURFACES = [
   {
@@ -207,6 +248,25 @@ const SURFACES = [
     checks: ['POP'],
     min: { POP: { rows: 6 } },
   },
+  // v1.387.3 (Dean: "I'd like it to be consistent"): HPOP - each desktop header panel opens under
+  // its button, right edge on the button's right edge, and does not move when its rows load.
+  // 1280x500 is short on purpose: a panel taller than the room below it is where the notifications
+  // panel used to jump up over the bell once its rows arrived. The rows are delayed 300ms so the
+  // first placement is read against the skeleton.
+  ...[
+    ['hpop-account', '.account-menu-trigger', null],
+    ['hpop-notifications', '#notif-bell-btn', '#notif-panel.is-open #notif-panel-list .ui-row[data-notif-id]'],
+    ['hpop-queue', '#queue-btn', null],
+    ['hpop-sort', '#sort-select-btn', null],
+  ].map(([id, trigger, rows]) => ({
+    id, owner: 'v1.387.3', vps: ['desktop'],
+    path: () => '/',
+    anchor: trigger,
+    open: openHeaderPopover(trigger, rows, id === 'hpop-queue'),
+    ready: '.ui-sheet.is-open',
+    checks: ['HPOP'],
+    min: { HPOP: { panels: 1 } },
+  })),
   // v1.359 (Dean: the phone player spans the screen side to side like YouTube): BLD measures the
   // watch page's inline player against the viewport - flush with both edges, unframed and
   // square on the phone, inside the column and framed on desktop. Measured at v1.359 (every
