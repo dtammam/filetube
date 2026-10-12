@@ -319,3 +319,74 @@ test('chapter rows: the web reads and sends the PARENT id for a <mediaId>::c<n> 
   assert.strictEqual(offline.errorCopy('notPlayable'), 'This file cannot play on this phone');
   win.close();
 });
+
+test('reachability (gate r1 qa W1, LESSONS 11): cards and rows rendered AFTER the snapshot get their badges with no further host event and no explicit decorate call - a whole grid set by innerHTML and a single card appended; a browser without a host sees no observer', async () => {
+  const { win, fake } = realm(DL, '');
+  const doc = win.document;
+  fake.emit(snapshot([item('video', 'v1', 'done', { localSrc: 'l' }), item('track', 't1', 'done', { localSrc: 't' }), item('podcastEpisode', 'p1', 'downloading', { progress: 0.5 })]));
+  assert.strictEqual(doc.querySelectorAll('.offline-badge').length, 0, 'nothing rendered yet');
+  doc.body.innerHTML = SURFACES_HTML; // Home / Music / Podcasts render their rows like this, after the snapshot
+  await new Promise((r) => setTimeout(r, 60)); // one frame
+  const badgeOf = (sel) => { const el = doc.querySelector(sel); const b = el && el.querySelector('.offline-badge'); return b ? b.textContent : null; };
+  assert.strictEqual(badgeOf('.video-card[data-id="v1"]'), 'Offline');
+  assert.strictEqual(badgeOf('.music-song-row[data-id="t1"]'), 'Offline');
+  assert.strictEqual(badgeOf('.podcast-episodes [data-episode-id="p1"]'), 'Saving 50%');
+  assert.strictEqual(badgeOf('.video-card[data-id="b1"]'), null, 'a book card still gets nothing');
+  // A single card appended as the added node itself (the observer hands decorate the card, not a container).
+  const card = doc.createElement('div'); card.className = 'video-card'; card.setAttribute('data-id', 'v1');
+  card.innerHTML = '<a class="card-media" href="/watch.html?v=v1"></a><div class="video-info"><div class="card-text"><a class="video-title">Again</a></div></div>';
+  doc.querySelector('.video-grid, body').appendChild(card);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(card.querySelector('.offline-badge').textContent, 'Offline');
+  assert.strictEqual(card.querySelectorAll('.offline-badge').length, 1, 'the chip the pass inserted did not re-trigger a second chip');
+  const total = doc.querySelectorAll('.offline-badge').length;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(doc.querySelectorAll('.offline-badge').length, total, 'the pass settles: no self-triggering');
+  win.close();
+  // No host: no observer, so a render after load leaves the DOM byte-identical.
+  const bare = realm(null, '');
+  bare.win.document.body.innerHTML = SURFACES_HTML;
+  const before = bare.win.document.body.innerHTML;
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(bare.win.document.body.innerHTML, before);
+  assert.strictEqual(bare.win.document.querySelectorAll('.offline-badge').length, 0);
+  bare.win.close();
+});
+
+test('one offline identity per library audio file (gate r1 qa W3): the card menu\'s kind (main.js cardOfflineKind) equals the badge\'s kind (offline.js reads the card\'s href, which common.js audioOpenHref makes /music?play=) - track for audio, video otherwise', () => {
+  const common = require('../../public/js/common.js');
+  const main = require('../../public/js/main.js');
+  const audio = { id: 'aud1', kind: 'media', type: 'audio', title: 'Talk', ext: '.m4a' };
+  const chaptered = { id: 'aud2', type: 'audio', title: 'Book', ext: '.m4a', chapterCount: 5 };
+  const video = { id: 'vid1', type: 'video', title: 'Clip', ext: '.mp4' };
+  assert.strictEqual(main.cardOfflineKind(audio), 'track');
+  assert.strictEqual(main.cardOfflineKind(chaptered), 'track', 'a chaptered file too (the card id is the parent)');
+  assert.strictEqual(main.cardOfflineKind(video), 'video');
+  assert.strictEqual(main.cardOfflineKind({ id: 'x', kind: 'podcast' }), 'podcastEpisode');
+  assert.strictEqual(main.cardOfflineKind({ id: 'x', kind: 'track' }), 'track');
+  assert.strictEqual(main.cardOfflineKind({ id: 'x', kind: 'tv-episode' }), 'tvEpisode');
+  assert.strictEqual(main.cardOfflineKind({ id: 'x', kind: 'book' }), null);
+  assert.ok(common.audioOpenHref(audio).startsWith('/music?play='), 'the href rule the badge reads');
+  assert.ok(common.audioOpenHref(chaptered).startsWith('/music?play=aud2'), 'a chaptered file opens at its first chapter, still under /music?play=');
+  const html = [audio, chaptered].map((it) => '<div class="video-card" data-id="' + it.id + '"><a class="card-media" href="' + common.audioOpenHref(it) + '"></a><div class="card-text"><a class="video-title">T</a></div></div>').join('');
+  const { win, fake, offline } = realm(DL, html);
+  fake.emit(snapshot([item('track', 'aud1', 'done', { localSrc: 'a' }), item('track', 'aud2', 'done', { localSrc: 'b' }), item('video', 'aud1', 'done', { localSrc: 'wrong' })]));
+  const badge = (id) => { const b = win.document.querySelector('.video-card[data-id="' + id + '"] .offline-badge'); return b ? b.textContent : null; };
+  assert.strictEqual(badge('aud1'), 'Offline', 'the badge reads the TRACK state, the same key the menu writes');
+  assert.strictEqual(badge('aud2'), 'Offline');
+  assert.deepEqual(offline.menuEntry(main.cardOfflineKind(audio), audio.id), { id: 'offline-remove', label: 'Remove offline copy' }, 'the menu agrees with the badge');
+  win.close();
+});
+
+test('localSrc is read ONLY from a done item (gate r1 adversary S4): a host sending localSrc with downloading / queued / failed is never played from (state() hides it, localSrcFor is null); done exposes it', () => {
+  const { win, fake, offline } = realm(DL, '');
+  for (const st of ['downloading', 'queued', 'failed', 'paused']) {
+    fake.emit(item('video', 'v9', st, { localSrc: 'filetube-local://v9', progress: 0.5 }));
+    assert.strictEqual(offline.state('video', 'v9').localSrc, undefined, st + ': state() hides a partial copy');
+    assert.strictEqual(offline.localSrcFor(['video', 'track'], 'v9'), null, st + ': never the local copy');
+  }
+  fake.emit(item('video', 'v9', 'done', { localSrc: 'filetube-local://v9' }));
+  assert.strictEqual(offline.state('video', 'v9').localSrc, 'filetube-local://v9');
+  assert.strictEqual(offline.localSrcFor(['video'], 'v9'), 'filetube-local://v9');
+  win.close();
+});

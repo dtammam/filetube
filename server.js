@@ -4700,6 +4700,7 @@ offlineRoutes.registerRoutes(app, {
   findSubtitleSidecar: (filePath) => subtitles.findSubtitleSidecar(filePath),
   transcodedPath, queueTranscode,
   tvRenditionPath: tvRouteHandles.tvRenditionPath, queueTvTranscode: tvRouteHandles.queueTvTranscode,
+  tvTranscodeHasFailed: tvRouteHandles.tvTranscodeHasFailed, // a failed tv job is terminal to the offline route (409), never a 503 loop
   ffmpegIsAvailable: () => ffmpegAvailable, // LIVE reader (the boot probe flips it later)
   markServed,
   // The /episode route's own confinement: the podcasts root is read the way that route reads it.
@@ -4713,6 +4714,8 @@ offlineRoutes.registerRoutes(app, {
   pendingProgress,
   pendingMusicProgress,
   pendingProgressKey,
+  flushPendingProgress, // gate r1 (adversary CRITICAL): flushed in the handler's tick, ahead of its mutator
+  flushPendingMusicProgress,
   watchedPct: videoQuery.WATCHED_PCT,
   podcastPlayedRatio: 0.95, // lib/podcasts/index.js applyPodcastProgress's latch
 });

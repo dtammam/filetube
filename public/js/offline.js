@@ -183,7 +183,7 @@
       } else if (chip.textContent !== text) chip.textContent = text;
     }
     // Which (kind, id) an element shows, from attributes the surfaces already render.
-    var CARD_KINDS = [['/watch.html?tv=', 'tvEpisode'], ['/podcasts?play=', 'podcastEpisode'], ['/music?play=', 'track'], ['/watch.html?v=', 'video'], ['/watch?v=', 'video']];
+    var CARD_KINDS = [['/watch.html?tv=', 'tvEpisode'], ['/podcasts?play=', 'podcastEpisode'], ['/music?play=', 'track'], ['/watch.html?v=', 'video']];
     function cardTarget(card) {
       var id = card.getAttribute('data-id');
       var media = card.querySelector('.card-media');
@@ -191,19 +191,25 @@
       for (var i = 0; i < CARD_KINDS.length; i++) { if (href.indexOf(CARD_KINDS[i][0]) === 0) return { kind: CARD_KINDS[i][1], id: id }; }
       return null;
     }
+    // The matches under `scope`, and `scope` itself when it is one (an observer hands decorate the added card or row).
+    function collect(scope, sel) {
+      var list = scope.querySelectorAll ? Array.prototype.slice.call(scope.querySelectorAll(sel)) : [];
+      if (scope.matches && scope.matches(sel)) list.unshift(scope);
+      return list;
+    }
     function decorate(rootEl) {
       if (!enabled) return 0;
       var doc = win.document;
       var scope = rootEl || doc;
       var n = 0;
-      var cards = scope.querySelectorAll ? scope.querySelectorAll('.video-card[data-id]') : [];
+      var cards = collect(scope, '.video-card[data-id]');
       for (var i = 0; i < cards.length; i++) {
         var t = cardTarget(cards[i]);
         if (!t || !t.id) continue;
         setBadge(doc, cards[i], cards[i].querySelector('.card-text'), badgeText(state(t.kind, t.id)));
         n++;
       }
-      var rows = scope.querySelectorAll ? scope.querySelectorAll('.music-song-row[data-id], .tv-episode[data-episode-id], .ui-row[data-episode-id]') : [];
+      var rows = collect(scope, '.music-song-row[data-id], .tv-episode[data-episode-id], .ui-row[data-episode-id]');
       for (var j = 0; j < rows.length; j++) {
         var row = rows[j];
         var kind, id;
@@ -217,6 +223,39 @@
       return n;
     }
 
+    // Reachability on every surface (gate r1 qa W1): Home, Music and Podcasts render their cards and rows AFTER the
+    // snapshot arrived (only tv.js calls decorate itself), so the module watches the document for added elements and
+    // decorates them, one pass per frame. Its own chips are skipped, so a pass never re-triggers itself; a text change
+    // inside a chip adds a text node, which is not an element. No host = no observer (the DOM stays byte-identical).
+    var addedQueue = [];
+    var addedScheduled = false;
+    function drainAdded() {
+      addedScheduled = false;
+      var batch = addedQueue; addedQueue = [];
+      for (var i = 0; i < batch.length; i++) { try { decorate(batch[i]); } catch (_) { /* a decorate bug never breaks the page */ } }
+    }
+    function watchAdded() {
+      var MO = win.MutationObserver;
+      var doc = win.document;
+      if (typeof MO !== 'function' || !doc || !doc.documentElement) return false;
+      var mo = new MO(function (records) {
+        for (var i = 0; i < records.length; i++) {
+          var added = records[i].addedNodes;
+          for (var j = 0; j < added.length; j++) {
+            var n = added[j];
+            if (n.nodeType !== 1 || (n.classList && n.classList.contains('offline-badge'))) continue;
+            addedQueue.push(n);
+          }
+        }
+        if (addedQueue.length && !addedScheduled) {
+          addedScheduled = true;
+          if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(drainAdded); else win.setTimeout(drainAdded, 0);
+        }
+      });
+      mo.observe(doc.documentElement, { childList: true, subtree: true });
+      return true;
+    }
+
     if (enabled) {
       subscribe();
       try {
@@ -224,6 +263,7 @@
         win.addEventListener('pageshow', function (e) { if (e && e.persisted) subscribe(); });
       } catch (_) { /* a bare harness */ }
       onChange(function () { try { decorate(null); } catch (_) { /* a decorate bug never breaks the page */ } });
+      try { watchAdded(); } catch (_) { /* no observer: tv.js's explicit call and the change pass remain */ }
     }
 
     return {

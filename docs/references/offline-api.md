@@ -42,7 +42,7 @@ Answers the app keys on, for every route below:
 | `404` | the route's own neutral body | the item does not exist OR this account cannot see it (indistinguishable by design) | the copy is deleted, then a `none` delta to the web |
 | `409` | `{ "error": "not on server yet" }` | a podcast episode the server has not downloaded | `failed` + `notOnServer`; re-tried at each launch's status check and when the item is next added |
 | `409` | `{ "error": "not playable on this device", "reason": "..." }` | the file cannot be served in a form iOS plays (see section 3) | terminal: `failed` + `notPlayable`, never retried (the app reports the same error when its own `AVURLAsset.isPlayable` check fails after a download) |
-| `429` | `{ "error": "too many attempts", "retryAfterSec": n }` | 30 UNKNOWN tokens from one address in 10 minutes (a valid token is never blocked) | stays `queued`, retried after `retryAfterSec` |
+| `429` | `{ "error": "too many attempts", "retryAfterSec": n }` | 30 UNKNOWN tokens from one address in 10 minutes (a valid token is never blocked; a token revoked, removed or expired in the last 24 hours answers 401 and is not counted, so a removed phone's queued requests cannot block a second phone behind the same address) | stays `queued`, retried after `retryAfterSec` |
 | `503` | `{ "error": "transcoding" }` + `Retry-After: 60` | a needed transcode is not cached yet; it has been queued | stays `queued` (no error), retried after the header's seconds |
 
 Revocation is live: a revoke, a password change, a disable or a delete also ENDS any download the device has open at that
@@ -117,6 +117,10 @@ The rule (lib/offline/playable.js, one pure function):
 | `track` (native), library audio | container `.m4a` / `.mp3` / `.aac` / `.flac` / `.wav` / `.caf` / `.ogg` / `.oga` / `.opus` (or an mp4-family container), audio codec as above or `vorbis` | `409 not playable` (`reason: container` or `audioCodec`); audio is never transcoded (ALAC and FLAC stay lossless) |
 | `podcastEpisode` | extension `.mp3` / `.m4a` / `.aac` / `.mp4` / `.ogg` / `.oga` / `.opus` (no stored codec) | `409 not playable` |
 
+A failed transcode is terminal: `409 { "reason": "transcodeFailed" }` on every later request, never a `503` loop. For a
+`video` the failure is stored with the item; for a `tvEpisode` the server remembers it in memory, so a server restart tries
+that episode once more (the app sees one more `503`, then the `409` again if it fails again).
+
 Device results behind the table (2026-10-11/12): mp4 h264 + aac / eac3, mp4 hevc `hvc1`, mov h264 + pcm, m4v h264 + ac3,
 m4a alac, m4a aac, mp3, flac, wav, ADTS aac, caf, mp4 h264 + opus, ogg vorbis and .opus all PLAY; mp4 hevc `hev1` (a
 black, silent-picture video), mkv and webm are refused and take the transcode side. One test artifact worth knowing: on iOS
@@ -157,9 +161,10 @@ The rule, per event, in order:
 
 1. Clock correction: `skew = serverNow - sentAt`, `atServer = min(at + skew, serverNow)`. A phone minutes or years BEHIND
    compares correctly; residual error = network latency plus any clock change on the phone between `at` and `sentAt`.
-2. The item is resolved through this account's visibility: hidden or missing = `{ "applied": false, "reason": "gone" }`.
-3. The numbers are checked (finite, `positionSec >= 0`, `durationSec > 0`, position at most one second past the duration):
-   `{ "applied": false, "reason": "invalid" }` otherwise.
+2. The numbers are checked (finite, `positionSec >= 0`, `durationSec > 0`, position at most one second past the duration,
+   `at` between 0 and `sentAt` plus 5 minutes): `{ "applied": false, "reason": "invalid" }` otherwise. An invalid event
+   never fails the batch (the answer is still 200 with every result in place).
+3. The item is resolved through this account's visibility: hidden or missing = `{ "applied": false, "reason": "gone" }`.
 4. NEWER WINS: the event lands only when `atServer` is strictly later than the stored position's `updatedAt` (a missing or
    unparsable stored stamp is the oldest possible); else `{ "applied": false, "reason": "older", "stored": { positionSec,
    durationSec, updatedAt } }`. Not forward-only: a rewind on the phone that is newer than the server's position is real

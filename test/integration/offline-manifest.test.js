@@ -24,6 +24,7 @@ const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-offline-ffmpeg-')
 fs.writeFileSync(path.join(binDir, 'ffmpeg'), `#!/bin/bash
 if [[ "$1" == "-version" ]]; then echo "ffmpeg version 0.0-filetube-test-stub"; exit 0; fi
 last="\${@: -1}"
+for a in "$@"; do if [[ "$a" == *Broken* ]]; then echo "broken input" >&2; exit 1; fi; done
 echo "frame=5 time=00:00:00.50 bitrate=ok" >&2
 head -c 4096 /dev/zero > "$last"
 exit 0
@@ -141,6 +142,7 @@ before(async () => {
   const kids = path.join(tvRoot, 'Kids Show'); const adult = path.join(tvRoot, 'Adult Show');
   const e1 = f('../tv/Kids Show/Season 1/Kids Show S01E01 - Hello.mp4', BYTES);
   const e2 = f('../tv/Kids Show/Season 1/Kids Show S01E02 - Codec.mkv', BYTES);
+  const e3 = f('../tv/Kids Show/Season 1/Kids Show S01E03 - Broken.mkv', BYTES); // the stub ffmpeg fails on "Broken"
   const ex = f('../tv/Kids Show/Extras/Making of.mp4', BYTES);
   const blk = f('../tv/Adult Show/Season 1/Adult Show S01E01 - Pilot.mp4', BYTES);
   await updateDatabase(() => tvDb.mutate((db) => {
@@ -149,6 +151,7 @@ before(async () => {
     ns.episodes = {
       e1: { id: 'e1', filePath: e1, rootFolder: tvRoot, showId: SHOW_OK, showPath: kids, showName: 'Kids Show', seasonNum: 1, episodeNum: 1, title: 'Hello', ext: '.mp4', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 1 },
       e2: { id: 'e2', filePath: e2, rootFolder: tvRoot, showId: SHOW_OK, showPath: kids, showName: 'Kids Show', seasonNum: 1, episodeNum: 2, title: 'Codec', ext: '.mkv', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 2 },
+      e3: { id: 'e3', filePath: e3, rootFolder: tvRoot, showId: SHOW_OK, showPath: kids, showName: 'Kids Show', seasonNum: 1, episodeNum: 3, title: 'Broken', ext: '.mkv', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 5 },
       ex: { id: 'ex', filePath: ex, rootFolder: tvRoot, showId: SHOW_OK, showPath: kids, showName: 'Kids Show', seasonNum: null, episodeNum: null, title: 'Making of', ext: '.mp4', codec: 'h264', audioCodec: 'aac', durationSec: 50, addedAt: 3 },
       blk: { id: 'blk', filePath: blk, rootFolder: tvRoot, showId: SHOW_BLK, showPath: adult, showName: 'Adult Show', seasonNum: 1, episodeNum: 1, title: 'Pilot', ext: '.mp4', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 4 },
     };
@@ -443,10 +446,23 @@ test('tvEpisode and tvSeason: season and episode numbers, the tv thumb, tv progr
   assert.strictEqual(served.status, 200);
   assert.strictEqual((await served.arrayBuffer()).byteLength, 4096);
   assert.ok(recentlyServed.has(rendition));
+  // A FAILED tv transcode is terminal (gate r1 qa W2): 503 once (queued), the stub fails, then 409 transcodeFailed on every
+  // later request with no rendition and no re-queue; the manifest reads playable false. (Before: 503 forever, ffmpeg re-run
+  // on every retry, the item never failed.)
+  assert.strictEqual((await fileOf('tvEpisode', 'e3')).status, 503, 'queued once');
+  let r3 = null;
+  for (let i = 0; i < 200 && !(r3 && r3.status === 409); i++) { await new Promise((r) => setTimeout(r, 25)); r3 = await fileOf('tvEpisode', 'e3'); }
+  assert.strictEqual(r3.status, 409);
+  assert.deepStrictEqual(await r3.json(), { error: 'not playable on this device', reason: 'transcodeFailed' });
+  assert.ok(!fs.existsSync(path.join(TRANSCODE_DIR, 'tv-e3.mp4')), 'no rendition');
+  assert.ok(!fs.existsSync(path.join(TRANSCODE_DIR, 'tv-e3.mp4.tmp.mp4')), 'the temp file is cleaned up');
+  const m3 = (await manifest('tvEpisode', 'e3')).body.items[0].file;
+  assert.strictEqual(m3.playable, false); assert.strictEqual(m3.reason, 'transcodeFailed'); assert.strictEqual(m3.ready, false);
+  assert.strictEqual((await fileOf('tvEpisode', 'e3')).status, 409, 'still 409: terminal, never a 503 loop');
   // The season.
   const season = (await manifest('tvSeason', `${SHOW_OK}:1`)).body;
   assert.strictEqual(season.title, 'Kids Show - Season 1');
-  assert.deepStrictEqual(season.items.map((i) => [i.id, i.season, i.episode]), [['e1', 1, 1], ['e2', 1, 2]]);
+  assert.deepStrictEqual(season.items.map((i) => [i.id, i.season, i.episode]), [['e1', 1, 1], ['e2', 1, 2], ['e3', 1, 3]]);
   const extras = (await manifest('tvSeason', `${SHOW_OK}:x`)).body;
   assert.deepStrictEqual(extras.items.map((i) => [i.id, i.season, i.episode]), [['ex', null, null]]);
   assert.strictEqual((await manifest('tvSeason', `${SHOW_OK}:2`)).status, 404);

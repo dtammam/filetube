@@ -759,7 +759,9 @@ function buildCardMenuItems(item, caps, opts) {
 // is a `video`.
 function cardOfflineKind(item) {
   const kind = item && typeof item.kind === 'string' ? item.kind : 'media';
-  if (kind === 'media') return 'video';
+  // A library AUDIO file opens in Music (common.js audioOpenHref: /music?play=) and is a `track` to the phone, so the
+  // menu's key must be the badge's key (offline.js reads the card's href): one file, one offline identity (gate r1 qa W3).
+  if (kind === 'media') return item && item.type === 'audio' ? 'track' : 'video';
   if (kind === 'podcast') return 'podcastEpisode';
   if (kind === 'track') return 'track';
   if (kind === 'tv-episode') return 'tvEpisode';
@@ -1033,6 +1035,7 @@ if (typeof module !== 'undefined' && module.exports) {
     cardDeleteConfirmCopy,
     buildVideoCardEl,
     buildSkeletonCardEl,
+    cardOfflineKind, // v1.387.0 offline playback: the card menu's offline kind (bound to the badge's key in offline-ui.test.js)
   };
 }
 

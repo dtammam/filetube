@@ -3,11 +3,11 @@ plan: offline-server
 harness: v2 · full
 branch: feat/v1.387.0-offline-server
 anchor: spec
-status: Draft
-next: hand to an Extreme builder (plan review r2 fixes applied at the next commit)
+status: Gate:CHANGES r1 @30db1f3e
+next: gate r2 - the r1 fixes committed, then the same three seats re-confirm at the fix commit
 design: docs/references/ios-offline.md (Dean's rulings 2026-10-11) + the iOS Root's contract asks and custom-scheme spike (2026-10-11, simulator iOS 27 + iPhone XS iOS 18). Base = d405012e (the speed pass's docs commit; merge main once v1.386.0 lands).
 builder: extreme (a new credential at the auth gate, a schema migration, and writes to every kind's saved positions)
-gate: pending
+gate: r1 @30db1f3e - security-brief APPROVED, qa CHANGES, adversary CHANGES (fixed in r2)
 ---
 
 # v1.387.0: offline playback, the server half - a per-device token, the download manifest, offline position sync, the `downloads` contract and the web's offline buttons
@@ -416,6 +416,21 @@ the W6 commit; the speed pass perf/v1.386.0-speed-pass sits at d405012e, unrelea
 W5. The release commit waits for v1.386.0 on main, then merges main in and re-runs the suites (the FileTube Root's
 sequencing, confirmed 2026-10-12).
 
+**Gate round 1 (2026-10-12, at 30db1f3e) and its fixes (the r2 commit):** security-brief APPROVED with two LOW, qa CHANGES
+with three WARNING, adversary CHANGES with one CRITICAL and two WARNING (47 mutants, 43 killed; the four survivors became
+the findings and the suggestion). Every finding is fixed and bound in the r2 commit: the sync handler flushes both coalescer
+buffers in its own tick ahead of its mutator (order E, both kinds, plus the older-offline arm); `at` bounded and a negative
+sentAt refused (a five-event poison batch answers 200 with four invalid in place); the device store remembers the hashes it
+deletes for 24 hours and the gate answers 401 uncounted (40 + 40 presentations count for nothing; the five deletion paths and
+the 24 h bound); offline.js watches the document for added elements (a real innerHTML render and an appended card get their
+badges with no host event, the pass settles, no host = no observer); the tv queue remembers a failed id and the offline route
+answers 409 (a stub ffmpeg that fails: 503 once, then 409, no rendition); cardOfflineKind = track for library audio (menu kind
+equals badge kind for a plain and a chaptered file); localSrc only from a done item. The one pre-existing test that asserted a
+buffered ping "survives" the sync was corrected: the handler now commits it first, which is the fix. Suites after the fixes
+(Node 22.23.1): offline-ui + auth-gate-devices + auth-devices-store + card-action-menu 70 / 70; offline-progress 13 / 13;
+offline-manifest, device-tokens, device-scope-census, route-read / write-classification, rbac-census 31 / 31; lint 0 errors;
+lint:ui equal to the ratchet. The r2 re-confirmation by the same three seats follows this commit.
+
 ## 8. Out of scope
 The app half (filetube-ios); books; music play counts offline; smaller "data saver" renditions (ROADMAP streaming Tier 2); TV
 subtitles; a server-side list of what each phone holds (the phone is the source of truth for its own files); widgets (the token
@@ -425,3 +440,208 @@ restore drops every restriction: its own fix, ROADMAP Planned > Bugs, security).
 Gate: CHANGES r1 @6d23b845 — adversary (plan review)
 
 Gate: CHANGES r2 @67b2b49e — adversary (plan review)
+
+### Security-brief r1 @30db1f3e (2026-10-12, read-only review of the committed worktree)
+
+Could NOT run (no Bash in this seat): `git diff 80c2bb91`, the suites, a live timing measurement. Every statement below is
+from reading the committed files; "verified" = the exact path was traced in the code, never "the test says".
+
+No CRITICAL, no HIGH. Two LOW (fix or accept with a written rationale), the rest advisory.
+
+- **WARNING (LOW) W1 - the "a revoked token is not counted" claim is true only for a password change.** lib/auth/gate.js:239-244
+  and the plan (D1 "a known-but-revoked or expired token is not counted") say the unknown-hash limiter ignores revoked and
+  expired tokens. In the code only an EPOCH-mismatch row (changePassword) survives as a known row; Remove (devices.js:210
+  `remove`), Remove all (`removeAllForUser` -> `DELETE ... WHERE user_id`), a user delete (cascade) and expiry (gate.js:359
+  `prune`) DELETE the row, so from the second presentation on that phone's token is an UNKNOWN hash and counts
+  (gate.js:347-348). test/unit/auth-gate-devices.test.js:209 models "revoked" only as the epoch-stale row, so it cannot see
+  this. Consequence: a removed phone's queued background range requests trip the limiter for the shared proxy ip; a SECOND
+  revoked or expired phone behind that ip then gets 429 (offline-api.md:45 "stays queued, retry") instead of the 401
+  deviceRevoked that prompts a re-pair, for 10 minutes at a time. Security loss: none (a valid token is looked up before the
+  limiter, gate.js:346-348; fail-closed). This is a stale security comment + a plan claim the code does not meet. Fix: either
+  keep recently revoked hashes in a bounded in-memory set the limiter consults (no schema change), or correct gate.js, the
+  plan and offline-api.md to "an epoch-revoked token is not counted; a removed or expired one is".
+- **WARNING (LOW) W2 - an extreme `at` throws inside the progress mutator after earlier events were written.**
+  lib/offline/routes.js:496 checks `at` only for finiteness; routes.js:503 `new Date(atServerMs).toISOString()` throws a
+  RangeError when |at + skew| > 8.64e15. The throw is inside the `updateDatabase` mutator (routes.js:563-570): per-user rows
+  written for the batch's EARLIER events stay (they are immediate SQL writes), the route answers 500, the chain survives
+  (server.js:818). A merely very negative `at` (within range) is stored as a negative-year ISO `updatedAt` for an item with
+  no stored row (routes.js:60-62, -Infinity is the floor), which sorts before every digit stamp in the string-comparing
+  history lists. Attacker = the token holder against their OWN account only; a retry of the batch is idempotent. Fix: in
+  `validEvent` bound `at` to a sane window (e.g. `at >= 0 && at <= sentAt + PROGRESS_SENT_AT_SLACK_MS`), and treat an
+  `atServer < 0` as `invalid` before `toISOString`.
+- **NOTE (INFO) N1 - the scope census's blind spots.** test/integration/device-scope-census.test.js:46-56 enumerates only
+  layers with `.route` and a STRING path and skips `_all`: a route mounted through `express.Router()`, registered with
+  `app.all`, or given an array / regex path would be invisible to it. Verified none exist today (no `express.Router(`,
+  `app.all(` or array-path registrations in server.js or lib/). The enforcement itself is the default-deny regex allowlist in
+  the gate (gate.js:362, device-scope.js:55-62), so a missed route is denied, not exposed; the gap is only that a FUTURE
+  allowlist entry naming such a route could not be cross-checked. Advisory: have the census assert every stack layer is a
+  string-path `.route` or a known middleware name.
+- **NOTE (INFO) N2 - the "claimed" boundary is the regex, not the prefix.** gate.js:419 `^\s*Bearer\s+(\S+)\s*$`: a header
+  like `Bearer ftd_x extra` is NOT claimed and falls to cookie auth, which still requires a valid cookie. Not a bypass;
+  recorded so the plan's "a claimed ftd_ value never falls through" is read with that definition.
+- **NOTE (INFO) N3 - `res.sendFile(..., { dotfiles: 'allow' })` on a db-authored path adds no new read surface.**
+  routes.js:411: media / music / tv `filePath` is trusted exactly as the existing byte routes trust it (streams.js:231-243,
+  music/routes.js:677-682, tv/routes.js:514-519 serve `filePath` through sendRangeable with no confinement); the podcast
+  kind applies the SAME `isConfinedUnderRoot` the /episode route does (routes.js:226, server.js:4706, podcasts/index.js:1144-
+  1147). `send` 403s a `..` segment without a root; Express throws on a relative path (caught -> 500). The "a bundle can
+  author filePath" posture is pre-existing and admin-only.
+- **NOTE (INFO) N4 - `probeHevcTag` (server.js:4681) passes `filePath` positionally to ffprobe**, the same shape as every
+  existing `buildFfprobeArgs` call (server.js:2652): a path beginning with `-` would read as an option. Pre-existing, admin-
+  authored data only, reached only after the visibility check; not new.
+- **NOTE (INFO) N5 - no rate limit on POST /api/offline/progress** (200 events x several synchronous SQL writes per request,
+  inside the write chain). The holder can only burn their own server; the same posture as every authenticated write route.
+- **NOTE (INFO) N6 - accepted disclosures:** re-enabling a disabled user restores its devices (rows kept; an admin action,
+  disclosed D1 / D7); `listForUser` prunes expired rows on a GET (a write on read, harmless).
+
+Verified safe (the brief's ten hunts, each traced):
+1. Credential: `ftd_` + 32 random bytes base64url (crypto.js:180); sha256 stored (devices.js:37-39); lookup by the UNIQUE
+   index then `tokensEqual` (crypto.js:201-206 hashes both sides to equal-length digests, then timingSafeEqual): constant
+   time in practice; the index hit / miss timing is no oracle over a 256-bit space. Unknown, revoked, disabled and expired
+   all answer the identical body (gate.js:341-343); 429 differs only for unknowns. A short or malformed Bearer (`ftd_` alone)
+   is claimed, hashed, unknown -> 401, never a route.
+2. Gate order: the Bearer branch (gate.js:416-422) precedes the allowlist and the zero-users funnel; every branch of
+   `deviceAuth` returns, so a claimed value never reaches cookie auth. Scope is checked after liveness and before `req.user`
+   (gate.js:362-365); `req.path` is matched case-sensitively against `^...$` regexes (device-scope.js:41-50), so a case,
+   trailing-slash or double-slash variant is DENIED (fail-closed) while Express's case-insensitive routing could only match
+   the same route; HEAD maps to GET; the 16 reachable routes equal the allowlist and the expected list.
+3. Revocation: the login re-hash calls `updatePassword` (token_version only, store.js:52, routes.js:117); `changePassword`
+   bumps both (store.js:58, routes.js:376); Remove all bumps the epoch then deletes (routes.js:516-517); disabled is read
+   live (gate.js:356); delete cascades (FK) after `removeAllForUser` cuts the open responses (routes.js:537). `track` binds
+   `res.once('close')` (devices.js:248), which a ServerResponse emits on completion or abort; `destroyAll` on remove,
+   `cutUser` on epoch bump / disable / delete. The 10-minute `touch` runs AFTER the scope check (gate.js:362-371), so an
+   out-of-scope request does not slide the 180 days.
+4. Pairing: `requireCookieSession` (routes.js:235-241) AND the gate's scope refuse a token; `req.is('application/json')`
+   -> 415; the password is verified against the stored hash (DUMMY_HASH on a missing one) under the (ip, username) login
+   bucket; NEVER `updatePassword`; the epoch is re-read synchronously after the only await (routes.js:265-267); the 20-cap
+   and prune run in one transaction (devices.js:155-169). CSRF: HttpOnly + SameSite=Lax cookie (gate.js:88), the global
+   parser accepts only application/json, and the password is required: a stolen cookie alone cannot mint.
+5. Visibility: `projection(req)` is per request from `trackVisibleTo` + `projectedLibraryTracks(req)` (routes.js:113-127);
+   `resolveTrack` re-checks `mediaVisibleTo` on the parent (:207); album members re-resolve through `resolveTrack` (:283);
+   the season filters by `tvEpisodeVisibleTo` BEFORE grouping (:298); a bad `<showId>:<key>` is null -> 404; podcast =
+   visibility, then downloaded, then confinement (:224-226). The file route accepts SINGLE_KINDS only and the same
+   resolvers (:392-395).
+6. Admin routes: `requireAdmin` first, then `resolveTargetUser` (routes.js:497-519); the self routes delete with
+   `WHERE user_id = ? AND id = ?` (devices.js:88). Settings: `renderDeviceRows` builds every node with textContent
+   (setup.js:4128), ids go through encodeURIComponent in URLs (:4204, :4224-4225).
+7. Exposure: manifest URLs are relative route URLs (routes.js:37-39, :171, :189, :238, :258), never a filePath;
+   `publicDevice` omits the hash (devices.js:73-75); `exportUsersForBackup` carries no device field (store.js:1908-1944) and
+   the restore's `DELETE FROM users` (store.js:2040) cascades device_tokens; the audit line adds `via=device:<id>`
+   (server.js:3236); no `ftd_` token of real length anywhere in the tree.
+8. Progress: `uid = req.user.id` always (routes.js:502); every id through `resolveForProgress` -> its wrapper; `sentAt`
+   more than 5 min ahead -> 400 (:560); clamp to serverNow (:566); NaN / Infinity / negative / `pos > dur + 1` / `dur <= 0`
+   -> invalid (:489-499); the mutator returns false (no doc save, :569).
+9. Web: `localSrc` reaches only `mediaPlayer.src` (player.js:10105, :10150, :10159); the `fetch(streamUrl)` at :10155 is
+   under `data.needsTranscode`, which a local play clears (:9816); music.js:5082 answers the probe locally; feed.js:1212
+   blanks the warm fetch. host-adapter validates `localSrc` as a non-empty string (:35) and `app` as {name string, version
+   `^\d+\.\d+\.\d+`, build `^[A-Za-z0-9._-]{1,32}$`} (:229-232); `hostAppVersionLine` re-validates (common.js:6803-6809)
+   and renders as a row title + setAttribute aria-label (:7470-7472). tv.js pill attributes pass `escapeTvHtml` (:84-85);
+   offline.js labels and badges are textContent (:180-183). CSP: tech-debt-tracker item 154 carries the media-src note.
+10. Migration: `if (current < 37)` appended after v36 (sqlite.js:1483-1511), CREATE TABLE IF NOT EXISTS, a PRAGMA
+    table_info presence check before the ALTER, user_version 37, SCHEMA_VERSION = 37 (:351); the test reset wipes
+    device_tokens and zeros device_epoch (store.js:2303-2304).
+
+Gate: APPROVED r1 @30db1f3e — security-brief
+
+### QA r1 @30db1f3e (2026-10-12)
+
+Instruments (Node 22.23.1, this worktree, load average ~20): `npm run lint` 0 errors / 6 warnings; `npm run lint:ui` "the live debt
+equals docs/ui-exceptions.json"; overlay lint "clean (0 violations)"; `npm run test:unit` 9646 tests, 9644 pass, 1 fail, 1 skipped -
+the fail is books-first-chapter.test.js:169 (a 1500 ms wall-clock budget, lib/books untouched; 2 of 3 isolated runs green: load
+flake); device-tokens 8/8, device-scope-census 3/3, offline-manifest 11/11, offline-progress 11/11, route-read 2/2, route-write 4/4,
+rbac-census 3/3, settings-census 5/5, docs-link 2/2, docs-diagrams 5/5, exec-plans 3/3, release-ledger 7/7. Not run: the full
+`npm test` (the evidence's 12348 is not re-derived here) and the mutant counts.
+
+- WARNING 1 (D6 badge unreachable on 3 of 4 surfaces; LESSONS 11). public/js/offline.js:453-477 `decorate()` is called only by
+  tv.js:248 (show detail) and by the module's own onChange (offline.js:485), which fires only on a `download` / `downloadsSnapshot`
+  event. main.js, music.js and podcasts.js never call it after rendering. Scenario: in the app, open Music (or Home, or a podcast
+  show) with N finished tracks and nothing in flight: the snapshot arrives at script load, before the rows render, so decorate runs
+  over an empty view; the rows render; no "Offline" badge until an unrelated download delta arrives. The row probe measured badges
+  by calling `off.decorate(content)` itself (tools/offline-proof/row-probe.js:102,114,122) and offline-ui.test.js:194 does the
+  same, so neither proves reachability. Fix: decorate the rendered container at each surface's render path (as tv.js does) and
+  bind it through the real render, not a manual decorate.
+- WARNING 2 (doc lies + plan deviation: a 503 / ffmpeg loop for tv). lib/offline/routes.js:256 `transcodeFailed: false` for every
+  tv episode ("the tv queue tracks no status"), while docs/references/offline-api.md:116 promises for `video`, `tvEpisode` "409
+  not playable when ... the transcode already failed" and plan D3 says "terminal, never a 503 loop". Scenario: an mkv episode whose
+  ffmpeg exits non-zero: every file-route hit answers 503 + Retry-After 60 and re-queues (lib/tv/routes.js:188-230 keeps no
+  failure memory; the running job is already shifted off, so the retry re-pushes); the phone retries every 60 s forever, each
+  spawning a full-length ffmpeg of a file that cannot be transcoded; the item never becomes `failed`. Fix: a failed-id set in the
+  tv queue the offline route reads (409 `transcodeFailed`), or correct the doc and plan AND cap the re-queue.
+- WARNING 3 (one library audio file, two offline identities). main.js:733-740 `cardOfflineKind` maps a library audio item (kind
+  'media', type 'audio') to `video`, but that card's href is `/music?play=` (common.js:4826 audioOpenHref) so offline.js:445-451
+  `cardTarget` reads it as `track`, and Music's row menu (music.js:4411) uses `track`. Scenario: from a home card's menu, "Make
+  available offline" downloads `video:<id>`; the card shows no badge (looks up track:<id>), the Music row shows no badge and still
+  offers "Make available offline" -> a second full download as `track:<id>`; "Remove offline copy" on one surface leaves the other.
+  Fix: `cardOfflineKind` returns `track` for `item.type === 'audio'` (audioOpenHref's rule) and a test binds menu key == badge key.
+- SUGGESTION 1. offline-api.md:156-162 orders the per-event rule visibility (gone) then numbers (invalid); routes.js:565 validates
+  numbers first. An invalid event on a hidden item reads `invalid`, not `gone`. Align the doc (or the code).
+- SUGGESTION 2 (LESSONS 12). test/integration/route-read-classification.test.js:152: the `/api/offline/file/:kind/:id` line carries
+  a second, unrelated comment ("offline D1: the caller's own paired phones (cookie only ...") that belongs on `/api/devices` above.
+- SUGGESTION 3 (LESSONS 12). This plan's frontmatter still reads `status: Draft` / `next: hand to an Extreme builder` while the
+  Evidence section describes the finished build in gate.
+- SUGGESTION 4. gate.js:114 the unknown-token limiter's `check()` is never called (only `recordUnknown`); and a DELETED row reads as
+  "unknown", so a revoked phone with >30 queued requests gets 429 (stays queued) instead of 401 (re-pair) for 10 min. Low; a doc
+  line or a tombstone check.
+- SUGGESTION 5. offline.js:445 CARD_KINDS lists '/watch?v=' which no card builder produces (only /watch.html?v=); harmless.
+- Security (standing section): SQL is bound params throughout (devices.js, store.js); ids are own-property lookups on null-safe
+  maps; ffprobe runs through execFile with the path as an argument; sendFile paths are the indexed library paths (podcasts
+  additionally confined), no user-supplied path reaches the filesystem; no SSRF surface; the Bearer branch runs before the
+  allowlist and the noUsers funnel and a claimed ftd_ never falls through; scope is default deny with a census; tokens are
+  sha256 rows, never in list responses or the bundle (device-tokens.test.js:282 binds it); the new DOM is textContent or escaped
+  attributes (escapeTvHtml / escapeMusicHtml cover quotes). No new exposure found.
+- Verified claims: albumKeyFor is lib/music/store.js:103 (the doc is right, the plan's query.js:143 is a caller); tvSeason key =
+  groupSeasons' key ('x' for null); the media and music buffers carry `updatedAt` so the in-mutator compare is real; the online
+  latches are mirrored (media: watched + Watch later; podcast: played + Watch later; tv: played only, as online); the media and
+  tv queues write `.tmp.mp4` and rename; generateSecret = 32 bytes base64url (43 chars).
+
+Gate: CHANGES r1 @30db1f3e — qa
+
+### Adversary r1 @30db1f3e (2026-10-12, measured in a /tmp git-archive sandbox of HEAD; the worktree untouched)
+
+Instruments (Node 22.23.1): `npm run test:unit` 9646 tests, 9635 pass, 9 fail, 2 skipped - the 9 are sandbox artifacts (8 source
+locks / censuses shell out to `git ls-files`, which has no .git in a `git archive`; 1 EISDIR on the node_modules symlink; plus
+books-first-chapter's 2.5 s linear-time check on a loaded box); those 8 files re-run READ-ONLY in the worktree: 81/81 pass. The
+seven integration suites the diff adds or edits (device-tokens, device-scope-census, offline-manifest, offline-progress,
+route-read / route-write-classification, rbac-census): 42/42. `npm run lint` 0 errors / 6 standing warnings; `lint:ui` equals the
+ratchet; overlay lint 0. Mutants: 47 run against the committed tree, 43 killed, 4 survived (two are findings below, M20b is an
+equivalent mutant masked by fieldsOk's own cap, and the two offline.js `localSrc only when done` guards are the SUGGESTION).
+
+- CRITICAL 1 (D4 data loss, plan section 5 surface 1: "the gap between a flush's snapshot and its commit, both orders"). A THIRD order
+  loses a newer offline position and tells the phone it landed. The offline mutator is queued on `updateDatabase` while the chain is
+  busy (any doc save, scan phase or earlier flush); the 5 s coalescer timer then fires, SNAPSHOTS the buffered online ping P (older)
+  and clears the buffer, queuing its commit BEHIND the mutator; the mutator runs, sees an empty buffer and the stale row, writes the
+  newer event E and answers `applied:true` (the app drops E from its queue); the flush's unconditional `setProgressBatch` then lands
+  P over E. Verified for BOTH buffered kinds with the committed seam: ping v2@10 -> `__holdWriteChainForTests()` -> POST
+  /api/offline/progress E (v2@50, at=now) -> wait 150 ms (P still in the buffer) -> `flushPendingProgress()` -> release(): response
+  `{applied:true}`, row `{timestamp:10, updatedAt:<P's stamp>}` (expected 50). Music: ping 10, E 60 -> row position 10. The
+  committed gap tests (orders A-D) cover only "snapshot taken BEFORE the request is queued". Prescription: in the handler, in the
+  SAME synchronous tick as `nowMs()` and the `updateDatabase()` call, snapshot both buffers first (`flushPendingProgress()` +
+  `flushPendingMusicProgress()` - they snapshot, clear and enqueue synchronously, so every ping stamped before serverNow commits
+  ahead of the mutator) and KEEP the in-mutator live-buffer read (a ping buffered after serverNow is newer than every clamped
+  atServer, so it correctly refuses E, or lands after E if a later timer flush snapshotted it). Bind it with an order-E test per kind
+  (the repro above as a test), both outcomes: the row holds E and the flush has nothing older to land.
+- WARNING 2 (D4 "HTTP 200 even when some refuse; a refusal is not an error"). `validEvent` accepts any finite `at`; a far-off value
+  makes `new Date(atServerMs).toISOString()` throw INSIDE the mutator: `sync([ev('video','v3',11,now), ev('video','v4',12,-9e15)])`
+  -> 500 `{"error":"Could not sync the positions: Invalid time value"}`, v3 ALREADY WRITTEN (11), v4 not, no `results`. The phone
+  cannot drop the poison event (no per-event result), so its whole queue retries forever behind it. Fix: `validEvent` refuses an
+  `at` outside the Date range (or, simpler, `at <= 0 || at > 8.64e15` -> `reason:'invalid'`), and the per-event body wraps the
+  stamp conversion so one bad event is one `invalid` result, never a batch 500 after partial writes. One test: the batch above is
+  200 with `[applied, invalid]`.
+- WARNING 3 (D1, the unknown-hash limiter; presence-not-binding, LESSONS 2). (a) The plan rule "a known-but-revoked or expired token
+  is NOT counted" has no binding test: mutant M26 (count epoch-mismatch / disabled tokens as unknown) passes all 10
+  auth-gate-devices tests. (b) The rule cannot hold for the main revoke path: Settings Remove and the admin Remove DELETE the row, so
+  that phone's token IS unknown by construction and its queued range reads count; after 30 in 10 min the phone gets 429 (no
+  `deviceRevoked`) for 10 min instead of the 401 the app keys on (QA's SUGGESTION 4 saw the same). Fix (a) with one assertion
+  (a revoked-by-epoch token 31+ times is still 401, never 429); for (b) either keep the deleted id's hash as a short tombstone that
+  answers 401 uncounted, or state in offline-api.md that a Settings-removed phone may see 429 before 401. Safe to ship once (a)
+  binds and (b) is written down.
+- SUGGESTION 4 (D5/D6). offline.js's two "localSrc only with `done`" guards (`state()` and `localSrcFor`) are unbound: M23 and M23b
+  (return a localSrc for any state) pass 16/16 offline-ui + player tests, so a host that sends `localSrc` with `downloading` would
+  play a partial file. One assertion each in offline-ui.test.js (a `downloading` item carrying localSrc yields none).
+- NOTE 5 (surface 5, measured, no finding). The kid's token against every scoped route for hidden items (video bytes + thumbnail +
+  subtitles under a folder restriction, a library-audio track under a folder restriction, a native track's bytes + art under a path
+  restriction, a hidden show's episode + art, a blocked show's episode + thumb + season manifest, the three file routes): 404 each
+  while the admin gets 200. `/tvposter/<blocked show>` answers 200 with the NEUTRAL placeholder SVG (no show name) - the same body a
+  cookie session and a nonexistent id get; not a leak. The `%` / `#` filename suspicion against `res.sendFile` is refuted at source
+  (Express encodeURI then send's decode): `50% off.mp4` and `track #1.mp4` serve 200 like `/video/:id`.
+
+Gate: CHANGES r1 @30db1f3e — adversary

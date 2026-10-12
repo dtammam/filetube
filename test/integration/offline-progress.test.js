@@ -182,8 +182,10 @@ test('the LIVE media buffer: a newer buffered online ping refuses the offline ev
   const r1 = await sync([ev('video', 'v1', 5, Date.now() - 10 * SEC)]);
   assert.strictEqual(r1.body.results[0].applied, false); assert.strictEqual(r1.body.results[0].reason, 'older');
   assert.strictEqual(r1.body.results[0].stored.positionSec, 80, 'the refusal quotes the BUFFERED value');
-  assert.ok(pendingProgress.has(pendingProgressKey(uid, 'v1')), 'the buffered ping survives');
-  await flushPendingProgress();
+  // Gate r1 order E: the handler flushes the buffer in its own tick, so the ping is already committed when the mutator runs
+  // (the refusal quoted the row, which the flush landed first); a later flush has nothing.
+  assert.strictEqual(pendingProgress.has(pendingProgressKey(uid, 'v1')), false, 'the handler flushed the buffer ahead of its mutator');
+  assert.strictEqual(await flushPendingProgress(), false);
   assert.strictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 80, 'the online ping landed');
   // (2) buffered older: online ping, wait, offline event newer -> applied, the buffer entry is gone, a flush is a no-op.
   assert.strictEqual((await onlineMedia('v1', 81)).status, 200);
@@ -393,4 +395,58 @@ test('a device token syncs its own positions (the ONE write in its scope); the a
   assert.notStrictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 30, 'never under another user');
   const other = await fetch(`${base}/api/progress`, { method: 'POST', headers: { Cookie: '', Authorization: `Bearer ${kidToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'v1', timestamp: 1, duration: 100 }) });
   assert.strictEqual(other.status, 403, 'the online progress route stays outside the token\'s scope');
+});
+
+test('the snapshot-to-commit GAP, order E (gate r1 adversary CRITICAL): the sync is queued behind a busy chain, THEN the coalescer snapshots an OLDER buffered ping and queues its commit behind the sync; the handler flushes first, so the older ping commits ahead and the newer offline position stands (media and music)', async () => {
+  await updateDatabase(() => false); // drain the chain
+  // Media: the OLDER online ping sits in the buffer; the chain is held; the NEWER offline event is queued; then the timer's
+  // flush runs (before the fix: it snapshotted the old ping and queued its commit BEHIND the sync, which saw an empty buffer
+  // and a stale row, answered applied:true, and was then overwritten). The precondition is event-loop order, never timing.
+  userStore.setProgress(uid, 'v2', { timestamp: 1, duration: 100, updatedAt: new Date(Date.now() - 10 * MIN).toISOString() });
+  assert.strictEqual((await onlineMedia('v2', 10)).status, 200);
+  await new Promise((r) => setTimeout(r, 30));
+  let release = __holdWriteChainForTests();
+  const pE = sync([ev('video', 'v2', 50, Date.now())]);
+  await new Promise((r) => setTimeout(r, 150)); // the request reached the server: its handler flushed, then queued its mutator
+  assert.strictEqual(pendingProgress.size, 0, 'the handler flushed the buffer in its own tick');
+  const flushE = flushPendingProgress(); // the timer's flush now finds nothing
+  release();
+  const rE = await pE; assert.strictEqual(await flushE, false, 'nothing was left for the later flush');
+  assert.strictEqual(rE.body.results[0].applied, true);
+  assert.strictEqual(userStore.getOneProgress(uid, 'v2').timestamp, 50, 'the older ping committed FIRST; the newer offline position stands');
+  // Music: the same order through the music buffer.
+  const id = track.id;
+  assert.strictEqual((await onlineMusic(id, 10)).status, 200);
+  await new Promise((r) => setTimeout(r, 30));
+  release = __holdWriteChainForTests();
+  const pM = sync([{ kind: 'track', id, positionSec: 60, durationSec: 200, at: Date.now() }]);
+  await new Promise((r) => setTimeout(r, 150));
+  const flushM = flushPendingMusicProgress();
+  release();
+  const rM = await pM; assert.strictEqual(await flushM, false);
+  assert.strictEqual(rM.body.results[0].applied, true);
+  assert.strictEqual(userStore.getOneMusicProgress(uid, id).position, 60);
+  // And the older-offline arm of the same order still refuses: the ping commits first, the older event sees it in the row.
+  assert.strictEqual((await onlineMedia('v2', 11)).status, 200);
+  release = __holdWriteChainForTests();
+  const pO = sync([ev('video', 'v2', 49, Date.now() - 10 * SEC)]);
+  await new Promise((r) => setTimeout(r, 150));
+  release();
+  const rO = await pO;
+  assert.strictEqual(rO.body.results[0].applied, false); assert.strictEqual(rO.body.results[0].reason, 'older');
+  assert.strictEqual(userStore.getOneProgress(uid, 'v2').timestamp, 11);
+});
+
+test('an extreme, negative or future `at` is {invalid} in place and never a 500 (gate r1 W2): the batch\'s other events land, nothing is written for the poison event; a negative sentAt is 400', async () => {
+  const before = userStore.getOneProgress(uid, 'v4');
+  const r = await sync([
+    ev('video', 'v3', 11, Date.now()),
+    ev('video', 'v4', 12, Date.now(), { at: -9e15 }), ev('video', 'v4', 13, Date.now(), { at: 9e15 }),
+    ev('video', 'v4', 14, Date.now() + 6 * MIN), ev('video', 'v4', 15, Date.now(), { at: -1 }),
+  ]);
+  assert.strictEqual(r.status, 200, 'never a 500: the whole batch is answered');
+  assert.deepStrictEqual(r.body.results.map((x) => x.applied + ':' + (x.reason || 'ok')), ['true:ok', 'false:invalid', 'false:invalid', 'false:invalid', 'false:invalid']);
+  assert.strictEqual(userStore.getOneProgress(uid, 'v3').timestamp, 11, 'the good event landed');
+  assert.deepStrictEqual(userStore.getOneProgress(uid, 'v4'), before, 'nothing written for the poison events');
+  assert.strictEqual((await sync([], { sentAt: -1 })).status, 400);
 });

@@ -232,3 +232,37 @@ test('live registry: track / cutDevice / cutUser destroy the open responses and 
   assert.strictEqual(r4.destroyed, 1);
   assert.strictEqual(devices.cutDevice(12345), 0);
 });
+
+test('revoked memory (gate r1 security-brief W1): a token whose row was deleted by remove, Remove all, expiry (list prune / issue prune) or the gate\'s prune is "recently revoked" for 24 hours, never before, never for a live or never-issued token; the memory is bounded', () => {
+  const a = admin();
+  devices = mkStore(['A', 'B', 'C', 'D', 'E', 'F']);
+  const tA = devices.issue({ userId: a.id, name: 'A', platform: 'ios', epoch: 0 }, ISO);
+  assert.strictEqual(devices.wasRevokedRecently(tA.token), false, 'live: not revoked');
+  assert.strictEqual(devices.wasRevokedRecently('ftd_NEVER'), false, 'never issued: unknown, not revoked (it counts)');
+  assert.strictEqual(devices.wasRevokedRecently(null), false);
+  assert.strictEqual(devices.remove(a.id, tA.id), true);
+  assert.strictEqual(devices.lookup(tA.token), null, 'the row is gone');
+  assert.strictEqual(devices.wasRevokedRecently(tA.token), true, 'remove: remembered');
+  // Remove all.
+  const tB = devices.issue({ userId: a.id, name: 'B', platform: 'ios', epoch: 0 }, ISO);
+  const tC = devices.issue({ userId: a.id, name: 'C', platform: 'ios', epoch: 0 }, ISO);
+  assert.strictEqual(devices.removeAllForUser(a.id), 2);
+  assert.strictEqual(devices.wasRevokedRecently(tB.token), true); assert.strictEqual(devices.wasRevokedRecently(tC.token), true);
+  // The gate's prune (an expired row found at the gate).
+  const tD = devices.issue({ userId: a.id, name: 'D', platform: 'ios', epoch: 0 }, ISO);
+  devices.prune(tD.id);
+  assert.strictEqual(devices.wasRevokedRecently(tD.token), true, 'prune: remembered');
+  // Expiry found by the list (181 days unused).
+  const tE = devices.issue({ userId: a.id, name: 'E', platform: 'ios', epoch: 0 }, ISO);
+  clock = T0 + 181 * DAY;
+  assert.deepStrictEqual(devices.listForUser(a.id), [], 'the list pruned it');
+  assert.strictEqual(devices.wasRevokedRecently(tE.token), true, 'expired via the list: remembered');
+  // 24 hours later the memory lets go (the limiter's default posture returns).
+  clock = T0 + 181 * DAY + 24 * 60 * 60 * 1000 + 1;
+  assert.strictEqual(devices.wasRevokedRecently(tE.token), false, 'forgotten after 24 h');
+  assert.strictEqual(devices.wasRevokedRecently(tA.token), false);
+  // Bounded: the constants are exported and the size never passes the cap.
+  assert.strictEqual(devicesLib.REVOKED_MEMORY_MS, 24 * 60 * 60 * 1000);
+  assert.strictEqual(devicesLib.REVOKED_MEMORY_MAX, 5000);
+  assert.ok(devices.revokedMemorySize() <= devicesLib.REVOKED_MEMORY_MAX);
+});

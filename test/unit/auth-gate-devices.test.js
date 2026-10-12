@@ -49,6 +49,8 @@ function fakeDevices(rows) {
     isDeviceToken: devicesLib.isDeviceToken,
     isExpired: devicesLib.isExpired,
     touches: [], pruned: [], tracked: [], lookups: 0,
+    revoked: new Set(), // tokens whose ROW is gone but which the store remembers (removed / Remove all / expired / pruned)
+    wasRevokedRecently(token) { return f.revoked.has(token); },
     lookup(token) { f.lookups += 1; return byToken.get(token) || null; },
     touch(id, iso) { f.touches.push([id, iso]); },
     prune(id) { f.pruned.push(id); },
@@ -207,7 +209,18 @@ test('unknown-hash limiter: 30 unknown ftd_ hashes from one ip in 10 minutes are
   let now = NOW;
   const limiter = gate.createUnknownTokenLimiter({ nowMs: () => now * 1000 });
   const stale = { ...LIVE, id: 13, epoch: 1 };
-  const { g } = build({ rows: { ftd_live: LIVE, ftd_stale: stale }, limiter });
+  const { g, devices } = build({ rows: { ftd_live: LIVE, ftd_stale: stale }, limiter });
+  devices.revoked.add('ftd_removed'); // its row was deleted in Settings; the store remembers the hash
+  // BINDING (gate r1 adversary W3a / security-brief W1): 40 presentations each of an epoch-revoked token (a known row) and
+  // of a REMOVED token (no row, remembered) are all 401 deviceRevoked and count for NOTHING, so the 30 unknowns below are
+  // still each 401 and only the 31st unknown is blocked. Counting either would 429 the removed phone's queued range
+  // requests - and a second phone behind the same proxy ip - instead of the 401 the app re-pairs on.
+  for (let i = 0; i < 40; i++) {
+    const s = run(g, { authorization: 'Bearer ftd_stale' });
+    assert.strictEqual(s.res._status, 401, 'epoch-stale #' + (i + 1)); assert.deepStrictEqual(s.res._json, { error: 'device token revoked', deviceRevoked: true });
+    const d = run(g, { authorization: 'Bearer ftd_removed' });
+    assert.strictEqual(d.res._status, 401, 'removed #' + (i + 1)); assert.deepStrictEqual(d.res._json, { error: 'device token revoked', deviceRevoked: true });
+  }
   for (let i = 0; i < 30; i++) {
     const r = run(g, { authorization: 'Bearer ftd_unknown' + i });
     assert.strictEqual(r.res._status, 401, 'unknown #' + (i + 1));
