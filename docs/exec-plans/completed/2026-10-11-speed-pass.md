@@ -7,7 +7,7 @@ status: Shipped v1.386.0
 next: Dean's device checks (docs/DEVICE-CHECKS.md, Speed pass v1.386.0)
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
-gate: APPROVED r3 @499e8660 (adversary, qa, security-brief)
+gate: APPROVED r3 @499e8660 + r3-delta @0215cc70 (adversary, qa, security-brief)
 ---
 
 # v1.386.0: speed pass - the skin picker shows the right picture at once, the music library is responsive
@@ -134,6 +134,19 @@ Gate: APPROVED r3 @499e8660 - adversary
 - r2 WARNING (index cache unbound): fixed. Killed: cache return removed, key = sheet count only, sticker Skin-page warm removed, url( prefilter inverted.
 - Re-measured (sync ms, head vs base, same session): sticker Skin page open 25-32 vs 31-53 (Chromium 4x) and 3-12 vs 1-9 (WebKit); Pocket Classic > 4G entry 36 vs 11 (Chromium) and 60 vs 9 (WebKit); index build alone 266 ms (Chromium 4x) / 59 ms (WebKit) at load avg ~19 (the builder's 15-16 / 63-98 ms was quieter). Once per page, accepted as disclosed. Pocket Select of the Coil: 0 ms without photos in both engines.
 - SUGGESTION (shipped code correct, order unbound): moving the sticker callback's releasePickHold() after setActiveSkin + onSkinChange survives every test (98 pass / 0 fail). In WebKit that mutant paints the held `mms-ipod` right after the sticker pick of ipod-2004 until the next preview change. The race test asserts only after MENU; also assert the panel class right after the sticker pick lands.
+
+Gate: APPROVED r3-delta @0215cc70 - security-brief (close-out delta 499e8660..0215cc70; no Bash, so no git diff of my own; scope is the coordinator's list: verdicts, plan move, docs, one test assertion, a tool comment)
+- No product, server, auth, static-serving or SQL change reported. A spot check of lib/staticAssets.js (dot-segment refusal, root check, the private IMMUTABLE header) reads the same as r1-r3. The r3 analysis carries forward. The r1 SUGGESTION (liked-route existence oracle) stays a ROADMAP Planned > Bugs entry.
+
+Gate: APPROVED r3-delta @0215cc70 - adversary
+- Delta 499e8660..0215cc70 touches no product code (the plan move, one test assertion, a serve.js comment path). Verified in a git-initialised `git archive 0215cc70` copy, Node 22.23.1: pocket-skins-menu + skin-surface + skin-art-ready 104/104 pass; my r3 survivor (sticker releasePickHold moved after setActiveSkin + onSkinChange) is now killed by "a sticker pick over a waiting Pocket Select lands..." (97 pass / 1 fail); exec-plans-census + release-ledger 10/10. No active copy of the plan remains; the two remaining `active/` mentions are the quoted r1 verdict and the original release-step text (history, not live references).
+
+Gate: APPROVED r3-delta @0215cc70 - qa
+- No product code changed: `git diff 499e8660..0215cc70` touches only the plan (moved to completed/, 88% similar), one test assertion in test/unit/pocket-skins-menu.test.js, and the plan path in a tools/speed-proof/serve.js comment.
+- Both r3 suggestions are closed: "37-45" is now "37-39" ms, and section 6 discloses the cursor-out-of-step sequence accurately (whole skin, re-synced by the next nudge).
+- The new assertion binds what it claims: I moved releasePickHold() after the sticker pick's repaint in a sandbox, and "a sticker pick over a waiting Pocket Select lands..." goes red.
+- On a `git archive 0215cc70` sandbox: pocket-skins-menu, exec-plans-census, release-ledger, docs-diagrams-census and the other exec-plans tests ran 124 tests: 122 pass, 0 fail, 2 skipped, exit 0. The two remaining `exec-plans/active/` mentions are historical (my r1 bullet and the section 5 instruction).
+- Note: the frontmatter `gate: APPROVED r3 @499e8660` names the last full round; this delta line is the binding one at 0215cc70.
 
 ## 5. Release
 docs/RELEASING.md + AGENTS.md; close the plan in the same PR (`node scripts/plan-complete.js
