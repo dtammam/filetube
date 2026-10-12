@@ -3,7 +3,7 @@ plan: add-failed
 harness: v2 · full
 branch: fix/v1.387.1-add-failed
 anchor: spec
-status: Draft
+status: Shipped v1.387.1
 next: build W1, then the gate
 design: the iOS Root's proposal (2026-10-12, its v0.9.0 gate QA S2), Dean's go to the FileTube Root the same day ("Go: new message"). Base = main e78c53ff (v1.387.0).
 builder: standard (one add-only contract entry and one web state, on the v1.387.0 seams named below)
@@ -75,6 +75,11 @@ docs/exec-plans/active/2026-10-12-add-failed.md "Shipped v1.387.1" --apply`); th
 and "FileTube Root" the result; then claude-close.sh.
 
 ## 7. Evidence (builder fills)
+- W1 commit 4166023b; gate r1 (CHANGES: CRITICAL inert album / season surfaces, W event id not normalized, W parent notify unbound) fixed in 372c0a5d; r2 APPROVED by adversary and qa @372c0a5d.
+- Full `npm test` Node 22.23.1 at 372c0a5d: tests 12427, pass 12417, fail 0, skipped 10. `npm run lint:ui` OK.
+- Mutations (all red): re-add clear, item clear, parent clear, snapshot clear, pagehide clear, roll-up flip, schema required, adapter required, music / tv repaint, tv destroy release, toast, parent notify, keyOf.
+- Close-out (bookkeeping only): the files in `git diff --name-only 372c0a5d..HEAD` are version bump, ledger, ROADMAP, DEVICE-CHECKS, this plan.
+- Device checks owed by Dean: docs/DEVICE-CHECKS.md "Offline add failures (v1.387.1)" (needs the app build that sends the event).
 
 ## 8. Out of scope
 A pending / spinner state for container adds; anything native; retry policy (the app's).
@@ -82,3 +87,5 @@ A pending / spinner state for container adds; anything native; retry policy (the
 Gate: CHANGES r1 @4166023b - qa
 Gate: CHANGES r1 @4166023b - adversary
 Round 1 fix (builder): the album drill pill and the TV pills repaint in place on an offline change and carry the reason as a title; one toast with the reason per failed add (touch has no title); the event key uses the normalized id; tests on the REAL music.js / tv.js mounts (test/unit/offline-pill-repaint.test.js). Scope note: the pill repaint also makes v1.387.0's saving / done states live on those pills.
+Gate: APPROVED r2 @372c0a5d - qa
+Gate: APPROVED r2 @372c0a5d - adversary

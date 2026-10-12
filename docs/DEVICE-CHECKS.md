@@ -34,6 +34,13 @@ these checks stay open until then.
 - [ ] v1.387.0 - App (a kid account): the hidden folder's videos and the hidden show's episodes offer no offline entry the kid can use; a direct manifest or file fetch with the kid's token is a 404; a restriction added later makes the app drop that copy on its next check (status = gone).
 - [ ] v1.387.0 - App: the avatar menu shows the app's version and build under the server version ("iOS app 0.9.0 (12)"); the browser and the home-screen app show no such line.
 
+## Offline add failures (v1.387.1)
+
+Browser and home-screen app: nothing should look or behave differently. In the FileTube iOS app (needs the build that sends `downloadsAddFailed`):
+
+- [ ] v1.387.1 - App with the server unreachable: make an album available offline -> a toast says "No connection right now..." and the album's pill carries the reason; tap again once online -> it starts and the pill shows "Saving for offline...".
+- [ ] v1.387.1 - App: the same on a TV season's pill; the pill also changes by itself as the download progresses (no page reload).
+
 ## The immersive Pocket (v1.385.0)
 
 Browser and home-screen app: nothing should look or behave differently (Pocket's status bar has no clock and no connection mark; iOS's own bar stays).
