@@ -43,6 +43,11 @@ test('no host (every browser): enabled false, state none, add / remove / show fa
   assert.strictEqual(offline.decorate(), 0);
   assert.strictEqual(win.document.body.innerHTML, before, 'the DOM is byte-identical');
   assert.deepEqual(offline.menuEntry('video', 'v1'), { id: 'offline-add', label: 'Make available offline' });
+  // v1.387.1: no host = the new event reaches nothing (no listener, no state, same DOM).
+  win.dispatchEvent(new win.CustomEvent('filetube-host', { detail: { v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'a1', error: 'network' } }));
+  assert.deepEqual(offline.state('album', 'a1'), { state: 'none' });
+  assert.deepEqual(offline.menuEntry('album', 'a1'), { id: 'offline-add', label: 'Make available offline' });
+  assert.strictEqual(win.document.body.innerHTML, before, 'the DOM is still byte-identical');
   win.close();
 });
 
@@ -388,5 +393,133 @@ test('localSrc is read ONLY from a done item (gate r1 adversary S4): a host send
   fake.emit(item('video', 'v9', 'done', { localSrc: 'filetube-local://v9' }));
   assert.strictEqual(offline.state('video', 'v9').localSrc, 'filetube-local://v9');
   assert.strictEqual(offline.localSrcFor(['video'], 'v9'), 'filetube-local://v9');
+  win.close();
+});
+
+// ---- v1.387.1: an add that fails as a whole (downloadsAddFailed) ------------------------------------------------
+const addFailed = (kind, id, error) => ({ v: 1, type: 'downloadsAddFailed', kind, id, error });
+const ALBUM = 'Pink Floyd\u001fThe Wall'; // an album id carries the 0x1f separator
+
+test('v1.387.1: a failed album / season add shows each error\'s copy on its menu entry; the button stays "Make available offline"', () => {
+  const { win, fake, offline } = realm(DL);
+  const changes = [];
+  offline.onChange((k, id) => changes.push([k, id]));
+  for (const [error, copy] of [['network', offline.ERROR_COPY.network], ['storageFull', 'Not enough space on this phone'], ['revoked', 'This device was removed in Settings'], ['notOnServer', 'Not on the server yet'], ['notReady', 'Preparing a playable copy, try again shortly'], ['notPlayable', offline.ERROR_COPY.notPlayable], ['other', offline.ERROR_COPY.other]]) {
+    fake.emit(addFailed('album', ALBUM, error));
+    assert.deepEqual(offline.state('album', ALBUM), { state: 'failed', error });
+    assert.deepEqual(offline.menuEntry('album', ALBUM), { id: 'offline-add', label: 'Make available offline', errorText: copy }, error);
+    fake.emit(addFailed('tvSeason', 'show:1', error));
+    assert.deepEqual(offline.menuEntry('tvSeason', 'show:1'), { id: 'offline-add', label: 'Make available offline', errorText: copy }, 'season ' + error);
+  }
+  assert.ok(changes.some(([k, id]) => k === 'album' && id === ALBUM), 'the surfaces are told');
+  assert.deepEqual(offline.state('album', 'other'), { state: 'none' }, 'only that album');
+  win.close();
+});
+
+test('v1.387.1: an unknown error shows the "other" copy; an unknown kind or a missing field drops the event; a single item fails the same way', () => {
+  const { win, fake, offline } = realm(DL);
+  fake.emit(addFailed('album', 'a1', 'cosmic'));
+  assert.deepEqual(offline.state('album', 'a1'), { state: 'failed', error: 'other' });
+  assert.strictEqual(offline.menuEntry('album', 'a1').errorText, offline.ERROR_COPY.other);
+  fake.emit(addFailed('book', 'b1', 'network'));
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', error: 'network' });
+  fake.emit({ v: 1, type: 'downloadsAddFailed', kind: 'album', id: 'a2' });
+  assert.deepEqual(offline.state('book', 'b1'), { state: 'none' });
+  assert.deepEqual(offline.state('album', 'a2'), { state: 'none' });
+  fake.emit(addFailed('video', 'v1', 'network'));
+  assert.deepEqual(offline.menuEntry('video', 'v1'), { id: 'offline-add', label: 'Make available offline', errorText: offline.ERROR_COPY.network });
+  fake.emit(addFailed('track', 't1', 'notReady'));
+  assert.deepEqual(offline.state('track', 't1'), { state: 'failed', error: 'notReady' });
+  win.close();
+});
+
+test('v1.387.1: clearing path 1 - the next add() of that key (a chapter row id is normalized the way the event\'s id was sent) clears it and tells the surfaces', () => {
+  const { win, fake, offline } = realm(DL);
+  fake.emit(addFailed('album', ALBUM, 'network'));
+  const changes = [];
+  offline.onChange((k, id) => changes.push([k, id]));
+  fake.clear();
+  offline.add('album', ALBUM);
+  assert.deepEqual(fake.posts, [{ v: 1, type: 'downloads.add', kind: 'album', id: ALBUM }]);
+  assert.deepEqual(offline.state('album', ALBUM), { state: 'none' }, 'a retry shows the plain label (no pending state)');
+  assert.deepEqual(changes, [['album', ALBUM]]);
+  // A chapter row: add() sends the PARENT id, native answers with that id, the next add clears it.
+  fake.emit(addFailed('track', 'm1', 'network'));
+  assert.deepEqual(offline.state('track', 'm1::c3'), { state: 'failed', error: 'network' }, 'read through the chapter id');
+  offline.add('track', 'm1::c3');
+  assert.deepEqual(offline.state('track', 'm1'), { state: 'none' });
+  // A different key is untouched by the retry.
+  fake.emit(addFailed('album', 'a1', 'network'));
+  fake.emit(addFailed('album', 'a2', 'network'));
+  offline.add('album', 'a1');
+  assert.deepEqual(offline.state('album', 'a1'), { state: 'none' });
+  assert.deepEqual(offline.state('album', 'a2'), { state: 'failed', error: 'network' });
+  win.close();
+});
+
+test('v1.387.1: clearing path 2 - any download event for the item, or for a member of the album / season (parentKind + parentId), clears it', () => {
+  const { win, fake, offline } = realm(DL);
+  fake.emit(addFailed('album', ALBUM, 'network'));
+  fake.emit(addFailed('video', 'v1', 'network'));
+  fake.emit(addFailed('tvSeason', 'show:1', 'network'));
+  fake.emit(item('video', 'v1', 'queued'));
+  assert.deepEqual(offline.state('video', 'v1'), { state: 'queued' }, 'the real item wins and the failure is gone');
+  fake.emit(item('video', 'v1', 'none'));
+  assert.deepEqual(offline.state('video', 'v1'), { state: 'none' }, 'cleared for good, not just hidden');
+  fake.emit(item('track', 't1', 'queued', { parentKind: 'album', parentId: ALBUM }));
+  assert.deepEqual(offline.state('album', ALBUM), { state: 'downloading', progress: 0 });
+  fake.emit(item('track', 't1', 'none', { parentKind: 'album', parentId: ALBUM }));
+  assert.deepEqual(offline.state('album', ALBUM), { state: 'none' }, 'the member left: no stale failure comes back');
+  assert.deepEqual(offline.state('tvSeason', 'show:1'), { state: 'failed', error: 'network' }, 'an unrelated season keeps its failure');
+  fake.emit(item('tvEpisode', 'e1', 'done', { localSrc: 'l', parentKind: 'tvSeason', parentId: 'show:1' }));
+  assert.deepEqual(offline.state('tvSeason', 'show:1'), { state: 'done' });
+  win.close();
+});
+
+test('v1.387.1: a stale failure never hides real member progress (members present = the roll-up decides, whatever order they arrived in)', () => {
+  const { win, fake, offline } = realm(DL);
+  // Members already known from a snapshot, then a failure for the container arrives late.
+  fake.emit(snapshot([item('track', 't1', 'downloading', { progress: 0.5, parentKind: 'album', parentId: 'a1' })]));
+  fake.emit(addFailed('album', 'a1', 'network'));
+  assert.deepEqual(offline.state('album', 'a1'), { state: 'downloading', progress: 0.5 });
+  assert.deepEqual(offline.menuEntry('album', 'a1'), { id: 'offline-remove', label: 'Saving for offline... 50%' });
+  // The member is removed: the (kept) failure may show again only because nothing replaced it.
+  fake.emit(item('track', 't1', 'none', { parentKind: 'album', parentId: 'a1' }));
+  assert.deepEqual(offline.state('album', 'a1'), { state: 'none' }, 'the member event cleared the failure too');
+  win.close();
+});
+
+test('v1.387.1: clearing path 3 - a downloadsSnapshot replaces the world, failures included', () => {
+  const { win, fake, offline } = realm(DL);
+  fake.emit(addFailed('album', ALBUM, 'network'));
+  fake.emit(addFailed('video', 'v1', 'revoked'));
+  fake.emit(snapshot([item('video', 'v2', 'done', { localSrc: 'l' })]));
+  assert.deepEqual(offline.state('album', ALBUM), { state: 'none' });
+  assert.deepEqual(offline.state('video', 'v1'), { state: 'none' });
+  assert.deepEqual(offline.state('video', 'v2'), { state: 'done', localSrc: 'l' });
+  win.close();
+});
+
+test('v1.387.1: clearing path 4 - pagehide drops the failures and the listener; a persisted pageshow subscribes afresh and a new failure is heard again', () => {
+  const { win, fake, offline } = realm(DL);
+  fake.emit(addFailed('album', ALBUM, 'network'));
+  win.dispatchEvent(new win.Event('pagehide'));
+  assert.deepEqual(offline.state('album', ALBUM), { state: 'none' });
+  fake.emit(addFailed('album', 'a9', 'network'));
+  assert.deepEqual(offline.state('album', 'a9'), { state: 'none' }, 'unsubscribed: the event is no longer read');
+  const persisted = new win.Event('pageshow');
+  Object.defineProperty(persisted, 'persisted', { value: true });
+  win.dispatchEvent(persisted);
+  fake.emit(addFailed('album', 'a9', 'network'));
+  assert.deepEqual(offline.state('album', 'a9'), { state: 'failed', error: 'network' });
+  assert.strictEqual(fake.of('downloads.subscribe').length, 2);
+  win.close();
+});
+
+test('v1.387.1: the failure rides state() only - never localSrc, never a badge, and a failed container decorates nothing', () => {
+  const { win, fake, offline } = realm(DL, SURFACES_HTML);
+  fake.emit(addFailed('video', 'v1', 'network'));
+  assert.strictEqual(offline.localSrcFor(['video'], 'v1'), null);
+  assert.strictEqual(win.document.querySelectorAll('.offline-badge').length, 0, 'a failed add draws no chip');
   win.close();
 });

@@ -185,6 +185,14 @@ server), `/albumart/:id`, `/thumbnail/:id`, `/tvthumb/:id`, `/tvposter/:showId`,
 `/api/subtitles/:id`, plus `GET /api/auth/me` and `GET /api/host-info`. Everything else is `403`. Every one applies this
 account's restrictions exactly as a browser session does (a kid's phone cannot fetch a hidden file's bytes or art).
 
+## Telling the web an add failed
+
+When a `downloads.add` cannot produce any member (a container) or cannot start (a single item that never reached a `download`
+event), send the page `downloadsAddFailed { kind, id, error }` once: `kind` and `id` as the web sent them, `error` from the
+`download` error enum (`network`, `storageFull`, `revoked`, `notOnServer`, `notReady`, `notPlayable`, `other`). The page shows
+that reason on the item's menu; tapping again is a new add. Do not send it for an item that did reach a `download` event (that
+item reports `failed` itself). Contract: docs/references/native-bridge.md section 3.
+
 ## 7. Disclosed limits
 
 - Ids are md5(path): moves and renames read as gone. A transcode cache eviction (5 GB LRU by default) changes a served

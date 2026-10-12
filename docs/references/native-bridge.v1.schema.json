@@ -110,6 +110,15 @@
         },
         {
           "properties": {
+            "type": { "const": "downloadsAddFailed" },
+            "kind": { "enum": ["track", "album", "podcastEpisode", "video", "tvEpisode", "tvSeason"] },
+            "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "notPlayable", "other"] }
+          },
+          "required": ["kind", "id", "error"]
+        },
+        {
+          "properties": {
             "type": { "const": "downloadsSnapshot" },
             "items": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/downloadItem" } }
           },
