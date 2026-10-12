@@ -114,3 +114,5 @@ claude-close.sh.
 
 ## 8. Out of scope
 The panels' contents and look beyond position and the open motion; the phone bottom sheets; the offline-UI roadmap item.
+
+Gate: APPROVED r1 @c9d208ca6b025ac98694243c7d9b3f8a24f5b35f — qa

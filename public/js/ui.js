@@ -522,6 +522,9 @@
       var h = s.offsetHeight;
       var held = heldSide && h > 0 && band.hi > band.lo;
       var p = held ? holdPopoverSide(heldSide, anchorRect, h, band.lo, band.hi) : placePopover(anchorRect, h, band.lo, band.hi);
+      // The band can shrink past the anchor (pinch zoom, the keyboard): no room to cap into, so place it afresh
+      if (held && p.maxH != null && p.maxH <= 0) held = false;
+      if (!held) p = placePopover(anchorRect, h, band.lo, band.hi);
       if (held) p.side = heldSide;
       else if (p.side === 'below' || p.side === 'above') heldSide = p.side;
       s.style.setProperty('--ui-pop-top', p.top + 'px');

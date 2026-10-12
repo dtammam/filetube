@@ -3066,7 +3066,12 @@ select {
 .oneoff-form {
   display: grid;
   gap: var(--space-6);
-  padding: var(--space-2) var(--space-8);
+  padding: 0 var(--space-8);
+}
+/* v1.387.3: a centred or anchored dialog clips its first field's focus ring at the top of the
+   scrolling body; room for the ring there. A phone's bottom sheet keeps its spacing. */
+.ui-sheet:not(.ui-sheet--bottom) .oneoff-form {
+  padding-block: var(--space-2);
 }
 .oneoff-form > .oneoff-modal-status {
   margin: 0;

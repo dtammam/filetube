@@ -572,6 +572,10 @@ test('ui.sheet popover: a right-half anchor gets the -end class (right edges lin
   assert.strictEqual(pop.el.getAttribute('data-placement'), 'below');
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '45.5px', 'top never moves while it loads');
   assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '454.5px', 'it scrolls inside instead');
+  win.visualViewport = { offsetTop: 0, height: 30 }; // the band shrinks past the anchor: no room to cap into
+  observers[0].cb([]);
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'scroll', 'a non-positive cap falls back to a fresh placement');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '30px');
   assertNoInlineStyle(pop.el);
   pop.close();
   anchor.getBoundingClientRect = () => ({ left: 100, top: 8, right: 136, bottom: 45.5, width: 36, height: 37.5 });
