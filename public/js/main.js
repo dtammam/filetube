@@ -744,7 +744,7 @@ function buildCardMenuItems(item, caps, opts) {
   // v1.387.0 offline playback (plan D6): opts.offline is the module's menuEntry for this card's kind + id, passed ONLY
   // when the host announced `downloads` (a browser never sees the entry). Beside Save to device, never replacing it.
   if (opts && opts.offline && typeof opts.offline.id === 'string') {
-    out.push({ id: opts.offline.id, icon: opts.offline.id === 'offline-remove' ? 'delete' : 'download', label: opts.offline.label });
+    out.push({ id: opts.offline.id, icon: opts.offline.id === 'offline-remove' ? 'close' : 'arrow_downward', label: opts.offline.label });
     if (opts.offline.errorText) out.push({ id: 'offline-error', icon: 'error', label: opts.offline.errorText, disabled: true });
   }
   if (!kp && it.hasSubtitles === true) out.push({ id: 'transcript', icon: 'subject', label: 'Transcript' });

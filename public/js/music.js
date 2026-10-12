@@ -582,7 +582,7 @@ function chapterStamp(seconds) {
 // the app would never have shown them (QA WARNING-3).
 // v1.387.1: the album pill, one builder for the first render and for the in-place repaint on an offline change.
 function drillOfflinePillHtml(entry) {
-  return '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-offline" data-offline-action="' + escapeMusicHtml(entry.id) + '"' + (entry.errorText ? ' title="' + escapeMusicHtml(entry.errorText) + '"' : '') + '>' + songIconHtml(entry.id === 'offline-remove' ? 'delete' : 'download') + '<span class="ui-btn__label">' + escapeMusicHtml(entry.label) + '</span></button>';
+  return '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-offline" data-offline-action="' + escapeMusicHtml(entry.id) + '"' + (entry.errorText ? ' title="' + escapeMusicHtml(entry.errorText) + '"' : '') + '>' + songIconHtml(entry.id === 'offline-remove' ? 'close' : 'arrow_downward') + '<span class="ui-btn__label">' + escapeMusicHtml(entry.label) + '</span></button>';
 }
 function buildDrillHeaderHtml(drill, tracks, opts) {
   tracks = Array.isArray(tracks) ? tracks : [];
@@ -4428,7 +4428,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var off = window.FileTube && window.FileTube.offline;
       if (off && off.enabled) {
         var oe = off.menuEntry('track', id);
-        items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'delete' : 'download', onSelect: function () { off.runMenuAction(oe.id, 'track', id); } });
+        items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'close' : 'arrow_downward', onSelect: function () { off.runMenuAction(oe.id, 'track', id); } });
         if (oe.errorText) items.push({ label: oe.errorText, icon: 'error', disabled: true });
       }
       if (item.artist) {

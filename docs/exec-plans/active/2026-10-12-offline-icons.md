@@ -27,8 +27,9 @@ common.js:7410 < openMenu common.js:7539); with no host, every one opens. The v1
 (offline-ui.test.js:244) and never met the registry: an inert guard (LESSONS 2).
 
 ## 3. The fix (the smallest that works)
-- Use glyphs the registry already has: `download_for_offline` -> `download`, `offline_pin` -> `delete` (the "Remove offline
-  copy" action), in the six call sites above. No new glyphs, no icon pipeline run, no behaviour change.
+- Use glyphs the registry already has: `download_for_offline` -> `arrow_downward`, `offline_pin` -> `close` (the "Remove
+  offline copy" / cancel action), in the six call sites above. Gate r1 NOTE: not `download` / `delete`, which the rows
+  beside them ("Save to device", the trash actions) already use. No new glyphs, no icon pipeline run, no behaviour change.
 - test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property including both ternary
   arms, `U.icon` / `ui.icon`, `songIconHtml`) must be in the registry; a floor on the names found keeps the scan honest.
   Bound: restoring `download_for_offline` in common.js turns it red (`common.js: download_for_offline`).
@@ -43,8 +44,14 @@ Image" green; tell the iOS Root.
 
 ## 6. Evidence
 - Full `npm test`, Node 22.23.1, on the fix: tests 12429, pass 12416, fail 0, skipped 13.
+- Gate r1 (adversary, CHANGES): the census missed a toggle `on:` arm, a ternary inside an icon call, `songIconHtml(<ternary>)`,
+  the `u.icon` alias and ui.js's bare `icon(...)`. One pattern now covers them (the seat's tested regex); each mutation
+  (M4 music.js pill, M5 books.js toggle on, M7 main.js star ternary, M8 setup.js u.icon, M9 ui.js icon) turns the census red
+  (fail 1), the tree is green (offline-ui + census 26/26).
 - Census bound: `download_for_offline` restored in common.js -> icon-names-registered red (pass 0, fail 2); reverted -> 26/26 with offline-ui.
 
 ## 7. Out of scope
 New offline glyphs (a later look pass may add `download_for_offline` / `offline_pin` through tools/icons); softening
 `ui.icon`'s throw (deliberate, F39); anything native.
+
+Gate: CHANGES r1 @c44d4840 — adversary

@@ -808,7 +808,7 @@
         var off = window.FileTube && window.FileTube.offline;
         if (off && off.enabled) {
           var oe = off.menuEntry('podcastEpisode', ep.id);
-          items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'delete' : 'download', onSelect: function () { off.runMenuAction(oe.id, 'podcastEpisode', ep.id); } });
+          items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'close' : 'arrow_downward', onSelect: function () { off.runMenuAction(oe.id, 'podcastEpisode', ep.id); } });
           if (oe.errorText) items.push({ label: oe.errorText, icon: 'error', disabled: true });
         }
         // v1.70: the recoverable delete - through ui.confirm, never an in-row arm.
