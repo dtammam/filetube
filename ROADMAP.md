@@ -85,6 +85,10 @@
 
 ### Bugs
 
+- [ ] **A member can like a track they cannot see (found by the v1.386.0 security seat; older than v1.386.0)** -
+  `POST /api/music/liked/:id` (lib/music/routes.js) checks the track exists but not `trackVisibleTo`: a restricted member gets
+  200 for a hidden id and 404 for a missing one (an existence oracle) and stores a liked row for it. Reads filter it back out, so
+  nothing shows. Fix: the visibility gate before the write, answering a hidden id exactly like a missing one.
 - [ ] **A users-replacing backup restore drops every user's library restrictions (found 2026-10-11 while planning offline playback; security)** -
   `user_restrictions` rows do not ride the backup bundle (`exportUsersForBackup` carries progress, likes, pins and the rest, never
   the restriction rows or the allowlist mode), so a restore that replaces the users recreates a restricted (kid) account with NO
@@ -468,8 +472,8 @@
 
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
-  possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
-  caching of the app's own files and thumbnails on the phone (every load revalidates: `no-cache`); a lower-quality video version,
+  possible next step once the numbers say which matters: (response compression and caching of the app's own files shipped in
+  v1.386.0; scripts loaded on an in-app navigation and `/logo` still revalidate); a lower-quality video version,
   a quality picker or a data-saver setting (no adaptive bitrate: the original file plays); fewer API requests per page (the Nav
   fan-out row); a data-usage record; an always-on slow-request log; page-smoothness measures (long tasks, Web Vitals); timing in the
   transcode and scan logs; load testing. Also: `/diag` cannot record inside the home-screen app (its storage is separate from
@@ -818,6 +822,23 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.386.0 - Speed pass: skins that appear whole, a music library that answers in milliseconds, files cached until a release (2026-10-11)
+
+- Measured first (tools/speed-proof/: a 23,000-track library, Chromium + WebKit, a home and a VPN-model link); causes and before /
+  after numbers in docs/exec-plans/completed/2026-10-11-speed-pass.md.
+- Static files: the shells (still revalidated every load) name each script, stylesheet and preload by the sha256 of the bytes served,
+  stylesheets stamp their own url()s; only a URL whose stamp matches the bytes is cached a year (`immutable`), everything else
+  revalidates as before; text files go out brotli/gzip. The release cache-bust proof (Chromium + WebKit, persistent profile, with a
+  negative control) is tools/speed-proof/cache-bust-proof.js.
+- A skin pick (the sticker menu's chips, the Pocket's Extras > Skins preview and Select) keeps the current look until the new skin's
+  photos are downloaded and decoded (cap 4 s); opening the Skin list starts them.
+- Music server: a shared, frozen snapshot of the track rows (rebuilt by SQLite's own per-table write counter) for every read-only
+  per-request reader, including covers, `/track/:id`, the queue, liked, feed and search; one cached collator per sort; stations
+  memoise style matches; large JSON goes out compressed.
+- Disclosed: scripts the SPA router loads on an in-app navigation, `/logo` and URLs built in JS still revalidate each load;
+  errors.html and ui-kit.html download the font twice (unstamped preload); the music_tracks write counter roughly doubles a bulk
+  write (a full re-import or a restore, once); the backup download now goes out compressed. The VPN numbers are a model (80 ms,
+  20 Mbit/s); Dean's device pass is the arbiter.
 ### v1.387.0 - Offline playback, the server half: per-device tokens, the download manifest, offline position sync, the `downloads` contract and the web's offline buttons (2026-10-12)
 
 - **Per-device tokens** (plan D1): the iOS app pairs once from the signed-in web view with the account password (`POST /api/devices`, cookie only, never from a token) and holds `ftd_...` in its Keychain; the gate's `Authorization: Bearer ftd_` branch sets `req.user` from the row (every restriction applies to a phone as to a browser), with an explicit scope allowlist (default deny, a census test) and live revocation (a revoke, "Remove all devices", a password change, a disable or a delete ends an open download at once). Tokens are sha256 rows, 180 days unused = dead, never in the backup bundle (a restore re-pairs every phone). Settings > Account > Devices for everyone; the Users panel's Devices expando for an admin. Schema v37 (the eighteenth floor).

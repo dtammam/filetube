@@ -581,6 +581,9 @@ function isDiagEnabled() {
 // Server-Timing on every downstream handler; the middleware itself no-ops when
 // isDiagEnabled() is false, so a normal install pays only the predicate check.
 app.use(require('./lib/diag/timing').createDiagTiming({ isEnabled: isDiagEnabled }));
+// v1.386.0 speed pass: a large JSON answer (a GET's 200, 8 KB or more) goes out brotli/gzip-compressed
+// (lib/jsonCompression.js); installed before any route, it rewrites only the finished body at res.end.
+app.use(require('./lib/jsonCompression').jsonCompression);
 // Wave 4 (second group): the folder config - the root list (library_folders,
 // operator order), the per-root settings map (library_folder_settings) and
 // the per-channel-folder display names (channel_folder_display_names). The
@@ -3425,6 +3428,8 @@ function dropPendingProgressForUser(userId) {
 // this is always current, needs no bootstrap, and depends on nothing
 // client-side. Only full-page loads/refreshes hit this; in-app SPA nav keeps
 // the header, so there is no FOUC there to fix.
+// v1.386.0: the static-asset server and the shells' versioned asset URLs (lib/staticAssets.js).
+const staticAssets = require('./lib/staticAssets').createStaticAssets({ publicDir: path.join(__dirname, 'public') });
 const FOUC_SHELL_FILES = new Set(['index.html', 'watch.html', 'stats.html', 'setup.html', 'read.html', 'books.html', 'music.html', 'tv.html', 'podcasts.html', 'history.html', 'login.html', 'welcome.html']);
 function shellHtmlForRequestPath(p) {
   if (p === '/' || p === '/index.html') return 'index.html';
@@ -3494,6 +3499,7 @@ function sendShellHtml(res, absFilePath, transform) {
   // the safety fallback.
   html = injectCustomLogoClass(html);
   html = injectVersionMeta(html); // v1.90: expose the running version to the client
+  html = staticAssets.rewriteHtml(html); // v1.386.0: content-versioned asset URLs (lib/staticAssets.js)
   if (isDiagEnabled()) {
     // Perf-diagnostics: ride the collector on EVERY shell from this ONE choke
     // point, so a soft-nav'd view can never land on a shell that lacks it (the
@@ -3538,9 +3544,14 @@ app.get('*', (req, res, next) => {
   if (!shell) return next();
   if (!sendShellHtml(res, path.join(__dirname, 'public', shell))) return next();
 });
-// Serve the app assets with revalidation (no-cache) so updated HTML/JS/CSS show up
-// immediately behind caches (browsers, nginx) instead of serving stale files.
-// ETag/Last-Modified still allow cheap 304s when nothing changed.
+// v1.386.0 speed pass: the static folders (js, css, fonts, assets, icons, vendor, critters) go through
+// lib/staticAssets.js - a URL carrying the content hash of the bytes sent is cached for a year (`immutable`),
+// anything else is revalidated exactly as below, and text files go out compressed. The shells name each file by
+// its hash (sendShellHtml), so a release reaches every device on its next load.
+app.use(staticAssets.middleware);
+// Everything else (root files such as the service worker and the manifest, a byte-range request, an oversized
+// file) is served with revalidation (no-cache) so updated files show up immediately behind caches (browsers,
+// nginx) instead of serving stale files. ETag/Last-Modified still allow cheap 304s when nothing changed.
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res) => {
     res.setHeader('Cache-Control', 'no-cache');
@@ -5552,8 +5563,7 @@ mediaRoutes.registerHandoffAndDeleteRoutes(app, {
 // trackVisibleTo / mediaVisibleTo), or null for an id the caller cannot see.
 function resolveRemoteTracks(req, ids) {
   const userId = req.user.id;
-  const ns = musicDb.read();
-  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+  let list = Object.values(musicDb.readPartShared('tracks')).filter((t) => trackVisibleTo(req, t)); // v1.386.0: the shared snapshot (read-only)
   const byId = new Map(list.map((t) => [t.id, t]));
   if (ids.some((id) => !byId.has(id))) {
     for (const t of projectedLibraryTracks(req, list)) if (!byId.has(t.id)) byId.set(t.id, t);

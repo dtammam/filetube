@@ -7,6 +7,15 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Whole app, layout and dialogs
 
+## Speed pass (v1.386.0)
+
+On the phone, home-screen app and FileTube app, at home and over the VPN:
+
+- [ ] v1.386.0 - Pocket > sticker > Skin > Transparent Coil (and Transparent, Transparent Black; and Extras > Skins scrolling onto them): the old look stays until the new one appears whole - never the frame without its board or ring. The first pick on a new phone may take a moment; later picks are instant.
+- [ ] v1.386.0 - Open Music at home, then over the VPN: the Home shelves are usable within about a second; the Albums and Songs tabs and the Pocket's Songs list open noticeably faster than before.
+- [ ] v1.386.0 - After the NEXT release (any version after v1.386.0), open the app without force-quitting: it shows the new version's changes at once (the account menu's version row reads the new number), in Safari, the home-screen app and the FileTube app.
+- [ ] v1.386.0 - Nothing looks different anywhere (pages, icons, fonts, skins); the sign-in page still looks right when signed out.
+- [ ] v1.386.0 - Settings > download a backup in Safari and in the FileTube app: the file saves and opens as readable JSON (it now travels compressed).
 ## Offline playback (v1.387.0)
 
 Browser and home-screen app: nothing should look or behave differently, except Settings > Account now has a Devices list
