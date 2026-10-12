@@ -324,6 +324,26 @@ test('v1.386.0: Select waits for the photos, holding the old look through a repa
   } finally { b.restore(); }
 });
 
+test('v1.386.0: Select with NO preview shown yet (the first highlight still waiting on its photos) still holds the painted look', async () => {
+  const b = boot();
+  try {
+    const { hold } = holdPocketArt(b);
+    hold('ipod-black'); // the list opens on the saved colorway: its preview waits too, so nothing is previewed
+    const release = hold('ipod');
+    openClickColorways(b);
+    const id = pickTarget(b);
+    assert.strictEqual(id, 'ipod');
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    assert.strictEqual(stored(b), 'ipod', 'saved');
+    b.engine.paint(); // a repaint in the gap: without the hold it would draw the saved skin, photos not ready
+    assert.strictEqual(shows(b), 'ipod-black', 'the painted look is held');
+    release();
+    await settle();
+    assert.strictEqual(shows(b), 'ipod');
+    assert.strictEqual(b.spy.changed, 1);
+  } finally { b.restore(); }
+});
+
 test('v1.386.0: a Select still waiting when the surface dies saves but never repaints it', async () => {
   const b = boot();
   try {
