@@ -3,8 +3,8 @@ plan: speed-pass
 harness: v2 · full
 branch: perf/v1.386.0-speed-pass
 anchor: outcome
-status: Building
-next: the FULL gate (adversary, qa, security-brief) on this sha
+status: Gate:CHANGES r1 @d0e7d197
+next: gate r2 delta re-confirm (adversary, qa) on the fix commits; security-brief APPROVED r1
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
 gate: not yet run (FULL: adversary, qa - caching mistakes ship stale code to every device)
@@ -135,21 +135,23 @@ docs/exec-plans/active/2026-10-11-speed-pass.md "Shipped vX.Y.Z" --apply`); ask 
 
 | engine | network | pick | Skin page opens (ms, page blocked) | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |
 |---|---|---|---|---|---|---|---|---|
-| chromium | home | cold | n/a | 6 | 10 | 16 | 360 KB | 0 |
-| chromium | home | warm | n/a | 6 | 4 | 10 | 1 KB | 0 |
-| chromium | vpn | cold | n/a | 6 | 259 | 265 | 364 KB | 0 |
-| chromium | vpn | warm | n/a | 7 | 136 | 142 | 2 KB | 0 |
-| webkit | home | cold | n/a | 4 | 16 | 20 | 360 KB | 0 |
-| webkit | home | warm | n/a | 4 | 14 | 18 | 360 KB | 0 |
-| webkit | vpn | cold | n/a | 5 | 238 | 243 | 364 KB | 0 |
-| webkit | vpn | warm | n/a | 5 | 240 | 245 | 364 KB | 0 |
+| chromium | home | cold | 6 | 8 | 51 | 57 | 360 KB | 1 |
+| chromium | home | warm | 6 | 7 | 5 | 12 | 1 KB | 1 |
+| chromium | vpn | cold | 6 | 7 | 257 | 264 | 364 KB | 0 |
+| chromium | vpn | warm | 6 | 6 | 133 | 140 | 2 KB | 0 |
+| webkit | home | cold | 2 | 5 | 16 | 21 | 360 KB | 0 |
+| webkit | home | warm | 4 | 7 | 27 | 34 | 382 KB | 1 |
+| webkit | vpn | cold | 2 | 4 | 239 | 243 | 364 KB | 0 |
+| webkit | vpn | warm | 2 | 4 | 238 | 242 | 364 KB | 0 |
 
+The skin rows were re-run at the fix round with the Skin-page-open column (3 of 24 reps failed to open the player on the
+base tree, a probe-side flake; the medians are of the rest).
 
 ### W1: the named causes
 1. **Skin picker** (Dean: "a weird picture, and then all of a sudden the image shows"): CONFIRMED. The Transparent skins'
    board (234 KB) and ring (125 KB) photos are CSS url()s that only start downloading when the new skin's class lands, and
-   the class lands at the tap (4-7 ms), so the frame paints without them: 238-259 ms over the modelled VPN cold, and still
-   136 ms warm in Chromium (every static file is `no-cache`, so even a cached photo waits a round trip) and 240 ms warm in
+   the class lands at the tap (4-8 ms), so the frame paints without them: 239-257 ms over the modelled VPN cold, and still
+   133 ms warm in Chromium (every static file is `no-cache`, so even a cached photo waits a round trip) and 238 ms warm in
    WebKit (re-downloaded). Decode time comes on top.
 2. **Music library** ("it takes a while for it to be responsive"): CONFIRMED, and the plan's lead was half right. Home does
    NOT load the whole library (4 small calls), but EVERY music call did whole-library work on the server: each one re-read
@@ -178,7 +180,8 @@ docs/exec-plans/active/2026-10-11-speed-pass.md "Shipped vX.Y.Z" --apply`); ask 
 - **Music server**: the list routes, albums, artists, stations, config, liked, `/api/music/:id`, `/track/:id` and
   `/albumart/:id` read a shared, FROZEN snapshot of the track rows (jsonRowStore.getAllShared), rebuilt only when SQLite's
   own write counter for music_tracks moves (lib/db/tableGeneration.js: TEMP triggers on INSERT / UPDATE / DELETE, so every
-  writer is seen and a rolled-back write is undone with its count; nothing written to the database file). Writers are
+  writer on the server's connection is seen and a rolled-back write is undone with its count; a write from ANOTHER connection
+  moves SQLite's `PRAGMA data_version`, which is part of the key since gate r1; nothing written to the database file). Writers are
   untouched (mutate() still diffs a fresh read). Visibility (RBAC) still filters per request. Sorts use one cached
   Intl.Collator per option set (the same order by ECMA-402; an oracle test compiles the module back to localeCompare and
   compares every sort and grouping).
@@ -187,29 +190,29 @@ docs/exec-plans/active/2026-10-11-speed-pass.md "Shipped vX.Y.Z" --apply`); ask 
 
 ### W4: after (HEAD of perf/v1.386.0-speed-pass, the same instruments)
 
-Browser (tools/speed-proof/results/after-browser.jsonl; the Coil pick rows: before had 0 failed reps too):
+Browser (tools/speed-proof/results/after-browser.jsonl, re-run on cf006383 after the gate r1 fixes; 0 failed reps):
 
 | engine | network | open | Home drawn (ms) | last main-thread stall ends (ms) | requests reaching the server (200 / 304) | bytes over the wire | music API server ms (sum) | all server ms (sum) |
 |---|---|---|---|---|---|---|---|---|
-| chromium | home (4 ms RTT, 300 Mbit/s) | cold | 640 | 644 | 144 / 1 | 3.07 MB | 767 | 1707 |
-| chromium | home (4 ms RTT, 300 Mbit/s) | warm | 585 | 569 | 0 / 22 | 7 KB | 730 | 1219 |
-| chromium | vpn (80 ms RTT, 20 Mbit/s) | cold | 1401 | 0 | 142 / 1 | 3.03 MB | 777 | 1054 |
-| chromium | vpn (80 ms RTT, 20 Mbit/s) | warm | 894 | 911 | 0 / 22 | 7 KB | 585 | 924 |
-| webkit | home (4 ms RTT, 300 Mbit/s) | cold | 742 | 778 | 104 / 0 | 2.44 MB | 698 | 1347 |
-| webkit | home (4 ms RTT, 300 Mbit/s) | warm | 746 | 772 | 103 / 0 | 2.44 MB | 647 | 1257 |
-| webkit | vpn (80 ms RTT, 20 Mbit/s) | cold | 1520 | 1528 | 103 / 0 | 2.44 MB | 875 | 1507 |
-| webkit | vpn (80 ms RTT, 20 Mbit/s) | warm | 1411 | 1421 | 103 / 0 | 2.44 MB | 567 | 1137 |
+| chromium | home (4 ms RTT, 300 Mbit/s) | cold | 612 | 0 | 144 / 1 | 3.05 MB | 797 | 1273 |
+| chromium | home (4 ms RTT, 300 Mbit/s) | warm | 597 | 0 | 1 / 21 | 7 KB | 753 | 1161 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | cold | 1385 | 0 | 141 / 1 | 3.01 MB | 631 | 857 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | warm | 888 | 219 | 0 / 22 | 7 KB | 592 | 1194 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | cold | 813 | 830 | 104 / 0 | 2.44 MB | 857 | 1561 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | warm | 727 | 750 | 103 / 0 | 2.44 MB | 722 | 1354 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | cold | 1424 | 1435 | 103 / 0 | 2.44 MB | 704 | 1002 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | warm | 1387 | 1402 | 103 / 0 | 2.44 MB | 519 | 867 |
 
-| engine | network | pick | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |
-|---|---|---|---|---|---|---|---|
-| chromium | home | cold | 23 | 0 | -30 | 0 KB | 0 |
-| chromium | home | warm | 24 | 0 | -34 | 0 KB | 0 |
-| chromium | vpn | cold | 176 | 0 | 145 | 360 KB | 0 |
-| chromium | vpn | warm | 27 | 0 | -26 | 0 KB | 0 |
-| webkit | home | cold | 9 | 0 | -67 | 0 KB | 0 |
-| webkit | home | warm | 8 | 0 | -63 | 0 KB | 0 |
-| webkit | vpn | cold | 158 | 0 | 126 | 125 KB | 0 |
-| webkit | vpn | warm | 160 | 0 | 126 | 125 KB | 0 |
+| engine | network | pick | Skin page opens (ms, page blocked) | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |
+|---|---|---|---|---|---|---|---|---|
+| chromium | home | cold | 6 | 40 | 0 | 1 | 169 KB | 0 |
+| chromium | home | warm | 6 | 39 | 0 | -8 | 0 KB | 0 |
+| chromium | vpn | cold | 7 | 237 | 0 | 207 | 360 KB | 0 |
+| chromium | vpn | warm | 6 | 41 | 0 | -1 | 0 KB | 0 |
+| webkit | home | cold | 2 | 87 | 0 | 36 | 360 KB | 0 |
+| webkit | home | warm | 2 | 84 | 0 | 36 | 360 KB | 0 |
+| webkit | vpn | cold | 2 | 288 | 0 | 256 | 363 KB | 0 |
+| webkit | vpn | warm | 2 | 288 | 0 | 254 | 363 KB | 0 |
 
 Server cost per call, 23,000 tracks, median of 5 sequential requests on loopback (results/before-api.jsonl, after-api.jsonl;
 "after" bytes are brotli when the browser accepts it):
@@ -238,26 +241,31 @@ Server cost per call, 23,000 tracks, median of 5 sequential requests on loopback
 | `/albumart/<id>?s=256 (x12)` | 476 | 3 | - | - |
 
 Read together (copied from the tables above):
-- The Coil is never shown without its photos: 0 ms in all 8 cells (was 4-259 ms; 136-259 ms over the VPN model). Over the VPN
-  a first-ever pick shows 158-176 ms after the tap (the old look stays meanwhile); once cached, 8-27 ms.
-- Home drawn: Chromium 3888 -> 640 ms cold / 3905 -> 585 ms warm at home; 3698 -> 1401 ms cold / 3249 -> 894 ms warm on the VPN
-  model. WebKit 3026 -> 742 / 2958 -> 746 at home, 3766 -> 1520 / 3759 -> 1411 on the VPN model (its warm row re-downloads:
-  see the instrument limits). Server time for one open: 17,590-22,569 ms -> 924-1,707 ms (Chromium, all requests summed).
-- A warm open reaches the server with 0 x 200 + 22 x 304 (the shell, the API reads, /logo) instead of 6 + 49: no static file,
-  font, icon or cover is asked for at all.
+- The Coil is never shown without its photos: 0 ms in all 8 cells (before: 5-257 ms; 133-257 ms over the VPN model). Over the VPN
+  a first-ever pick shows 237-288 ms after the tap, the old look staying meanwhile (the probe taps 3 ms after the list opens,
+  before the list's idle-time warm; a person reading the list for a moment gets the warm first); once cached, 39-41 ms in Chromium.
+- The Skin page opens in 2-7 ms (before: 2-6 ms). Gate r1 measured the first draft at 471-532 ms in WebKit; the stylesheet index
+  and the idle-time warm took that out.
+- Home drawn: Chromium 3888 -> 612 ms cold / 3905 -> 597 ms warm at home; 3698 -> 1385 ms cold / 3249 -> 888 ms warm on the VPN
+  model. WebKit 3026 -> 813 / 2958 -> 727 at home, 3766 -> 1424 / 3759 -> 1387 on the VPN model (its warm row re-downloads: see
+  the instrument limits). Server time for one open: 17,590-22,569 ms -> 857-1,273 ms (Chromium, all requests summed).
+- A warm open reaches the server with 0-1 x 200 + 21-22 x 304 (the shell, the API reads, /logo) instead of 6 + 49: no static
+  file, font, icon or cover is asked for at all.
 - The cold wire is ~3 MB now and was ~4.6 MB; the remaining bytes are mostly album covers, which now finish inside the window
   (each cover cost 476 ms of server time before, 3 ms now, so before most were still queued when the window closed).
 
 ### The cache-busting proof (plan section 4's most dangerous outcome)
-`tools/speed-proof/cache-bust-proof.js` (results/cache-bust-proof.jsonl): Chromium and WebKit with a PERSISTENT profile.
-Build A is opened, then re-opened (0 requests for the two files: cached); a release (server stopped, icons.js and style.css
-changed to build B, a new server process on the same origin) is followed by an ordinary open: both engines run B for JS AND CSS,
-each file fetched once under its new stamp; an edit on a running server also reaches the next open. 10/10 checks pass.
-Negative control (`SPEED_MUTANT=unversioned`, a year-long cache with no stamp; results/cache-bust-negative-control.jsonl): the 6
-release checks FAIL (both engines stay on build A), so the proof sees the danger it guards. Unit and integration binding:
-test/unit/static-assets.test.js (a census over every shipped static file: immutable only under the hash of its bytes, any
-other stamp revalidates; the CSS bust chain), test/integration/static-assets-shells.test.js (every shell stamped and
-`no-cache`, the login shell's files load signed out, root files keep `no-cache`).
+`tools/speed-proof/cache-bust-proof.js` (results/cache-bust-proof.jsonl, on cf006383): Chromium and WebKit with a PERSISTENT
+profile. Build A is opened, then re-opened (0 requests for the two files: cached); a release (server stopped, icons.js and
+style.css changed to build B, a new server process on the same origin) is followed by an ordinary open: both engines run B for JS
+AND CSS, each file fetched once under its new stamp; build A's OLD stamps, asked for after the release, answer B's bytes with
+`no-cache` (never immutable); an edit on a running server also reaches the next open. 12/12 checks pass.
+Negative controls: `SPEED_MUTANT=unversioned` (a year-long cache with no stamp; results/cache-bust-negative-control.jsonl) fails 8
+checks (both engines stay on build A); `SPEED_MUTANT=anyv` (any stamp immutable, the gate r1 adversary's blind spot;
+results/cache-bust-negative-control-anyv.jsonl) fails the 2 old-stamp checks. Unit and integration binding:
+test/unit/static-assets.test.js (a census over every shipped static file: immutable only under the hash of its bytes, any other
+stamp revalidates; the CSS bust chain; dotfiles refused), test/integration/static-assets-shells.test.js (every shell stamped and
+`no-cache`, the login shell's files load signed out, root files keep `no-cache`, the /diag plain baseline stays plain).
 
 ### Disclosed (what this release does not do, and what it costs)
 - Scripts the SPA router loads on an in-app navigation (the view scripts it fetches on demand, vr-view.js), `/logo`, and URLs built
@@ -274,7 +282,8 @@ other stamp revalidates; the CSS bust chain), test/integration/static-assets-she
   member may see it (ROADMAP Planned > Bugs).
 
 ### Suites
-`npm test` on Node 22.23.1 (local), on the W4 tree: `# tests 12302 / # pass 12292 / # fail 0 / # skipped 10`, exit 0. (The first full
+`npm test` on Node 22.23.1 (local), on the gate r1 fix tree (cf006383 + this evidence): `# tests 12310 / # pass 12300 / # fail 0 /
+# skipped 10`, exit 0. Earlier, on the W4 tree: `# tests 12302 / # pass 12292 / # fail 0 / # skipped 10`, exit 0. (The first full
 run, before the lock updates, was `# tests 12300 / # pass 12287 / # fail 3`: the cleanup shell's exact `<script src>` lock, the
 DIAGRAMS registration count, and the music read census - each an intended change, updated with its intent kept.) `npm run lint:ui`:
 OK (debt equals docs/ui-exceptions.json); eslint clean on every changed file. Node 24 runs in PR CI.
@@ -282,6 +291,10 @@ OK (debt equals docs/ui-exceptions.json); eslint clean on every changed file. No
 ### Binding (my own sweep, before the gate)
 20 mutants on the committed tree in a /tmp `git archive` sandbox, each against its test: 18 killed first time; the 2
 survivors (a snapshot cached inside a transaction; the style memo on a mutable track) got tests (1e0db0ee) and are killed.
+Gate r1 fix round: 12 more mutants on 0dd079b2 (the seats' Pocket survivors K1 K2 K3 K7 K11, the warm on every highlight and
+inside the tap, the MENU race, the index's sideways filter, data_version dropped, visibleMusicList back to read(), the Recently
+added tiebreak flipped): 11 killed first time; K1 (no hold at Select) got a test for the nothing-previewed-yet case (cf006383)
+and is killed.
 
 ## 7. Out of scope
 Offline downloads (docs/references/ios-offline.md, its own plans); anything native; changing how any page looks.

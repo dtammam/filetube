@@ -2,9 +2,11 @@
 {"check":"chromium re-open serves both files from cache (no request)","ok":true,"r":{"js":"A","css":"A"},"requests":[]}
 {"check":"chromium after a release the next ordinary open runs build B (JS and CSS)","ok":false,"js":"A","css":"A"}
 {"check":"chromium each changed file fetched once under its new version","ok":false,"requests":[]}
+{"check":"chromium an old stamp after a release answers the new bytes, revalidated (never immutable)","ok":false,"old":[]}
 {"check":"chromium an edit on a running server reaches the next open","ok":false,"js":"A","css":"A"}
 {"check":"webkit first open runs build A","ok":true,"js":"A","css":"A"}
 {"check":"webkit re-open serves both files from cache (no request)","ok":true,"r":{"js":"A","css":"A"},"requests":[]}
 {"check":"webkit after a release the next ordinary open runs build B (JS and CSS)","ok":false,"js":"A","css":"A"}
 {"check":"webkit each changed file fetched once under its new version","ok":false,"requests":[]}
+{"check":"webkit an old stamp after a release answers the new bytes, revalidated (never immutable)","ok":false,"old":[]}
 {"check":"webkit an edit on a running server reaches the next open","ok":false,"js":"A","css":"A"}
