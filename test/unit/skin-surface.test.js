@@ -2076,3 +2076,83 @@ test('v1.363.1 Extras chapters action: Add vs Edit by the item\'s chapters, modi
     assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="chapters"]'), null, 'no onChapters hook -> no row');
   } finally { b.restoreAll(); }
 });
+
+// v1.386.0 speed pass (W2): a sticker pick waits for the new skin's photos (SKINS.whenSkinArtReady) before it is
+// saved and painted, so the frame never shows without them; null (no photos, or decoded already) applies at once.
+// The registry's answer is replaced by a HELD promise the test resolves.
+function holdArt(b) {
+  const held = {};
+  b.dom.window.FileTubeMusicSkins.whenSkinArtReady = (id) => {
+    if (!held[id]) return null;
+    return held[id].p;
+  };
+  const hold = (id) => { let resolve; const p = new Promise((r) => { resolve = r; }); held[id] = { p, resolve }; return () => { resolve(true); delete held[id]; }; };
+  return hold;
+}
+const pickChip = (b, id) => {
+  sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+  sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]'));
+  sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-pick="' + id + '"]'));
+};
+
+test('v1.386.0 sticker pick: a skin whose photos are not ready keeps the old look until they are, then saves + repaints', async () => {
+  const b = bootSticker({});
+  try {
+    const hold = holdArt(b);
+    b.engine.paint();
+    const release = hold('ipod-custom5-transparent-coil');
+    pickChip(b, 'ipod-custom5-transparent-coil');
+    assert.strictEqual(sMenu(b.dom).hidden, true, 'the menu closes at the tap');
+    assert.notStrictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-custom5-transparent-coil', 'not saved while the photos load');
+    assert.strictEqual(b.spy.skinChange, 0, 'no repaint while the photos load (no frame without them)');
+    await b.settle();
+    assert.strictEqual(b.spy.skinChange, 0, 'still held');
+    release();
+    await b.settle();
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-custom5-transparent-coil', 'saved once ready');
+    assert.strictEqual(b.spy.skinChange, 1, 'repainted once ready');
+    // a skin with nothing to wait for applies in the same tap, exactly as before
+    pickChip(b, 'apple');
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple');
+    assert.strictEqual(b.spy.skinChange, 2);
+  } finally { b.restoreAll(); }
+});
+
+test('v1.386.0 sticker pick: a later pick supersedes a waiting one; a pick waiting when the surface dies saves but never repaints', async () => {
+  const b = bootSticker({});
+  try {
+    const hold = holdArt(b);
+    b.engine.paint();
+    const releaseCoil = hold('ipod-custom5-transparent-coil');
+    pickChip(b, 'ipod-custom5-transparent-coil');
+    pickChip(b, 'apple'); // nothing to wait for: applied at once, and the Coil wait is now stale
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple');
+    releaseCoil();
+    await b.settle();
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple', 'the superseded Coil never lands over the later pick');
+    assert.strictEqual(b.spy.skinChange, 1);
+    const releaseBlack = hold('ipod-custom5-transparent-black');
+    pickChip(b, 'ipod-custom5-transparent-black');
+    b.engine.destroy();
+    releaseBlack();
+    await b.settle();
+    assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-custom5-transparent-black', 'the pick is still saved');
+    assert.strictEqual(b.spy.skinChange, 1, 'a dead surface is never repainted');
+  } finally { b.restoreAll(); }
+});
+
+test('v1.386.0 (gate r2): the sticker Skin page warms the photos after its tap, never inside it', async () => {
+  const b = bootSticker({});
+  try {
+    const S = b.dom.window.FileTubeMusicSkins;
+    const spy = { warms: 0 };
+    S.warmSkinArt = () => { spy.warms += 1; };
+    const idle = () => new Promise((r) => setTimeout(r, 120)); // jsdom: the engine's 50 ms fallback for requestIdleCallback
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]'));
+    assert.strictEqual(spy.warms, 0, 'nothing heavy inside the tap that opened the Skin page');
+    await idle();
+    assert.strictEqual(spy.warms, 1, 'the Skin page started the photos');
+  } finally { b.restoreAll(); }
+});
