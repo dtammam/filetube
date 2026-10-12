@@ -3670,5 +3670,11 @@
     "date": "2026-10-11",
     "title": "A faster FileTube: skins that appear whole, a music library that opens quickly",
     "intent": "Picking a skin with photos, like the Transparent Coil, now keeps your current look until the new one is ready, so you never see it half drawn. The music library opens much faster on a big collection, at home and away, and pages load quicker because FileTube's own files are kept on your device until an update changes them."
+  },
+  {
+    "version": "1.387.0",
+    "date": "2026-10-12",
+    "title": "Offline playback arrives on the server: the FileTube iPhone app can take your music, podcasts, videos and shows with you",
+    "intent": "Nothing changes in your browser or home-screen app, except a new Devices list under Settings > Account (where a lost phone can be cut off from any computer). In the FileTube iPhone app, once its next version lands, you can mark an album, a podcast episode, a video or a whole TV season for offline playback: the phone downloads them, plays them with no network, and what you listened to or watched offline counts when you are back online, without ever overwriting a newer position from another device. A family member's account can only take along what it can already see."
   }
 ]

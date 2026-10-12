@@ -84,6 +84,10 @@ const CLASSIFICATION = {
   'POST /api/queue/pointer': 'personal',
   'POST /api/queue/reorder': 'personal',
   'POST /api/me/settings': 'personal',
+  'POST /api/offline/progress': 'personal', // v1.387.0 offline D4: the caller's OWN queued positions (newer wins per item; every id through its kind's visibility, hidden = gone; nothing else written); proven in offline-progress.test.js
+  'POST /api/offline/status': 'personal', // v1.387.0 offline D3: a READ by POST (a batch of up to 500 ids): each item re-checked through its kind's visibility, a hidden item answers 'gone'; writes nothing; proven in offline-manifest.test.js
+  'POST /api/devices': 'personal', // v1.387.0 offline D1: pair the caller's OWN phone (cookie + the account password; a device token is 403); proven in device-tokens.test.js
+  'DELETE /api/devices/:id': 'personal', // v1.387.0 offline D1: revoke the caller's OWN phone (another user's id is a 404)
   'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
   'DELETE /api/me/avatar': 'personal',
   'POST /api/me/sticker': 'personal', // v1.238: self-service custom player sticker (own state, no by-id write)
@@ -215,6 +219,8 @@ const CLASSIFICATION = {
   'POST /api/users/:id/role': 'admin',
   'POST /api/users/:id/subscriptions-flag': 'admin',
   'POST /api/users/:id/modify-library-flag': 'admin',
+  'DELETE /api/users/:id/devices': 'admin', // v1.387.0 offline D1: Remove all devices (requireAdmin FIRST)
+  'DELETE /api/users/:id/devices/:deviceId': 'admin', // v1.387.0 offline D1: revoke one of a user's phones (requireAdmin FIRST)
   'PUT /api/users/:id/restrictions': 'admin',
   // v1.146 downloader-engine: RCE-adjacent (these cause pip to execute code
   // from PyPI) - admin, never a lesser capability.
@@ -367,6 +373,10 @@ const VISIBILITY = {
   'POST /api/queue/pointer': 'personal',
   'POST /api/queue/reorder': 'personal',
   'POST /api/me/settings': 'personal',
+  'POST /api/offline/progress': 'enforced', // v1.387.0 offline D4: every event through its kind's visibility wrapper before any read or write (hidden = gone, nothing written)
+  'POST /api/offline/status': 'enforced', // v1.387.0 offline D3: every item through its kind's visibility wrapper (hidden = 'gone', the restriction wins on the phone too)
+  'POST /api/devices': 'personal', // v1.387.0: the caller's own phone; no library item addressed
+  'DELETE /api/devices/:id': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'POST /api/me/avatar': 'personal',
   'DELETE /api/me/avatar': 'personal',
   'POST /api/me/sticker': 'personal', // v1.238: own decoration; no per-item visibility decision applies
@@ -506,6 +516,8 @@ const VISIBILITY = {
   'POST /api/users/:id/subscriptions-flag': na('user administration (capability flag); admin-only'),
   'POST /api/users/:id/modify-library-flag': na('user administration (capability flag); admin-only'),
   'PUT /api/users/:id/restrictions': na('user administration (the restriction rows themselves); admin-only'),
+  'DELETE /api/users/:id/devices': na('user administration (Remove all devices: the user\'s device_epoch bump); admin-only'), // v1.387.0 offline D1
+  'DELETE /api/users/:id/devices/:deviceId': na('user administration (revoke one of a user\'s phones); admin-only'), // v1.387.0 offline D1
   'POST /api/diag/runs': na('perf-diagnostics run store write; admin-only, stores a synthetic timing capture, no library item addressed'),
   'DELETE /api/diag/runs/:id': na('perf-diagnostics run store delete; admin-only, removes a synthetic timing capture, no library item addressed'),
 };

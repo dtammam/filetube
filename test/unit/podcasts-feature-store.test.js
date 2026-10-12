@@ -194,7 +194,9 @@ test('source lock: the route surface never names the podcasts tables or the dead
   // destructure is outside this surface.
     // v1.379.0 Feed mode (W2) took it from 16 to 17: server.js hands the store to lib/feed/api.js's
   // registerFeedRoutes (the podcast and Watch later cards read episodes through podcastsDb.read()).
-assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 17, 'every crossing carries the store, never the doc namespace');
+  // v1.387.0 offline playback (W2) took it from 17 to 18: server.js hands the store to lib/offline/routes.js's
+  // registerRoutes (the manifest, file and status routes read a downloaded episode through podcastsDb.read()).
+assert.strictEqual((surface.match(/\bpodcastsDb,/g) || []).length, 18, 'every crossing carries the store, never the doc namespace');
   const lib = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'podcasts', 'index.js'), 'utf8'));
   assert.strictEqual((lib.match(/\.updateDatabase\(/g) || []).length, 21, 'the module\'s 21 writers');
   assert.strictEqual((lib.match(/\.updateDatabase\(\(\) => (deps|d)\.podcastsDb\.mutate\(\(mdb\) =>/g) || []).length, 21, 'every one of them runs its reducers through the store');

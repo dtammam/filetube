@@ -39,6 +39,12 @@ const DISPOSITIONS = {
       + 'null, the grid click-delegation SELECTOR (reads hrefs, produces none), and one '
       + 'COMMENT naming the deep-link shape (main.js ~243).',
   },
+  'offline.js': {
+    count: 1,
+    why: 'v1.387.0 offline playback: the badge decorator READS a card\'s existing media href to tell a video card '
+      + '(/watch.html?v=) from a podcast, music or tv card before drawing its Offline badge - a SELECTOR over hrefs the '
+      + 'surfaces produced through the rule; it produces no link.',
+  },
   'music.js': {
     count: 3,
     why: 'the deliberate ao=1 MISS-BOUNCE (a non-projected id tapped via the reroute returns '

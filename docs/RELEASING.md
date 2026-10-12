@@ -333,6 +333,19 @@ per-user `feedSessions` array (an older bundle without it restores as empty,
 and an older build ignores the key it does not know). v1.378.0's v35 landed
 first in merge order; this floor was renumbered at release.
 
+**Eighteenth floor - schema v37 (v1.387.0, offline playback).** One new table,
+`device_tokens` (`id`, `user_id` FK cascade on the user, `token_hash` UNIQUE,
+`name`, `platform`, `epoch`, `created_at`, `last_used_at`): one row per phone
+the iOS app paired, holding the sha256 of its token and never the token. And one
+new column, `users.device_epoch INTEGER NOT NULL DEFAULT 0` (presence-checked
+ALTER): the generation a device row must match to be live, bumped by a password
+change the user or an admin makes and by "Remove all devices", never by the login
+re-hash. A v1.386.x-or-earlier build refuses a v37 database at boot. Bundles are
+UNCHANGED: like `push_subscriptions`, `device_tokens` is deliberately absent (a
+token is a credential), `device_epoch` does not ride either, and a
+users-replacing restore drops every device row by cascade, so each phone pairs
+again.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

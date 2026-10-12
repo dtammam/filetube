@@ -804,6 +804,13 @@
         items.push({ label: 'Share', icon: 'share', onSelect: function () { shareEpisode(ep); } });
         // v1.71: save-to-device, the confined stream route's ?download=1 arm.
         items.push({ label: 'Save to device', icon: 'download', onSelect: function () { saveToDevice(ep); } });
+        // v1.387.0 offline playback (plan D6): only for episodes the server has, only when the host announced `downloads`.
+        var off = window.FileTube && window.FileTube.offline;
+        if (off && off.enabled) {
+          var oe = off.menuEntry('podcastEpisode', ep.id);
+          items.push({ label: oe.label, icon: oe.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline', onSelect: function () { off.runMenuAction(oe.id, 'podcastEpisode', ep.id); } });
+          if (oe.errorText) items.push({ label: oe.errorText, icon: 'error', disabled: true });
+        }
         // v1.70: the recoverable delete - through ui.confirm, never an in-row arm.
         items.push({ label: 'Move to Trash', icon: 'delete', danger: true, onSelect: function () { confirmTrashEpisode(ep); } });
       }
@@ -1185,7 +1192,7 @@
       url.input.setAttribute('spellcheck', 'false');
       form.appendChild(url.el);
       var backfill = ui.select({ label: 'Download', value: 'all', options: [
-        { value: 'all', label: 'Every episode (full offline cache)' },
+        { value: 'all', label: 'Every episode (keep every episode on the server)' },
         { value: '10', label: 'The latest 10 episodes' },
         { value: '25', label: 'The latest 25 episodes' },
         { value: 'new', label: 'New episodes only' },

@@ -55,3 +55,36 @@ player streams the phone's copy). Removing a downloaded item never touches the s
 - **Permissions**: a token for one user must never fetch another user's or a restricted item; revocation must stop downloads.
 - **Storage**: video is large; respect the cap, warn before it fills, and never fill the phone.
 - **Background limits**: iOS throttles background downloads; show honest progress and resume after the app is killed.
+
+## Corrections found while building the server half (2026-10-11 / 2026-10-12, v1.387.0)
+
+The plan ([2026-10-11-offline-server.md](../exec-plans/completed/2026-10-11-offline-server.md)) refined this design; each note
+below changes a line above and says why. The app's reference is [offline-api.md](offline-api.md).
+
+1. **There is no shipped forward-only progress rule outside the Feed.** Every online progress route is an unconditional upsert
+   stamped with server time; the forward-only / stale-refusing rules live only in the Feed's served-card registry. Offline sync
+   got its OWN rule: **the newer moment wins**, by the time the position was reached on the phone, corrected for the phone's
+   clock once per batch and clamped to server time. Not forward-only: a deliberate rewind on the phone that is newer than the
+   server's position is real intent and wins.
+2. **A device token must set `req.user`.** The shared `FILETUBE_API_TOKEN` deliberately leaves `req.user` unset, and a request
+   with no user gets an EMPTY restriction index (sees everything). The per-device token is bound to the user row and the gate
+   sets `req.user` from it, so every restriction applies to a phone exactly as to a browser.
+3. **Downloads must be a file iOS can PLAY, decided by an iOS rule, not the browser's.** `?download=1` returns the original even
+   when it needs a transcode, and the browser's `needsTranscode` would transcode ALAC to AAC 160k (a permanent loss offline) and
+   flag HEVC because only h264 counts. The offline file route has its own rule (lib/offline/playable.js), measured on an iPhone
+   XS (iOS 18.7.10) and an iPhone 15 Pro (iOS 27.0.1): ALAC, FLAC, hvc1 HEVC, AC3, EAC3, PCM, opus, vorbis and the ogg / opus
+   containers play natively; hev1, mkv and webm take the existing H.264 + AAC transcode. The app requires iOS 18 (Dean,
+   2026-10-12, via the iOS Root) and checks `AVURLAsset.isPlayable` after each download as the guard for later versions.
+4. **Words.** "Downloaded" already means "the server has the podcast file" and "Save to device" is the browser save, so the new
+   feature's words are built on **"offline playback"** (Dean, 2026-10-11): "Make available offline", "Remove offline copy", the
+   "Offline" badge, "Saving for offline... 40%", the account menu entry "Offline". Podcasts' "full offline cache" wording became
+   "keep every episode on the server". The lines above that say "Download to device" / "Downloaded" describe the intent, not the
+   shipped words.
+5. **"track" is three things**: a native music track, a library audio item shown in Music (bytes from `/video/:id`, progress in
+   the media store, the MEDIA gate) and a chapter row `<id>::c<n>` (the parent file, once, with its chapters). Every offline route
+   resolves a track id to one of the three first.
+6. **Progress sync is a foreground request built just before it is sent, never an iOS background upload task** (a background
+   upload fixes `sentAt` when the task is created and iOS may send it hours later, which the server would read as clock skew).
+   A batch more than 5 minutes ahead of server time is refused with `400 restamp`.
+7. **Per-child items for an album or season** (FileTube Root with the iOS Root, 2026-10-11): a `download` event is always one
+   single-item kind; an album or season add reports its members with `parentKind` + `parentId`, and the web rolls the badge up.

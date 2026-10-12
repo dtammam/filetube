@@ -18,7 +18,13 @@ const SCHEMA = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'docs
 const { MESSAGES, EVENTS, CAPABILITIES } = adapterModule;
 
 // One schema branch -> { type, fields: { name: spec } } in the adapter's vocabulary.
+// A `$ref` inside this document resolves to its $defs entry (v1.387.0: downloadsSnapshot.items -> downloadItem).
+function deref(s) {
+  if (s && typeof s.$ref === 'string' && s.$ref.startsWith('#/$defs/')) return SCHEMA.$defs[s.$ref.slice('#/$defs/'.length)];
+  return s;
+}
 function specOf(s) {
+  s = deref(s);
   if (s.const !== undefined) return { eq: s.const };
   if (s.enum) return { enum: s.enum.slice() };
   const types = Array.isArray(s.type) ? s.type : [s.type];
@@ -26,7 +32,23 @@ function specOf(s) {
   if (types.includes('null')) out.nullable = true;
   if (s.minimum !== undefined) out.min = s.minimum;
   if (s.maximum !== undefined) out.max = s.maximum;
+  if (s.minLength !== undefined) out.min = s.minLength; // v1.387.0: a string's length bounds (an id is 1..512)
+  if (s.maxLength !== undefined) out.max = s.maxLength;
+  if (s.maxItems !== undefined) out.max = s.maxItems; // v1.387.0: an array's length cap
   if (s.properties) out.props = fieldsOf(s.properties, s.required || []);
+  if (s.type === 'array' && s.items) {
+    out.items = specOf(s.items);
+    // The adapter's per-element lenient mapping is not a schema concept: strip it before comparing.
+  }
+  return out;
+}
+// The adapter's spec with the per-element `lenient` map removed (a web-side reading rule, not a schema field).
+function withoutLenient(fields) {
+  const out = {};
+  for (const [k, v] of Object.entries(fields)) {
+    out[k] = { ...v };
+    if (out[k].items) { out[k].items = { ...out[k].items }; delete out[k].items.lenient; }
+  }
   return out;
 }
 function fieldsOf(props, required) {
@@ -52,7 +74,9 @@ test('conformance: the adapter sends exactly the schema\'s web-to-native types, 
 test('conformance: the adapter accepts exactly the schema\'s native-to-web events, with the schema\'s fields', () => {
   const want = branches(SCHEMA.$defs.nativeToWeb);
   assert.deepEqual(Object.keys(EVENTS).sort(), want.map((b) => b.type).sort(), 'event types drifted from the schema');
-  for (const b of want) assert.deepEqual(EVENTS[b.type].fields, b.fields, `fields of ${b.type} drifted from the schema`);
+  for (const b of want) assert.deepEqual(withoutLenient(EVENTS[b.type].fields), b.fields, `fields of ${b.type} drifted from the schema`);
+  // The shared item definition is the same table twice (an event, a snapshot element).
+  assert.deepEqual(withoutLenient(EVENTS.downloadsSnapshot.fields).items.items.props, EVENTS.download.fields, 'a snapshot element has exactly the download event\'s fields');
 });
 
 test('conformance: the capability list equals the schema\'s and every message names a known capability', () => {
@@ -250,4 +274,118 @@ test('v1.385.0: the network event is validated as data; an unknown connection ki
     { connection: 'cellular' },
   ], 'a bad optional field is dropped, never the connection change with it');
   win.close();
+});
+
+// ---- v1.387.0 offline playback (plan D5): the downloads capability -------------------------------------------
+test('v1.387.0: downloads messages are gated by their capability; add / remove carry exactly kind + id (the manifest enum, an id of 1..512); subscribe / unsubscribe / show carry nothing', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['downloads'] });
+  fake.clear();
+  assert.equal(host.post('downloads.add', { kind: 'album', id: 'Pink Floyd\u001fThe Wall', junk: 1 }), true);
+  assert.equal(host.post('downloads.remove', { kind: 'tvSeason', id: 'show:1' }), true);
+  for (const t of ['downloads.subscribe', 'downloads.unsubscribe', 'downloads.show']) assert.equal(host.post(t, { junk: 1 }), true, t);
+  assert.deepEqual(fake.posts, [
+    { v: 1, type: 'downloads.add', kind: 'album', id: 'Pink Floyd\u001fThe Wall' },
+    { v: 1, type: 'downloads.remove', kind: 'tvSeason', id: 'show:1' },
+    { v: 1, type: 'downloads.subscribe' }, { v: 1, type: 'downloads.unsubscribe' }, { v: 1, type: 'downloads.show' },
+  ], 'exactly the contract fields leave the page');
+  fake.clear();
+  assert.equal(host.post('downloads.add', { kind: 'book', id: 'x' }), false, 'kind is the manifest enum');
+  assert.equal(host.post('downloads.add', { kind: 'video' }), false, 'id is required');
+  assert.equal(host.post('downloads.add', { kind: 'video', id: '' }), false, 'an empty id');
+  assert.equal(host.post('downloads.add', { kind: 'video', id: 'x'.repeat(513) }), false, 'an id over 512');
+  assert.equal(host.post('downloads.add', { kind: 'video', id: 'x'.repeat(512) }), true, 'an id of exactly 512');
+  assert.equal(host.post('downloads.add', { kind: 'video', id: 7 }), false, 'id is a string');
+  assert.equal(host.post('downloads.remove', { id: 'x' }), false, 'kind is required');
+  assert.deepEqual(fake.types(), ['downloads.add']);
+  win.close();
+  const other = windowWith({ capabilities: ['network', 'battery'] });
+  other.fake.clear();
+  for (const t of ['downloads.add', 'downloads.remove', 'downloads.subscribe', 'downloads.unsubscribe', 'downloads.show']) {
+    assert.equal(other.host.post(t, { kind: 'video', id: 'x' }), false, t + ' needs its capability');
+  }
+  assert.equal(other.host.has('downloads'), false);
+  assert.deepEqual(other.fake.posts, []);
+  other.win.close();
+});
+
+test('v1.387.0: the download event is validated as data - unknown state reads as none, unknown error as other, a bad optional field is dropped (never the event), a bad required field drops the event, parentKind / parentId and localSrc pass', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['downloads'] });
+  const got = [];
+  host.on('download', (d) => got.push(d));
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'v1', state: 'downloading', progress: 0.4, bytes: 400, totalBytes: 1000, sneaky: 'x' });
+  fake.emit({ v: 1, type: 'download', kind: 'track', id: 't1', state: 'done', localSrc: 'filetube-local://t1.flac', parentKind: 'album', parentId: 'Floyd\u001fWall' });
+  fake.emit({ v: 1, type: 'download', kind: 'tvEpisode', id: 'e1', state: 'teleporting' }); // unknown state -> none
+  fake.emit({ v: 1, type: 'download', kind: 'podcastEpisode', id: 'p1', state: 'failed', error: 'cosmic' }); // unknown error -> other
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'v2', state: 'downloading', progress: 7 }); // bad optional dropped
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'v3', state: 'done', localSrc: '' }); // empty localSrc dropped
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'v4', state: 'done', parentKind: 'playlist', parentId: 'x' }); // bad parentKind dropped, parentId kept
+  fake.emit({ v: 1, type: 'download', kind: 'album', id: 'a1', state: 'done' }); // a collection kind is never an item
+  fake.emit({ v: 1, type: 'download', kind: 'video', state: 'done' }); // id required
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'v5' }); // state required
+  fake.emit({ v: 1, type: 'download', kind: 'video', id: 'x'.repeat(513), state: 'done' }); // id over 512
+  fake.emit({ v: 2, type: 'download', kind: 'video', id: 'v6', state: 'done' });
+  assert.deepEqual(got, [
+    { kind: 'video', id: 'v1', state: 'downloading', progress: 0.4, bytes: 400, totalBytes: 1000 },
+    { kind: 'track', id: 't1', state: 'done', localSrc: 'filetube-local://t1.flac', parentKind: 'album', parentId: 'Floyd\u001fWall' },
+    { kind: 'tvEpisode', id: 'e1', state: 'none' },
+    { kind: 'podcastEpisode', id: 'p1', state: 'failed', error: 'other' },
+    { kind: 'video', id: 'v2', state: 'downloading' },
+    { kind: 'video', id: 'v3', state: 'done' },
+    { kind: 'video', id: 'v4', state: 'done', parentId: 'x' },
+  ]);
+  win.close();
+});
+
+test('v1.387.0: a downloadsSnapshot carries an ARRAY of items - a bad element drops that element (never the snapshot), each element gets the lenient mapping, over 10000 elements drops the whole event, items is required', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['downloads'] });
+  const got = [];
+  host.on('downloadsSnapshot', (d) => got.push(d));
+  fake.emit({ v: 1, type: 'downloadsSnapshot', items: [
+    { kind: 'video', id: 'v1', state: 'done', localSrc: 'filetube-local://v1.mp4', extra: 1 },
+    { kind: 'album', id: 'a', state: 'done' }, // a bad element
+    'junk', null,
+    { kind: 'track', id: 't1', state: 'frozen', progress: 'half' }, // lenient state, bad optional dropped
+    { kind: 'tvEpisode', id: 'e1' }, // state required: dropped
+  ], sneaky: true });
+  fake.emit({ v: 1, type: 'downloadsSnapshot', items: [] });
+  fake.emit({ v: 1, type: 'downloadsSnapshot' });
+  fake.emit({ v: 1, type: 'downloadsSnapshot', items: 'none' });
+  fake.emit({ v: 1, type: 'downloadsSnapshot', items: Array.from({ length: 10001 }, (_, i) => ({ kind: 'video', id: 'v' + i, state: 'done' })) });
+  const big = Array.from({ length: 10000 }, (_, i) => ({ kind: 'video', id: 'v' + i, state: 'done' }));
+  fake.emit({ v: 1, type: 'downloadsSnapshot', items: big });
+  assert.equal(got.length, 3);
+  assert.deepEqual(got[0], { items: [
+    { kind: 'video', id: 'v1', state: 'done', localSrc: 'filetube-local://v1.mp4' },
+    { kind: 'track', id: 't1', state: 'none' },
+  ] });
+  assert.deepEqual(got[1], { items: [] });
+  assert.equal(got[2].items.length, 10000, 'exactly the cap passes');
+  assert.ok(!('sneaky' in got[0]) && !('extra' in got[0].items[0]), 'unknown fields never reach the listener');
+  win.close();
+});
+
+test('v1.387.0 (Dean): host.app carries the announced app identity (name, version, build) when valid; null for no host, a bad version or a missing name; a bad build is dropped, never the identity', () => {
+  const a = windowWith({});
+  assert.deepEqual(a.host.app, { name: 'filetube-ios', version: '0.1.0', build: '1' }, 'the fake host\'s identity');
+  a.win.close();
+  const none = windowWith(null);
+  assert.strictEqual(none.host.app, null, 'no host, no identity');
+  none.win.close();
+  for (const [app, want] of [
+    [{ name: 'filetube-ios', version: '0.9.0', build: '12' }, { name: 'filetube-ios', version: '0.9.0', build: '12' }],
+    [{ name: 'filetube-ios', version: '0.9.0' }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: '0.9.0', build: 12 }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: '0.9.0', build: '<b>' }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: 'nine' }, null],
+    [{ version: '0.9.0' }, null],
+    ['0.9.0', null],
+    [null, null],
+  ]) {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+    dom.window.FileTubeHost = { bridge: 1, capabilities: ['downloads'], app, post() {} };
+    const host = loadAdapter(dom.window);
+    assert.strictEqual(host.present, true, 'the identity never decides presence');
+    assert.deepEqual(host.app, want, JSON.stringify(app));
+    dom.window.close();
+  }
 });

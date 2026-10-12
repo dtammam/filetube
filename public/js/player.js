@@ -1105,6 +1105,25 @@ function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId, listComplete)
 // exits fullscreen - the whole bug); staged WINS over a dock request (the
 // user's fullscreen intent persists until they exit). Otherwise the v1.44.2
 // dock/slot split is unchanged.
+// v1.387.0 offline playback (plan D6): the phone's copy to play ONLINE for this load, or null - the pure decision
+// (resolveOfflineLocalSrc, exported for its unit test) over the descriptor the view built: a tv source has a statusUrl,
+// an episode streams /episode/, a track /track/; a media id is a `video` to the library and a `track` to Music, so both
+// are tried. Never for a 360 video (vr-view.js's texImage2D would be tainted by a cross-origin source) and never for a
+// book chapter (not an offline item). The URL is used ONLY as the media element's src.
+function resolveOfflineLocalSrc(id, data, off) {
+  if (!off || !off.enabled || !data || typeof off.localSrcFor !== 'function') return null;
+  if (typeof data.projection === 'string' && data.projection !== '' && data.projection !== 'flat') return null;
+  var src = typeof data.streamSrc === 'string' ? data.streamSrc : '';
+  if (src.indexOf('/book/') === 0) return null;
+  if (data.statusUrl && String(data.statusUrl).indexOf('/api/tv/') === 0) return off.localSrcFor(['tvEpisode'], id) || null;
+  if (src.indexOf('/episode/') === 0) return off.localSrcFor(['podcastEpisode'], id) || null;
+  if (src.indexOf('/track/') === 0) return off.localSrcFor(['track'], id) || null;
+  // a media item (incl. a library-audio or chapter row descriptor whose streamSrc is /video/<base>)
+  var m = /^\/video\/([^/?#]+)/.exec(src);
+  var mediaId = m ? decodeURIComponent(m[1]) : id;
+  return off.localSrcFor(['video', 'track'], mediaId) || null;
+}
+
 function resolveLoadMountTarget(stagedFullscreen, wantDock) {
   if (stagedFullscreen) return 'stage';
   return wantDock ? 'dock' : 'slot';
@@ -2060,6 +2079,7 @@ function formatViewportDetail(win) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    resolveOfflineLocalSrc, // v1.387.0 offline playback: the phone's copy to play online, or null
     formatViewportDetail, // UI pass D7: the viewport line of the ?debugLifecycle=1 log
     ensureTheaterButton, // v1.317 (T1): the one writer of #theater-btn (watch + music inject through it)
     resolveCssFsScrollPlan,
@@ -9783,9 +9803,18 @@ if (typeof module !== 'undefined' && module.exports) {
     }, BG_AUDIO_STATUS_REPOLL_INTERVAL_MS);
   }
 
+  var playingLocal = false; // this load plays the phone's copy: no transcode fetch / poll, no background-audio sidecar handoff
   function setupForMedia(id, data) {
     var gen = loadGeneration;
     var streamUrl = '/video/' + id;
+    playingLocal = false;
+    var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
+    if (localSrc) {
+      playingLocal = true;
+      recordLifecycleEvent('offline:localSrc', { detail: id });
+      // the local copy needs no transcode: this load reads a copy of the descriptor with the flag cleared
+      data = Object.assign({}, data, { needsTranscode: false, transcodeStatus: 'ready' });
+    }
     // v1.38.0 TTS "Listen from Here": an audio item may carry an explicit
     // stream URL (a book chapter's synthesized /book/:id/tts/:spineIndex)
     // instead of the default /video/:id.
@@ -9795,6 +9824,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof data.streamSrc === 'string' && data.streamSrc) {
       streamUrl = data.streamSrc;
     }
+    if (localSrc) streamUrl = localSrc; // v1.387.0 offline playback: the phone's copy wins over every server URL
 
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): reset THIS load's
     // cached setting/status, then (video + mobile only) fetch+cache the
@@ -9859,8 +9889,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // into the `/api/videos` payload instead, saving a round trip per
       // load) if this extra fetch ever shows up as a real cost once the
       // feature graduates out of EXPERIMENTAL.
-      fetch('/api/settings')
-        .then(function (res) { return res.ok ? res.json() : null; })
+      // v1.387.0 offline playback: a load that plays the phone's copy never arms the background-audio sidecar handoff
+      // (the local element keeps playing instead): the settings read is answered as "off" for this load, no request.
+      (playingLocal ? Promise.resolve(null) : fetch('/api/settings'))
+        .then(function (res) { return res === null ? null : (res.ok ? res.json() : null); })
         .then(function (settings) {
           if (gen !== loadGeneration) return; // a newer load has since started
           bgAudioSettingCached = !!(settings && settings.backgroundAudioForVideo);

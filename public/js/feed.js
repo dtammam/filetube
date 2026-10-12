@@ -1207,6 +1207,9 @@ if (typeof module !== 'undefined' && module.exports) {
       var art = feedArtUrl(card);
       if (art && typeof window.Image === 'function') { var img = new window.Image(); img.decoding = 'async'; img.src = art; }
       var src = feedStreamUrl(card);
+      // v1.387.0 offline playback: a card the phone holds plays from its copy; warming the server's bytes buys nothing.
+      var off = window.FileTube && window.FileTube.offline;
+      if (src && off && off.enabled && off.localSrcFor(card.kind === 'song' ? ['track'] : (card.media === 'podcast' ? ['podcastEpisode'] : ['video', 'track']), card.id)) src = '';
       if (src) {
         fetch(src, { headers: { Range: 'bytes=0-' + (FEED_WARM_BYTES - 1) }, signal: signal })
           .then(function (r) { return r && r.ok ? r.arrayBuffer() : null; })

@@ -16,6 +16,23 @@ On the phone, home-screen app and FileTube app, at home and over the VPN:
 - [ ] v1.386.0 - After the NEXT release (any version after v1.386.0), open the app without force-quitting: it shows the new version's changes at once (the account menu's version row reads the new number), in Safari, the home-screen app and the FileTube app.
 - [ ] v1.386.0 - Nothing looks different anywhere (pages, icons, fonts, skins); the sign-in page still looks right when signed out.
 - [ ] v1.386.0 - Settings > download a backup in Safari and in the FileTube app: the file saves and opens as readable JSON (it now travels compressed).
+## Offline playback (v1.387.0)
+
+Browser and home-screen app: nothing should look or behave differently, except Settings > Account now has a Devices list
+(empty until a phone pairs) and the podcast add form says "keep every episode on the server" instead of "full offline cache".
+In the FileTube iOS app (needs the filetube-ios build that announces `downloads`, v0.9.0): the app half is owed until it ships;
+these checks stay open until then.
+
+- [ ] v1.387.0 - Browser / home-screen app: every menu that had Save to device still has it and nothing else new; no Offline badges anywhere; Settings > Account > Devices says "No devices. Devices appear here when the FileTube app is set up for offline playback."
+- [ ] v1.387.0 - App: pair (the native password prompt); the phone appears under Settings > Account > Devices on the laptop with "added today" and a last-used time after its first fetch.
+- [ ] v1.387.0 - App: make an album, a podcast episode, a video and a TV season available offline (the menu entry sits beside Save to device; the TV show page has a pill per episode and per season); the "Saving for offline... N%" text moves, then the Offline badge shows on the card or row; the album's badge appears once every track is done.
+- [ ] v1.387.0 - App: airplane mode on; the native Downloads screen plays each of the four (an ALAC or FLAC track plays as the original, not a re-encode).
+- [ ] v1.387.0 - App: online, play a downloaded video from its card: it plays from the phone's copy (no transcode wait, no server bytes on a slow link); a 360 video still plays from the server.
+- [ ] v1.387.0 - App: listen offline to a track and watch half an episode; reconnect: the positions show on the laptop within a minute, and the watched / played marks follow where they crossed the line.
+- [ ] v1.387.0 - App: make a position on the laptop AFTER an offline one on the phone, then let the phone sync: the laptop's position stays.
+- [ ] v1.387.0 - App: in Settings > Account > Devices on the laptop, Remove the phone while it is downloading: the download stops at once and the app asks to pair again.
+- [ ] v1.387.0 - App (a kid account): the hidden folder's videos and the hidden show's episodes offer no offline entry the kid can use; a direct manifest or file fetch with the kid's token is a 404; a restriction added later makes the app drop that copy on its next check (status = gone).
+- [ ] v1.387.0 - App: the avatar menu shows the app's version and build under the server version ("iOS app 0.9.0 (12)"); the browser and the home-screen app show no such line.
 
 ## The immersive Pocket (v1.385.0)
 
