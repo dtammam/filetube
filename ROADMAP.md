@@ -85,6 +85,12 @@
 
 ### Bugs
 
+- [ ] **The One-off download box's first field shows a cut focus ring on a phone sheet (v1.387.3, disclosed)** - the desktop fix
+  pads `.oneoff-form` only in non-bottom sheets (the same class is the playlist picker's sheet); on a 390 px bottom sheet the
+  2 px ring is still clipped at the top. Measure the picker and One-off sheets together, then pad the sheet body instead.
+- [ ] **Account / Sort still shift up over their button in a window shorter than about 535 px (v1.387.3, disclosed)** - a static
+  popover that fits neither below nor above keeps the old `shifted` placement; hold it as below + a height cap if it matters.
+
 - [ ] **A member can like a track they cannot see (found by the v1.386.0 security seat; older than v1.386.0)** -
   `POST /api/music/liked/:id` (lib/music/routes.js) checks the track exists but not `trackVisibleTo`: a restricted member gets
   200 for a hidden id and 404 for a missing one (an existence oracle) and stores a liked row for it. Reads filter it back out, so
@@ -408,6 +414,7 @@
 - [ ] **The iOS app (filetube-ios): a host for the web UI** _(Dean, 2026-10-11: committed long-term)_ - decision record docs/references/ios-host.md; contract docs/references/native-bridge.md + native-bridge.v1.schema.json. Spin one: the web half (docs/exec-plans/completed/2026-10-11-native-bridge-web.md) and the Mac spike (docs/references/ios-spike-1.md). Later steps, each its own plan: a native audio engine (only if the in-app web player still has gaps), a native Downloads page (offline), APNs push, widgets, the share sheet, CarPlay, an App Store build.
 - [ ] **Pocket: a black top edge cut like the top of a real iPod** _(Dean, 2026-10-11/12, via the FileTube Root; after offline playback)_ - web only (the Pocket skin's own drawing); no bridge change.
 - [ ] **Pocket hold switch** _(Dean, 2026-10-11/12, via the FileTube Root; after offline playback)_ - while it is on, a transparent layer swallows every touch except the switch itself (pocket play; works in the PWA too). In the app it also asks iOS to defer the edge swipes through an add-only contract addition (e.g. `systemGestures.defer` / `systemGestures.restore`), released on navigation like `statusBar` (native-bridge.md section 6).
+- [ ] **Offline that looks like FileTube (spike, then C, then B)** _(Dean, 2026-10-12; he rarely uses offline, so not urgent)_ - today the no-network experience is the app's plain iOS Downloads screen and player. B (the destination): the app bundles FileTube's own web pages and player and serves them, with the downloaded files and a local download list, from its local scheme, so offline IS FileTube (Pocket, skins, the library pages). C first, as B's first slice (nothing wasted): keep the native Downloads list, play through FileTube's bundled player and Pocket. Step 0 is a small joint spike with the iOS Root: FileTube's player running from the app's local address, offline, with lock-screen controls. Needs on the FileTube side an offline data mode (the phone's catalogue instead of the server) and a plan for the bundled copy's version drift.
 - [x] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** **Shipped v1.383.0 (2026-10-11).** - auto-advance, the
   next card started at a quarter swipe and warmed, a way to the full item from the title, song clips, music under book cards, book
   chapters named as the book names them, Start over redrawing a book card. Plan: `docs/exec-plans/completed/2026-10-10-feed-reels.md`.
@@ -858,6 +865,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - **Fix**: v1.387.0's offline rows named two icons the registry never had (`download_for_offline`, `offline_pin`); `ui.icon` throws on an unknown name by design, so inside the iOS app (the only place those rows exist, from app v0.9.0) the You menu and every More menu aborted before opening. They now use the registered `arrow_downward` (add) and `close` (remove / cancel). Reproduced and verified in WebKit with an injected host.
 - **Guard**: test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property incl. toggle objects and both ternary arms, any icon call incl. `u.icon`, `songIconHtml` and ui.js's own `icon()`) must be in the registry; nine mutations each turn it red. Gate: adversary, CHANGES r1 (five missed call shapes) -> APPROVED r2 @16c5c92a. Plan: `docs/exec-plans/completed/2026-10-12-offline-icons.md`.
+
+### v1.387.3 - Desktop header panels open under their button (2026-10-12)
+
+- **Fix (desktop only)**: the Account, Notifications, Queue and Home Sort panels were placed from the button's LEFT edge, clamped to the window, so each landed 68-152 px off its button's right edge (Notifications and Queue ended 88-128 px past it). `ui.sheet` now also hands the anchor's right edge to the stylesheet (`--ui-anchor-r`) and a right-half anchor gets `ui-sheet--popover-end`: the panel's right edge is the button's, it grows from its top-right corner, and a classic scrollbar does not count. A popover also keeps the vertical side it first opened on (`holdPopoverSide`): rows arriving scroll inside a height cap instead of moving the panel up over the bell. The One-off download dialog (and Subscribe, the playlist picker on desktop) gets 4 px top and bottom padding so the first field's focus ring is whole.
+- **Proof**: HPOP geometry check (right edge within 1 px of the button's, top at open == top after the rows load; Account, Notifications with 14 rows, Queue, Sort x 4 eras x 2 modes at 1280x500) with two mutants (left-anchored CSS, the held side removed from ui.js); unit tests for `holdPopoverSide`, the `-end` class and the new custom property. Gate: adversary CHANGES r1 (the One-off padding also reached phone bottom sheets) -> APPROVED r2 @8f86ff39, qa APPROVED r1/r2. Plan: `docs/exec-plans/completed/2026-10-12-header-popovers.md`.
+- Disclosed: on a window shorter than about 535 px, Account and Sort (static panels with no room below or above) still open shifted up over their button, as a card menu does; the One-off dialog's first field on a phone sheet still shows its focus ring cut by 2 px (unchanged; phones were out of scope); a right-half anchor at about 769 px could sit a few px off the left edge (no real header button does).
 
 ### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
 

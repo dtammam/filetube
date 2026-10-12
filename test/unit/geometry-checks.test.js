@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, evalPlayerBleed, evalVPM, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, evalHeaderPopover, evalPlayerBleed, evalVPM, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
 const { SURFACES, FAST_SCENES, G4_SEQUENCES, VPM_SIZES, vpmCells } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
@@ -146,14 +146,24 @@ test('every check has at least one mutation proof, each aimed at a live scene or
   const byCheck = {};
   for (const [name, m] of Object.entries(MUTATIONS)) {
     byCheck[m.check] = (byCheck[m.check] || 0) + 1;
-    assert.ok(m.css && m.css.length > 10, name);
+    assert.ok((m.css && m.css.length > 10) || (m.js && m.js.file && m.js.from && m.js.to), name);
     if (m.check === 'G4') assert.ok(G4_SEQUENCES.find((q) => q.id === m.target.sequence), name);
     else if (m.check === 'VPM') { const ids = new Set(vpmCells().map((c) => c.id)); assert.ok(m.target.cells.length > 0 && m.target.cells.every((id) => ids.has(id)), name); }
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
   // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header;
-  // gate r1 POP, an open menu's reach; v1.359 BLD, the phone player edge to edge; v1.364.0 VPM, the viewport matrix.
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['BLD', 'G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD', 'VPM']);
+  // gate r1 POP, an open menu's reach; v1.359 BLD, the phone player edge to edge; v1.364.0 VPM, the viewport matrix; v1.387.3 HPOP, the desktop header panels.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['BLD', 'G1', 'G2', 'G3', 'G4', 'HDR', 'HPOP', 'NAV', 'POP', 'SHD', 'VPM']);
+});
+
+test('HPOP: a header panel lines its right edge up with its button and does not move when its rows load', () => {
+  const ok = { popover: true, sheet: { x: 784, y: 45.5, w: 400, h: 446 }, anchor: { x: 1148, y: 9.5, w: 36, h: 36 }, top0: 45.5, topNow: 45.5 };
+  assert.deepStrictEqual(evalHeaderPopover(ok), { measured: { panels: 1 }, failures: [] });
+  const left = evalHeaderPopover({ ...ok, sheet: { ...ok.sheet, x: 1024 } });
+  assert.match(left.failures[0], /right edge is 240px/);
+  assert.match(evalHeaderPopover({ ...ok, topNow: 42 }).failures[0], /jumped/);
+  assert.match(evalHeaderPopover({ ...ok, top0: NaN }).failures[0], /VACUOUS/);
+  assert.match(evalHeaderPopover({ sheet: null }).failures[0], /no open panel/);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {

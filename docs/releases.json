@@ -3688,5 +3688,11 @@
     "date": "2026-10-12",
     "title": "The You menu and the More menus open again in the FileTube iPhone app",
     "intent": "Since the iPhone app started offering offline playback, tapping You or any More button inside the app did nothing. They open again, each with its offline option, now shown with its own arrow and close icons. Nothing changes in your browser or home-screen app."
+  },
+  {
+    "version": "1.387.3",
+    "date": "2026-10-12",
+    "title": "On a computer, the Account, Notifications and Queue panels open right under their button and stay put",
+    "intent": "On a computer, the Account, Notifications, Queue and Sort panels now open directly under their button with their right edges lined up, and the Notifications panel no longer jumps up over the bell while its rows load. The download box's first field is no longer cut off at the top. Phones and the iPhone app look the same as before."
   }
 ]

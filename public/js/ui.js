@@ -9,8 +9,8 @@
 //   and data-*. The ONLY inline writes are CSS custom properties that carry
 //   DATA the stylesheet consumes, through el.style.setProperty('--name', v):
 //     --p          ui.thumb: the progress bar's fraction, 0..1
-//     --ui-anchor-x, --ui-anchor-y
-//                  ui.sheet popover: the anchor's left / bottom edge, px
+//     --ui-anchor-x, --ui-anchor-y, --ui-anchor-r
+//                  ui.sheet popover: the anchor's left / bottom / right edge, px
 //                  (from anchor.getBoundingClientRect())
 //     --ui-pop-top, --ui-pop-max-h
 //                  ui.sheet popover: the placed top edge and, only when the menu
@@ -419,6 +419,21 @@
     return { top: lo, maxH: hi - lo, side: 'scroll' };
   }
 
+  // A popover keeps the vertical side it was first placed on for its whole open life (v1.387.3:
+  // the notifications panel opened under the bell while its body was a skeleton, then jumped up
+  // over the bell when the rows arrived). `side` is placePopover's answer at open: 'below' stays
+  // hung from the anchor's bottom edge, 'above' from its top edge, and content that grows past
+  // the room on that side scrolls inside the panel (the height cap) instead of moving it.
+  // Pure: -> {top, maxH|null}.
+  function holdPopoverSide(side, a, h, lo, hi) {
+    if (side === 'above') {
+      var up = a.top - lo;
+      return h <= up ? { top: a.top - h, maxH: null } : { top: lo, maxH: up };
+    }
+    var down = hi - a.bottom;
+    return h <= down ? { top: a.bottom, maxH: null } : { top: a.bottom, maxH: down };
+  }
+
   // The band a popover may occupy, from the live page: the layout viewport intersected with
   // the visual viewport (a pinch zoom or the on-screen keyboard shrinks it), less the safe-area
   // insets and the --space-4 gap that ui.css hands over as --ui-pop-safe-top / -bottom /
@@ -491,6 +506,7 @@
     var pressedEarly = typeof WeakSet === 'function' ? new WeakSet() : null;
     var opener = null;
     var anchorRect = null; // a popover's anchor, read at open (the page is locked while it is up)
+    var heldSide = null; // the vertical side ('below' | 'above') the popover was first placed on, kept while it is open
     var placeObserver = null;
     var closeTimer = null;
     var onEnd = null;
@@ -503,7 +519,14 @@
       if (variant !== 'popover' || !anchorRect) return;
       s.style.removeProperty('--ui-pop-max-h');
       var band = popoverBand(s, win, doc);
-      var p = placePopover(anchorRect, s.offsetHeight, band.lo, band.hi);
+      var h = s.offsetHeight;
+      var held = heldSide && h > 0 && band.hi > band.lo;
+      var p = held ? holdPopoverSide(heldSide, anchorRect, h, band.lo, band.hi) : placePopover(anchorRect, h, band.lo, band.hi);
+      // The band can shrink past the anchor (pinch zoom, the keyboard): no room to cap into, so place it afresh
+      if (held && p.maxH != null && p.maxH <= 0) held = false;
+      if (!held) p = placePopover(anchorRect, h, band.lo, band.hi);
+      if (held) p.side = heldSide;
+      else if (p.side === 'below' || p.side === 'above') heldSide = p.side;
       s.style.setProperty('--ui-pop-top', p.top + 'px');
       if (p.maxH != null) s.style.setProperty('--ui-pop-max-h', p.maxH + 'px');
       s.setAttribute('data-placement', p.side);
@@ -576,11 +599,18 @@
       opener = closingHost && closingHost.__uiOpener ? closingHost.__uiOpener : active;
       s.__uiOpener = opener;
       anchorRect = null;
+      heldSide = null;
       if (variant === 'popover' && o.anchor && o.anchor.getBoundingClientRect) {
         var rect = o.anchor.getBoundingClientRect();
         anchorRect = { top: rect.top, bottom: rect.bottom };
         s.style.setProperty('--ui-anchor-x', rect.left + 'px');
         s.style.setProperty('--ui-anchor-y', rect.bottom + 'px');
+        s.style.setProperty('--ui-anchor-r', rect.right + 'px');
+        // An anchor whose centre is in the right half of the window (every header button) gets a
+        // panel whose RIGHT edge lines up with the anchor's; the width is the layout viewport's,
+        // so a classic scrollbar does not count.
+        var vw = (doc.documentElement && doc.documentElement.clientWidth) || (win && win.innerWidth) || 0;
+        if (vw > 0 && (rect.left + rect.right) / 2 > vw / 2) s.classList.add('ui-sheet--popover-end');
       }
       doc.body.appendChild(scrim);
       doc.body.appendChild(s);
@@ -1113,7 +1143,7 @@
     switch: uiSwitch, segmented: segmented, field: field, select: select,
     state: stateBlock, copy: copy,
     // Pure helpers, exported for tests and for callers that need the same text.
-    initials: initials, toneOf: toneOf, formatDuration: formatDuration, placePopover: placePopover,
+    initials: initials, toneOf: toneOf, formatDuration: formatDuration, placePopover: placePopover, holdPopoverSide: holdPopoverSide,
     ACTIVATION_GUARD_MS: ACTIVATION_GUARD_MS,
   };
   if (hasWindow) window.ui = api;
