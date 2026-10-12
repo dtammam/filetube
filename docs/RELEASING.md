@@ -76,6 +76,15 @@ app's account-menu version row links straight to them.
    bash .harness/lib/check-markers.sh
    ```
    A plan that will never ship closes the same way with `"Abandoned(<why>)"`.
+   **After approval, bookkeeping needs no re-check (Dean's ruling, 2026-10-12).** Once every
+   required seat is APPROVED at sha X, a close-out whose diff `X..HEAD` touches only release
+   bookkeeping (`docs/**`, `*.md`, `docs/releases.json`, the plan move, and the `"version"`
+   lines of `package.json` / `package-lock.json`) gets NO seat re-check. Bind it instead: run
+   `git diff --name-only X..HEAD` (and `git diff X..HEAD -- package.json package-lock.json`
+   showing only version lines) and paste both into the plan's evidence. Anything else in that
+   range (code, tests, a merge of `main` that brings code) is not bookkeeping: re-run the suites
+   and re-confirm with the seats as usual. Verdict lines never get a commit of their own; they
+   ride the commit already happening (the fix commit or this close-out).
    Update any path-shaped reference the script lists (`git grep -nF <slug>`).
    `test/unit/exec-plans-census.test.js` (pre-commit) fails on an undated
    plan, a terminal status still under `active/`, or a non-terminal one
