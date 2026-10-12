@@ -86,5 +86,5 @@ Contract v1 (add-only) grows from six capabilities to seven: `downloads`. The we
 files, the catalogue and every download's state, fetches the manifest itself with the per-device token
 ([offline-api.md](offline-api.md)) and serves a finished copy back to the web player through `localSrc` (its own URL scheme). An
 album or season add reports its members with `parentKind` + `parentId`. The server half is [the offline-server
-plan](../exec-plans/active/2026-10-11-offline-server.md); the design is [ios-offline.md](ios-offline.md). Details and owners:
+plan](../exec-plans/completed/2026-10-11-offline-server.md); the design is [ios-offline.md](ios-offline.md). Details and owners:
 [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6.

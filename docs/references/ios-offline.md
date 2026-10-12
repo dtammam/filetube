@@ -58,7 +58,7 @@ player streams the phone's copy). Removing a downloaded item never touches the s
 
 ## Corrections found while building the server half (2026-10-11 / 2026-10-12, v1.387.0)
 
-The plan ([2026-10-11-offline-server.md](../exec-plans/active/2026-10-11-offline-server.md)) refined this design; each note
+The plan ([2026-10-11-offline-server.md](../exec-plans/completed/2026-10-11-offline-server.md)) refined this design; each note
 below changes a line above and says why. The app's reference is [offline-api.md](offline-api.md).
 
 1. **There is no shipped forward-only progress rule outside the Feed.** Every online progress route is an unconditional upsert

@@ -3,11 +3,11 @@ plan: offline-server
 harness: v2 · full
 branch: feat/v1.387.0-offline-server
 anchor: spec
-status: Gate:CHANGES r1 @30db1f3e
-next: gate r2 - the r1 fixes committed, then the same three seats re-confirm at the fix commit
+status: Shipped v1.387.0
+next: none - shipped; the app half (filetube-ios v0.9.0) builds against docs/references/offline-api.md
 design: docs/references/ios-offline.md (Dean's rulings 2026-10-11) + the iOS Root's contract asks and custom-scheme spike (2026-10-11, simulator iOS 27 + iPhone XS iOS 18). Base = d405012e (the speed pass's docs commit; merge main once v1.386.0 lands).
 builder: extreme (a new credential at the auth gate, a schema migration, and writes to every kind's saved positions)
-gate: r1 @30db1f3e - security-brief APPROVED, qa CHANGES, adversary CHANGES (fixed in r2)
+gate: CLOSED - r3 @00ede12f (after the v1.386.0 merge + one test-only fix): adversary, qa and security-brief all APPROVED; r2 @226dc4f2 all APPROVED; r1 @30db1f3e one CRITICAL + five WARNING, all fixed in 226dc4f2
 ---
 
 # v1.387.0: offline playback, the server half - a per-device token, the download manifest, offline position sync, the `downloads` contract and the web's offline buttons
@@ -431,6 +431,71 @@ buffered ping "survives" the sync was corrected: the handler now commits it firs
 offline-manifest, device-tokens, device-scope-census, route-read / write-classification, rbac-census 31 / 31; lint 0 errors;
 lint:ui equal to the ratchet. The r2 re-confirmation by the same three seats follows this commit.
 
+**Gate round 2 (2026-10-12, at 226dc4f2): CLOSED.** All three seats APPROVED the delta. Adversary: 13 mutants, 12 killed, 1
+equivalent (localSrcFor's own guard is masked by state() stripping localSrc first); its order-E repro answers applied:true
+with the newer position standing (media 50, music 60; both were the older ping at r1); 15 integration suites 172 / 173
+(the one red is the known coalescer AC4.1 timing ratio, tracker #238, unreachable by the delta). QA: 19 touched files
+re-run, every one green; lint 0 errors; lint:ui equal to the ratchet. Security-brief: both r1 findings fixed, nothing
+CRITICAL or HIGH introduced; one LOW note accepted with a written rationale - `remove` remembers the hash before the owner
+check, auth-inert (the memory is consulted only on a lookup miss), a pollution vector of ~5000 authenticated calls; the fix
+moves the reviewed sha after a closed gate, so it is tracker item 299 with its one-line fix shape.
+
+**The v1.386.0 merge (plan Step 0; 2026-10-12).** v1.386.0 (the speed pass, merge commit 58470560, PR #137) reached main after
+the gate closed, so origin/main was merged into this branch BEFORE the close-out, as a merge commit of its own, never as
+bookkeeping. The stop rule fired: of v1.386.0's 54 files, six overlap this wave - server.js and lib/music/routes.js (code) and
+ROADMAP.md, docs/DEVICE-CHECKS.md, docs/DIAGRAMS.md, docs/references/ios-offline.md (docs). Dean's word (relayed by the FileTube
+Root from its AskUserQuestion, 2026-10-12): "Proceed on green tests". Facts: the two code files auto-merged with no conflicts
+and no adjacent hunks (main: the jsonCompression middleware at server.js 575, staticAssets + the shell rewrite at 3404-3523, a
+handoff line at 5481, and readPartShared('tracks') inside lib/music/routes.js registerTrackRoutes; this wave: the device store
+wiring at 293 / 980, the gate at 3153-3296, the offline routes at 4610-4720, the exports, and the hoisted music content-type
+map at 593 / 844). Semantics checked: main's serve-time shell rewrite versions every <script src>, so the ten shells' new
+/js/offline.js tag is cache-busted like every other script; jsonCompression compresses only a 200 JSON GET body of 8 KB or
+more (the manifest is such a GET; transparent to URLSession and fetch); the offline resolvers read the music store through
+its own readers. The two docs conflicts (both releases appending an entry) were resolved by keeping both blocks, v1.386.0's
+first. The full Node 22 suite on the merged tree (a throwaway worktree, the merge commit's tree hash identical to the tested
+tree): 12415 tests, 12404 pass, 1 fail, 10 skipped. The one red was a defect in THIS wave's test, not in the product: the
+diverging-restriction-kinds test replayed the kid's visible event through the cookie and then the token at the SAME moment,
+which the strict newer-wins rule reads as older unless the second request's latency exceeds the first's; the test now gives
+each pass its own moment (3 / 3 green in isolation; the fix is a test-only commit, re-confirmed by the three seats as a delta).
+
+**Gate round 3 (2026-10-12, at 00ede12f): CLOSED at the final code sha.** The delta = the v1.386.0 merge + the test-only fix.
+Adversary: the fix weakens no binding (M26, M23b, the order-E and poison-`at` tests, the changed test's own gone arm and
+newerWins `>=` all still go red under mutation); the merged main code measured not to interact (every served shell carries
+/js/offline.js?v=<hash> right after host-adapter.js, /login none; the manifest byte-identical under gzip and identity; the
+offline resolvers' music reads independent of readPartShared; Range / If-Range / HEAD green with jsonCompression installed);
+11 integration suites 87 / 87. QA: offline-progress 3 x 13 / 13, the censuses and main's static-assets test green, lint 0
+errors, ROADMAP and DEVICE-CHECKS carry both releases once each. Security-brief: jsonCompression never touches a 401 / 403 /
+429 or a POST, the static middleware runs after the gate and /js/offline.js stays session-gated, readPartShared is a frozen
+copy of the same rows. Deferred cosmetic (QA r3 A): lib/music/routes.js's header comment still says MUSIC_CONTENT_TYPES sits
+at the top of registerTrackRoutes (W2 hoisted and exported it at the module bottom); a lib file is not bookkeeping, so it
+waits for the next music wave.
+
+**Close-out binding (Dean's ruling 2026-10-12, relayed by the FileTube Root: a bookkeeping-only close-out needs no reviewer
+re-check).** Approved code sha 00ede12f (adversary, qa, security-brief r3). The close-out commit's
+diff against it, `git diff --name-only 00ede12f..HEAD`:
+```
+ROADMAP.md
+docs/exec-plans/completed/2026-10-11-offline-server.md
+docs/exec-plans/tech-debt-tracker.md
+docs/references/ios-host.md
+docs/references/ios-offline.md
+docs/releases.json
+package-lock.json
+package.json
+```
+Every path is docs/**, *.md, docs/releases.json or a package file; `git diff 00ede12f..HEAD -- package.json package-lock.json`
+changes only version lines:
+```
+-  "version": "1.386.0",
++  "version": "1.387.0",
+-      "version": "1.386.0",
++      "version": "1.387.0",
+-  "version": "1.386.0",
++  "version": "1.387.0",
+```
+So no seat was re-engaged for the close-out. The v1.386.0 merge (354eedd1) and the test-only fix (00ede12f) were NOT treated as
+bookkeeping: both sit under the r3 approvals above.
+
 ## 8. Out of scope
 The app half (filetube-ios); books; music play counts offline; smaller "data saver" renditions (ROADMAP streaming Tier 2); TV
 subtitles; a server-side list of what each phone holds (the phone is the source of truth for its own files); widgets (the token
@@ -645,3 +710,212 @@ equivalent mutant masked by fieldsOk's own cap, and the two offline.js `localSrc
   (Express encodeURI then send's decode): `50% off.mp4` and `track #1.mp4` serve 200 like `/video/:id`.
 
 Gate: CHANGES r1 @30db1f3e — adversary
+
+### Security-brief r2 @226dc4f2 (2026-10-12, delta re-confirmation; read-only, no Bash: files read at HEAD, no diff or suite run)
+
+My r1 findings against the fix commit:
+- **W1 - FIXED as prescribed (option 1).** lib/auth/devices.js:114-124 keeps `revokedHashes` (token_hash -> ms), bounded at
+  REVOKED_MEMORY_MAX 5000 (oldest evicted first, :117-120) and REVOKED_MEMORY_MS 24 h (:267). Every row-deleting path remembers the
+  hash BEFORE the delete: `remove` (:234-235), `prune` (:244-245), `removeAllForUser` (:253), the issue-time prune (:182) and the
+  list-time expiry prune (:225). lib/auth/gate.js:348-354: a null lookup asks `wasRevokedRecently(token)` and answers 401
+  deviceRevoked BEFORE `recordUnknown`, so it is not counted; an epoch-stale row never reaches that branch (it is a found row,
+  :362-363). The comment (gate.js:240-244), offline-api.md:45 and the plan now say what the code does. The unit test binds 40
+  presentations each of an epoch-stale and a row-deleted token as 401, never 429 (auth-gate-devices.test.js:213-222).
+- **W2 - FIXED (differently, stricter).** lib/offline/routes.js:505 refuses `at < 0 || at > sentAt + 5 min`; :567 refuses a negative
+  `sentAt`; :569 the 5-min-ahead rule; :583 `atServer = max(0, min(at + skew, serverNow))`. With sentAt in [0, serverNow + 5 min] and
+  at in [0, sentAt + 5 min], `at + skew` is finite and atServer lands in [0, serverNow], so `toISOString` (:512) cannot throw. Bound
+  by offline-progress.test.js:440-452 (-9e15, 9e15, +6 min, -1 each `invalid` in place, the good event lands, a negative sentAt 400).
+
+What the delta introduces (reviewed for exposure):
+- **NOTE (LOW) R2-1 - `remove` remembers a hash the caller does not own.** devices.js:234 `hashById.get(deviceId)` runs BEFORE the
+  owner-scoped `DELETE ... WHERE user_id = ? AND id = ?` (:236), so any signed-in user calling `DELETE /api/devices/<n>` for another
+  user's device id gets the 404 but still inserts that LIVE token's hash into `revokedHashes`. The entry is inert while the row lives
+  (the gate finds the row first, gate.js:347, and only consults the memory on a null lookup), so no auth effect. The only use is
+  pollution: ~5000 such calls evict every genuinely revoked hash and re-arm the r1 posture (a removed phone's retries count again).
+  Authenticated, cheap, no data or secret at stake. Fix: look the hash up with the same owner scope (`WHERE user_id = ? AND id = ?`)
+  or remember only when `res.changes > 0`. Fix-or-accept.
+- **Memory exposure - none.** The map holds sha256 hex hashes that already sit in `device_tokens`; nothing logs or returns them:
+  `wasRevokedRecently` returns a boolean (:263-269), `revokedMemorySize` a count (:270), `publicDevice` is unchanged. Growth: entries
+  come only from rows the store itself deletes (above) - an attacker cannot add arbitrary hashes; a pair-and-remove loop adds one
+  per cycle, capped at 5000 entries (well under 1 MB). Oracle: `wasRevokedRecently` is sha256 + `Map.get`; its answer is only visible
+  as "counted or not" by the limiter, both branches return the identical 401 body (gate.js:342-343, :354, :360); distinguishing a
+  recently revoked token from an unknown one requires presenting that 256-bit token. Verified.
+- **Flush-first (routes.js:578-579) - earlier timing of a write the timer makes anyway, not a new write.** `flushPendingProgress`
+  (server.js:1090-1116) and `flushPendingMusicProgress` (:4140-4158) snapshot and clear EVERY user's buffered pings and commit them
+  through one `updateDatabase` mutator with the same own-property guards the 5 s timer path uses; the content is exactly what the
+  timer would commit, only sooner. A token holder cannot author those rows (the buffers are filled only by the online ping routes
+  under their own sessions). Cost: an empty buffer returns before touching the chain (:1095, :4145), so a flood of progress POSTs
+  causes at most one real flush per buffered window. Verified.
+- **tv failed-id Set (lib/tv/routes.js:192-232) - bounded by ids the db knows.** Added only inside `processTvTranscodeQueue` for an
+  id that reached `queueTvTranscode`, which the offline route calls only for a RESOLVED (visible, existing) episode (routes.js:257,
+  :403) and the tv route for an existing one; deleted on a later success (:226). Read only through `tvTranscodeHasFailed` after the
+  visibility check (routes.js:261 -> decideFile), so the 409 `transcodeFailed` cannot name a hidden item. Terminal until restart,
+  disclosed in the comment. Verified.
+- **MutationObserver (public/js/offline.js:230-257, :266) - no new sink.** Installed only when a host announces `downloads`; the
+  callback reads `nodeType` / `classList` and queues ELEMENTS for `decorate`, one rAF batch; `decorate` reads existing `data-id`,
+  `href`, `data-episode-id` attributes for prefix matching and inserts chips through `ui.chip` or `createElement` + `textContent`
+  (:177-183); no innerHTML. Its own `.offline-badge` chips are skipped and a chip's text update is a text node (nodeType 3), so no
+  re-trigger loop. Verified.
+- **main.js `cardOfflineKind` (:760-769) - a pure enum mapping** of `item.kind` / `item.type` to the manifest kinds; the result and
+  `item.id` go to `offline.runMenuAction` / `menuEntry`, whose `host.post` payload is validated by host-adapter's field table (enum
+  kind, id string 1..512). Verified.
+
+No CRITICAL or HIGH introduced or remaining. R2-1 is LOW, fix-or-accept with a one-line scope fix; it does not block.
+
+Gate: APPROVED r2 @226dc4f2 — security-brief
+
+### QA r2 @226dc4f2 (2026-10-12, delta re-confirmation of the r1 findings)
+
+Instruments (Node 22.23.1, this worktree): `npm run lint` "✖ 6 problems (0 errors, 6 warnings)"; `npm run lint:ui` "the live
+debt equals docs/ui-exceptions.json"; offline-ui 16/16, auth-devices-store 12/12, auth-gate-devices 10/10, offline-playable 4/4,
+player-offline-local-src 3/3, native-bridge-contract 20/20, audio-routing-net 2/2, settings-census 5/5, docs-link 2/2,
+docs-diagrams 5/5, exec-plans 3/3, release-ledger 7/7, offline-manifest 11/11, offline-progress 13/13, device-tokens 8/8,
+device-scope-census 3/3, route-read 2/2, route-write 4/4, rbac-census 3/3; 0 fail. Not re-run: the full unit suite (r1's one
+red was the books wall-clock flake, untouched here).
+
+- W1 (badge reachability): fixed differently from my prescription and better - offline.js:395-426 installs one MutationObserver
+  (childList + subtree) when enabled, queues added ELEMENTS, decorates them one pass per frame, skips its own `.offline-badge`
+  chips (the chip gets its class before insertion, offline.js:440-441, so a pass cannot re-trigger itself; a text change is a
+  text node); `collect()` lets decorate take the added card itself. Bound through a real innerHTML render and an appended card
+  with no host event and no explicit call, the pass settling, and no observer without a host (offline-ui.test.js "reachability").
+- W2 (tv 503 loop): fixed as prescribed - lib/tv/routes.js:191-194 failed-id Set (added on non-zero exit and process error,
+  cleared on success), `tvTranscodeCurrent` stops a re-queue of the running id, `tvTranscodeHasFailed` exported and passed
+  (server.js:4703); routes.js:261 reads it, so 409 `transcodeFailed` and `playable:false`; offline-api.md:118-120 discloses the
+  process-local memory (one more 503 after a restart). Bound with a stub ffmpeg failing on "Broken": 503 once, then 409, no
+  rendition, no temp file, the manifest's reason (offline-manifest.test.js e3).
+- W3 (two identities per audio file): fixed as prescribed - main.js:761 `track` for `item.type === 'audio'`, exported; bound
+  against common.js audioOpenHref's real href for a plain and a chaptered file (offline-ui.test.js "one offline identity").
+- S1 doc order now matches the code (numbers, then visibility; `at` bounds stated). S2 the stray comment sits on `/api/devices`.
+  S3 frontmatter updated. S4 devices.js `wasRevokedRecently` (remembered on remove / prune / Remove all / expiry pruning, 24 h,
+  bounded 5000) and gate.js:349-353 answers 401 uncounted; bound 40 + 40 presentations. S5 '/watch?v=' dropped.
+- New in the delta, checked: the order-E flush (routes.js:572-573) runs in the handler's synchronous tick and both flushes
+  snapshot, clear and chain their commit synchronously (server.js:1090-1098, 4140-4148), so every ping stamped before serverNow
+  commits ahead of the mutator while the in-mutator read still covers later pings; `at` bounds + `Math.max(0, ...)` clamp and
+  `sentAt < 0` -> 400. `remove()` remembers the hash before the ownership check (devices.js:234-235): harmless, a live row is
+  found by lookup before the memory is consulted. Nothing new found.
+- Security: unchanged posture; the new memory holds hashes only, never tokens.
+
+Gate: APPROVED r2 @226dc4f2 — qa
+
+### Adversary r2 @226dc4f2 (2026-10-12, delta re-review in a fresh /tmp git-archive sandbox of HEAD; the worktree untouched)
+
+Instruments (Node 22.23.1): `npm run test:unit` 9650 tests, 9640 pass, 8 fail, 2 skipped - the 8 are the same sandbox artifacts
+(`git ls-files` source locks / the symlink EISDIR; those files re-run READ-ONLY in the worktree: 69/69). 15 integration suites
+(the four offline / device suites, the census, the three route classifications, progress-coalescer, music-api, api, feed-progress,
+feed-stale-continue, user-management, backup-restore, history-api): 173 tests, 172 pass, 1 fail = progress-coalescer AC4.1, the
+known #238 timing ratio; re-run alone 3x with the unit suite loading the box: 2 pass, 1 the same ratio miss; that file has zero
+references to the offline route, and the flush-first call runs only inside a sync request, so the delta cannot reach it. Lint 0
+errors / 6 standing warnings; lint:ui equals the ratchet; overlay 0.
+
+- CRITICAL 1: fixed as prescribed and VERIFIED. My order-E repro against 226dc4f2: media ping 10 -> hold -> sync E@50 -> flush
+  snapshot -> release = `applied:true`, row 50 (was 10); music 10 / 60 = row 60 (was 10); the older-offline arm refuses with the
+  online value standing; a ping that arrives WHILE the mutator waits (after the handler's flush) is newer and refuses the event.
+  Binding: removing both flush-first lines reddens the committed order-E test (and two neighbours); removing only the music flush
+  reddens it too. The flush's own `.catch` keeps a rejected flush from reaching the handler and the chain's `run.catch` keeps it alive;
+  `__holdWriteChainForTests` ordering unchanged. Nothing new found in the coalescer path.
+- WARNING 2: fixed differently (bounds on `at` instead of a per-event try): `[valid, at:-9e15, at:9e15, at:now+6min]` -> 200 with
+  `[applied, invalid, invalid, invalid]`, the good event written, nothing for the poison; `sentAt:-5` -> 400. Removing the bounds (or
+  only the lower bound) and removing the `Math.max(0, ...)` clamp each redden a committed test. Evaluated the deviation: correct, and
+  `atServer` is now provably inside [0, serverNow] so `toISOString` cannot throw.
+- WARNING 3: (a) M26 (count an epoch-stale / disabled token as unknown) now goes RED (auth-gate-devices 9/10); (b) the deleted-row
+  path is covered by the revoked-hash memory: removing the gate's tombstone check, the remove() memory, the Remove-all memory or the
+  24 h expiry each redden a committed test. Read the new code: the memory is only consulted when the hash lookup MISSES, so a live
+  token is never affected by it (remove() remembering a hash it did not own is harmless); FIFO-bounded at 5000 x 24 h.
+- SUGGESTION 4: `state()` now binds (M23b red); the `localSrcFor` guard (M23) still survives, but only because `state()` already
+  strips localSrc from a non-done item - an equivalent mutant now, defence in depth, not a gap.
+- NEW (QA's items in the delta): tv failed-transcode memory binds (dropping the `add` on a failed exit reddens the tv manifest
+  test); the MutationObserver is created only under `if (enabled)` and skips its own chips, so a no-host DOM stays byte-identical
+  (offline-ui no-host tests green). No new finding.
+
+Gate: APPROVED r2 @226dc4f2 — adversary
+
+### Security-brief r3 @00ede12f (2026-10-12, delta re-confirmation after the v1.386.0 merge; read-only, no Bash: files read at HEAD, no diff or suite run)
+
+Could NOT run: `git diff 226dc4f2..00ede12f` and the suites. I read the merged code where it now sits beside this wave's
+(server.js, lib/jsonCompression.js, lib/staticAssets.js, lib/music/routes.js, lib/db/featureStore.js, lib/media/jsonRowStore.js) and
+the offline test file's structure. The r1 / r2 product files I re-checked (gate.js, devices.js, offline/routes.js) read as at r2.
+
+- **jsonCompression (server.js:586, lib/jsonCompression.js) - cannot touch a device-token refusal or a byte stream.** The hook
+  replaces a body only when `req.method === 'GET'` (:28), `res.statusCode === 200` (:37), Content-Type is `application/json`, no
+  `Content-Encoding` is set, the head is not yet sent and the body is >= 8 KB (:39). Every gate refusal is a 401 / 403 / 429 (never
+  200) and well under 8 KB, so the bodies the app keys on are byte-identical to r2. `POST /api/offline/status` and `/progress` are
+  POSTs; the file route's `res.sendFile` is `video/...` or `audio/...`, 206 or 200 with the head already written (`headersSent`),
+  so it passes through. The ONE device-reachable answer it compresses is `GET /api/offline/manifest` (JSON, 200, can exceed 8 KB for an
+  album or season), plus `/api/auth/me` only if it ever grows past 8 KB. Exposure: compression of an authenticated response is a
+  BREACH-shaped concern only when the response mixes a SECRET with attacker-chosen reflected text; the manifest echoes the caller's
+  `kind` / `id` but carries no secret (titles, relative URLs, stamps), `/api/auth/me` reflects nothing, and no GET response anywhere
+  carries a token (the token is a 201 POST body, never compressed). Verified; no finding.
+- **Static assets (lib/staticAssets.js) run AFTER the gate: order unchanged.** `app.use(authGate)` is at server.js:3177;
+  `staticAssets.middleware` is installed at :3551, behind the shell catch-all (:3530) and ahead of `express.static` (:3555). So
+  `/js/offline.js` (not in ALLOW_EXACT, gate.js:109-145) still needs a session, and a device token gets the scope 403 for it, as for
+  every `/js/*`. The ten shells' new `<script src="/js/offline.js">` (index, watch, music, tv, podcasts, history, setup, stats, books,
+  read) is rewritten generically by `rewriteHtml` (:140-150, every `<script src>` under a static folder gets `?v=<sha256 prefix>`); the
+  gate's `isAllowlisted` strips the query before matching (gate.js:166), so the stamp cannot change any auth decision. `absFor`
+  (:75-82) refuses dot-segments, NUL and anything outside `public/` and only ever serves STATIC_DIRS; a Range request falls through
+  to express.static (:168); a bogus `v` only yields `no-cache` (:176). The middleware is a plain file server with no view of
+  `req.user`, so nothing in it can widen what a token reaches. Verified.
+- **`readPartShared('tracks')` (lib/music/routes.js:675 and siblings) - same rows, same gate, frozen.** `getAllShared`
+  (lib/media/jsonRowStore.js:161-168) returns a deep-frozen snapshot of the same `getAll()` rows, rebuilt when the table's write
+  counter moves, uncached inside a transaction; `/track/:id` still runs `ownTrack` then `trackVisibleTo` on each row (:676-678). The
+  offline resolvers are untouched: lib/offline/routes.js:120 still reads `musicDb.read()` and filters through `trackVisibleTo` +
+  `projectedLibraryTracks(req)`, so a restricted member resolves exactly as at r2, and the bytes route it names applies the same
+  predicate to the same record. A frozen record cannot be mutated by a reader, which only removes a class of accidental write.
+  Verified; no finding.
+- **00ede12f (test-only).** The coordinator reports a change to test/integration/offline-progress.test.js only (the diverging-kinds
+  visibility test at :307 gives each pass its own moment). I could not diff it; the test list and every product file I read match
+  r2 plus the merge. Recorded as reported, not as verified.
+
+No new finding. Nothing from r1 / r2 regressed (R2-1, LOW, stands as fix-or-accept). No CRITICAL or HIGH.
+
+Gate: APPROVED r3 @00ede12f — security-brief
+
+### QA r3 @00ede12f (2026-10-12, delta: the v1.386.0 merge 354eedd1 and the test-only fix 00ede12f)
+
+Instruments (Node 22.23.1, this worktree, at 00ede12f): `npm run lint` "✖ 6 problems (0 errors, 6 warnings)"; `npm run lint:ui`
+"the live debt equals docs/ui-exceptions.json"; offline-progress 13/13 three times; docs-link-census 2/2, docs-diagrams-census 5/5,
+exec-plans-census 3/3, release-ledger 7/7, static-assets 6/6 (main's new test over the shells, which carry /js/offline.js);
+offline-manifest 11/11, device-tokens 8/8, offline-ui 16/16; 0 fail. Not re-run: the full suite (the coordinator's run on the
+merged tree, 12415 / 12404 / 1 fail, is quoted, not re-derived; the one red is the test this commit fixes).
+
+- 00ede12f (test-only): correct and binds the same semantics. The second pass replayed the kid's visible event at the SAME `at`,
+  which strict newer-wins (routes.js newerWins, `>`) rightly reads as `older`; each pass now has its own moment (cookie pass at
+  now - 1 s, token pass at now) and the assertion is unchanged. The product is untouched (`git show --stat`: one test file).
+- 354eedd1 (the merge): the branch's hunks survive - server.js deviceStore (301), the gate's `devices:` (3175), the audit `via=`
+  (3239), offlineRoutes.registerRoutes with tvTranscodeHasFailed and both flushes (4704-4729); lib/music/routes.js keeps the
+  hoisted, exported MUSIC_CONTENT_TYPES (839). Main's music refactor (readPartShared, visibleMusicList) left
+  `projectedLibraryTracks(req, nativeTracks)` (server.js:4341) as the offline routes receive it. ROADMAP.md: one v1.386.0 and one
+  v1.387.0 Shipped entry, v1.386.0 first, nothing lost or doubled. docs/DEVICE-CHECKS.md: "Speed pass (v1.386.0)" then "Offline
+  playback (v1.387.0)" with its 10 lines intact. DIAGRAMS.md: 67 tables / schema 37 kept, main's ROUTES count line merged.
+- SUGGESTION A (LESSONS 12; pre-existing since W2, my miss at r1, not from the merge): lib/music/routes.js:33-36 says
+  MUSIC_CONTENT_TYPES "sit[s] at the top of registerTrackRoutes", but W2 hoisted it to the module's bottom (line 839) and exported
+  it. Update the header comment in the close-out commit.
+- SUGGESTION B (merge resolution, cosmetic): ROADMAP.md:841-842 has no blank line between v1.386.0's last bullet and the
+  `### v1.387.0` heading (CommonMark still renders the heading; the file's convention is a blank line).
+- Tree: `git status` shows the plan doc and docs/exec-plans/tech-debt-tracker.md STAGED (the coordinator's gate bookkeeping for
+  the close-out commit, left alone) plus this block; no untracked files.
+
+Gate: APPROVED r3 @00ede12f — qa
+
+### Adversary r3 @00ede12f (2026-10-12, delta re-review: the main merge 354eedd1 + the test-only 00ede12f; fresh /tmp git-archive sandbox of HEAD)
+
+Instruments (Node 22.23.1): `npm run test:unit` 9705 tests, 9695 pass, 8 fail, 2 skipped - the 8 are the standing sandbox artifacts
+(`git ls-files` source locks / the symlink EISDIR), re-run READ-ONLY in the worktree: 69/69. Eleven integration suites (the four
+offline / device suites, the census, the three route classifications, progress-coalescer, music-api, and main's two overlap suites
+static-assets-shells + music-shared-snapshot-routes): 87/87 (AC4.1 green this run).
+
+- The test-only change (00ede12f) weakens no binding: against this sha, M26 (count a known-revoked token) is red 9/10, M23b (localSrc
+  from a non-done item) red 15/16, dropping the flush-first lines reddens the order-E test (+2), dropping the `at` bounds reddens the
+  poison test, dropping the podcast or the video visibility check in the sync reddens the very test that changed (its 'gone' arm still
+  binds, only the visible event's moment moved), and newerWins `>=` is red (17 tests, 1 fail). The change is correct: a second event
+  at the SAME moment is 'older' by the product's strict rule, so the old test passed on request latency.
+- The merged main code does not touch this wave's guards (measured, not read): every served shell (/, /music, /tv, /podcasts,
+  /watch.html, /setup.html, /history, /stats.html) carries `/js/offline.js?v=<hash>` IMMEDIATELY after `/js/host-adapter.js?v=<hash>`
+  (the staticAssets rewrite versions the new tag like the rest); /login carries host-adapter and no offline.js; the bare
+  `/js/offline.js` answers 200 `no-cache`. The manifest is byte-identical with `Accept-Encoding: gzip` and `identity` (jsonCompression
+  compresses only a 200 JSON body of >= 8 KB; a big album manifest would gzip, which iOS URLSession decodes transparently). The
+  offline resolvers keep reading `musicDb.read()` (the live namespace) while /track and the music lists moved to readPartShared's
+  frozen snapshot - two reads of the same rows, no shared mutable state, and the kid's token still gets 200 on a visible track
+  manifest and 404 on the hidden ones (the visibility test). The offline file route's Range / If-Range / HEAD tests are green with
+  jsonCompression installed (it ignores non-JSON bodies).
+
+Gate: APPROVED r3 @00ede12f — adversary
