@@ -63,7 +63,7 @@
         "progress": { "type": "number", "minimum": 0, "maximum": 1 },
         "bytes": { "type": "number", "minimum": 0 },
         "totalBytes": { "type": "number", "minimum": 0 },
-        "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "other"] },
+        "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "notPlayable", "other"] },
         "localSrc": { "type": "string", "minLength": 1 },
         "parentKind": { "enum": ["album", "tvSeason"] },
         "parentId": { "type": "string", "minLength": 1, "maxLength": 512 }
@@ -101,7 +101,7 @@
             "progress": { "type": "number", "minimum": 0, "maximum": 1 },
             "bytes": { "type": "number", "minimum": 0 },
             "totalBytes": { "type": "number", "minimum": 0 },
-            "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "other"] },
+            "error": { "enum": ["network", "storageFull", "revoked", "notOnServer", "notReady", "notPlayable", "other"] },
             "localSrc": { "type": "string", "minLength": 1 },
             "parentKind": { "enum": ["album", "tvSeason"] },
             "parentId": { "type": "string", "minLength": 1, "maxLength": 512 }

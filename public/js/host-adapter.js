@@ -21,7 +21,8 @@
   var DOWNLOAD_KINDS = ['track', 'album', 'podcastEpisode', 'video', 'tvEpisode', 'tvSeason'];
   var DOWNLOAD_ITEM_KINDS = ['track', 'podcastEpisode', 'video', 'tvEpisode'];
   var DOWNLOAD_STATES = ['none', 'queued', 'downloading', 'paused', 'waitingForWifi', 'done', 'failed'];
-  var DOWNLOAD_ERRORS = ['network', 'storageFull', 'revoked', 'notOnServer', 'notReady', 'other'];
+  // notPlayable (iOS Root review, 2026-10-12): the server's 409 or the app's own AVURLAsset.isPlayable failure - terminal.
+  var DOWNLOAD_ERRORS = ['network', 'storageFull', 'revoked', 'notOnServer', 'notReady', 'notPlayable', 'other'];
   function downloadItemFields() {
     return {
       kind: { enum: DOWNLOAD_ITEM_KINDS.slice(), req: true },

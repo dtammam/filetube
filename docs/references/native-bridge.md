@@ -66,7 +66,7 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `battery` | `level` 0..1 (or null when unknown), `state: 'unplugged' \| 'charging' \| 'full' \| 'unknown'` | on subscribe, then on every change |
 | `network` | `connection: 'wifi' \| 'cellular' \| 'wired' \| 'other' \| 'none'` (required), optional `constrained: boolean` (Low Data Mode), `expensive: boolean` | on subscribe, then on every change |
 
-| `download` | one ITEM: `kind: 'track' \| 'podcastEpisode' \| 'video' \| 'tvEpisode'`, `id`, `state: 'none' \| 'queued' \| 'downloading' \| 'paused' \| 'waitingForWifi' \| 'done' \| 'failed'` (required); optional `progress` 0..1, `bytes`, `totalBytes`, `error: 'network' \| 'storageFull' \| 'revoked' \| 'notOnServer' \| 'notReady' \| 'other'` (only with `failed`), `localSrc` (only with `done`), `parentKind: 'album' \| 'tvSeason'` + `parentId` (only for a member of an album or season add) | after a subscribe, on every change of an item (v1.387.0) |
+| `download` | one ITEM: `kind: 'track' \| 'podcastEpisode' \| 'video' \| 'tvEpisode'`, `id`, `state: 'none' \| 'queued' \| 'downloading' \| 'paused' \| 'waitingForWifi' \| 'done' \| 'failed'` (required); optional `progress` 0..1, `bytes`, `totalBytes`, `error: 'network' \| 'storageFull' \| 'revoked' \| 'notOnServer' \| 'notReady' \| 'notPlayable' \| 'other'` (only with `failed`; `notPlayable` = the server's 409 or the app's own AVURLAsset.isPlayable check, terminal), `localSrc` (only with `done`), `parentKind: 'album' \| 'tvSeason'` + `parentId` (only for a member of an album or season add) | after a subscribe, on every change of an item (v1.387.0) |
 | `downloadsSnapshot` | `items`: an array (at most 10000) of the `download` fields above, one element per item the phone holds or is working on | once, in answer to every `downloads.subscribe` |
 
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
@@ -75,7 +75,9 @@ does not know as `'other'`.
 **Downloads (v1.387.0).** `kind` on a `download` event is always a single-item kind: an `album` or `tvSeason` add reports its
 MEMBERS, each carrying `parentKind` + `parentId`, and the web rolls the album or season badge up from them.
 `state: 'none'` means the item is not on the phone: after a `downloads.remove`, after a server `gone` (404) made native delete
-the copy, or after a cancel. The web treats an unknown `state` as `'none'` and an unknown `error` as `'other'`; a bad optional
+the copy, or after a cancel. A chapter row (`<mediaId>::c<n>`, a chaptered audio file shown as an album in Music) is the WEB's
+concern: public/js/offline.js reads and sends the PARENT id (`<mediaId>`) for any chapter row, so native only ever sees and
+reports the parent (the manifest's item id). The web treats an unknown `state` as `'none'` and an unknown `error` as `'other'`; a bad optional
 field drops that field, not the event; in a snapshot a bad element drops that element, not the snapshot (more than 10000
 elements drops the whole event; the app never sends one). The web REPLACES its map with every snapshot; `download` events after
 it are deltas. `localSrc` is an opaque string: the web uses it ONLY as an audio or video element `src`, never `fetch` / XHR, never

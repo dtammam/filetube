@@ -700,6 +700,12 @@ function buildWatchMoreItems(s) {
     { id: 'watch-later', icon: 'schedule', label: st.watchLater === true ? 'Remove from Watch later' : 'Watch later' },
   ];
   if (typeof st.downloadHref === 'string' && st.downloadHref !== '') out.push({ id: 'download', icon: 'download', label: 'Save to device' });
+  // v1.387.0 offline playback (plan D6): only when the host announced `downloads` (st.offline is the module's menuEntry);
+  // beside Save to device, never replacing it. A failed copy says why on a quiet second line.
+  if (st.offline && typeof st.offline.id === 'string') {
+    out.push({ id: st.offline.id, icon: st.offline.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline', label: st.offline.label });
+    if (st.offline.errorText) out.push({ id: 'offline-error', icon: 'error', label: st.offline.errorText, disabled: true });
+  }
   out.push({ id: 'watched', icon: 'history', label: st.watched === true ? 'Mark as unwatched' : 'Mark as watched' });
   if (st.hasDescription === true) out.push({ id: 'copy-description', icon: 'content_copy', label: 'Copy description' });
   if (st.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: st.reheatBusy === true ? 'Reheating…' : 'Reheat metadata', disabled: st.reheatBusy === true });
@@ -1413,8 +1419,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // closes with the view (its `signal`).
     function moreMenuState() {
       const cap = readCapabilityCache();
+      const off = window.FileTube && window.FileTube.offline;
       return {
         downloadHref: mediaData ? '/video/' + encodeURIComponent(mediaData.id) + '?download=1' : '',
+        // v1.387.0: the offline entry (a tv episode on this page is `?tv=`, a library item `video`)
+        offline: off && off.enabled && mediaData ? off.menuEntry(watchOfflineKind(), mediaData.id) : null,
         watched: currentWatchedState.watched,
         watchLater: !!(mediaData && watchLaterSnapshot() && watchLaterSnapshot().has(String(mediaData.id))),
         hasDescription: !!(descriptionParagraph && descriptionParagraph.textContent !== ''),
@@ -1429,8 +1438,14 @@ if (typeof module !== 'undefined' && module.exports) {
       const items = buildWatchMoreItems(moreMenuState()).map((it) => Object.assign({ value: it.id }, it));
       ui.menu({ title: 'More', anchor: moreBtn, items, signal, onSelect: runMoreAction });
     }
+    // v1.387.0: the kind this page's item has for offline playback - a `?tv=` episode is a tvEpisode, everything else a video.
+    function watchOfflineKind() {
+      try { return new URLSearchParams(window.location.search).get('tv') ? 'tvEpisode' : 'video'; } catch (_) { return 'video'; }
+    }
     function runMoreAction(id) {
       if (!mediaData || signal.aborted) return;
+      const off = window.FileTube && window.FileTube.offline;
+      if (off && off.enabled && off.runMenuAction(id, watchOfflineKind(), mediaData.id)) return; // v1.387.0 offline playback
       if (id === 'queue-next') addToQueue(mediaData.id, 'next');
       else if (id === 'queue-add') addToQueue(mediaData.id, 'end');
       else if (id === 'watch-later') {

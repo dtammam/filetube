@@ -76,9 +76,18 @@ function buildContinueCardHtml(ep) {
 // One episode row: SxxExx code + title + duration. Retire R3: a whole-row link (a.ui-row) to
 // the episode's watch page in the season's ui-list - the code is the overline, the title the
 // row title, the length the aside column the list sizes (style.css .tv-episode-list).
-function buildEpisodeRowHtml(ep) {
+// v1.387.0 offline playback (plan D6): `opts.offline` is a function (kind, id) -> the module's menuEntry, passed ONLY when
+// the host announced `downloads`; a browser passes nothing and the markup is byte-identical to before. The pill is a
+// <button> inside the row link; tv.js's click dispatcher claims it before the row's navigation.
+function tvOfflinePillHtml(entry, kind, id) {
+  if (!entry || typeof entry.id !== 'string') return '';
+  return '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill tv-offline" data-offline-action="' + escapeTvHtml(entry.id) + '" data-offline-kind="' + escapeTvHtml(kind) + '" data-offline-id="' + escapeTvHtml(id) + '"' + (entry.errorText ? ' title="' + escapeTvHtml(entry.errorText) + '"' : '') + '>' +
+    '<span class="ui-btn__label">' + escapeTvHtml(entry.label) + '</span></button>';
+}
+function buildEpisodeRowHtml(ep, opts) {
   var code = episodeCode(ep);
   var title = ep.title || (ep.episodeNum != null ? 'Episode ' + ep.episodeNum : 'Untitled');
+  var offline = opts && typeof opts.offline === 'function' ? tvOfflinePillHtml(opts.offline('tvEpisode', ep.id), 'tvEpisode', ep.id) : '';
   return '' +
     '<a class="ui-row ui-row--default tv-episode" role="listitem" href="/watch.html?tv=' + encodeURIComponent(ep.id || '') + '" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
     '<span class="ui-row__lead"></span><span class="ui-row__media"></span>' +
@@ -87,14 +96,14 @@ function buildEpisodeRowHtml(ep) {
     '<span class="ui-row__title" title="' + escapeTvHtml(title) + '">' + escapeTvHtml(title) + '</span>' +
     '</span>' +
     '<span class="ui-row__aside">' + escapeTvHtml(ep.durationSec ? formatEpDuration(ep.durationSec) : '') + '</span>' +
-    '<span class="ui-row__actions"></span>' +
+    '<span class="ui-row__actions">' + offline + '</span>' +
     '</a>';
 }
 
 // A show-detail document: a hero (poster + name), then a section per season, each
 // an episode list. (v1.198: the admin poster-control slot is gone with the
 // removed upload feature; the hero itself stays.)
-function buildShowDetailHtml(detail) {
+function buildShowDetailHtml(detail, opts) {
   var out = '<div class="tv-detail">';
   out += '<div class="tv-detail-hero">' +
     '<img class="tv-detail-poster art-shimmer" src="/tvposter/' + encodeURIComponent(detail.id || '') + '" alt="' + escapeTvHtml(detail.name) + '" />' +
@@ -107,10 +116,13 @@ function buildShowDetailHtml(detail) {
   for (var i = 0; i < seasons.length; i++) {
     var s = seasons[i];
     out += '<section class="tv-season">';
-    if (!hideHeader) out += '<h4 class="tv-season-label">' + escapeTvHtml(s.label) + '</h4>';
+    // v1.387.0 offline playback: the season's pill (the season id is <showId>:<season key>, 'x' for Extras - plan D2)
+    var seasonId = (detail.id || '') + ':' + (s.seasonNum == null ? 'x' : String(s.seasonNum));
+    var seasonPill = opts && typeof opts.offline === 'function' ? tvOfflinePillHtml(opts.offline('tvSeason', seasonId), 'tvSeason', seasonId) : '';
+    if (!hideHeader || seasonPill) out += '<h4 class="tv-season-label">' + (hideHeader ? '' : escapeTvHtml(s.label)) + (seasonPill ? ' ' + seasonPill : '') + '</h4>';
     out += '<div class="ui-list ui-list--default ui-list--divider-full tv-episode-list" role="list">';
     var eps = Array.isArray(s.episodes) ? s.episodes : [];
-    for (var j = 0; j < eps.length; j++) out += buildEpisodeRowHtml(eps[j]);
+    for (var j = 0; j < eps.length; j++) out += buildEpisodeRowHtml(eps[j], opts);
     out += '</div></section>';
   }
   out += '</div>';
@@ -231,8 +243,9 @@ if (typeof document !== 'undefined') {
           '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-arrow_back"/></svg></span>' +
           '<span class="ui-btn__label">All shows</span></button>');
         var heading = el('tv-heading'); if (heading) heading.textContent = detail.name || 'Shows';
-        content.innerHTML = buildShowDetailHtml(detail);
+        content.innerHTML = buildShowDetailHtml(detail, tvOfflineOpts());
         revealTvArt(content);
+        if (window.FileTube && window.FileTube.offline && window.FileTube.offline.enabled) window.FileTube.offline.decorate(content); // v1.387.0: the Offline badges
       }).catch(function (e) { if (e.name !== 'AbortError') setStatus('Could not load that show.'); });
     }
     // v1.198 (Dean): the in-app "Change poster" control (and its whole upload
@@ -259,7 +272,20 @@ if (typeof document !== 'undefined') {
       return !(e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
     }
     function claim(e) { e.preventDefault(); e.stopPropagation(); }
+    // v1.387.0 offline playback: the show page's pills render only inside the app (the host announced `downloads`).
+    function tvOfflineOpts() {
+      var off = window.FileTube && window.FileTube.offline;
+      if (!off || !off.enabled) return null;
+      return { offline: function (kind, id) { return off.menuEntry(kind, id); } };
+    }
     function onClick(e) {
+      var pill = e.target.closest && e.target.closest('.tv-offline'); // v1.387.0: a pill inside a row link never navigates
+      if (pill) {
+        e.preventDefault(); e.stopPropagation();
+        var off = window.FileTube && window.FileTube.offline;
+        if (off && off.enabled) off.runMenuAction(pill.getAttribute('data-offline-action'), pill.getAttribute('data-offline-kind'), pill.getAttribute('data-offline-id'));
+        return;
+      }
       var cont = e.target.closest && e.target.closest('.tv-continue-card');
       if (cont && cont.getAttribute('data-episode-id')) {
         if (!isPlainClick(e)) return;
@@ -338,7 +364,7 @@ if (typeof document !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     escapeTvHtml, pad2, episodeCode, formatEpDuration,
-    buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml,
+    buildShowCardHtml, buildContinueCardHtml, buildEpisodeRowHtml, buildShowDetailHtml, tvOfflinePillHtml,
     tvContinueRowEnabled,
   };
 }

@@ -741,11 +741,29 @@ function buildCardMenuItems(item, caps, opts) {
   }
   if (cardShareUrl(it)) out.push({ id: 'share', icon: 'share', label: 'Share' });
   if (cardDownloadHref(it)) out.push({ id: 'download', icon: 'download', label: 'Save to device' });
+  // v1.387.0 offline playback (plan D6): opts.offline is the module's menuEntry for this card's kind + id, passed ONLY
+  // when the host announced `downloads` (a browser never sees the entry). Beside Save to device, never replacing it.
+  if (opts && opts.offline && typeof opts.offline.id === 'string') {
+    out.push({ id: opts.offline.id, icon: opts.offline.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline', label: opts.offline.label });
+    if (opts.offline.errorText) out.push({ id: 'offline-error', icon: 'error', label: opts.offline.errorText, disabled: true });
+  }
   if (!kp && it.hasSubtitles === true) out.push({ id: 'transcript', icon: 'subject', label: 'Transcript' });
   if (!kp && c.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: 'Reheat metadata' });
   if (!kp && opts && opts.feedHideable) out.push({ id: 'feedhide', icon: 'visibility_off', label: 'Hide from feed' });
   if ((!kp || kp.canDelete) && c.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
   return out;
+}
+
+// v1.387.0 offline playback: the offline kind a card's item has (the manifest enum), or null for a kind that is not an
+// offline item (a book, a tv show). A library audio item shown as a music card is a `track` to the phone; a media card
+// is a `video`.
+function cardOfflineKind(item) {
+  const kind = item && typeof item.kind === 'string' ? item.kind : 'media';
+  if (kind === 'media') return 'video';
+  if (kind === 'podcast') return 'podcastEpisode';
+  if (kind === 'track') return 'track';
+  if (kind === 'tv-episode') return 'tvEpisode';
+  return null;
 }
 
 // Pure: the Delete confirm's copy. It says exactly what the one code path does:
@@ -3305,6 +3323,12 @@ const PreviewCards = (function () {
 
     // Runs one menu action for one card's item.
     function runCardAction(action, card, item) {
+      // v1.387.0 offline playback: the offline entries (an add or a remove / cancel) go to the module.
+      {
+        const off = window.FileTube && window.FileTube.offline;
+        const offKind = cardOfflineKind(item);
+        if (off && off.enabled && offKind && off.runMenuAction(action, offKind, item.id)) return;
+      }
       if (!item) return;
       if (action === 'queue') {
         const kp = cardKindPresentation(item);
@@ -3351,10 +3375,13 @@ const PreviewCards = (function () {
       const item = cardItemOf(card);
       const u = cardUi();
       if (!item || !u || typeof u.menu !== 'function') return;
+      const off = window.FileTube && window.FileTube.offline;
+      const offKind = cardOfflineKind(item);
       const entries = buildCardMenuItems(item, cardCaps, {
         feedHideable: modernMode,
         watchLater: watchLaterFilter || watchLaterHas(item.id, item.kind) === true,
         watchLaterTop: watchLaterFilter && currentItems.length > 1 && currentItems[0] !== item,
+        offline: off && off.enabled && offKind ? off.menuEntry(offKind, item.id) : null, // v1.387.0 offline playback
       });
       if (!entries.length) return;
       closeCardMenu();
