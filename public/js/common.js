@@ -7407,7 +7407,7 @@ function injectAccountMenu() {
       // v1.387.0 offline playback (plan D6): "Offline" opens the app's own Downloads screen (downloads.show) - only inside
       // the app (the host announced `downloads`); a browser's menu is unchanged.
       if (window.FileTube && window.FileTube.offline && window.FileTube.offline.enabled) {
-        links.appendChild(accountMenuRow(U, { icon: 'download_for_offline', label: 'Offline', onClick: () => { window.FileTube.offline.show(); } }));
+        links.appendChild(accountMenuRow(U, { icon: 'download', label: 'Offline', onClick: () => { window.FileTube.offline.show(); } }));
       }
       links.appendChild(accountMenuRow(U, { href: '/history', icon: 'history', label: 'History' }));
       links.appendChild(accountMenuRow(U, { href: '/stats.html', icon: 'bar_chart', label: 'Stats' }));
