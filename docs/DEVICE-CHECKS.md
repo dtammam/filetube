@@ -34,6 +34,13 @@ these checks stay open until then.
 - [ ] v1.387.0 - App (a kid account): the hidden folder's videos and the hidden show's episodes offer no offline entry the kid can use; a direct manifest or file fetch with the kid's token is a 404; a restriction added later makes the app drop that copy on its next check (status = gone).
 - [ ] v1.387.0 - App: the avatar menu shows the app's version and build under the server version ("iOS app 0.9.0 (12)"); the browser and the home-screen app show no such line.
 
+## App menus (v1.387.2)
+
+In the FileTube iOS app (v0.9.0 or later):
+
+- [ ] v1.387.2 - Tap You: the account menu opens and has an Offline row.
+- [ ] v1.387.2 - Open the More menu of a video card, the watch page, a song and a podcast episode: each opens with "Make available offline" (a down arrow, distinct from Save to device).
+
 ## Offline add failures (v1.387.1)
 
 Browser and home-screen app: nothing should look or behave differently. In the FileTube iOS app (needs the build that sends `downloadsAddFailed`):

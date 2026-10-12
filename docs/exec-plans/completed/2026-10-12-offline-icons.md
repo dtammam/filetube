@@ -3,11 +3,11 @@ plan: offline-icons
 harness: v2 · full
 branch: fix/v1.387.2-offline-icons
 anchor: spec
-status: Building
-next: gate (adversary), then release
+status: Shipped v1.387.2
+next: release (the Root merges on green)
 design: Dean's device report 2026-10-12 (iOS app v0.9.0 build 12; worked yesterday on v0.8.1), reproduced in WebKit with an injected host the same day. Dean: "an extremely minor and tiny scoped hotfix". Base = main eedaedd8 (v1.387.1 + the baselines PR).
 builder: the FileTube Root (a 6-file swap; Dean asked for the smallest possible fix)
-gate: pending
+gate: APPROVED r2 @16c5c92a (adversary)
 ---
 
 # v1.387.2: the "You" menu and every "More" menu open again inside the iOS app
@@ -50,8 +50,14 @@ Image" green; tell the iOS Root.
   (fail 1), the tree is green (offline-ui + census 26/26).
 - Census bound: `download_for_offline` restored in common.js -> icon-names-registered red (pass 0, fail 2); reverted -> 26/26 with offline-ui.
 
+- Close-out @ the release commit: bookkeeping-only vs approved @16c5c92a, bound by `git diff --name-only 16c5c92a..HEAD` = ROADMAP.md,
+  docs/DEVICE-CHECKS.md, docs/LESSONS.md, docs/releases.json, the plan move, package.json + package-lock.json (version lines only).
+- Live: WebKit 390x844 with an injected host (all seven capabilities): You on every page and the More menus of a card, the watch
+  page and a song open, before and after an item is reported done; no host: unchanged.
+
 ## 7. Out of scope
 New offline glyphs (a later look pass may add `download_for_offline` / `offline_pin` through tools/icons); softening
 `ui.icon`'s throw (deliberate, F39); anything native.
 
 Gate: CHANGES r1 @c44d4840 — adversary
+Gate: APPROVED r2 @16c5c92a — adversary
