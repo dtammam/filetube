@@ -9,11 +9,13 @@
 //   3. a RELEASE: the server process stops, both files change to 'B', a NEW server process starts on the same
 //      origin (a new container); /music is opened the ordinary way and must read 'B' for BOTH files, and the server
 //      log shows each fetched once under its new version;
+//   3b. build A's OLD stamps, asked for after the release, answer the new bytes with no-cache (never immutable);
 //   4. the same edit made while the server keeps running (a dev box) also reaches the page.
 // Prints one JSON line per engine and step; exits 1 on any failed check.
 //   node tools/speed-proof/cache-bust-proof.js [chromium,webkit]
 // SPEED_MUTANT=unversioned runs the negative control (a year-long cache with no version stamp): the release checks
 // must FAIL there (the device keeps build A), which shows the proof can see the danger it guards against.
+// SPEED_MUTANT=anyv (any ?v= cached a year): check 3b must FAIL there.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -42,6 +44,14 @@ function sandbox() {
     if (!src.includes(a) || !src.includes(b)) throw new Error('mutant anchors missing');
     src = src.replace(a, () => 'const cacheControl = IMMUTABLE;').replace(b, () => 'function rewriteHtml(html) { return String(html);');
     fs.writeFileSync(f, src);
+  }
+  if (process.env.SPEED_MUTANT === 'anyv') {
+    // the second negative control (gate r1 adversary): any ?v= is cached a year. Check 3b must go red against it.
+    const f = path.join(dir, 'lib', 'staticAssets.js');
+    const src = fs.readFileSync(f, 'utf8');
+    const a = "(typeof v === 'string' && v === entry.hash) ? IMMUTABLE : REVALIDATE";
+    if (!src.includes(a)) throw new Error('mutant anchor missing');
+    fs.writeFileSync(f, src.replace(a, () => "(typeof v === 'string') ? IMMUTABLE : REVALIDATE"));
   }
   return dir;
 }
@@ -91,6 +101,9 @@ async function main() {
     r = await read();
     const again = hits(reqLog, from, /^\/(js\/icons\.js|css\/style\.css)/);
     check(r.js === 'A' && r.css === 'A' && again.length === 0, eng + ' re-open serves both files from cache (no request)', { r, requests: again.map((x) => [x[2], x[3]]) });
+    // the stamps build A's shell names (to ask for them again after the release)
+    const oldStamps = fs.readFileSync(reqLog, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)[3])
+      .filter((u) => /^\/(js\/icons\.js|css\/style\.css)\?v=/.test(u));
     // 3. a release: new files, a new server process on the same origin
     await stop(s);
     setBuild(dir, 'B');
@@ -101,6 +114,15 @@ async function main() {
     const fetched = hits(reqLog, from, /^\/(js\/icons\.js|css\/style\.css)/);
     check(r.js === 'B' && r.css === 'B', eng + ' after a release the next ordinary open runs build B (JS and CSS)', r);
     check(fetched.length === 2 && fetched.every((x) => x[2] === 200 && /\?v=[0-9a-f]{16}$/.test(x[3])), eng + ' each changed file fetched once under its new version', { requests: fetched.map((x) => [x[2], x[3]]) });
+    // 3b. a page still holding build A's shell asks for its OLD stamps after the release: it gets the new bytes, and
+    //     never under a year-long cache (else a rollback or a racing deploy could pin the wrong bytes to that stamp)
+    const old = [];
+    for (const u of [...new Set(oldStamps)]) {
+      const r = await fetch(s.base + u, { headers: { Cookie: s.cookie.name + '=' + s.cookie.value } });
+      const body = await r.text();
+      old.push({ u, cc: r.headers.get('cache-control'), build: /'B'|"B"/.test(body.slice(-60)) ? 'B' : '?' });
+    }
+    check(old.length === 2 && old.every((x) => x.cc === 'no-cache' && x.build === 'B'), eng + ' an old stamp after a release answers the new bytes, revalidated (never immutable)', { old });
     // 4. an edit while the same server keeps running
     setBuild(dir, 'C');
     r = await read();

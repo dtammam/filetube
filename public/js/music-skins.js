@@ -1297,7 +1297,6 @@
   var SKIN_ART_TURNED = /-r(?:90|270)$/;
   var skinArtImgs = {}; // url -> Promise<Image|null> (the Image is kept so its decoded picture stays in memory)
   var skinArtDone = {}; // url -> true once downloaded and decoded
-  function escRe(x) { return String(x).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
   function skinArtClasses(id) {
     var s = skinById(id);
     if (!s) return [];
@@ -1314,6 +1313,49 @@
       try { into[new URL(m[2], base).href] = true; } catch (_) { /* unparseable: skip */ }
     }
   }
+  // gate r1 (adversary W1): ONE walk of the stylesheets per document builds an index from each `.mms-*` class to the
+  // photo url()s its rules carry; a skin's lookup then reads the index. The first draft walked every rule (~2,600)
+  // per skin (131 skins) on every Skin-list open: a 0.5 s stall in WebKit. The index is rebuilt only when the set of
+  // stylesheets changes (their count and hrefs, which carry the version stamps).
+  var skinArtIndexes = (typeof WeakMap === 'function') ? new WeakMap() : null; // doc -> { key, index }
+  function skinArtIndex(doc) {
+    var sheets = doc.styleSheets;
+    var key = String(sheets.length);
+    for (var k = 0; k < sheets.length; k++) key += '|' + (sheets[k].href || 'inline' + k);
+    var cached = skinArtIndexes ? skinArtIndexes.get(doc) : null;
+    if (cached && cached.key === key) return cached.index;
+    var index = {}; // class -> [{ url, turned }]
+    function walk(rules, base) {
+      for (var i = 0; rules && i < rules.length; i++) {
+        var r = rules[i];
+        if (r.cssRules && !r.selectorText) { walk(r.cssRules, base); continue; } // @media / @supports / @layer
+        var sel = r.selectorText;
+        if (!sel || sel.indexOf('.mms-') < 0 || !r.style) continue;
+        var urls = [];
+        for (var j = 0; j < r.style.length; j++) {
+          var name = r.style[j];
+          var value = r.style.getPropertyValue(name);
+          if (!value || value.indexOf('url(') < 0) continue;
+          var found = {};
+          urlsInValue(value, base, found);
+          for (var u in found) urls.push({ url: u, turned: SKIN_ART_TURNED.test(name) });
+        }
+        if (!urls.length) continue;
+        var classes = sel.match(/\.mms-[\w-]+/g) || [];
+        for (var c = 0; c < classes.length; c++) {
+          var cls = classes[c].slice(1);
+          index[cls] = (index[cls] || []).concat(urls);
+        }
+      }
+    }
+    for (var m = 0; m < sheets.length; m++) {
+      var rules = null;
+      try { rules = sheets[m].cssRules; } catch (_) { continue; } // a cross-origin sheet is unreadable: it holds no skin art
+      walk(rules, sheets[m].href || doc.baseURI);
+    }
+    if (skinArtIndexes) skinArtIndexes.set(doc, { key: key, index: index });
+    return index;
+  }
   function skinArtUrls(id, opts) {
     var o = opts || {};
     var doc = o.doc || (typeof document !== 'undefined' ? document : null);
@@ -1322,27 +1364,12 @@
       : !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
     var classes = skinArtClasses(id);
     if (!classes.length) return [];
-    var sel = new RegExp('\\.(?:' + classes.map(escRe).join('|') + ')(?![\\w-])');
-    var found = {};
-    function walk(rules, base) {
-      for (var i = 0; rules && i < rules.length; i++) {
-        var r = rules[i];
-        if (r.cssRules && !r.selectorText) { walk(r.cssRules, base); continue; } // @media / @supports / @layer
-        if (!r.selectorText || !sel.test(r.selectorText) || !r.style) continue;
-        for (var j = 0; j < r.style.length; j++) {
-          var name = r.style[j];
-          if (!landscape && SKIN_ART_TURNED.test(name)) continue;
-          urlsInValue(r.style.getPropertyValue(name), base, found);
-        }
-      }
-    }
-    for (var k = 0; k < doc.styleSheets.length; k++) {
-      var sheet = doc.styleSheets[k];
-      var rules = null;
-      try { rules = sheet.cssRules; } catch (_) { continue; } // a cross-origin sheet is unreadable: it holds no skin art
-      walk(rules, sheet.href || doc.baseURI);
-    }
-    return Object.keys(found);
+    var index = skinArtIndex(doc);
+    var out = {};
+    classes.forEach(function (cls) {
+      (index[cls] || []).forEach(function (e) { if (landscape || !e.turned) out[e.url] = true; });
+    });
+    return Object.keys(out);
   }
   function loadSkinArt(url) {
     if (!skinArtImgs[url]) {

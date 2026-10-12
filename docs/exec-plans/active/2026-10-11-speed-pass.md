@@ -122,6 +122,28 @@ docs/exec-plans/active/2026-10-11-speed-pass.md "Shipped vX.Y.Z" --apply`); ask 
 
 ### W1: before (main = v1.385.0, measured from a pristine `git archive` of the base)
 
+| engine | network | open | Home drawn (ms) | last main-thread stall ends (ms) | requests reaching the server (200 / 304) | bytes over the wire | music API server ms (sum) | all server ms (sum) |
+|---|---|---|---|---|---|---|---|---|
+| chromium | home (4 ms RTT, 300 Mbit/s) | cold | 3888 | 3001 | 55 / 1 | 4.60 MB | 3167 | 19582 |
+| chromium | home (4 ms RTT, 300 Mbit/s) | warm | 3905 | 3921 | 6 / 49 | 124 KB | 3938 | 22365 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | cold | 3698 | 3712 | 54 / 1 | 4.58 MB | 4328 | 17590 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | warm | 3249 | 3247 | 6 / 49 | 123 KB | 3901 | 22569 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | cold | 3026 | 3038 | 53 / 0 | 4.51 MB | 4222 | 7853 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | warm | 2958 | 2967 | 52 / 0 | 4.51 MB | 4041 | 6899 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | cold | 3766 | 3776 | 51 / 0 | 4.51 MB | 4072 | 7612 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | warm | 3759 | 3771 | 51 / 0 | 4.51 MB | 3958 | 6189 |
+
+| engine | network | pick | Skin page opens (ms, page blocked) | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |
+|---|---|---|---|---|---|---|---|---|
+| chromium | home | cold | n/a | 6 | 10 | 16 | 360 KB | 0 |
+| chromium | home | warm | n/a | 6 | 4 | 10 | 1 KB | 0 |
+| chromium | vpn | cold | n/a | 6 | 259 | 265 | 364 KB | 0 |
+| chromium | vpn | warm | n/a | 7 | 136 | 142 | 2 KB | 0 |
+| webkit | home | cold | n/a | 4 | 16 | 20 | 360 KB | 0 |
+| webkit | home | warm | n/a | 4 | 14 | 18 | 360 KB | 0 |
+| webkit | vpn | cold | n/a | 5 | 238 | 243 | 364 KB | 0 |
+| webkit | vpn | warm | n/a | 5 | 240 | 245 | 364 KB | 0 |
+
 
 ### W1: the named causes
 1. **Skin picker** (Dean: "a weird picture, and then all of a sudden the image shows"): CONFIRMED. The Transparent skins'
@@ -236,6 +258,20 @@ release checks FAIL (both engines stay on build A), so the proof sees the danger
 test/unit/static-assets.test.js (a census over every shipped static file: immutable only under the hash of its bytes, any
 other stamp revalidates; the CSS bust chain), test/integration/static-assets-shells.test.js (every shell stamped and
 `no-cache`, the login shell's files load signed out, root files keep `no-cache`).
+
+### Disclosed (what this release does not do, and what it costs)
+- Scripts the SPA router loads on an in-app navigation (the view scripts it fetches on demand, vr-view.js), `/logo`, and URLs built
+  in JS at runtime carry no stamp: they revalidate on each load as before. errors.html and ui-kit.html are served as plain files
+  (not shells), so their font preload is unstamped while style.css asks for the stamped font: the font downloads twice there.
+- The TEMP triggers cost every write to music_tracks a counter update. The adversary measured 23,000 rows: insert 306 -> 614 ms,
+  update 307 -> 602 ms, delete-all 17 -> 440 ms (a trigger turns off SQLite's whole-table delete shortcut; a restore wipes this
+  way). A scan writes only changed rows, so this bites a full re-import or a restore, once.
+- The backup download (GET /api/admin/backup) is JSON and over 8 KB, so it now goes out compressed; Chromium and WebKit saved
+  valid JSON in the adversary's run (a device check below).
+- The snapshot's connection-identity guard is unreachable today (the app never reopens its connection while running); it stays
+  as a belt for a future reopen and is not bound by a test.
+- Found by the security seat, older than this release: `POST /api/music/liked/:id` checks the track exists but not that the
+  member may see it (ROADMAP Planned > Bugs).
 
 ### Suites
 `npm test` on Node 22.23.1 (local), on the W4 tree: `# tests 12302 / # pass 12292 / # fail 0 / # skipped 10`, exit 0. (The first full

@@ -1932,6 +1932,8 @@
     // other (a Select's re-synced preview of the same skin must not drop the Select's repaint).
     var skinArtSeq = { pick: 0, preview: 0 };
     var surfaceGone = false;
+    var pickHold = null;        // the look a waiting Pocket Select holds on screen (null when none waits)
+    var previewWarmed = false;  // the Pocket Skins list's photos were started for this visit
     function whenSkinArt(channel, id, go) {
       var mine = ++skinArtSeq[channel];
       var ready = null;
@@ -1940,8 +1942,17 @@
       var done = function () { if (mine === skinArtSeq[channel]) go(!surfaceGone); };
       ready.then(done, done);
     }
+    // gate r1 (adversary W1): the warm runs when the page is idle, never inside the tap that opens the list (its first
+    // call per page builds the stylesheet index)
     function warmSkinArtList() {
-      try { if (typeof SKINS.warmSkinArt === 'function') SKINS.warmSkinArt((SKINS.SKINS || []).map(function (x) { return x.id; }), { doc: doc }); } catch (_) { /* a warm is best-effort */ }
+      var run = function () {
+        if (surfaceGone) return;
+        try { if (typeof SKINS.warmSkinArt === 'function') SKINS.warmSkinArt((SKINS.SKINS || []).map(function (x) { return x.id; }), { doc: doc }); } catch (_) { /* a warm is best-effort */ }
+      };
+      try {
+        if (win && typeof win.requestIdleCallback === 'function') win.requestIdleCallback(run, { timeout: 500 });
+        else (win || window).setTimeout(run, 50);
+      } catch (_) { run(); }
     }
     function swapSkinClasses(id) {
       if (!panel.classList.contains('mms-full') || paintedSkinId === null || id === paintedSkinId) return;
@@ -2047,15 +2058,21 @@
         skinsAvailable: function () { return !!(stickerCfg && typeof stickerCfg.onSkinChange === 'function'); },
         onPreview: function (id) {
           var next = (id && SKINS.menuStyle(id) === 'click') ? id : null;
-          if (next) warmSkinArtList(); // the Skins list is open: start every skin's photos (v1.386.0)
-          // v1.386.0: the preview shows once the previewed skin's photos can paint (leaving the preview is at once)
-          whenSkinArt('preview', next, function () { previewSkin = next; swapSkinClasses(getSkinId()); });
+          // the Skins list opened: start every skin's photos ONCE per visit, not on every highlight (gate r1 W1)
+          if (next && !previewWarmed) { previewWarmed = true; warmSkinArtList(); }
+          if (!next) previewWarmed = false;
+          // v1.386.0: the preview shows once the previewed skin's photos can paint (leaving the preview is at once).
+          // While a Select is still waiting on its photos (pickHold), leaving the preview keeps the held look - the
+          // saved skin must not paint before its photos (gate r1 qa: MENU pressed before the Coil's photos landed).
+          whenSkinArt('preview', next, function () { previewSkin = next || pickHold; swapSkinClasses(getSkinId()); });
         },
         onSkinChosen: function () {
           // v1.386.0: the saved skin repaints once its photos can paint; until then the panel holds what it shows now
           // (the menu has already saved the new id, so a repaint in the gap would otherwise draw it without them)
-          if (paintedSkinId) previewSkin = paintedSkinId;
+          pickHold = paintedSkinId || null;
+          if (pickHold) previewSkin = pickHold;
           whenSkinArt('pick', baseGetSkinId(), function (live) {
+            pickHold = null;
             previewSkin = null;
             if (live && stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
           });

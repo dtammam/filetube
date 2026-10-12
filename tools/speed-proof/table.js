@@ -14,10 +14,10 @@ for (const o of music) {
 const skinFile = process.argv[3] || process.argv[2];
 const skin = rows(skinFile).filter((o) => o.cell.startsWith('skin'));
 if (skin.length) {
-  console.log('\n| engine | network | pick | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |');
-  console.log('|---|---|---|---|---|---|---|---|');
+  console.log('\n| engine | network | pick | Skin page opens (ms, page blocked) | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |');
+  console.log('|---|---|---|---|---|---|---|---|---|');
   for (const o of skin) {
     const m = o.median;
-    console.log(`| ${o.engine} | ${o.net} | ${o.cell.split(' ')[1]} | ${m.tapToCoilShownMs} | ${m.placeholderMs} | ${m.photosArriveAfterTapMs} | ${kb(m.wireDownBytes)} | ${o.failedReps || 0} |`);
+    console.log(`| ${o.engine} | ${o.net} | ${o.cell.split(' ')[1]} | ${m.skinsPageOpenMs === undefined ? 'n/a' : m.skinsPageOpenMs} | ${m.tapToCoilShownMs} | ${m.placeholderMs} | ${m.photosArriveAfterTapMs} | ${kb(m.wireDownBytes)} | ${o.failedReps || 0} |`);
   }
 }

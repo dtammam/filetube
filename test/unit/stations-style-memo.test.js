@@ -61,3 +61,16 @@ test('a PLAIN (unfrozen) track edited in place between builds is matched on its 
   Object.assign(plain[0], { title: 'plain words 0', album: 'nothing', genre: 'Classical', folderName: 'Z' });
   assert.ok(!lofi(plain).members.includes('t0'), 'the edit is seen');
 });
+
+test('the Recently added station: newest first, a tie on the date broken by id ascending (the call site\'s comparator, not just topN)', () => {
+  const same = '2026-05-01T00:00:00.000Z';
+  const xs = [];
+  for (let i = 0; i < 260; i++) xs.push({ id: 'r' + String(259 - i).padStart(3, '0'), title: 'Song ' + i, artist: 'A', album: 'Al', genre: 'Rock', addedAt: i < 5 ? '2026-06-0' + (i + 1) + 'T00:00:00.000Z' : same });
+  const recent = stations.buildStations(xs, user).find((s) => s.key === 'recent');
+  assert.ok(recent, 'the Recently added station exists');
+  // the five dated ones lead, newest first: i = 4 (June 5th, id r255) down to i = 0 (June 1st, id r259)
+  assert.deepStrictEqual(recent.members.slice(0, 5).map((t) => t.id), ['r255', 'r256', 'r257', 'r258', 'r259']);
+  const tied = recent.members.slice(5).map((t) => t.id);
+  assert.deepStrictEqual(tied, tied.slice().sort(), 'the tied rest run by id ascending');
+  assert.strictEqual(tied[0], 'r000', 'the smallest id leads the tie (a flipped tiebreak would start at the largest)');
+});

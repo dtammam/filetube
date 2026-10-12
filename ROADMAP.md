@@ -85,6 +85,10 @@
 
 ### Bugs
 
+- [ ] **A member can like a track they cannot see (found by the v1.386.0 security seat; older than v1.386.0)** -
+  `POST /api/music/liked/:id` (lib/music/routes.js) checks the track exists but not `trackVisibleTo`: a restricted member gets
+  200 for a hidden id and 404 for a missing one (an existence oracle) and stores a liked row for it. Reads filter it back out, so
+  nothing shows. Fix: the visibility gate before the write, answering a hidden id exactly like a missing one.
 - [ ] **A thin line of the picture's colours at the bottom edge of the phone player (Dean, 2026-10-08, screenshot)** -
   iPhone, watch page, a playing video with the custom controls (scrubber row + transport row under the picture): a 1-2 px
   strip of light / colour runs along the player's bottom edge, under the controls and above the title, looking like the
@@ -460,7 +464,7 @@
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: (response compression and caching of the app's own files shipped in
-  v1.386.0; lazily loaded view scripts and `/logo` still revalidate); a lower-quality video version,
+  v1.386.0; scripts loaded on an in-app navigation and `/logo` still revalidate); a lower-quality video version,
   a quality picker or a data-saver setting (no adaptive bitrate: the original file plays); fewer API requests per page (the Nav
   fan-out row); a data-usage record; an always-on slow-request log; page-smoothness measures (long tasks, Web Vitals); timing in the
   transcode and scan logs; load testing. Also: `/diag` cannot record inside the home-screen app (its storage is separate from
@@ -822,8 +826,10 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - Music server: a shared, frozen snapshot of the track rows (rebuilt by SQLite's own per-table write counter) for every read-only
   per-request reader, including covers, `/track/:id`, the queue, liked, feed and search; one cached collator per sort; stations
   memoise style matches; large JSON goes out compressed.
-- Disclosed: lazily loaded view scripts (tv, books, read) and `/logo` still revalidate each load; the VPN numbers are a model (80 ms,
-  20 Mbit/s), Dean's device pass is the arbiter.
+- Disclosed: scripts the SPA router loads on an in-app navigation, `/logo` and URLs built in JS still revalidate each load;
+  errors.html and ui-kit.html download the font twice (unstamped preload); the music_tracks write counter roughly doubles a bulk
+  write (a full re-import or a restore, once); the backup download now goes out compressed. The VPN numbers are a model (80 ms,
+  20 Mbit/s); Dean's device pass is the arbiter.
 
 ### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
 

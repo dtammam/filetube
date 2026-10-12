@@ -15,6 +15,7 @@ On the phone, home-screen app and FileTube app, at home and over the VPN:
 - [ ] v1.386.0 - Open Music at home, then over the VPN: the Home shelves are usable within about a second; the Albums and Songs tabs and the Pocket's Songs list open noticeably faster than before.
 - [ ] v1.386.0 - After the NEXT release (any version after v1.386.0), open the app without force-quitting: it shows the new version's changes at once (the account menu's version row reads the new number), in Safari, the home-screen app and the FileTube app.
 - [ ] v1.386.0 - Nothing looks different anywhere (pages, icons, fonts, skins); the sign-in page still looks right when signed out.
+- [ ] v1.386.0 - Settings > download a backup in Safari and in the FileTube app: the file saves and opens as readable JSON (it now travels compressed).
 
 ## The immersive Pocket (v1.385.0)
 

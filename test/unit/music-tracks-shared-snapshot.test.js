@@ -134,3 +134,14 @@ test('a read INSIDE a transaction is never cached: rollback, then a committed wr
   assert.ok(after.d, 'the committed row is there');
   assert.ok(!after.c, 'the rolled-back row never comes back from a cache');
 });
+
+test('a write by ANOTHER connection to the same file (an operator\'s sqlite3) is seen through PRAGMA data_version', () => {
+  const { __openRawForTests: openRaw } = require('../../lib/db/sqlite');
+  const before = store.readPartShared('tracks');
+  assert.ok(before.b);
+  const other = openRaw(path.join(dir, SQLITE_FILENAME));
+  try { other.exec("DELETE FROM music_tracks WHERE track_id = 'b'"); } finally { other.close(); }
+  const after = store.readPartShared('tracks');
+  assert.notStrictEqual(after, before, 'rebuilt');
+  assert.ok(!after.b, 'the other connection\'s delete is seen');
+});

@@ -70,10 +70,13 @@ async function skinPick(ctx, base, proxy, label, reload) {
   }
   await page.waitForTimeout(1500);
   const jsClick = (sel) => page.evaluate((q) => { document.querySelector(q).click(); }, sel);
+  let skinsPageOpenMs = null;
   const openSkins = async () => {
     await jsClick('#music-nowplaying-panel [data-skin-sticker]');
     await page.waitForSelector('#music-nowplaying-panel [data-skin-sticker-menu] [data-skin-skins]', { state: 'attached', timeout: 10000 });
-    await jsClick('#music-nowplaying-panel [data-skin-sticker-menu] [data-skin-skins]');
+    // the Skin page's open is timed as the click's own synchronous work (gate r1 adversary: a first draft stalled
+    // the page here for ~0.5 s in WebKit and nothing measured it)
+    skinsPageOpenMs = await page.evaluate((q) => { const t = performance.now(); document.querySelector(q).click(); return Math.round(performance.now() - t); }, '#music-nowplaying-panel [data-skin-sticker-menu] [data-skin-skins]');
     await page.waitForSelector('#music-nowplaying-panel [data-skin-pick="' + COIL + '"]', { state: 'attached', timeout: 10000 });
   };
   await openSkins();
@@ -102,7 +105,7 @@ async function skinPick(ctx, base, proxy, label, reload) {
   const arriveAfterTap = ent.length ? Math.max(...ent.map((x) => x.end)) - Math.round(tClick) : null;
   const coilAt = await page.evaluate(() => window.__coilAt);
   const photosEnd = ent.length ? Math.max(...ent.map((x) => x.end)) : null;
-  const out = { scenario: 'skin-pick', label, skinsPageOpenToTapMs: Math.round(tClick - tSkinsOpen), photos: ent, photosArriveAfterTapMs: arriveAfterTap,
+  const out = { scenario: 'skin-pick', label, skinsPageOpenMs, skinsPageOpenToTapMs: Math.round(tClick - tSkinsOpen), photos: ent, photosArriveAfterTapMs: arriveAfterTap,
     tapToCoilShownMs: coilAt === null ? null : Math.round(coilAt - tClick),
     placeholderMs: (coilAt === null || photosEnd === null) ? null : Math.max(0, Math.round(photosEnd - coilAt)),
     arrivedBy50ms: at50.arrived.filter((a) => a[1] <= at50.now).length, wireDownBytes: proxy.stats().downBytes };
