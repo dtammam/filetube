@@ -703,7 +703,7 @@ function buildWatchMoreItems(s) {
   // v1.387.0 offline playback (plan D6): only when the host announced `downloads` (st.offline is the module's menuEntry);
   // beside Save to device, never replacing it. A failed copy says why on a quiet second line.
   if (st.offline && typeof st.offline.id === 'string') {
-    out.push({ id: st.offline.id, icon: st.offline.id === 'offline-remove' ? 'offline_pin' : 'download_for_offline', label: st.offline.label });
+    out.push({ id: st.offline.id, icon: st.offline.id === 'offline-remove' ? 'close' : 'arrow_downward', label: st.offline.label });
     if (st.offline.errorText) out.push({ id: 'offline-error', icon: 'error', label: st.offline.errorText, disabled: true });
   }
   out.push({ id: 'watched', icon: 'history', label: st.watched === true ? 'Mark as unwatched' : 'Mark as watched' });

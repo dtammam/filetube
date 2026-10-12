@@ -241,11 +241,11 @@ test('buildWatchMoreItems: the offline entry rides beside Save to device (never 
   assert.strictEqual(withAdd.length, without.length + 1);
   const i = withAdd.findIndex((x) => x.id === 'offline-add');
   assert.strictEqual(withAdd[i - 1].id, 'download', 'right after Save to device');
-  assert.deepEqual(withAdd[i], { id: 'offline-add', icon: 'download_for_offline', label: 'Make available offline' });
+  assert.deepEqual(withAdd[i], { id: 'offline-add', icon: 'arrow_downward', label: 'Make available offline' });
   const failed = watch.buildWatchMoreItems({ ...base, offline: { id: 'offline-add', label: 'Make available offline', errorText: 'Not enough space on this phone' } });
   assert.deepEqual(failed[i + 1], { id: 'offline-error', icon: 'error', label: 'Not enough space on this phone', disabled: true });
   const rm = watch.buildWatchMoreItems({ ...base, offline: { id: 'offline-remove', label: 'Remove offline copy' } });
-  assert.deepEqual(rm[i], { id: 'offline-remove', icon: 'offline_pin', label: 'Remove offline copy' });
+  assert.deepEqual(rm[i], { id: 'offline-remove', icon: 'close', label: 'Remove offline copy' });
 });
 
 test('buildCardMenuItems: the same for a card, for every kind that is an offline item; no entry = unchanged', () => {

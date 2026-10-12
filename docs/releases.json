@@ -3682,5 +3682,11 @@
     "date": "2026-10-12",
     "title": "The FileTube iPhone app now tells you why an album or season could not be saved for offline",
     "intent": "When you tap Make available offline on an album or a TV season and it cannot start at all (no connection, the item is gone, or the phone was removed), the app now shows the reason right away instead of silently staying as it was. Tapping again tries again. Nothing changes in your browser or home-screen app."
+  },
+  {
+    "version": "1.387.2",
+    "date": "2026-10-12",
+    "title": "The You menu and the More menus open again in the FileTube iPhone app",
+    "intent": "Since the iPhone app started offering offline playback, tapping You or any More button inside the app did nothing. They open again, each with its offline option, now shown with its own arrow and close icons. Nothing changes in your browser or home-screen app."
   }
 ]

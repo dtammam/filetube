@@ -854,6 +854,11 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - **Web**: public/js/offline.js keeps a failure state per key, cleared by the next add of it, any `download` event for it or its album / season, a snapshot, or pagehide; real members always win over a stale failure. Gate r1 found the album and season pills were built once and never repainted (the state was inert where it mattered): the album drill pill and the TV pills now repaint in place on every offline change (which also makes the v1.387.0 saving / done states live there) and a failed add raises one toast with the reason (a `title` is invisible on touch). Browsers: byte-identical.
 - Disclosed: the pill shows the reason as a title and a toast, not as inline text (no layout change); native sending the event is the app's half (filetube-ios). Plan: `docs/exec-plans/completed/2026-10-12-add-failed.md`.
 
+### v1.387.2 - The app's You and More menus open again (2026-10-12)
+
+- **Fix**: v1.387.0's offline rows named two icons the registry never had (`download_for_offline`, `offline_pin`); `ui.icon` throws on an unknown name by design, so inside the iOS app (the only place those rows exist, from app v0.9.0) the You menu and every More menu aborted before opening. They now use the registered `arrow_downward` (add) and `close` (remove / cancel). Reproduced and verified in WebKit with an injected host.
+- **Guard**: test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property incl. toggle objects and both ternary arms, any icon call incl. `u.icon`, `songIconHtml` and ui.js's own `icon()`) must be in the registry; nine mutations each turn it red. Gate: adversary, CHANGES r1 (five missed call shapes) -> APPROVED r2 @16c5c92a. Plan: `docs/exec-plans/completed/2026-10-12-offline-icons.md`.
+
 ### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
 
 - Contract v1 grows by two capabilities (add-only): `statusBar` (hide / show iOS's status bar) and `network` (subscribe / unsubscribe, and a `network` event whose kind field is `connection`, not `type`: the envelope's own `type` is `network`). Docs: native-bridge.md, the schema, ios-host.md addendum.
