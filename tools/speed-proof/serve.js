@@ -1,5 +1,5 @@
 'use strict';
-// v1.386.0 speed pass (plan docs/exec-plans/active/2026-10-11-speed-pass.md, W1): boots the REAL server
+// v1.386.0 speed pass (plan docs/exec-plans/completed/2026-10-11-speed-pass.md, W1): boots the REAL server
 // against a throwaway DATA_DIR seeded with a library the size of Dean's (default 23,000 native music
 // tracks: ~1,900 albums by ~640 album artists, 12 tracks each, art for every album) plus one playable
 // WAV in the media library (id nd1) for the player. Not part of the shipped app.

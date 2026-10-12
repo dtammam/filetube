@@ -397,6 +397,8 @@ test('v1.386.0 (gate r2): a sticker pick over a waiting Pocket Select lands, and
     tap(b, P(b).querySelector('[data-skin-select]')); // waits on its photos; holds the painted look
     stickerPick(b, 'ipod-2004'); // nothing to wait for: lands at once and supersedes the Select
     assert.strictEqual(stored(b), 'ipod-2004');
+    // gate r3 (adversary): the hold is released BEFORE the sticker pick repaints, so its own repaint already shows it
+    assert.ok(P(b).classList.contains('mms-ipod-2004'), 'the sticker pick shows at once: ' + P(b).className);
     for (let i = 0; i < 4; i++) pressMenu(b); // out of every Skins level (each ends a preview)
     assert.ok(P(b).classList.contains('mms-ipod-2004'), 'the sticker pick shows: ' + P(b).className);
     release();

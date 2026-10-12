@@ -3,8 +3,8 @@ plan: speed-pass
 harness: v2 · full
 branch: perf/v1.386.0-speed-pass
 anchor: outcome
-status: Gate:APPROVED r3 @499e8660
-next: close-out commit (plan complete, the r3 suggestions), delta re-confirm, PR, CI, Root merges on Dean's word
+status: Shipped v1.386.0
+next: Dean's device checks (docs/DEVICE-CHECKS.md, Speed pass v1.386.0)
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
 gate: APPROVED r3 @499e8660 (adversary, qa, security-brief)
@@ -300,7 +300,7 @@ Read together (copied from the tables above):
 
 Gate r2 fix (e27bb324 + 397e8af4) re-measure of the skin rows (results/after-skin-r3.jsonl, 0 failed reps): the Skin page
 opens in 2-7 ms; the Coil is never shown without its photos (0 ms in all 8 cells); a first-ever pick over the VPN model shows
-244-287 ms after the tap, once cached 37-45 ms in Chromium. The stylesheet index (built at the first skin-list tap, once per page)
+244-287 ms after the tap, once cached 37-39 ms in Chromium. The stylesheet index (built at the first skin-list tap, once per page)
 measured 15-16 ms in WebKit and 63-98 ms on a 4x-throttled Chromium after a url()-text prefilter (25-29 and 83-113 before it).
 
 ### The cache-busting proof (plan section 4's most dangerous outcome)
@@ -327,6 +327,11 @@ stamp revalidates; the CSS bust chain; dotfiles refused), test/integration/stati
   valid JSON in the adversary's run (a device check below).
 - The snapshot's connection-identity guard is unreachable today (the app never reopens its connection while running); it stays
   as a belt for a future reopen and is not bound by a test.
+- The stylesheet index is built at the first skin-list tap of a page: 15-16 ms in WebKit on a quiet box, 59 ms in WebKit and
+  266 ms on a 4x-throttled Chromium at load average ~19 (gate r3 adversary). Once per page.
+- A narrow Pocket sequence (Select while the target's own preview is still waiting, then scroll back onto the old skin's row
+  before the photos land) leaves the cursor on the old row while the saved skin shows; the next wheel nudge re-syncs it. The
+  skin shown is always whole (gate r3 qa).
 - Found by the security seat, older than this release: `POST /api/music/liked/:id` checks the track exists but not that the
   member may see it (ROADMAP Planned > Bugs).
 
