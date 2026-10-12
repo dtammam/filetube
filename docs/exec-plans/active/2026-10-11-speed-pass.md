@@ -4,7 +4,7 @@ harness: v2 · full
 branch: perf/v1.386.0-speed-pass
 anchor: outcome
 status: Gate:CHANGES r2 @576a6bc8
-next: round 3 (Dean asked): fix the r2 CRITICAL (pickHold left set by a superseding sticker pick) + WARNING (index cache unbound), then delta re-confirm
+next: gate r3 delta re-confirm (Dean chose: fix both, full r3) on the r2 fix commits
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
 gate: not yet run (FULL: adversary, qa - caching mistakes ship stale code to every device)
@@ -278,6 +278,11 @@ Read together (copied from the tables above):
 - The cold wire is ~3 MB now and was ~4.6 MB; the remaining bytes are mostly album covers, which now finish inside the window
   (each cover cost 476 ms of server time before, 3 ms now, so before most were still queued when the window closed).
 
+Gate r2 fix (e27bb324 + 397e8af4) re-measure of the skin rows (results/after-skin-r3.jsonl, 0 failed reps): the Skin page
+opens in 2-7 ms; the Coil is never shown without its photos (0 ms in all 8 cells); a first-ever pick over the VPN model shows
+244-287 ms after the tap, once cached 37-45 ms in Chromium. The stylesheet index (built at the first skin-list tap, once per page)
+measured 15-16 ms in WebKit and 63-98 ms on a 4x-throttled Chromium after a url()-text prefilter (25-29 and 83-113 before it).
+
 ### The cache-busting proof (plan section 4's most dangerous outcome)
 `tools/speed-proof/cache-bust-proof.js` (results/cache-bust-proof.jsonl, on cf006383): Chromium and WebKit with a PERSISTENT
 profile. Build A is opened, then re-opened (0 requests for the two files: cached); a release (server stopped, icons.js and
@@ -306,7 +311,8 @@ stamp revalidates; the CSS bust chain; dotfiles refused), test/integration/stati
   member may see it (ROADMAP Planned > Bugs).
 
 ### Suites
-`npm test` on Node 22.23.1 (local), on the gate r1 fix tree (cf006383 + this evidence): `# tests 12310 / # pass 12300 / # fail 0 /
+`npm test` on Node 22.23.1 (local), on the gate r2 fix tree (397e8af4): `# tests 12317 / # pass 12307 / # fail 0 / # skipped 10`,
+exit 0. On the gate r1 fix tree (cf006383 + this evidence): `# tests 12310 / # pass 12300 / # fail 0 /
 # skipped 10`, exit 0. Earlier, on the W4 tree: `# tests 12302 / # pass 12292 / # fail 0 / # skipped 10`, exit 0. (The first full
 run, before the lock updates, was `# tests 12300 / # pass 12287 / # fail 3`: the cleanup shell's exact `<script src>` lock, the
 DIAGRAMS registration count, and the music read census - each an intended change, updated with its intent kept.) `npm run lint:ui`:
@@ -319,6 +325,9 @@ Gate r1 fix round: 12 more mutants on 0dd079b2 (the seats' Pocket survivors K1 K
 inside the tap, the MENU race, the index's sideways filter, data_version dropped, visibleMusicList back to read(), the Recently
 added tiebreak flipped): 11 killed first time; K1 (no hold at Select) got a test for the nothing-previewed-yet case (cf006383)
 and is killed.
+Gate r2 fix round (e27bb324, 397e8af4): 7 mutants (the sticker pick and the Pocket pick not releasing the hold, the release
+dropping a live preview, no index cache, the index keyed on the sheet count only, no sticker-page warm, the url() prefilter
+dropped): 6 killed first time; the live-preview one got a test (397e8af4) and is killed.
 
 ## 7. Out of scope
 Offline downloads (docs/references/ios-offline.md, its own plans); anything native; changing how any page looks.
