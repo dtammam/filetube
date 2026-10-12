@@ -16,6 +16,15 @@ On the phone, home-screen app and FileTube app, at home and over the VPN:
 - [ ] v1.386.0 - After the NEXT release (any version after v1.386.0), open the app without force-quitting: it shows the new version's changes at once (the account menu's version row reads the new number), in Safari, the home-screen app and the FileTube app.
 - [x] v1.386.0 - Nothing looks different anywhere (pages, icons, fonts, skins); the sign-in page still looks right when signed out. (Dean 2026-10-12: passed)
 - [ ] v1.386.0 - Settings > download a backup in Safari and in the FileTube app: the file saves and opens as readable JSON (it now travels compressed).
+## Header panels (v1.387.3)
+
+On a computer, in Chrome and in Safari (a normal-sized window, then a short one):
+
+- [ ] v1.387.3 - Click the avatar, the bell, the queue icon and Home's sort button, one at a time: each panel opens directly under its button with its right edge lined up with the button's, and grows from that corner.
+- [ ] v1.387.3 - Click the bell on a slow connection (or with many notifications): the panel stays where it opened while the rows load, no jump up over the bell; a long list scrolls inside the panel.
+- [ ] v1.387.3 - Open the One-off download box: the first field's blue focus ring is whole at the top. Subscribe's box looks the same.
+- [ ] v1.387.3 - On the phone: the You tab, the bell and the queue sheets look exactly as before.
+
 ## Offline playback (v1.387.0)
 
 Browser and home-screen app: nothing should look or behave differently, except Settings > Account now has a Devices list

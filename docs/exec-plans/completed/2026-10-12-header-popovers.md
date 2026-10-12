@@ -3,11 +3,11 @@ plan: header-popovers
 harness: v2 · full
 branch: fix/v1.387.3-header-popovers
 anchor: spec
-status: Draft
-next: W1 - measure the three glitches (before numbers), then fix in ui.js / ui.css
+status: Shipped v1.387.3
+next: shipped - confirm the tag publish, then Dean's device checks (docs/DEVICE-CHECKS.md Header panels)
 design: Dean's desktop report with screenshots, 2026-10-12 ("I'd like it to be consistent"). Seams verified by the FileTube Root the same day. Base = main f72e4f9f (v1.387.2).
 builder: standard (one shared component, ui.sheet's popover placement, plus one CSS padding; every seam named below)
-gate: pending
+gate: APPROVED r2 @8f86ff39 (adversary + qa)
 ---
 
 # v1.387.3: desktop header panels open under their button, the same way every time
@@ -111,8 +111,28 @@ this plan, 2026-10-12); shipped = the tag's "Publish Docker Image" green; then S
 claude-close.sh.
 
 ## 7. Evidence (builder fills)
+Probe: headless Chromium and WebKit (Playwright), rows delayed 400 ms, 12 notifications. Panel right edge minus button right edge, px
+(Chromium; WebKit differs by 12 px before, 0 after):
+
+| Panel | Before (1280 / 1920 wide) | After |
+|---|---|---|
+| Account | -152 / -152 | 0 / 0 |
+| Notifications | +88 / +88 | 0 / 0 |
+| Queue | +128 / +128 | 0 / 0 |
+| Sort | -68 / -68 | 0 / 0 |
+
+Notifications jump (top at open -> after rows, 1280x500): before 45.5 -> 42 px (3.5 px up over the bell, `shifted`); after 45.5 -> 45.5,
+`below`, capped at 446.5 px and scrolling inside. At 1280x800 and 1920x1080 the panels fit below and did not jump before either.
+One-off focus ring, input outline top minus body top (desktop): before -2 px (cut), after +2 px; at 390: -2 before and -2 after
+(phone unchanged, by decision after gate r1). Phone bottom sheets (bell, queue, sort) heights identical before and after (759.6 / 335 / 427).
+Geometry: `npm run test:geometry` 476/476 ok (224 scenes, before the gate fixes); after gate r1 `--only HPOP,POP` 56/56 ok; mutants
+`hpop-left-anchored` and `hpop-jump-on-load` killed. Node 22 `npm test` before the gate fixes: 12431 tests, 12417 pass, 1 fail (the
+geometry mutation-census test, fixed), 13 skipped; the pre-commit runs of both commits were green. lint:ui OK (3172, no new debt),
+lint:overlay clean. Gate: qa APPROVED r1 @c9d208ca, adversary CHANGES r1 (W1: One-off padding reached phone sheets), both APPROVED r2 @8f86ff39.
 
 ## 8. Out of scope
 The panels' contents and look beyond position and the open motion; the phone bottom sheets; the offline-UI roadmap item.
 
 Gate: APPROVED r1 @c9d208ca6b025ac98694243c7d9b3f8a24f5b35f — qa
+Gate: APPROVED r2 @8f86ff39a17e8ef6a5307ebe7560dfe3431573be — qa
+Gate: APPROVED r2 @8f86ff39a17e8ef6a5307ebe7560dfe3431573be — adversary

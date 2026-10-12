@@ -85,6 +85,12 @@
 
 ### Bugs
 
+- [ ] **The One-off download box's first field shows a cut focus ring on a phone sheet (v1.387.3, disclosed)** - the desktop fix
+  pads `.oneoff-form` only in non-bottom sheets (the same class is the playlist picker's sheet); on a 390 px bottom sheet the
+  2 px ring is still clipped at the top. Measure the picker and One-off sheets together, then pad the sheet body instead.
+- [ ] **Account / Sort still shift up over their button in a window shorter than about 535 px (v1.387.3, disclosed)** - a static
+  popover that fits neither below nor above keeps the old `shifted` placement; hold it as below + a height cap if it matters.
+
 - [ ] **A member can like a track they cannot see (found by the v1.386.0 security seat; older than v1.386.0)** -
   `POST /api/music/liked/:id` (lib/music/routes.js) checks the track exists but not `trackVisibleTo`: a restricted member gets
   200 for a hidden id and 404 for a missing one (an existence oracle) and stores a liked row for it. Reads filter it back out, so
@@ -859,6 +865,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - **Fix**: v1.387.0's offline rows named two icons the registry never had (`download_for_offline`, `offline_pin`); `ui.icon` throws on an unknown name by design, so inside the iOS app (the only place those rows exist, from app v0.9.0) the You menu and every More menu aborted before opening. They now use the registered `arrow_downward` (add) and `close` (remove / cancel). Reproduced and verified in WebKit with an injected host.
 - **Guard**: test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property incl. toggle objects and both ternary arms, any icon call incl. `u.icon`, `songIconHtml` and ui.js's own `icon()`) must be in the registry; nine mutations each turn it red. Gate: adversary, CHANGES r1 (five missed call shapes) -> APPROVED r2 @16c5c92a. Plan: `docs/exec-plans/completed/2026-10-12-offline-icons.md`.
+
+### v1.387.3 - Desktop header panels open under their button (2026-10-12)
+
+- **Fix (desktop only)**: the Account, Notifications, Queue and Home Sort panels were placed from the button's LEFT edge, clamped to the window, so each landed 68-152 px off its button's right edge (Notifications and Queue ended 88-128 px past it). `ui.sheet` now also hands the anchor's right edge to the stylesheet (`--ui-anchor-r`) and a right-half anchor gets `ui-sheet--popover-end`: the panel's right edge is the button's, it grows from its top-right corner, and a classic scrollbar does not count. A popover also keeps the vertical side it first opened on (`holdPopoverSide`): rows arriving scroll inside a height cap instead of moving the panel up over the bell. The One-off download dialog (and Subscribe, the playlist picker on desktop) gets 4 px top and bottom padding so the first field's focus ring is whole.
+- **Proof**: HPOP geometry check (right edge within 1 px of the button's, top at open == top after the rows load; Account, Notifications with 14 rows, Queue, Sort x 4 eras x 2 modes at 1280x500) with two mutants (left-anchored CSS, the held side removed from ui.js); unit tests for `holdPopoverSide`, the `-end` class and the new custom property. Gate: adversary CHANGES r1 (the One-off padding also reached phone bottom sheets) -> APPROVED r2 @8f86ff39, qa APPROVED r1/r2. Plan: `docs/exec-plans/completed/2026-10-12-header-popovers.md`.
+- Disclosed: on a window shorter than about 535 px, Account and Sort (static panels with no room below or above) still open shifted up over their button, as a card menu does; the One-off dialog's first field on a phone sheet still shows its focus ring cut by 2 px (unchanged; phones were out of scope); a right-half anchor at about 769 px could sit a few px off the left edge (no real header button does).
 
 ### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
 
