@@ -38,8 +38,8 @@ these checks stay open until then.
 
 In the FileTube iOS app (v0.9.0 or later):
 
-- [ ] v1.387.2 - Tap You: the account menu opens and has an Offline row.
-- [ ] v1.387.2 - Open the More menu of a video card, the watch page, a song and a podcast episode: each opens with "Make available offline" (a down arrow, distinct from Save to device).
+- [x] v1.387.2 - Tap You: the account menu opens and has an Offline row. (Dean 2026-10-12: passed)
+- [x] v1.387.2 - Open the More menu of a video card, the watch page, a song and a podcast episode: each opens with "Make available offline" (a down arrow, distinct from Save to device). (Dean 2026-10-12: passed)
 
 ## Offline add failures (v1.387.1)
 
