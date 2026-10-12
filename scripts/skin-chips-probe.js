@@ -3,7 +3,7 @@
 // skin-chips-probe - the button-measurement instrument for the SKIN PICKERS (the action-row norm:
 // rows wrap, buttons never shrink - docs/CONTRIBUTING.md). v1.332 took the registry from 5 skins
 // to 12; this measures every surface that lists them, BEFORE (FT_ROOT=<a worktree>) and after:
-//   - Settings > Music player skin: every .theme-card (x/y/w/h), the rows, the container;
+//   - Settings > Music player skin: every .skin-tile (x/y/w/h), the rows, the container;
 //   - the sticker menu's Skin chips on the phone skin: every .mms-sm-chip, the rows, and the menu's
 //     own fit (its height against the viewport and its scroll height - a menu that must scroll);
 //   - the desktop pop-out's Nano tray Color chips (the plain-window fallback, a real CDP click).
@@ -61,7 +61,9 @@ async function main() {
   const { app, updateDatabase, __mintTestSession } = require(path.join(ROOT, 'server'));
   const lib = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-chips-probe-lib-'));
   const fp = path.join(lib, 'tonzak', 'nd1.wav'); fs.mkdirSync(path.dirname(fp), { recursive: true }); fs.writeFileSync(fp, wav(30));
-  await updateDatabase((db) => { db.metadata = { nd1: { id: 'nd1', type: 'audio', title: 'Neon Arrival', name: 'nd1.wav', filePath: fp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000000000, tags: { artist: 'Tonzak', title: 'Neon Arrival', album: 'Night Drive' } } }; return true; });
+  const cp = path.join(lib, 'tonzak', 'mix1.wav'); fs.writeFileSync(cp, wav(30));
+  await updateDatabase((db) => { db.metadata = { mix1: { id: 'mix1', type: 'video', title: 'Night Mix', name: 'mix1.wav', filePath: cp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000001000,
+    chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 10, title: 'Second Song' }, { startTime: 20, title: 'Closer' }] }, nd1: { id: 'nd1', type: 'audio', title: 'Neon Arrival', name: 'nd1.wav', filePath: fp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000000000, tags: { artist: 'Tonzak', title: 'Neon Arrival', album: 'Night Drive' } } }; return true; });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const { cookie } = __mintTestSession();
@@ -85,38 +87,51 @@ async function main() {
   await send('Network.enable'); await send('Page.enable');
   await send('Network.setCookie', { name: cname, value: cvalue, url: base });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const waitFor = async (expr, ms) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } return false; };
+  // v1.388.0 (W0): a wait that times out THROWS with what it waited for (it used to return false and the next
+  // line died on a null: the probe "ran" and measured nothing)
+  const waitFor = async (expr, ms, what) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } throw new Error('timed out waiting for ' + (what || expr)); };
   const out = (o) => console.log(JSON.stringify(o));
   for (const vp of VPS) {
     const mobile = vp.w <= 768;
-    await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile });
+    // v1.388.0 (W0): html.is-phone needs a COARSE primary pointer and a screen short side <= 500, which a bare
+    // metrics override does not give (the pocket never mounted, so the sticker block measured nothing)
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile, screenWidth: vp.w, screenHeight: vp.h });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: mobile, maxTouchPoints: mobile ? 5 : 0 });
     await send('Page.navigate', { url: base + '/setup.html' });
-    await waitFor(`document.querySelectorAll('#music-skin-picker .theme-card').length > 0`, 15000);
+    await waitFor(`document.querySelectorAll('#music-skin-picker .skin-tile').length > 0`, 15000);
     // on a phone the sections are a menu: open Appearance (the picker's section) before measuring
     await ev(`(function(){ var d = document.querySelector('details[data-collapse-key="appearance"]'); if (!d) return false;
       var row = Array.prototype.slice.call(document.querySelectorAll('button, a, [role="button"]')).find(function (x) { return (x.textContent || '').trim().indexOf('Appearance') === 0 || x.getAttribute('data-md-key') === 'appearance'; });
       if (row && !d.getBoundingClientRect().height) row.click(); d.open = true; return true; })()`);
     await sleep(900);
-    out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .theme-card'))));
+    out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .skin-tile'))));
     if (!mobile) continue;
     const MENU = '#music-nowplaying-panel [data-skin-sticker-menu]';
-    for (const size of ['default', '2x', '3x']) {
+    // v1.388.0 (W0): two scenarios per size and inset set - (a) a plain song, (b) a CHAPTERED track played as a
+    // listen video (Watch + Chapters offered), the heavy page the sticker sheet must fit without scrolling.
+    const SCEN = [{ name: 'plain-song', url: '/music?play=nd1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` },
+      { name: 'chaptered-listen', url: '/music?play=mix1&listen=1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` }];
+    const SIZES = process.env.PROBE_SIZES ? process.env.PROBE_SIZES.split(',') : ['default', '2x', '3x'];
+    for (const scen of SCEN) {
+    for (const size of SIZES) {
       for (const insets of [{ top: 0, bottom: 0 }, { top: 47, bottom: 34 }]) {
         let insetOk = true;
         try { await send('Emulation.setSafeAreaInsetsOverride', { insets: Object.assign({ left: 0, right: 0 }, insets) }); } catch (_) { insetOk = !insets.top; }
         if (!insetOk) continue; // this Chromium has no inset override: the zero-inset run stands alone
         await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
-        await send('Page.navigate', { url: base + '/music?play=nd1' });
-        await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')`, 20000);
+        await send('Page.navigate', { url: base + scen.url });
+        await waitFor(scen.until, 20000, scen.name + ' pocket (html.is-phone: ' + (await ev(`document.documentElement.classList.contains('is-phone')`)) + ')');
         await sleep(600);
         await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
         await sleep(400);
-        const tag = { vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
+        const tag = { scenario: scen.name, vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
         const g1 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' .mms-sm-opt', MENU));
         g1.menu.top = g1.menu.xywh[1];
         g1.menu.topInReach = g1.menu.top >= insets.top - 0.5;   // the first row is on screen, below the notch
         g1.menu.fits = !g1.menu.scrolls;
         g1.sections = await ev(`Array.prototype.map.call(document.querySelectorAll(${JSON.stringify(MENU + ' > .mms-sm-sec')}), function (x) { return [(x.textContent || '').trim().slice(0, 14), Math.round(x.getBoundingClientRect().height)]; })`);
+        // the sheet's own verdict: is the Like control on screen (inside the menu's visible box and the viewport) without scrolling?
+        g1.likeInView = await ev(`(function(){ var l = document.querySelector(${JSON.stringify(MENU + ' [data-skin-like], ' + MENU + ' [data-skin-x="like"]')}); if (!l) return false; var r = l.getBoundingClientRect(), m = document.querySelector(${JSON.stringify(MENU)}).getBoundingClientRect(); return r.height > 0 && r.top >= m.top - 0.5 && r.bottom <= m.bottom + 0.5 && r.top >= 0 && r.bottom <= innerHeight; })()`);
         if (g1.menu.scrolls) {
           // a REAL finger pan up inside the menu (the lower third to the upper third): the menu must scroll
           const b = g1.menu.xywh; const x = b[0] + b[2] / 2; const y0 = b[1] + b[3] * 0.75; const y1 = b[1] + b[3] * 0.25;
@@ -128,14 +143,15 @@ async function main() {
           g1.menu.maxScrollTop = g1.menu.scrollH - g1.menu.clientH;
         }
         out(Object.assign({ surface: 'sticker-page1' }, tag, g1));
-        if (await ev(`!!document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')})`)) {
+        if (scen.name === 'plain-song' && await ev(`!!document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')})`)) {
           await ev(`document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')}).click(); true`);
           await sleep(300);
-          const g2 = await ev(GEOM(MENU + ' .mms-sm-chip', MENU));
+          const g2 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' [data-skin-pick]', MENU));
           g2.menu.top = g2.menu.xywh[1]; g2.menu.topInReach = g2.menu.top >= insets.top - 0.5; g2.menu.fits = !g2.menu.scrolls;
           out(Object.assign({ surface: 'sticker-skin-page' }, tag, g2));
         }
       }
+    }
     }
     try { await send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }); } catch (_) { /* none to clear */ }
   }

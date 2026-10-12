@@ -187,7 +187,10 @@ chaptered track, one-tap chapter like, Speed strip, skin search; app: Download t
 LESSONS: add a line only if the build finds a new bug class.
 
 ## Evidence (builder fills)
-- M0 (main): 
+- M0 (main code 35bbccdf; the branch differs from main only by the plan commit; fixed probe `PROBE_SIZES=default,2x node scripts/skin-chips-probe.js 390x844`, insets 47/34, `html.is-phone` reached; page 1 = the old menu, no Like control on it in any run, so `likeInView` false everywhere):
+  - (a) plain song: content scrollH 701, menu clientH 685 (sticker 1x) and 633 (2x), so it SCROLLS (fits false) in both; 1x/0 inset fits at 701. Speed and Lighting sections 117px each. Sections: Home 44, Speed 117, Loop 44, Shuffle 44, Autoplay 44, Skin 44, Lighting 117, Go to channel 44, Start radio 44, Extras 44.
+  - (b) chaptered listen video (Watch offered): scrollH 701 (Watch replaces Start radio; the Chapters row is pop-out only, so the plan's "about 790px" is not measured in the main document), clientH 685 / 633, scrolls in both.
+  - Skin page: scrollH 6595, 131 chips, rows 130 (one chip per line from the second row on), clientH 685 / 633.
 - M1 (branch): 
 - Skin page rows / scroll height: 
 - Desktop /music menu identical: 
