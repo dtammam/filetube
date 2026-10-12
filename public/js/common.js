@@ -6798,6 +6798,16 @@ function formatTrashCountLabel(count, totalSizeBytes) {
 // Sweep S1 (D4.6): one account-menu row - a compact ui-row with the glyph in its media
 // slot; a link row when `href`, a button row when `onClick`. `account-menu-item` is the
 // row's hook (tests, the Subscriptions late-insert), never a styled family.
+// v1.387.0: "iOS app <version> (<build>)" when a native host announced a valid app identity, else null (pure over the
+// adapter's `app`, so the no-host path is one null check).
+function hostAppVersionLine(hostArg) {
+  const host = hostArg !== undefined ? hostArg : ((typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null);
+  const app = host && host.present && host.app;
+  if (!app || typeof app.name !== 'string' || !app.name || typeof app.version !== 'string' || !/^\d+\.\d+\.\d+/.test(app.version)) return null;
+  const label = app.name === 'filetube-ios' ? 'iOS app' : 'App';
+  return label + ' ' + app.version + (app.build ? ' (' + app.build + ')' : '');
+}
+
 function accountMenuRow(U, o) {
   const row = U.row({ size: 'compact', media: U.icon(o.icon, { doc: document }), title: o.label,
     href: o.href, onClick: o.onClick, doc: document });
@@ -7451,6 +7461,16 @@ function injectAccountMenu() {
         ver.setAttribute('rel', 'noopener');
         ver.setAttribute('aria-label', `Version ${version} - open release notes`);
         foot.appendChild(ver);
+      }
+      // v1.387.0 (Dean, 2026-10-12): inside the iOS app, the app's own version and build under the server version
+      // ("iOS app 0.9.0 (12)"), from the host's announced identity (host-adapter.js `app`, validated there); a missing or
+      // malformed value draws no line. Browsers and the home-screen app: no host, no row, identical DOM.
+      const appLine = hostAppVersionLine();
+      if (appLine) {
+        const appRow = U.row({ size: 'compact', title: appLine, doc: document });
+        appRow.classList.add('account-menu-app-version');
+        appRow.setAttribute('aria-label', appLine);
+        foot.appendChild(appRow);
       }
       p.appendChild(foot);
 
@@ -18126,6 +18146,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    hostAppVersionLine, // v1.387.0: the avatar menu's "iOS app <version> (<build>)" line, inside the app only
     chooseLogExportStrategy, exportDiagnosticLog, // v1.362.2 (D6): the one log export (log-collection pattern)
     // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).

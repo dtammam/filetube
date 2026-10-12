@@ -222,9 +222,19 @@
     }
     function appLike() { return present || standalone(); }
 
+    // The app's identity from the injected host (schema `host.app`): name + version strings, build optional; null when no
+    // host or malformed. v1.387.0 (Dean): the avatar menu shows "iOS app <version> (<build>)" inside the app.
+    var appInfo = null;
+    try {
+      var a = raw && raw.app;
+      if (a && typeof a === 'object' && typeof a.name === 'string' && a.name && typeof a.version === 'string' && VERSION_RE.test(a.version)) {
+        appInfo = { name: a.name, version: a.version, build: typeof a.build === 'string' && /^[A-Za-z0-9._-]{1,32}$/.test(a.build) ? a.build : null };
+      }
+    } catch (_) { appInfo = null; }
     var host = {
       present: present,
       bridge: present ? 1 : 0,
+      app: appInfo,
       has: has,
       post: post,
       on: on,

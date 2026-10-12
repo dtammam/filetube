@@ -21,6 +21,9 @@ with the web view's cookies (no secret crosses the JS bridge). The token comes b
 { "name": "Dean's iPhone", "platform": "ios", "password": "..." }
 ```
 
+`name` is the user's choice in the pairing prompt (prefilled "iPhone"): since iOS 16 `UIDevice.name` is just "iPhone" without
+a special entitlement, so the app never reads a device name.
+
 - `201 { id, token, name, platform, createdAt }`. `token` is `ftd_` + 43 url-safe characters; it is shown exactly once.
 - `401 { error: "That password is not right." }` (the login rate bucket applies: 8 tries, then 429 with `retryAfterSec`).
 - `400` a bad `name` (1..64 characters) or `platform` (only `ios`); `415` a body that is not JSON; `409 { error: "too many
@@ -34,13 +37,13 @@ Answers the app keys on, for every route below:
 
 | Status | Body | Meaning | What the app does |
 |---|---|---|---|
-| `401` | `{ "error": "device token revoked", "deviceRevoked": true }` | unknown token, revoked in Settings, "Remove all devices", the account's password changed, the account disabled or deleted, or 180 days unused | stop every download and offer to pair again |
+| `401` | `{ "error": "device token revoked", "deviceRevoked": true }` | unknown token, revoked in Settings, "Remove all devices", the account's password changed, the account disabled or deleted, or 180 days unused | every unfinished item becomes `failed` + `revoked` and the app offers to pair again; FINISHED copies stay on the phone and keep playing offline until the user re-pairs or deletes them (Dean's ruling, 2026-10-11: the server cannot reach them, and deleting them would lose what a merely re-paired phone had); after re-pairing the app runs the status check (section 4) BEFORE resuming downloads, so a restriction changed while unpaired removes what it must |
 | `403` | `{ "error": "not available to devices" }` | a valid token on a route outside its scope (anything but the routes here, the byte and art routes the manifest names, `GET /api/auth/me` and `GET /api/host-info`) | an app bug; never retry |
-| `404` | the route's own neutral body | the item does not exist OR this account cannot see it (indistinguishable by design) | treat as gone |
-| `409` | `{ "error": "not on server yet" }` | a podcast episode the server has not downloaded | keep it listed, retry later |
-| `409` | `{ "error": "not playable on this device", "reason": "..." }` | the file cannot be served in a form iOS plays (see section 3) | terminal: never retry, say so |
-| `429` | `{ "error": "too many attempts", "retryAfterSec": n }` | 30 UNKNOWN tokens from one address in 10 minutes (a valid token is never blocked) | wait `Retry-After` |
-| `503` | `{ "error": "transcoding" }` + `Retry-After: 60` | a needed transcode is not cached yet; it has been queued | retry after the header's seconds |
+| `404` | the route's own neutral body | the item does not exist OR this account cannot see it (indistinguishable by design) | the copy is deleted, then a `none` delta to the web |
+| `409` | `{ "error": "not on server yet" }` | a podcast episode the server has not downloaded | `failed` + `notOnServer`; re-tried at each launch's status check and when the item is next added |
+| `409` | `{ "error": "not playable on this device", "reason": "..." }` | the file cannot be served in a form iOS plays (see section 3) | terminal: `failed` + `notPlayable`, never retried (the app reports the same error when its own `AVURLAsset.isPlayable` check fails after a download) |
+| `429` | `{ "error": "too many attempts", "retryAfterSec": n }` | 30 UNKNOWN tokens from one address in 10 minutes (a valid token is never blocked) | stays `queued`, retried after `retryAfterSec` |
+| `503` | `{ "error": "transcoding" }` + `Retry-After: 60` | a needed transcode is not cached yet; it has been queued | stays `queued` (no error), retried after the header's seconds |
 
 Revocation is live: a revoke, a password change, a disable or a delete also ENDS any download the device has open at that
 moment (the stream closes short). A token unused for 180 days is dead; every use slides it. Re-enabling a disabled account
@@ -57,8 +60,9 @@ user's devices from the Users panel, including "Remove all devices".
 `kind`: `track` | `album` | `podcastEpisode` | `video` | `tvEpisode` | `tvSeason` (add-only). Ids:
 
 - `track`: a native music track's id, a library audio item's media id (an audio file shown in Music), or a chapter row
-  `<mediaId>::c<n>`. A chapter row answers with its PARENT file, once, with the file's chapters; the app maps every chapter
-  row of a file to the parent's state.
+  `<mediaId>::c<n>`. A chapter row answers with its PARENT file, once, with the file's chapters. The WEB owns the chapter
+  mapping: public/js/offline.js reads and sends the parent id (`<mediaId>`) for any chapter row, so the app only ever
+  receives, downloads and reports the parent (the manifest's item id); the server still resolves a chapter id if one arrives.
 - `album`: the album key the album page uses (`<album artist or artist>` + U+001F + `<album>`, `albumKeyFor` in
   lib/music/store.js); the manifest lists the album's visible tracks in album order (a chaptered file is one item).
 - `podcastEpisode`: the episode id. `video`: the media id. `tvEpisode`: the episode id.
@@ -125,9 +129,10 @@ an HEVC item; an unknown tag takes the transcode side.
 `POST /api/offline/status { "items": [ { "kind", "id", "fingerprint" } ] }` (at most 500 items, single-item kinds)
 
 `200 { "items": [ { "kind", "id", "state": "ok" | "changed" | "gone" } ] }` in request order. `gone` = deleted, moved
-(a new id) or now hidden from this account: the app REMOVES the copy (the restriction must win on the phone too). `changed`
-= a new source fingerprint: the app offers to refresh. One call on launch re-checks the whole catalogue. `400` for a bad
-shape.
+(a new id) or now hidden from this account: the app REMOVES the copy (the restriction must win on the phone too) and sends a
+`none` delta. `changed` = a new source fingerprint: the app offers to refresh in its own Downloads screen and keeps playing the
+old copy until the user does (no bridge state for it; the web keeps showing Offline). One call on launch re-checks the whole
+catalogue. `400` for a bad shape.
 
 ## 5. The offline position sync
 

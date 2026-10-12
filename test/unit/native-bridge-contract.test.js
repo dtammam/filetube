@@ -363,3 +363,29 @@ test('v1.387.0: a downloadsSnapshot carries an ARRAY of items - a bad element dr
   assert.ok(!('sneaky' in got[0]) && !('extra' in got[0].items[0]), 'unknown fields never reach the listener');
   win.close();
 });
+
+test('v1.387.0 (Dean): host.app carries the announced app identity (name, version, build) when valid; null for no host, a bad version or a missing name; a bad build is dropped, never the identity', () => {
+  const a = windowWith({});
+  assert.deepEqual(a.host.app, { name: 'filetube-ios', version: '0.1.0', build: '1' }, 'the fake host\'s identity');
+  a.win.close();
+  const none = windowWith(null);
+  assert.strictEqual(none.host.app, null, 'no host, no identity');
+  none.win.close();
+  for (const [app, want] of [
+    [{ name: 'filetube-ios', version: '0.9.0', build: '12' }, { name: 'filetube-ios', version: '0.9.0', build: '12' }],
+    [{ name: 'filetube-ios', version: '0.9.0' }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: '0.9.0', build: 12 }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: '0.9.0', build: '<b>' }, { name: 'filetube-ios', version: '0.9.0', build: null }],
+    [{ name: 'filetube-ios', version: 'nine' }, null],
+    [{ version: '0.9.0' }, null],
+    ['0.9.0', null],
+    [null, null],
+  ]) {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+    dom.window.FileTubeHost = { bridge: 1, capabilities: ['downloads'], app, post() {} };
+    const host = loadAdapter(dom.window);
+    assert.strictEqual(host.present, true, 'the identity never decides presence');
+    assert.deepEqual(host.app, want, JSON.stringify(app));
+    dom.window.close();
+  }
+});

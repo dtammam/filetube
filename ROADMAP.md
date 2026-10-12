@@ -85,6 +85,13 @@
 
 ### Bugs
 
+- [ ] **A users-replacing backup restore drops every user's library restrictions (found 2026-10-11 while planning offline playback; security)** -
+  `user_restrictions` rows do not ride the backup bundle (`exportUsersForBackup` carries progress, likes, pins and the rest, never
+  the restriction rows or the allowlist mode), so a restore that replaces the users recreates a restricted (kid) account with NO
+  restrictions: it sees everything until an admin re-enters them. Fix shape: carry `restrictions` (+ the mode row) per user in
+  the bundle, validate them on the way back in (the kind enum, the library values), restore them in the same transaction as the
+  user rows, and add the missing-carrier witness to backup-restore.test.js (a restored kid cannot fetch the hidden file). Its
+  own small wave, full gate (auth + data).
 - [ ] **A thin line of the picture's colours at the bottom edge of the phone player (Dean, 2026-10-08, screenshot)** -
   iPhone, watch page, a playing video with the custom controls (scrubber row + transport row under the picture): a 1-2 px
   strip of light / colour runs along the player's bottom edge, under the controls and above the title, looking like the
@@ -395,6 +402,8 @@
 
 - [ ] **Auto picture-in-picture from an inline video on swipe-home when hosted** _(iOS Root, 2026-10-11)_ - the PiP button and full-screen PiP work in the app; only inline swipe-home does not auto-enter.
 - [ ] **The iOS app (filetube-ios): a host for the web UI** _(Dean, 2026-10-11: committed long-term)_ - decision record docs/references/ios-host.md; contract docs/references/native-bridge.md + native-bridge.v1.schema.json. Spin one: the web half (docs/exec-plans/completed/2026-10-11-native-bridge-web.md) and the Mac spike (docs/references/ios-spike-1.md). Later steps, each its own plan: a native audio engine (only if the in-app web player still has gaps), a native Downloads page (offline), APNs push, widgets, the share sheet, CarPlay, an App Store build.
+- [ ] **Pocket: a black top edge cut like the top of a real iPod** _(Dean, 2026-10-11/12, via the FileTube Root; after offline playback)_ - web only (the Pocket skin's own drawing); no bridge change.
+- [ ] **Pocket hold switch** _(Dean, 2026-10-11/12, via the FileTube Root; after offline playback)_ - while it is on, a transparent layer swallows every touch except the switch itself (pocket play; works in the PWA too). In the app it also asks iOS to defer the edge swipes through an add-only contract addition (e.g. `systemGestures.defer` / `systemGestures.restore`), released on navigation like `statusBar` (native-bridge.md section 6).
 - [x] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** **Shipped v1.383.0 (2026-10-11).** - auto-advance, the
   next card started at a quarter swipe and warmed, a way to the full item from the title, song clips, music under book cards, book
   chapters named as the book names them, Start over redrawing a book card. Plan: `docs/exec-plans/completed/2026-10-10-feed-reels.md`.
@@ -808,6 +817,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.387.0 - Offline playback, the server half: per-device tokens, the download manifest, offline position sync, the `downloads` contract and the web's offline buttons (2026-10-12)
+
+- **Per-device tokens** (plan D1): the iOS app pairs once from the signed-in web view with the account password (`POST /api/devices`, cookie only, never from a token) and holds `ftd_...` in its Keychain; the gate's `Authorization: Bearer ftd_` branch sets `req.user` from the row (every restriction applies to a phone as to a browser), with an explicit scope allowlist (default deny, a census test) and live revocation (a revoke, "Remove all devices", a password change, a disable or a delete ends an open download at once). Tokens are sha256 rows, 180 days unused = dead, never in the backup bundle (a restore re-pairs every phone). Settings > Account > Devices for everyone; the Users panel's Devices expando for an admin. Schema v37 (the eighteenth floor).
+- **The download manifest, file route and status check** (D2 + D3): `GET /api/offline/manifest` for a track (native, library audio, or a chapter row = its parent), album, podcast episode, video, TV episode or season, each item through its kind's visibility (a hidden single item a neutral 404, a collection omits hidden members); `GET /api/offline/file/:kind/:id` serves the file the iOS playability rule picks (the original for what iOS plays natively - ALAC and FLAC stay lossless, hvc1 HEVC, ogg and opus confirmed on two devices - else the existing transcode, 503 until cached, 409 when nothing can play) with ETag / Range / If-Range for resumable background downloads; `POST /api/offline/status` re-checks a whole catalogue (ok / changed / gone; hidden = gone).
+- **Offline position sync** (D4): `POST /api/offline/progress` applies the phone's queued positions with NEWER WINS per item, clock-corrected per batch and clamped to server time, inside ONE write-chain mutator that also reads the live online buffers (an older phone position never overwrites a newer laptop one, in the row, in the buffer or in the flush gap); the online latches are mirrored, no presence is announced, a replay changes nothing.
+- **The `downloads` contract** (D5, add-only): `downloads.add / remove / subscribe / unsubscribe / show`, the `download` event and the `downloadsSnapshot`, per-child items with `parentKind` + `parentId`; docs/references/offline-api.md is the app's reference. **The web** (D6): public/js/offline.js owns the one subscription and the state map; "Make available offline" / "Remove offline copy" beside Save to device in every menu that has it, album and season pills, the "Offline" badge on cards and rows, the account menu's "Offline"; the player plays the phone's copy online (never a 360 video). Browsers: byte-identical DOM.
+- Disclosed: ids are md5(path) so a move reads as gone; a transcode cache eviction restarts one file; re-enabling a disabled user restores its phones; music play counts and TV subtitles are not synced / offered; the app half (filetube-ios v0.9.0) ships separately. Plan: `docs/exec-plans/active/2026-10-11-offline-server.md` (moves to completed/ at the release step).
 
 ### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
 

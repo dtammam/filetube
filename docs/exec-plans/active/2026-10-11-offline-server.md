@@ -342,6 +342,80 @@ re-pin the contract and plan the app half against offline-api.md.
 
 ## 7. Evidence (builder fills)
 
+Built 2026-10-11 / 2026-10-12 by the Extreme builder (Fable) on feat/v1.387.0-offline-server. Commits: W1 d149db74, W2 47ef5bef,
+W3 a124f3ad, W4 3ce11a91 (pushed; the iOS Root re-pins Contract/ to it), W5 + W6 below. Base: main at 80c2bb91 (v1.385.0);
+v1.386.0 (the speed pass) had not merged when W5 started - see the merge note at the end.
+
+**Device runs (the iOS Root, the playability table of D3).** Run 1, iPhone XS iOS 18.7.10 (2026-10-11); run 2, iPhone 15 Pro iOS
+27.0.1 (2026-10-12); AVPlayer from a local file AND the web view through the app's scheme, with the exact ffmpeg sample
+commands I sent. Rows 1-12 (mp4 h264/aac, mp4 hevc hvc1, mov h264/pcm, m4v h264/ac3, mp4 h264/eac3, m4a alac, m4a aac, mp3,
+flac, wav, ADTS aac, caf) PLAY; rows 13-15 (hev1, mkv, webm) are refused (hev1 = an unplayable video track, mkv / webm cannot
+open); rows 16-18 (mp4 h264 + opus, ogg vorbis, .opus) PLAY on both, which moved opus into the audio codec list (W2) and the
+ogg / oga / opus containers to the original (W3 commit); Dean set the app's floor to iOS 18 (via the iOS Root), so no supported
+iOS is unmeasured; the app checks AVURLAsset.isPlayable after each download as the guard for later versions. Answers: ADTS .aac
+and .caf play; WebKit sniffs (file.mime stays in the manifest, nothing depends on it). Caveat recorded in offline-api.md: a MUTED
+<audio> on iOS 27 loads mp3 / flac / ADTS aac / ogg / opus but never advances (FileTube plays unmuted).
+
+**FileTube Root rulings (2026-10-11, for W4), landed exactly:** per-child items for album and tvSeason with optional
+`parentKind` + `parentId` (the web rolls the badge up; `downloads.remove` of a collection removes every member native holds);
+`downloads.show` takes no fields and opens the native Downloads screen; `state: 'none'` = not on the phone (after a remove, a
+gone that deleted the copy, a cancel).
+
+**The builder-confirm item (D3):** the video transcode queue writes `transcodeStatus` onto the media item; the only client
+readers of that field are player.js:5970 / :5978 (inside the awaiting-transcode poll) and :10117 (inside `if
+(data.needsTranscode)`), so queueing an iOS transcode for an MKV the browser plays directly changes nothing the web does -
+bound in offline-manifest.test.js (after the offline transcode landed, `/api/videos/:id` has no needsTranscode and
+`/video/:id` serves the source bytes). The queues write `<out>.tmp.mp4` and rename, so an existing `<out>` is complete.
+
+**Mutant rounds (committed trees, /tmp git-archive sandboxes, each guard by name).** W1: 14 mutants, 13 killed; the 14th (the
+device routes' own cookie-only floor) was masked by the gate's scope and got an isolating test (auth-devices-routes.test.js)
+that kills it. W2: 18 mutants, 14 killed; the four survivors were fixture gaps, not defects - a native track under a blocked
+path asked for directly, a pending podcast record WITH a path, a downloaded record whose path escapes the podcasts root (all
+three given witnesses and re-killed in the W3 round), and the album's visible list (masked by resolveTrack's own re-check:
+documented as masked, defence in depth). W3: 21 mutants, 17 killed; the four survivors were binding gaps, each closed in the
+W4 commit and re-killed against it: `>` vs `>=` (now the pure, unit-tested `newerWins`), the clamp to server time (the
+fixture now stamps the event after the phone sent), the mutator's no-doc-save contract (the cached doc keeps its identity),
+and the chain order (the test-only `__holdWriteChainForTests` makes the gap tests event-loop-ordered; the sync run outside
+`updateDatabase` lands the older value and dies).
+
+**The media-URL reader census for the player swap (D6, re-grepped before W5 over public/js: 45 readers outside player.js):**
+- swap (plays the phone's copy): player.js setupForMedia (`streamUrl`, after the streamSrc block; a descriptor copy with
+  needsTranscode cleared; the bg-audio settings read answered locally); the music readiness probe (music.js: the fetch is
+  answered locally, the one loadTrack path runs); the Feed's next-card warm (feed.js warmNext: skipped for a held card).
+- skip local (server only, by design): the 360 sphere (vr-view.js texImage2D: a cross-origin texture taints the canvas -
+  resolveOfflineLocalSrc refuses any non-flat projection); a book chapter (not an offline item); the background-audio
+  sidecar (bgAudioEl.src, player.js armBackgroundAudioSrc: never armed for a local play, the local element keeps playing); the
+  desktop live transcode (startLiveStream: never reached, needsTranscode is cleared); the Chapter Snap audition (common.js
+  audio.src = /video/<id>: an editor, server only); hover preview clips (main.js CLIP_SRC) and every art / thumbnail src.
+- server only (the URL goes to ANOTHER device or is a save): every `?download=1` Save to device href (main.js, watch.js,
+  music.js, podcasts.js, skin-surface.js, read.js); Listen Control / remote.js (sends track ids, never URLs); handoff
+  (presence carries ids and thumbnails); the Roku channel (its own routes); the pop-out window (skin-surface.js: it proxies
+  controls to the main document's element, never loads media); AirPlay (the element's own src: a local-scheme src stays on
+  the phone, which is the app's concern - noted for the app half).
+
+**Rows at 320 / 390 (tools/offline-proof/row-probe.js, the real engine + CSS + the shipped builders, a fake host answering the
+subscription), run 2026-10-12, PASS at both widths:** the TV show page draws 6 pills (a season pill per season, a pill per
+episode row) and the album page 1; every pill is 32 px high, the same as the page's own small pills (measured reference 32),
+and every pill's width equals its scrollWidth (166 px "Make available offline", 157 "Remove offline copy", 176 / 177 "Saving
+for offline... N%", 181 the album pill): nothing shrinks or clips. Episode rows with a pill are 56 to 66 px high (a single
+line is 32): the title wraps above the pill rather than running under it; no row's title is clipped. Badges: "Offline" 39 px
+and "Saving 70%" fit inside a two-column card's text block at 320 (the first probe run measured the full "Saving for
+offline... 70%" badge at 138 px, outside the block at BOTH widths - that is why the card badge is the compact form; the
+menus keep the phrase). No horizontal page overflow on any of the six pages.
+
+**Suites (Node 22.23.1, this worktree's own install):** `npm test` on the W5 tree + the W6 docs and the app-version line (the
+pre-gate run, 2026-10-12): 12348 tests, 12338 pass, 0 fail, 0 cancelled, 10 skipped (the suite's standing skips). Per wave:
+W1 `npm run test:unit` 9613 / 9610 pass (the two reds were the source-lock test my migration test tripped, fixed in that
+commit, and a timing flake that is 21/21 alone); every later wave's touched suites green before its commit (W2 11/11 +
+4/4, W3 11/11, W4 16 + 4 + 11, W5 15/15 + 1831 builder / player / bridge / feed tests, W6 70/70 across the menu, contract
+and offline suites). `npm run lint` 0 errors (6 standing warnings), `npm run lint:ui` the live debt equals the ratchet
+file, the overlay lint 0 violations.
+
+**Merge note (Step 0):** origin/main did not move during the build (80c2bb91, the v1.385.0 merge, is still its head at
+the W6 commit; the speed pass perf/v1.386.0-speed-pass sits at d405012e, unreleased), so there was nothing to merge before
+W5. The release commit waits for v1.386.0 on main, then merges main in and re-runs the suites (the FileTube Root's
+sequencing, confirmed 2026-10-12).
+
 ## 8. Out of scope
 The app half (filetube-ios); books; music play counts offline; smaller "data saver" renditions (ROADMAP streaming Tier 2); TV
 subtitles; a server-side list of what each phone holds (the phone is the source of truth for its own files); widgets (the token
