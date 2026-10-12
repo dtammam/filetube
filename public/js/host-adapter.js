@@ -11,7 +11,32 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads'];
+  // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
+  // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
+  // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
+  // carrying parentKind + parentId (the album or season badge rolls up from them). state 'none' = not on the phone
+  // (removed, gone, cancelled). error only with 'failed'; localSrc (an opaque URL) only with 'done', and the web
+  // uses it ONLY as a media element src, never fetch / XHR / artwork / canvas.
+  var DOWNLOAD_KINDS = ['track', 'album', 'podcastEpisode', 'video', 'tvEpisode', 'tvSeason'];
+  var DOWNLOAD_ITEM_KINDS = ['track', 'podcastEpisode', 'video', 'tvEpisode'];
+  var DOWNLOAD_STATES = ['none', 'queued', 'downloading', 'paused', 'waitingForWifi', 'done', 'failed'];
+  var DOWNLOAD_ERRORS = ['network', 'storageFull', 'revoked', 'notOnServer', 'notReady', 'other'];
+  function downloadItemFields() {
+    return {
+      kind: { enum: DOWNLOAD_ITEM_KINDS.slice(), req: true },
+      id: { is: 'string', min: 1, max: 512, req: true },
+      state: { enum: DOWNLOAD_STATES.slice(), req: true },
+      progress: { is: 'number', min: 0, max: 1 },
+      bytes: { is: 'number', min: 0 },
+      totalBytes: { is: 'number', min: 0 },
+      error: { enum: DOWNLOAD_ERRORS.slice() },
+      localSrc: { is: 'string', min: 1 },
+      parentKind: { enum: ['album', 'tvSeason'] },
+      parentId: { is: 'string', min: 1, max: 512 },
+    };
+  }
+  var DOWNLOAD_LENIENT = { state: 'none', error: 'other' };
 
   // Web to native. cap = the capability that must be announced (null = always). fields: the allowed
   // fields; req = required; a field spec is one of { is: 'string'|'number'|'object', min, max } /
@@ -29,6 +54,14 @@
     'statusBar.show': { cap: 'statusBar', fields: {} },
     'network.subscribe': { cap: 'network', fields: {} },
     'network.unsubscribe': { cap: 'network', fields: {} },
+    // v1.387.0 offline playback: add / remove an item (native fetches the manifest itself with its token; nothing
+    // else crosses), subscribe (one downloadsSnapshot now, then download deltas), unsubscribe, show (native opens
+    // its Downloads screen). downloads.remove of an album or tvSeason removes every member native holds.
+    'downloads.add': { cap: 'downloads', fields: { kind: { enum: DOWNLOAD_KINDS.slice(), req: true }, id: { is: 'string', min: 1, max: 512, req: true } } },
+    'downloads.remove': { cap: 'downloads', fields: { kind: { enum: DOWNLOAD_KINDS.slice(), req: true }, id: { is: 'string', min: 1, max: 512, req: true } } },
+    'downloads.subscribe': { cap: 'downloads', fields: {} },
+    'downloads.unsubscribe': { cap: 'downloads', fields: {} },
+    'downloads.show': { cap: 'downloads', fields: {} },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -49,6 +82,14 @@
         expensive: { is: 'boolean' },
       },
     },
+    // v1.387.0 offline playback: one event per ITEM. An unknown state reads as 'none', an unknown error as 'other'
+    // (`lenient`); a bad optional field is dropped, never the event.
+    download: { lenient: DOWNLOAD_LENIENT, fields: downloadItemFields() },
+    // Sent once in answer to every downloads.subscribe: every item the phone holds or is working on. The web
+    // REPLACES its map with it; download events after it are deltas. The same lenient mapping applies to each
+    // element, and a bad element drops THAT element, not the snapshot; more than 10000 elements drops the whole
+    // event (the app never sends one).
+    downloadsSnapshot: { fields: { items: { is: 'array', req: true, max: 10000, items: { is: 'object', props: downloadItemFields(), lenient: DOWNLOAD_LENIENT } } } },
   };
 
   function fieldOk(spec, v) {
@@ -56,9 +97,12 @@
     if (spec.eq !== undefined) return v === spec.eq;
     if (spec.enum) return spec.enum.indexOf(v) >= 0;
     if (spec.is === 'number') return typeof v === 'number' && isFinite(v) && (spec.min === undefined || v >= spec.min) && (spec.max === undefined || v <= spec.max);
-    if (spec.is === 'string') return typeof v === 'string';
+    if (spec.is === 'string') return typeof v === 'string' && (spec.min === undefined || v.length >= spec.min) && (spec.max === undefined || v.length <= spec.max);
     if (spec.is === 'boolean') return typeof v === 'boolean';
     if (spec.is === 'object') return !!v && typeof v === 'object' && (!spec.props || fieldsOk(spec.props, v));
+    // An array field: the length cap decides the field; its ELEMENTS are sanitized one by one in `sanitize` (a bad
+    // element is dropped, never the whole event), so here only the shape and the cap are judged.
+    if (spec.is === 'array') return Array.isArray(v) && (spec.max === undefined || v.length <= spec.max);
     return false;
   }
   function fieldsOk(fields, obj) {
@@ -75,9 +119,42 @@
     for (var k in fields) {
       if (!Object.prototype.hasOwnProperty.call(fields, k) || obj[k] === undefined) continue;
       var spec = fields[k];
-      out[k] = (spec.is === 'object' && spec.props) ? pick(spec.props, obj[k]) : obj[k];
+      if (spec.is === 'object' && spec.props) out[k] = pick(spec.props, obj[k]);
+      else if (spec.is === 'array' && spec.items && spec.items.props) {
+        var arr = [];
+        for (var i = 0; i < obj[k].length; i++) arr.push(pick(spec.items.props, obj[k][i]));
+        out[k] = arr;
+      } else out[k] = obj[k];
     }
     return out;
+  }
+  // One object against a field table: the lenient mapping (an unknown enum value reads as the named fallback), then
+  // every OPTIONAL field that does not fit is dropped (never the whole object), then an array field's elements are
+  // sanitized the same way (a bad element is dropped, never the array). Returns the cleaned copy, or null when a
+  // REQUIRED field is missing or wrong. Shared by the top-level event and each snapshot element (v1.387.0).
+  function sanitize(fields, lenient, d) {
+    if (!d || typeof d !== 'object') return null;
+    var c = {}; for (var ck in d) c[ck] = d[ck];
+    if (lenient) {
+      for (var lk in lenient) {
+        if (Object.prototype.hasOwnProperty.call(lenient, lk) && typeof c[lk] === 'string' && fields[lk] && fields[lk].enum && fields[lk].enum.indexOf(c[lk]) < 0) c[lk] = lenient[lk];
+      }
+    }
+    for (var ok in fields) {
+      if (!Object.prototype.hasOwnProperty.call(fields, ok) || c[ok] === undefined) continue;
+      var spec = fields[ok];
+      if (spec.is === 'array' && spec.items && spec.items.props && Array.isArray(c[ok]) && (spec.max === undefined || c[ok].length <= spec.max)) {
+        var kept = [];
+        for (var i = 0; i < c[ok].length; i++) {
+          var el = sanitize(spec.items.props, spec.items.lenient, c[ok][i]);
+          if (el) kept.push(el);
+        }
+        c[ok] = kept;
+      } else if (!spec.req && !fieldOk(spec, c[ok])) {
+        delete c[ok];
+      }
+    }
+    return fieldsOk(fields, c) ? c : null;
   }
 
   function create(win) {
@@ -122,24 +199,12 @@
         try {
           var d = ev && ev.detail;
           if (!d || typeof d !== 'object' || d.v !== 1 || d.type !== type) return;
-          var len = EVENTS[type].lenient;
-          if (len) {
-            for (var lk in len) {
-              if (Object.prototype.hasOwnProperty.call(len, lk) && typeof d[lk] === 'string' && EVENTS[type].fields[lk].enum.indexOf(d[lk]) < 0) {
-                var c = {}; for (var ck in d) c[ck] = d[ck]; c[lk] = len[lk]; d = c;
-              }
-            }
-          }
-          // An OPTIONAL field that does not fit is dropped, never the whole event (a bad `constrained` must not
-          // swallow a real `connection` change and leave the page showing a stale value).
-          var flds = EVENTS[type].fields;
-          for (var ok in flds) {
-            if (Object.prototype.hasOwnProperty.call(flds, ok) && !flds[ok].req && d[ok] !== undefined && !fieldOk(flds[ok], d[ok])) {
-              var c2 = {}; for (var ck2 in d) c2[ck2] = d[ck2]; delete c2[ok]; d = c2;
-            }
-          }
-          if (!fieldsOk(EVENTS[type].fields, d)) return;
-          fn(pick(EVENTS[type].fields, d));
+          // The lenient mapping, then an OPTIONAL field that does not fit is dropped, never the whole event (a bad
+          // `constrained` must not swallow a real `connection` change and leave the page showing a stale value);
+          // an array field's bad ELEMENT is dropped, never the array (v1.387.0).
+          var clean = sanitize(EVENTS[type].fields, EVENTS[type].lenient, d);
+          if (!clean) return;
+          fn(pick(EVENTS[type].fields, clean));
         } catch (_) { /* a bad event or a throwing listener never breaks the page */ }
       };
       try { win.addEventListener('filetube-host', handler); } catch (_) { return noop; }
@@ -177,7 +242,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};

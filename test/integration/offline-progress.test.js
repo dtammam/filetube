@@ -23,7 +23,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
   app, updateDatabase, userStore, musicDb, tvDb, podcastsDb, __mintTestSession, __presenceForTests, feedServed,
-  flushPendingProgress, flushPendingMusicProgress, pendingProgress, pendingProgressKey,
+  flushPendingProgress, flushPendingMusicProgress, pendingProgress, pendingProgressKey, __holdWriteChainForTests, getCachedDatabase,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -130,8 +130,10 @@ test('shape: events array (max 200), sentAt required; more than 5 minutes ahead 
 
 test('a fresh item: applied, the stored stamp is the corrected MOMENT as an ISO string (never the phone\'s string), the position lands; a chapter row writes to the parent file', async () => {
   const at = Date.now() - 10 * SEC;
+  const docBefore = getCachedDatabase();
   const r = await sync([ev('video', 'v1', 42.5, at), ev('track', 'aud::c1', 55, at)]);
   assert.strictEqual(r.status, 200);
+  assert.strictEqual(getCachedDatabase(), docBefore, 'the sync writes per-user rows only: no doc-table save (the cache object keeps its identity)');
   assert.strictEqual(r.body.results[0].applied, true);
   assert.match(r.body.results[0].updatedAt, ISO_RE);
   const row = userStore.getOneProgress(uid, 'v1');
@@ -194,20 +196,29 @@ test('the LIVE media buffer: a newer buffered online ping refuses the offline ev
 });
 
 test('the snapshot-to-commit GAP (media), both orders: a flush whose snapshot is taken but not yet committed never lets an older offline event through, and a newer one still wins', async () => {
-  // Order A: flush first (snapshot + clear, mutator queued), then the offline OLDER event in the same tick.
+  // Order A: flush first (snapshot + clear, mutator queued BEHIND a held chain), then the offline OLDER event arrives
+  // while the row is still unwritten and the buffer already empty; the chain is released only after the request is in.
+  // The precondition is EVENT-LOOP ORDER (the hold), never timing (LESSONS 2).
   assert.strictEqual((await onlineMedia('v1', 90)).status, 200);
-  const flushA = flushPendingProgress(); // snapshot taken, buffer cleared, commit pending on the chain
+  let release = __holdWriteChainForTests();
+  const flushA = flushPendingProgress(); // snapshot taken, buffer cleared, commit pending behind the hold
   assert.strictEqual(pendingProgress.size, 0, 'the gap: the buffer is empty and the row is not written yet');
-  const rA = await sync([ev('video', 'v1', 3, Date.now() - 10 * SEC)]);
-  await flushA;
+  const pA = sync([ev('video', 'v1', 3, Date.now() - 10 * SEC)]);
+  await new Promise((r) => setTimeout(r, 150)); // the request has reached the server and queued its mutator behind the flush
+  assert.notStrictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 90, 'the flush has not committed yet (the hold works)');
+  release();
+  const rA = await pA; await flushA;
   assert.strictEqual(rA.body.results[0].applied, false, 'the D4 mutator ran AFTER the flush commit and saw the newer row');
   assert.strictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 90);
-  // Order B: flush first, then the offline NEWER event: it lands over the committed row.
+  // Order B: the same gap, the offline NEWER event: it lands over the committed row, never under it.
   assert.strictEqual((await onlineMedia('v1', 91)).status, 200);
   await new Promise((r) => setTimeout(r, 30));
+  release = __holdWriteChainForTests();
   const flushB = flushPendingProgress();
-  const rB = await sync([ev('video', 'v1', 4, Date.now())]);
-  await flushB;
+  const pB = sync([ev('video', 'v1', 4, Date.now())]);
+  await new Promise((r) => setTimeout(r, 150));
+  release();
+  const rB = await pB; await flushB;
   assert.strictEqual(rB.body.results[0].applied, true);
   assert.strictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 4);
   // Order C: offline OLDER first (refused by the buffered newer), then the flush commits the online value.
@@ -235,11 +246,15 @@ test('the music buffer and its gap, both orders: a native track goes through the
   await flushPendingMusicProgress();
   assert.strictEqual(userStore.getOneMusicProgress(uid, id).position, 50);
   assert.strictEqual(userStore.getOneProgress(uid, id), null, 'a native track never touches the media store');
-  // the gap, flush first then older
+  // the gap, flush first (held) then the older event arrives before the commit: refused in chain order
   assert.strictEqual((await onlineMusic(id, 51)).status, 200);
+  const release = __holdWriteChainForTests();
   const fl = flushPendingMusicProgress();
-  const r2 = await sync([{ kind: 'track', id, positionSec: 6, durationSec: 200, at: Date.now() - 10 * SEC }]);
-  await fl;
+  const p2 = sync([{ kind: 'track', id, positionSec: 6, durationSec: 200, at: Date.now() - 10 * SEC }]);
+  await new Promise((r) => setTimeout(r, 150));
+  assert.strictEqual(userStore.getOneMusicProgress(uid, id).position, 50, 'the flush has not committed yet');
+  release();
+  const r2 = await p2; await fl;
   assert.strictEqual(r2.body.results[0].applied, false);
   assert.strictEqual(userStore.getOneMusicProgress(uid, id).position, 51);
   // newer offline wins and deletes the buffered older ping
@@ -277,10 +292,14 @@ test('clock correction: a phone a year AHEAD is refused with 400 restamp (more t
   const rb = await sync([ev('video', 'v2', 35, behindNow - 60 * SEC)], { sentAt: behindNow });
   assert.strictEqual(rb.body.results[0].applied, true, 'a year behind is corrected, not refused forever');
   near(userStore.getOneProgress(uid, 'v2').updatedAt, Date.now() - 60 * SEC);
-  // An event stamped AFTER the phone sent (a clock jump) is clamped to server now, never beyond.
-  const rc = await sync([ev('video', 'v2', 36, Date.now() + 3 * MIN)], { sentAt: Date.now() + 4 * MIN });
+  // An event stamped AFTER the phone sent (a clock jump: at = sentAt + 60 s) corrects to a moment past server now and is
+  // CLAMPED to server now, never beyond - a far-future stamp would wedge the item against every later laptop write.
+  const sent = Date.now() + 2 * MIN;
+  const rc = await sync([ev('video', 'v2', 36, sent + 60 * SEC)], { sentAt: sent });
   assert.strictEqual(rc.body.results[0].applied, true);
-  assert.ok(Date.parse(userStore.getOneProgress(uid, 'v2').updatedAt) <= Date.now() + 1000, 'clamped to server time');
+  const clamped = Date.parse(userStore.getOneProgress(uid, 'v2').updatedAt);
+  assert.ok(clamped <= Date.now(), 'clamped to server time');
+  assert.ok(clamped > Date.now() - 5 * SEC, 'and to NOW, not to some earlier moment');
 });
 
 test('visibility with DIVERGING restriction kinds: a hidden video (folder), a library track under a hidden folder, a native track under a blocked path, a hidden podcast show and a blocked tv path each refuse {gone} with NOTHING written - cookie and device token alike; an unknown id is gone too', async () => {

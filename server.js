@@ -986,6 +986,16 @@ function __resetDatabaseForTests() {
     try { userStore.__clearUserStateForTests(); } catch (_) { /* user tables absent in an odd harness */ }
   });
 }
+// Test-only (v1.387.0 W3): HOLD the write chain. Every updateDatabase mutator queued after this call waits
+// until the returned release() runs, so a race test can take a flush's snapshot, let a request arrive and
+// enqueue its own mutator BEHIND the flush, and only then let both commit in chain order (LESSONS 2: a race
+// test's precondition is event-loop order, never timing).
+function __holdWriteChainForTests() {
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  dbWriteChain = dbWriteChain.then(() => gate);
+  return release;
+}
 // Test-only: wipe users (the auth-flow suite's zero-users precondition).
 function __clearUsersForTests() {
   try { userStore.__clearAllUsersForTests(); } catch (_) { /* users table absent in an odd harness */ }
@@ -7629,6 +7639,7 @@ module.exports = {
   // it produces a genuine cookie exactly like a browser login would.
   __mintTestSession,
   __clearUsersForTests,
+  __holdWriteChainForTests, // v1.387.0 W3: the offline sync's chain-order tests
   // Wave 1 (relational-migration arc): the media view-count store, exported
   // so integration tests seed and read counts through the SAME API the
   // routes use (the doc-model `viewCounts` key is refused by the save-lock).

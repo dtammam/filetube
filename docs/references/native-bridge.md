@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -51,6 +51,11 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `statusBar.show` | (none) | `statusBar` | restores it |
 | `network.subscribe` | (none) | `network` | sends one `network` event now, then one per change |
 | `network.unsubscribe` | (none) | `network` | stops them |
+| `downloads.add` | `kind: 'track' \| 'album' \| 'podcastEpisode' \| 'video' \| 'tvEpisode' \| 'tvSeason'`, `id` (string, 1..512) | `downloads` | makes the item available offline: native fetches `GET /api/offline/manifest` itself with its device token (docs/references/offline-api.md) and downloads every item the manifest lists; nothing else crosses the bridge (v1.387.0) |
+| `downloads.remove` | `kind`, `id` (as above) | `downloads` | removes the offline copy; for an `album` or `tvSeason` native removes every member it holds |
+| `downloads.subscribe` | (none) | `downloads` | sends one `downloadsSnapshot` now (every item the phone holds or is working on), then one `download` event per change |
+| `downloads.unsubscribe` | (none) | `downloads` | stops them |
+| `downloads.show` | (none) | `downloads` | opens the native Downloads screen |
 
 ## 3. Native to web events
 
@@ -61,8 +66,22 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `battery` | `level` 0..1 (or null when unknown), `state: 'unplugged' \| 'charging' \| 'full' \| 'unknown'` | on subscribe, then on every change |
 | `network` | `connection: 'wifi' \| 'cellular' \| 'wired' \| 'other' \| 'none'` (required), optional `constrained: boolean` (Low Data Mode), `expensive: boolean` | on subscribe, then on every change |
 
+| `download` | one ITEM: `kind: 'track' \| 'podcastEpisode' \| 'video' \| 'tvEpisode'`, `id`, `state: 'none' \| 'queued' \| 'downloading' \| 'paused' \| 'waitingForWifi' \| 'done' \| 'failed'` (required); optional `progress` 0..1, `bytes`, `totalBytes`, `error: 'network' \| 'storageFull' \| 'revoked' \| 'notOnServer' \| 'notReady' \| 'other'` (only with `failed`), `localSrc` (only with `done`), `parentKind: 'album' \| 'tvSeason'` + `parentId` (only for a member of an album or season add) | after a subscribe, on every change of an item (v1.387.0) |
+| `downloadsSnapshot` | `items`: an array (at most 10000) of the `download` fields above, one element per item the phone holds or is working on | once, in answer to every `downloads.subscribe` |
+
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
 does not know as `'other'`.
+
+**Downloads (v1.387.0).** `kind` on a `download` event is always a single-item kind: an `album` or `tvSeason` add reports its
+MEMBERS, each carrying `parentKind` + `parentId`, and the web rolls the album or season badge up from them.
+`state: 'none'` means the item is not on the phone: after a `downloads.remove`, after a server `gone` (404) made native delete
+the copy, or after a cancel. The web treats an unknown `state` as `'none'` and an unknown `error` as `'other'`; a bad optional
+field drops that field, not the event; in a snapshot a bad element drops that element, not the snapshot (more than 10000
+elements drops the whole event; the app never sends one). The web REPLACES its map with every snapshot; `download` events after
+it are deltas. `localSrc` is an opaque string: the web uses it ONLY as an audio or video element `src`, never `fetch` / XHR, never
+for artwork or a canvas (a 360 video never uses it: a cross-origin texture would taint the canvas); native serves it with 206 +
+Content-Range through its own URL scheme (`filetube-local:` today). If FileTube ever adds a CSP, `media-src` must allow the app's
+scheme (tech-debt tracker item 154).
 
 ## 4. Server side: `/api/host-info`
 
@@ -80,10 +99,13 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | serverSettings | native | the web shows the entry point only when announced |
 | statusBar | web decides when (Pocket shown or not), native enforces | Sideways does not block it (a sideways Pocket is still immersive) |
 | network | native | the web only displays it |
+| downloads | native owns the files and the state; the web asks and displays | public/js/offline.js holds the ONE subscription per page and the `{kind:id -> state}` map (v1.387.0) |
 
 ## 6. Release of held capabilities
 
-Like `orientation` and `battery`, `statusBar` (hidden) and `network` (subscribed) are released by the host on every main-frame
-navigation commit and when the web view goes away. A page restored from the back-forward cache runs no scripts, so on a
-persisted `pageshow` the web re-sends whatever it currently wants (orientation lock, battery and network subscriptions, status
-bar hidden); on `pagehide` it releases them all (idempotent for the host).
+Like `orientation` and `battery`, `statusBar` (hidden), `network` (subscribed) and `downloads` (subscribed) are released by the
+host on every main-frame navigation commit and when the web view goes away. A page restored from the back-forward cache runs no
+scripts, so on a persisted `pageshow` the web re-sends whatever it currently wants (orientation lock, battery and network
+subscriptions, status bar hidden, the downloads subscription - whose answer, a fresh `downloadsSnapshot`, replaces the web's map);
+on `pagehide` it releases them all (idempotent for the host). The downloads subscription is owned by public/js/offline.js, which
+binds its OWN `pagehide` / `pageshow` pair (skin-surface.js's re-assert covers only the registries a Pocket owner claims).
