@@ -40,6 +40,11 @@ test('the table: the original is served for every iOS-native container + codec r
     ['unknown codecs in an mp4 are not flagged (positive identification only)', video({ videoCodec: null, audioCodec: null })],
     ['upper-case ext and codec', video({ ext: '.MP4', videoCodec: 'H264', audioCodec: 'AAC' })],
     ['mp4 h264 opus (device-confirmed, iOS Root row 16)', video({ audioCodec: 'opus' })],
+    ['ogg vorbis (device-confirmed, rows 17-18 on iOS 18 and 27)', track({ ext: '.ogg', audioCodec: 'vorbis' })],
+    ['opus (device-confirmed)', track({ ext: '.opus', audioCodec: 'opus' })],
+    ['library audio ogg vorbis', libraryAudio({ ext: '.ogg', audioCodec: 'vorbis' })],
+    ['podcast ogg', podcast({ ext: '.ogg' })],
+    ['podcast opus', podcast({ ext: '.opus' })],
   ];
   for (const [name, d] of rows) assert.deepStrictEqual(d, { mode: 'original' }, name);
 });
@@ -60,16 +65,15 @@ test('the transcode side: a video that fails the rule takes the existing H.264/A
 });
 
 test('not offerable (terminal 409): audio that fails the rule, no ffmpeg, a failed transcode, a podcast in a foreign container, an unknown kind', () => {
-  assert.deepStrictEqual(track({ ext: '.ogg', audioCodec: 'vorbis' }), { mode: 'none', reason: 'container' });
-  assert.deepStrictEqual(track({ ext: '.opus', audioCodec: 'opus' }), { mode: 'none', reason: 'container' });
-  assert.deepStrictEqual(track({ ext: '.m4a', audioCodec: 'vorbis' }), { mode: 'none', reason: 'audioCodec' }, 'a native container with a foreign codec');
+  assert.deepStrictEqual(track({ ext: '.wma', audioCodec: 'wmav2' }), { mode: 'none', reason: 'container' });
+  assert.deepStrictEqual(track({ ext: '.ape', audioCodec: 'ape' }), { mode: 'none', reason: 'container' });
+  assert.deepStrictEqual(track({ ext: '.m4a', audioCodec: 'wmav2' }), { mode: 'none', reason: 'audioCodec' }, 'a native container with a foreign codec');
   assert.deepStrictEqual(libraryAudio({ ext: '.webm', audioCodec: 'opus' }), { mode: 'none', reason: 'container' }, 'library audio never takes the video transcode');
-  assert.deepStrictEqual(libraryAudio({ ext: '.ogg', audioCodec: 'vorbis', transcodeAvailable: true }), { mode: 'none', reason: 'container' });
+  assert.deepStrictEqual(libraryAudio({ ext: '.wma', audioCodec: 'wmav2', transcodeAvailable: true }), { mode: 'none', reason: 'container' });
   assert.deepStrictEqual(video({ ext: '.mkv', transcodeAvailable: false }), { mode: 'none', reason: 'noTranscoder' });
   assert.deepStrictEqual(video({ ext: '.mkv', transcodeFailed: true }), { mode: 'none', reason: 'transcodeFailed' });
   assert.deepStrictEqual(video({ transcodeFailed: true }), { mode: 'original' }, 'a failed transcode is irrelevant when the original plays');
-  assert.deepStrictEqual(podcast({ ext: '.ogg' }), { mode: 'none', reason: 'container' });
-  assert.deepStrictEqual(podcast({ ext: '.opus' }), { mode: 'none', reason: 'container' });
+  assert.deepStrictEqual(podcast({ ext: '.wma' }), { mode: 'none', reason: 'container' });
   assert.deepStrictEqual(podcast({ ext: '.flac' }), { mode: 'none', reason: 'container' }, 'podcasts are decided by extension only: flac is not in the podcast set');
   assert.deepStrictEqual(p.decidePlayability({ kind: 'album', ext: '.mp4' }), { mode: 'none', reason: 'kind' });
   assert.deepStrictEqual(p.decidePlayability(null), { mode: 'none', reason: 'kind' });
@@ -86,6 +90,6 @@ test('helpers: isHevc, videoCodecOk, audioCodecOk', () => {
   assert.strictEqual(p.videoCodecOk('h264', undefined), true);
   assert.strictEqual(p.videoCodecOk('', undefined), true);
   assert.strictEqual(p.audioCodecOk('pcm_s16be'), true);
-  assert.strictEqual(p.audioCodecOk('vorbis'), false);
+  assert.strictEqual(p.audioCodecOk('wmav2'), false);
   assert.strictEqual(p.audioCodecOk(undefined), true);
 });

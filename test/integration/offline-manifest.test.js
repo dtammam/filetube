@@ -59,7 +59,7 @@ const BYTES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; // 36 bytes: ranges are ch
 let files = {};
 let tracks = {};
 const SUB = 'a'.repeat(32), HIDDEN_SUB = 'b'.repeat(32);
-let epDownloaded, epPending, epHidden;
+let epDownloaded, epPending, epHidden, epStale, epEscape;
 const SHOW_OK = 'show-kids', SHOW_BLK = 'show-adult';
 
 function mkTrack(rel, meta) {
@@ -106,6 +106,7 @@ before(async () => {
     a2: mkTrack('Music/Floyd/Wall/02 Hey.flac', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Hey You', trackNo: 2, codec: 'flac' }),
     a3: mkTrack('Music/Blocked/Wall/03 Bricks.flac', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Bricks', trackNo: 3, codec: 'flac' }),
     ogg: mkTrack('Music/Odd/song.ogg', { artist: 'Odd', albumArtist: 'Odd', album: 'Odd', title: 'Vorbis', trackNo: 1, codec: 'vorbis' }),
+    wma: mkTrack('Music/Odd/old.wma', { artist: 'Odd', albumArtist: 'Odd', album: 'Odd', title: 'Windows', trackNo: 2, codec: 'wmav2' }),
   };
   await updateDatabase(() => musicDb.mutate((db) => {
     const ns = musicStore.ensureMusic(db);
@@ -121,14 +122,18 @@ before(async () => {
   epDownloaded = podcastStore.episodeIdFor(SUB, 'g1');
   epPending = podcastStore.episodeIdFor(SUB, 'g2');
   epHidden = podcastStore.episodeIdFor(HIDDEN_SUB, 'h1');
+  epStale = podcastStore.episodeIdFor(SUB, 'g3'); // a path on the record but status no longer 'downloaded' (the server purged / re-queued it)
+  epEscape = podcastStore.episodeIdFor(SUB, 'g4'); // a 'downloaded' record whose path escapes the podcasts root (a bundle can author one)
   await updateDatabase(() => podcastsDb.mutate((h) => {
     const p = podcastStore.ensurePodcasts(h); p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: SUB, name: 'The Show', feedUrl: 'https://e.com/f.xml' });
     podcastStore.reduceAddSubscription(p, { id: HIDDEN_SUB, name: 'Hidden Show', feedUrl: 'https://e.com/h.xml' });
-    podcastStore.reduceUpsertEpisodes(p, SUB, [{ guid: 'g1', title: 'Episode One', pubDateMs: 1, durationSec: 1800 }, { guid: 'g2', title: 'Episode Two', pubDateMs: 2, durationSec: 1700 }], 'pending', 5000);
+    podcastStore.reduceUpsertEpisodes(p, SUB, [{ guid: 'g1', title: 'Episode One', pubDateMs: 1, durationSec: 1800 }, { guid: 'g2', title: 'Episode Two', pubDateMs: 2, durationSec: 1700 }, { guid: 'g3', title: 'Stale', pubDateMs: 3, durationSec: 100 }, { guid: 'g4', title: 'Escape', pubDateMs: 4, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceUpsertEpisodes(p, HIDDEN_SUB, [{ guid: 'h1', title: 'Hush', pubDateMs: 1, durationSec: 100 }], 'pending', 5000);
     podcastStore.reduceEpisodeDownloaded(p, epDownloaded, { fileName: 'ep1.mp3', filePath: path.join(showDir, 'ep1.mp3'), bytes: 36, nowMs: 6000 });
     podcastStore.reduceEpisodeDownloaded(p, epHidden, { fileName: 'h1.mp3', filePath: path.join(hiddenDir, 'h1.mp3'), bytes: 36, nowMs: 6000 });
+    p.episodes[epStale].filePath = path.join(showDir, 'ep1.mp3'); // status stays 'pending': the path alone must not make it offerable
+    podcastStore.reduceEpisodeDownloaded(p, epEscape, { fileName: 'session-secret', filePath: path.join(DATA_DIR, 'session-secret'), bytes: 36, nowMs: 6000 });
     return true;
   }));
   // TV: a kids show (S1E1 mp4, S1E2 mkv, an Extra) and an adult show under a blocked root.
@@ -303,7 +308,7 @@ test('the HEVC tag: hvc1 serves the original (one lazy ffprobe, cached); hev1 ta
   assert.ok(!fs.existsSync(transcodedPath('failed1')), 'nothing was queued for a failed item');
 });
 
-test('track, all three forms: a native flac is the original; an ogg is 409 not playable; a library audio item is the parent file with its chapters; a chapter row resolves to the SAME parent', async () => {
+test('track, all three forms: a native flac and an ogg are the original; a wma is 409 not playable; a library audio item is the parent file with its chapters; a chapter row resolves to the SAME parent', async () => {
   const t = (await manifest('track', tracks.a1.id)).body.items[0];
   assert.strictEqual(t.kind, 'track'); assert.strictEqual(t.title, 'Mother'); assert.strictEqual(t.subtitle, 'Pink Floyd'); assert.strictEqual(t.album, 'The Wall'); assert.strictEqual(t.trackNumber, 1);
   assert.deepStrictEqual(t.file, { url: `/api/offline/file/track/${tracks.a1.id}`, bytes: 36, mime: 'audio/flac', fingerprint: fp(tracks.a1.filePath), ready: true, playable: true });
@@ -314,8 +319,11 @@ test('track, all three forms: a native flac is the original; an ogg is 409 not p
   userStore.setMusicProgress(auth.user.id, tracks.a1.id, { position: 12, duration: 200, updatedAt: '2026-10-02T00:00:00.000Z' });
   assert.deepStrictEqual((await manifest('track', tracks.a1.id)).body.items[0].progress, { positionSec: 12, durationSec: 200, updatedAt: '2026-10-02T00:00:00.000Z' });
   const ogg = (await manifest('track', tracks.ogg.id)).body.items[0].file;
-  assert.strictEqual(ogg.playable, false); assert.strictEqual(ogg.reason, 'container');
-  assert.strictEqual((await fileOf('track', tracks.ogg.id)).status, 409);
+  assert.strictEqual(ogg.playable, true, 'ogg vorbis serves as the original (both device runs)');
+  assert.strictEqual((await fileOf('track', tracks.ogg.id)).status, 200);
+  const wma = (await manifest('track', tracks.wma.id)).body.items[0].file;
+  assert.strictEqual(wma.playable, false); assert.strictEqual(wma.reason, 'container');
+  assert.strictEqual((await fileOf('track', tracks.wma.id)).status, 409);
   // Library audio (correction 5): bytes are the media file, chapters are the file's, progress is the MEDIA store.
   userStore.setProgress(auth.user.id, 'aud', { timestamp: 35, duration: 90, updatedAt: '2026-10-03T00:00:00.000Z' });
   const aud = (await manifest('track', 'aud')).body.items[0];
@@ -362,6 +370,8 @@ test('visibility with DIVERGING restriction kinds (LESSONS 10): the kid is 404 o
     assert.strictEqual((await manifest('video', 'hid', who)).status, 404);
     assert.strictEqual((await fileOf('video', 'hid', {}, who)).status, 404);
     assert.strictEqual((await manifest('track', 'audHidden', who)).status, 404, 'a {kind:folder} restriction binds a LIBRARY-audio track through the MEDIA gate');
+    assert.strictEqual((await manifest('track', tracks.a3.id, who)).status, 404, 'a NATIVE track under a blocked path, asked for directly (the album test alone masks this guard)');
+    assert.strictEqual((await fileOf('track', tracks.a3.id, {}, who)).status, 404);
     assert.strictEqual((await fileOf('track', 'audHidden', {}, who)).status, 404);
     assert.strictEqual((await manifest('podcastEpisode', epHidden, who)).status, 404);
     assert.strictEqual((await fileOf('podcastEpisode', epHidden, {}, who)).status, 404);
@@ -401,6 +411,14 @@ test('podcastEpisode: a downloaded episode is the original with the show as subt
   assert.deepStrictEqual(pending.body, { error: 'not on server yet' });
   assert.strictEqual((await fileOf('podcastEpisode', epPending)).status, 409);
   assert.strictEqual((await manifest('podcastEpisode', 'f'.repeat(32))).status, 404);
+  // A record with a path but a status other than 'downloaded' is "not on server yet", never served.
+  assert.strictEqual((await manifest('podcastEpisode', epStale)).status, 409, 'status decides, not the path');
+  assert.strictEqual((await fileOf('podcastEpisode', epStale)).status, 409);
+  // The /episode route's confinement applies: a downloaded record whose path escapes the podcasts root is a neutral 404.
+  assert.strictEqual((await manifest('podcastEpisode', epEscape)).status, 404, 'an escaping path is not found');
+  const esc = await fileOf('podcastEpisode', epEscape);
+  assert.strictEqual(esc.status, 404);
+  assert.ok(fs.existsSync(path.join(DATA_DIR, 'session-secret')), 'sanity: the escape target exists on disk');
 });
 
 test('tvEpisode and tvSeason: season and episode numbers, the tv thumb, tv progress and the played latch; an mkv episode takes the TV-owned rendition (tv-<id>.mp4); the season id <showId>:<key> lists visible episodes in order, Extras under :x', async () => {

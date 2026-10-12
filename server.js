@@ -4698,6 +4698,13 @@ offlineRoutes.registerRoutes(app, {
   podcastContentTypes: podcasts.CONTENT_TYPES,
   musicContentTypes: musicRoutes.MUSIC_CONTENT_TYPES,
   tvContentTypes: tvRouteHandles.TV_CONTENT_TYPES,
+  // W3 (plan D4): the sync runs as ONE mutator on the write chain and reads the LIVE buffers inside it.
+  updateDatabase,
+  pendingProgress,
+  pendingMusicProgress,
+  pendingProgressKey,
+  watchedPct: videoQuery.WATCHED_PCT,
+  podcastPlayedRatio: 0.95, // lib/podcasts/index.js applyPodcastProgress's latch
 });
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
