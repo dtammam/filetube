@@ -91,7 +91,7 @@ nothing: the server was unreachable, the album or season is gone, the manifest c
 Native sends it ONCE per failed add, with the `kind` and `id` exactly as the web sent them; a retry is a new add and may fail
 again with a new event. It is add-only: older pages ignore the unknown type, an unknown `error` reads as `other`, an unknown
 `kind` drops the event. It is not part of `downloadsSnapshot` (a failed add holds nothing on the phone), and native keeps owning
-the state. The web shows the reason on that item's menu until the next add of it, any `download` event for it (or for a member of
+the state. The web shows the reason (a toast once, and on the item's menu or pill) until the next add of it, any `download` event for it (or for a member of
 it), a snapshot, or pagehide. A container whose members exist keeps rolling up from them; the failure never hides real progress.
 
 ## 4. Server side: `/api/host-info`

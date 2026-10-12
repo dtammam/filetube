@@ -78,3 +78,7 @@ and "FileTube Root" the result; then claude-close.sh.
 
 ## 8. Out of scope
 A pending / spinner state for container adds; anything native; retry policy (the app's).
+
+Gate: CHANGES r1 @4166023b - qa
+Gate: CHANGES r1 @4166023b - adversary
+Round 1 fix (builder): the album drill pill and the TV pills repaint in place on an offline change and carry the reason as a title; one toast with the reason per failed add (touch has no title); the event key uses the normalized id; tests on the REAL music.js / tv.js mounts (test/unit/offline-pill-repaint.test.js). Scope note: the pill repaint also makes v1.387.0's saving / done states live on those pills.

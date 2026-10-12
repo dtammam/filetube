@@ -278,6 +278,20 @@ if (typeof document !== 'undefined') {
       if (!off || !off.enabled) return null;
       return { offline: function (kind, id) { return off.menuEntry(kind, id); } };
     }
+    // v1.387.1: the pills are built once with the show page, so a state change repaints them in place (init binds, destroy releases).
+    var stopTvSync = null;
+    function syncTvPills() {
+      var off = window.FileTube && window.FileTube.offline;
+      var tvContent = el('tv-content');
+      if (!off || !off.enabled || !tvContent) return;
+      var pills = tvContent.querySelectorAll('.tv-offline');
+      for (var pi = 0; pi < pills.length; pi++) {
+        var pEl = pills[pi];
+        var kind = pEl.getAttribute('data-offline-kind'), pid = pEl.getAttribute('data-offline-id');
+        var html = tvOfflinePillHtml(off.menuEntry(kind, pid), kind, pid);
+        if (pEl.outerHTML !== html) pEl.outerHTML = html;
+      }
+    }
     function onClick(e) {
       var pill = e.target.closest && e.target.closest('.tv-offline'); // v1.387.0: a pill inside a row link never navigates
       if (pill) {
@@ -331,6 +345,8 @@ if (typeof document !== 'undefined') {
       if (root) root.addEventListener('click', onClick);
       var scan = el('tv-scan-btn');
       if (scan) scan.addEventListener('click', onScanClick);
+      var offTv = window.FileTube && window.FileTube.offline;
+      if (offTv && offTv.enabled && typeof offTv.onChange === 'function') stopTvSync = offTv.onChange(syncTvPills);
       // v1.196: /tv?show=<showId> deep-opens a show - the destination the watch
       // page's "← show" back link returns to, so Back from an episode lands on
       // the show detail, not the grid.
@@ -341,6 +357,7 @@ if (typeof document !== 'undefined') {
     }
 
     function destroy() {
+      if (stopTvSync) { stopTvSync(); stopTvSync = null; }
       if (controller) { controller.abort(); controller = null; }
       var root = el('view-root');
       if (root) root.removeEventListener('click', onClick);

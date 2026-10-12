@@ -158,8 +158,11 @@
         if (d.parentKind && d.parentId) notify(d.parentKind, d.parentId);
       });
       offAddFailed = host.on('downloadsAddFailed', function (d) {
-        failedAdds[d.kind + ':' + d.id] = { state: 'failed', error: d.error };
+        failedAdds[keyOf(d.kind, d.id)] = { state: 'failed', error: d.error };
         notify(d.kind, d.id);
+        // The reason must be SEEN on touch, where an album / season pill has no room for it (a title= is invisible there):
+        // one toast with the error copy, once per failed add.
+        try { if (win.ui && typeof win.ui.toast === 'function') win.ui.toast(ERROR_COPY[d.error] || ERROR_COPY.other, { kind: 'error' }); } catch (_) { /* a toast bug never breaks the page */ }
       });
       offSnapshot = host.on('downloadsSnapshot', function (d) { replace(d.items || []); });
       host.post('downloads.subscribe');
