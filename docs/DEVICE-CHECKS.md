@@ -7,6 +7,18 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Whole app, layout and dialogs
 
+## Sticker sheet (v1.388.0)
+
+On the phone (the home-screen app and the FileTube app), Pocket player, sticker at 1x and at 2x:
+
+- [ ] v1.388.0 - Tap the sticker on a chaptered track: the whole sheet shows with no scrolling (header, 8 tiles, Skin row), in light and in dark.
+- [ ] v1.388.0 - Tap Like once after opening: the playing chapter is liked (caption says chapter, then Liked); a plain song says track.
+- [ ] v1.388.0 - Speed: the tile shows the rate; tap it, pick 1.5x: the strip closes and the tile looks selected; Loop and Shuffle look selected when on.
+- [ ] v1.388.0 - Skin: search "nano" narrows the list; every row is one line; the groups (Classic, Mini, Nano...) are closed except yours and a tap opens one; Recent shows the active skin first; picking one closes the sheet and repaints.
+- [ ] v1.388.0 - More: Autoplay, Start radio, Watch, Lighting (Off / Subtle / Bold / Ambient) and the item actions all work; Delete only shows if you may delete.
+- [ ] v1.388.0 - App only: the Download tile saves for offline with a progress ring, reads Saved, and tapping it removes the copy. In Safari it is the plain browser download.
+- [ ] v1.388.0 - Desktop pop-out: the sheet opens inside the pop-out and works (the tiny Tray window scrolls inside it).
+
 ## Speed pass (v1.386.0)
 
 On the phone, home-screen app and FileTube app, at home and over the VPN:

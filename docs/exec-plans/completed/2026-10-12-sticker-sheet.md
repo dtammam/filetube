@@ -3,11 +3,11 @@ plan: sticker-sheet
 harness: v2 · full
 branch: feat/v1.388.0-sticker-sheet
 anchor: spec
-status: Planned
+status: Shipped v1.388.0
 next: builder - Step 0, then measure today's menu (M0) before any edit
 design: Dean's phone friction report + the Sonnet design review + two mockup rounds, 2026-10-12 (FileTube Root). Dean picked direction A, revised, and accepted all seven Root recommendations. Base = main 35bbccdf (v1.387.3).
 builder: standard (one builder file, skin-surface.js, plus its CSS and tests; no data, no server)
-gate: -
+gate: adversary + qa (UI, no data, no auth); APPROVED r2 @980c27a5
 ---
 
 # v1.388.0: the sticker menu becomes a FileTube sheet, daily controls first
@@ -198,5 +198,8 @@ LESSONS: add a line only if the build finds a new bug class.
 - Desktop /music menu identical: test/fixtures/desktop-actions-menu-v1.387.3.html was captured by running main 35bbccdf's skin-surface.js; the branch's output is byte-identical (cmp) and the test pins it.
 - Mutations (dispatch broken -> red): 28 mutants in a /tmp git-archive sandbox of 778311a3 (test/unit sticker-sheet + extras + menu + skin-surface + pocket-lighting): Loop, Shuffle, Speed, item actions (Like/Share/rows), More, Chapters dispatch dead; R1 Chapters/Like never dimmed; R2 caption; R3 speed/loop selection; Back focus return; activation guard; Delete without modify rights; Transcript without subtitles; offline tap and listener leak; web Download href; skin search; Recent; tint attribute; Home without hook; repaint close; view signal; load token; Bold relabel; a dimmed tile still dispatching: all KILLED. One survivor on the first pass (a dropped `has('watched')` gate) was killed by a new capabilities-subset test; M02's first pattern did not match and was re-run with a fixed one (killed).
 - Full suite runs (counts, verbatim): `npm test` on Node 22.23.1 after W5 (before the gate): `# tests 12452 / # pass 12439 / # fail 0 / # cancelled 0 / # skipped 13`, exit 0 (unit alone after W1-W4: 9722 tests, 9721 pass, 0 fail, 1 skipped). Each commit's hook also ran the unit suite green.
-- Gate verdicts: 
+- Gate verdicts: Adversary CHANGES r1 @d0446209 (W1 podcast Download tile misrouted in the app, W2 Chapters ruling unrecorded, W3 three guards survived mutation: Share/Like has() gates, pop-out sprite injection); QA APPROVED r1 @d0446209. Fixes in 980c27a5 (offline tile opt-in by `extras.offlineKind`, rulings recorded as rows 8-9, tests bound, dimmed Download has no href) plus Dean's D5 collapse amendment, re-checked by the SAME seats: QA APPROVED r2 @980c27a5; Adversary APPROVED r2 @980c27a5 (12 mutants on the new collapse code, 10 killed, 2 NOTE-level survivors: a cosmetic aria value while searching, and a `'track'` literal that only differs for a view that opts in with another kind).
+  Gate: APPROVED r2 @980c27a53f9ae0f675eaefa21f84d20a7e796407 - adversary
+  Gate: APPROVED r2 @980c27a53f9ae0f675eaefa21f84d20a7e796407 - qa
+- Bookkeeping close-out (no seat re-check, bound): see the release commit's `git diff --name-only 980c27a5..HEAD` (docs/**, ROADMAP.md, releases.json, the plan move, package.json / package-lock.json version lines only).
 - Device checks Dean owes: 

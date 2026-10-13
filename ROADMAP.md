@@ -829,6 +829,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.388.0 - The sticker menu becomes a FileTube sheet, daily controls first (2026-10-13)
+
+- **What**: the pocket sticker opens a `ui.sheet` bottom sheet (grab bar, header with the playing item and Home / Go to channel icons, Close). Page 1 is a fixed 4 x 2 tile grid (Like, Chapters, Loop, Shuffle / Speed, Share, Download, More) where a tile that does not apply dims in place; Speed opens a strip of 8 pills; the Skin row carries the active skin's swatch. More is the old Extras regrouped (Autoplay, Start radio, Watch, Lighting as one segmented control, the item actions); the Skin page is searchable with Recent and the registry's lines as collapsible groups (the active skin's open), every row one line. Pronounced now shows as Bold (stored value unchanged). Download is the offline save in the iOS app and the browser download on the web. Selected states take the skin's accent (`--sticker-accent`).
+- **Measured** (390x844, insets 47/34, probe `scripts/skin-chips-probe.js`): page 1 sheet 317 px, body 216 px with no scroll in all four cases (plain song, chaptered listen video, sticker 1x and 2x); before: 701 px of content in a 685 / 633 px cap, scrolling. Skin page: 131 rows, all 44 px (one line); line groups collapsed to one header row each except the active skin's, scroll height 964 px (6740 with all open; 6595 of wrapped chips before); tiles 83.5 x 60 at 390 and 66 x 60 at 320. Path measured: the web (browser download); the app's Download path is covered by tests with a stubbed offline API.
+- **Guards**: test/unit/sticker-sheet.test.js plus the ported sticker suites; 28 mutants (a dead dispatch per tile, R1/R2/R3, render gates, the activation guard, the load token, offline, Bold) all red; the desktop /music actions menu is byte-identical to main 35bbccdf (fixture). lint:ui paid 30 items of debt; overlay census zero.
+- Disclosed: the Chapters tile opens today's chapter editor (Dean's ruling), so it is live only for a viewer who may edit the library; the tiny Tray window scrolls inside the sheet; the sticker sheet closes on any repaint (as the popover did). Plan: `docs/exec-plans/completed/2026-10-12-sticker-sheet.md`.
+
 ### v1.386.0 - Speed pass: skins that appear whole, a music library that answers in milliseconds, files cached until a release (2026-10-11)
 
 - Measured first (tools/speed-proof/: a 23,000-track library, Chromium + WebKit, a home and a VPN-model link); causes and before /
