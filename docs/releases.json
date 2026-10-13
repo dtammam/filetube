@@ -3706,5 +3706,11 @@
     "date": "2026-10-13",
     "title": "A phone held sideways keeps its phone layout, and videos open fullscreen",
     "intent": "On a phone held sideways, the side menu now stays out of the way and opens from the menu button like it does upright, and a video you open sideways starts fullscreen. Closing the menu and turning the phone no longer leaves it stuck open. Computers and tablets look and work the same as before."
+  },
+  {
+    "version": "1.390.0",
+    "date": "2026-10-13",
+    "title": "Scroll the page on a sideways phone, even by dragging on the video",
+    "intent": "On a phone held sideways, the video on the watch page is now a little shorter so the title shows right below it, and you can scroll the page by dragging on the video itself. A quick flick keeps gliding for a moment, and pulling down at the top still shrinks it to the mini player. Upright phones, tablets and computers work as before."
   }
 ]
