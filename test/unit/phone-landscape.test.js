@@ -140,11 +140,15 @@ test('D2 the drawer closes on a link tap, an outside press and Escape - and an i
     open(); s.press(s.note); assert.deepStrictEqual(s.st(), DRAWER, 'a press on the drawer\'s own non-link text keeps it open');
     s.d.dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'a', bubbles: true })); assert.deepStrictEqual(s.st(), DRAWER, 'another key keeps it open');
     s.d.dispatchEvent(new s.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); assert.deepStrictEqual(s.st(), CLOSED, 'Escape closes it');
+    open(); s.w.dispatchEvent(new s.w.Event('popstate')); assert.deepStrictEqual(s.st(), CLOSED, 'back / forward closes it');
+    // the press handler is CAPTURE: a page handler that stops propagation cannot keep the drawer open
+    open(); s.outside.addEventListener('pointerdown', (e) => e.stopPropagation()); s.press(s.outside); assert.deepStrictEqual(s.st(), CLOSED, 'an outside press closes it even when the page stops the event');
     const glyph = s.toggle.querySelector('svg') || s.toggle.firstElementChild;
     assert.ok(glyph && glyph !== s.toggle, 'precondition: the button has a child glyph (a real tap lands on it)');
     open(); s.press(glyph); assert.deepStrictEqual(s.st(), DRAWER, 'a press on the button\'s glyph does not close it (its click would reopen it)');
     s.press(s.toggle); assert.deepStrictEqual(s.st(), DRAWER, 'nor a press on the button itself');
     s.toggle.click(); assert.deepStrictEqual(s.st(), CLOSED, 'the button closes it');
+    await tick(150); // the router's own popstate handler settles before the window closes
   } finally { s.close(); }
 });
 

@@ -17733,6 +17733,8 @@ function wireSidebarDrawerCloses(doc, win, sidebar, menuToggle) {
   doc.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeSidebarDrawer(sidebar);
   });
+  // back / forward changes the page under an open drawer
+  win.addEventListener('popstate', () => closeSidebarDrawer(sidebar));
   for (const q of ['(orientation: landscape)', '(max-width: 768px)']) {
     let mq = null;
     try { mq = typeof win.matchMedia === 'function' ? win.matchMedia(q) : null; } catch (_) { mq = null; }

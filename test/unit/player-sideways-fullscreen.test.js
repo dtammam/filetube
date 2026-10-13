@@ -18,7 +18,7 @@ const REPO = path.join(__dirname, '..', '..');
 const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 const player = require('../../public/js/player.js');
 
-function realm({ landscape = true, custom = true, play = 'ok', hold = false, feed = false } = {}) {
+function realm({ landscape = true, custom = true, play = 'ok', hold = false, feed = false, desktop = false } = {}) {
   const vc = new VirtualConsole();
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'watch.html'), 'utf8'), { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
@@ -28,6 +28,7 @@ function realm({ landscape = true, custom = true, play = 'ok', hold = false, fee
     get matches() {
       if (/orientation:\s*landscape/.test(q)) return ctl.landscape;
       if (/orientation:\s*portrait/.test(q)) return !ctl.landscape;
+      if (desktop) return /any-pointer:\s*fine|pointer:\s*fine|hover:\s*hover/.test(q); // a desktop: mouse, always landscape
       return /pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q); // a phone: touch, no hover, not narrow (844 wide)
     },
     media: q,
@@ -35,7 +36,7 @@ function realm({ landscape = true, custom = true, play = 'ok', hold = false, fee
     removeEventListener() {}, addListener() {}, removeListener() {},
   });
   ctl.rotate = (toLandscape) => { ctl.landscape = toLandscape; listeners.slice().forEach((fn) => fn({ matches: toLandscape })); };
-  Object.defineProperty(w.navigator, 'platform', { value: 'iPhone', configurable: true });
+  Object.defineProperty(w.navigator, 'platform', { value: desktop ? 'Linux x86_64' : 'iPhone', configurable: true });
   w.scrollTo = () => {};
   w.HTMLMediaElement.prototype.load = function () {};
   w.HTMLMediaElement.prototype.pause = function () { Object.defineProperty(this, 'paused', { value: true, configurable: true }); this.dispatchEvent(new w.Event('pause')); };
@@ -187,6 +188,16 @@ test('D3 a TV-style source (statusUrl, no prepareAudioUrl) resolves the verdict 
     r.ctl.release();
     await settle(60);
     assert.strictEqual(r.fauxOn(), true, 'entered when that read landed');
+  } finally { r.close(); }
+});
+
+test('D3 a DESKTOP window (fine pointer, landscape, custom setting on) never auto-enters fullscreen on load', async () => {
+  const r = realm({ desktop: true });
+  try {
+    r.pl.load('v1', r.VIDEO('v1'), { slot: r.slot });
+    await settle(60);
+    assert.strictEqual(r.pl.getState(), 'full', 'precondition: mounted FULL');
+    assert.strictEqual(r.fauxOn(), false, 'the mobile guard keeps a desktop window out');
   } finally { r.close(); }
 });
 
