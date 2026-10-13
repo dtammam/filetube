@@ -623,7 +623,8 @@
   --size-control-sm: 32px;
 
   /* v1.390.0 sideways phone: the inline watch player's share of the screen height, and the strip under its
-     picture (padding-bottom + the wrapper's 2px border) for the one-row bar, the two-row bar and no bar. */
+     picture (padding-bottom + the wrapper's 2px border) for the one-row bar, the two-row bar and no bar. At <=768px
+     the phone frame has no border (style.css), so those two sit 2px under the share: measured 0.695, not 0.700. */
   --ls-player-frac: 0.7;
   --ls-bar-one: 42px;
   --ls-bar-two: 82px;

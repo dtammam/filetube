@@ -95,14 +95,15 @@ async function boot(item, o) {
   dom = new JSDOM(WATCH, { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'platform', { value: opt.desktop ? 'Win32' : 'iPhone' });
+  if (!opt.desktop && !opt.tablet) w.document.documentElement.classList.add('is-phone'); // music-skins.js sets it once at load on a phone
   w.matchMedia = (q) => {
     let matches = false;
     if (!opt.desktop) {
       if (/coarse|hover: none/.test(q)) matches = true;
       else if (/max-width/.test(q)) matches = opt.narrow;
-      else if (/orientation: landscape/.test(q)) matches = opt.landscape;
       else if (/prefers-reduced-motion/.test(q)) matches = !!opt.reduced;
     }
+    if (/orientation: landscape/.test(q)) matches = opt.landscape; // a touch-screen laptop is landscape too
     return { media: q, matches, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} };
   };
   Object.defineProperty(w, 'innerHeight', { value: 390, configurable: true });
@@ -144,7 +145,8 @@ async function boot(item, o) {
   let clock = 5000;
   const frame = (ms) => { clock += ms; const fns = queue.splice(0); fns.forEach((fn) => { if (fn) fn(clock); }); return fns.filter(Boolean).length; };
   const frames = (n, ms) => { let ran = 0; for (let i = 0; i < n; i++) { const r = frame(ms || 16); ran += r; if (!r) break; } return ran; };
-  return { w, doc: w.document, p, v, host, slot, dockEl, leaves, page, pauses: () => pauses, frame, frames, pending: () => queue.filter(Boolean).length, setY };
+  const rotate = (landscape) => { opt.landscape = landscape; w.dispatchEvent(new w.Event('orientationchange')); };
+  return { rotate, w, doc: w.document, p, v, host, slot, dockEl, leaves, page, pauses: () => pauses, frame, frames, pending: () => queue.filter(Boolean).length, setY };
 }
 const VIDEO = { id: 'v1', title: 'T', type: 'video', ext: '.mp4' };
 
@@ -306,7 +308,8 @@ test('D2 portrait, faux full screen, the audio expanded view, native controls, a
     ['css-fullscreen', async () => { const h = await boot(VIDEO); h.host.classList.add('css-fullscreen'); return h; }],
     ['audio-expanded', async () => { const h = await boot(VIDEO); h.host.classList.add('audio-expanded'); return h; }],
     ['native-controls', () => boot(VIDEO, { native: true })],
-    ['desktop', () => boot(VIDEO, { desktop: true })],
+    ['desktop (a touch-screen laptop is landscape too)', () => boot(VIDEO, { desktop: true })],
+    ['landscape tablet (coarse pointer, not is-phone)', () => boot(VIDEO, { tablet: true })],
     ['music view', () => boot(VIDEO, { view: 'music' })],
     ['scroll lock held', async () => { const h = await boot(VIDEO); h.w.FileTubeBodyLock.lock(h.doc, h.w, 'test'); return h; }],
   ];
@@ -506,4 +509,94 @@ test('D3 the loupe guard\'s decision table and its one non-passive touchstart ar
   assert.ok(/opts\.touches === 1 && !opts\.nativeFs && !opts\.nativeControls && opts\.state === 'full'/.test(body), 'the decision body has no orientation, scroll or view term');
   assert.strictEqual((src.match(/el\.addEventListener\('touchstart'/g) || []).length, 2, 'the passive tracker and the one loupe cancel, no third touchstart on the surface');
   assert.strictEqual((src.match(/el\.addEventListener\('touchstart', function \(e\) \{\s*if \(!pictureTouchCancelDecision/g) || []).length, 1);
+});
+
+// ---- gate r1 (adversary) ---------------------------------------------------------------
+
+test('r1 W1: the touch that stops a glide is not a tap: its lift never pauses, and a tap after it is a normal tap', async () => {
+  const h = await boot(VIDEO);
+  const g = drag(h, -200, { stepMs: 10 });
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 5);
+  h.frame(16);
+  assert.strictEqual(h.pending(), 1, 'precondition: gliding');
+  fire(h.w, h.v, 'touchstart', 300, 200, g.t + 100); // lands on the picture and catches the glide
+  fire(h.w, h.v, 'touchend', 300, 200, g.t + 140);
+  await wait(450);
+  assert.strictEqual(h.pending(), 0);
+  assert.strictEqual(h.pauses(), 0, 'catching a glide did not pause the video');
+  fire(h.w, h.v, 'touchstart', 300, 200, g.t + 1000); // a later plain tap still works
+  fire(h.w, h.v, 'touchend', 300, 200, g.t + 1040);
+  await wait(450);
+  assert.strictEqual(h.pauses(), 1, 'the next tap is an ordinary tap');
+});
+
+test('r1 W1: a touch ELSEWHERE that stops a glide never eats the next tap on the picture', async () => {
+  const h = await boot(VIDEO);
+  const g = drag(h, -200, { stepMs: 10 });
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 5);
+  h.frame(16);
+  const other = h.doc.createElement('div'); h.doc.body.appendChild(other);
+  fire(h.w, other, 'touchstart', 50, 50, g.t + 100);
+  fire(h.w, other, 'touchend', 50, 50, g.t + 120);
+  await wait(150);
+  fire(h.w, h.v, 'touchstart', 300, 200, g.t + 1000);
+  fire(h.w, h.v, 'touchend', 300, 200, g.t + 1040);
+  await wait(450);
+  assert.strictEqual(h.pauses(), 1, 'a tap on the picture after a touch elsewhere still pauses');
+});
+
+test('r1 W3: a drag that went sideways first never scrolls, even when it later turns vertical-dominant (the drop sticks)', async () => {
+  const h = await boot(VIDEO);
+  fire(h.w, h.v, 'touchstart', 100, 200, 1000);
+  fire(h.w, h.v, 'touchmove', 160, 200, 1040); // sideways past the tolerance: dropped
+  const late = fire(h.w, h.v, 'touchmove', 160, 400, 1080); // dy 200 > 1.5 x dx 60
+  fire(h.w, h.v, 'touchend', 160, 400, 1120);
+  assert.strictEqual(h.page.calls.length, 0, 'the page never moved');
+  assert.ok(!late.defaultPrevented);
+});
+
+test('r1 W3: the lift of a scroll is not a tap and starts no double-tap pairing: the next tap is a single', async () => {
+  const h = await boot(VIDEO);
+  Object.defineProperty(h.v, 'duration', { value: 600, configurable: true });
+  h.v.currentTime = 100;
+  const g = drag(h, -100, { stepMs: 40 });
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 300);
+  await wait(40);
+  fire(h.w, h.v, 'touchstart', 300, 200, 5000);
+  fire(h.w, h.v, 'touchend', 300, 200, 5040);
+  assert.strictEqual(h.v.currentTime, 100, 'no skip: the scroll lift did not pair with this tap');
+});
+
+test('r1 W3: after a tap, a drag that starts on the control bar (no picture touchstart) never scrolls the page', async () => {
+  const h = await boot(VIDEO);
+  fire(h.w, h.v, 'touchstart', 300, 200, 1000);
+  fire(h.w, h.v, 'touchend', 300, 200, 1040);
+  const bar = h.host.querySelector('.player-controls');
+  assert.ok(bar, 'precondition: the control bar exists');
+  const a = fire(h.w, bar, 'touchmove', 300, 300, 2000);
+  const b = fire(h.w, bar, 'touchmove', 300, 400, 2040);
+  assert.strictEqual(h.page.calls.length, 0, 'the stale start of the tap is not a scroll');
+  assert.ok(!a.defaultPrevented && !b.defaultPrevented);
+});
+
+test('r1 W3: a second finger landing (touchstart) mid-drag ends it; the first finger lifting then starts no glide', async () => {
+  const h = await boot(VIDEO);
+  const g = drag(h, -200, { stepMs: 10 });
+  const two = new h.w.Event('touchstart', { bubbles: true, cancelable: true });
+  Object.defineProperty(two, 'touches', { value: [{ clientX: 300, clientY: 0 }, { clientX: 200, clientY: 0 }] });
+  Object.defineProperty(two, 'changedTouches', { value: [{ clientX: 200, clientY: 0 }] });
+  h.v.dispatchEvent(two);
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 5);
+  assert.strictEqual(h.pending(), 0, 'no glide');
+});
+
+test('r1 S3: a rotate mid-drag ends the drag: the next move does not scroll', async () => {
+  const h = await boot(VIDEO);
+  const g = drag(h, -100, { stepMs: 10 });
+  const at = h.page.y;
+  assert.ok(at > 0, 'precondition: scrolling');
+  h.rotate(false);
+  const m = fire(h.w, h.v, 'touchmove', 300, 40, g.t + 20);
+  assert.strictEqual(h.page.y, at);
+  assert.ok(!m.defaultPrevented);
 });

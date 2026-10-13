@@ -105,3 +105,6 @@ Removing or retesting the loupe guard; portrait player height; the fullscreen la
 - Full suite runs (counts, verbatim): 
 - Gate verdicts: 
 - Device checks Dean owes: 
+
+Gate: APPROVED r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — qa
+Gate: CHANGES r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — adversary (W1 tap that stops a glide pauses; W2 iPad landscape gets the drag; W3 four unbound guards; see report)

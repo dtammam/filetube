@@ -5709,6 +5709,8 @@ if (typeof module !== 'undefined' && module.exports) {
   var scrollSamples = [];
   var scrollGlideRaf = 0;
   var scrollGlideStop = null;
+  var glideCaughtAt = 0;        // when a touch ended a running glide (the document-level touchstart)
+  var scrollTouchCaught = false; // this gesture's touch is the one that caught a glide: its lift is never a tap
 
   function pictureScrollAllowed() {
     var parent = host && host.parentNode;
@@ -5721,7 +5723,8 @@ if (typeof module !== 'undefined' && module.exports) {
       audioExpanded: !!(host && host.classList.contains('audio-expanded')),
       nativeFullscreen: inNativeFullscreen(),
       nativeControls: inNativeControlsMode(),
-      mobile: isMobileFormFactor(),
+      // the device class the CSS keys on (music-skins.js: coarse pointer, screen short side <= 500): a landscape iPad is not a phone
+      mobile: isMobileFormFactor() && document.documentElement.classList.contains('is-phone'),
       landscape: matchMediaBool('(orientation: landscape)') === true,
       bodyLocked: !!(BL && typeof BL.isLocked === 'function' && BL.isLocked(document)),
     });
@@ -5743,7 +5746,10 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function beginScrollDrag() {
-    // (a running glide is already ended: its document-level touchstart runs first, in the capture phase)
+    // (a running glide is already ended: its document-level touchstart runs first, in the capture phase, and stamps
+    // glideCaughtAt; the touch that caught a glide is not a tap, as with the browser's own momentum scroll)
+    scrollTouchCaught = glideCaughtAt > 0 && Date.now() - glideCaughtAt < 100;
+    glideCaughtAt = 0;
     scrollDragClaimed = false;
     scrollSamples = [];
     scrollDragLive = pictureScrollAllowed();
@@ -5816,7 +5822,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var slot = host && host.parentNode; // the page's own player slot: a view swap or a new load leaves a different one
     var v = v0;
     var last = null;
-    scrollGlideStop = function () { stopScrollGlide(); }; // any new touch ends it, like the browser's own scroll
+    scrollGlideStop = function () { glideCaughtAt = Date.now(); stopScrollGlide(); }; // any new touch ends it, like the browser's own scroll
     document.addEventListener('touchstart', scrollGlideStop, { capture: true, passive: true });
     function step(now) {
       scrollGlideRaf = 0;
@@ -6115,6 +6121,13 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       scrollDragLive = false;
+      if (scrollTouchCaught) { // the lift of the touch that stopped a glide: no tap, no pause
+        scrollTouchCaught = false;
+        if (e.cancelable) e.preventDefault();
+        lastTapTime = 0;
+        minimizeGestureLive = false;
+        return;
+      }
       minimizeGestureLive = false;
       if (holdActive && holdGestureLive) {
         e.preventDefault();
