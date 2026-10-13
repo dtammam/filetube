@@ -156,7 +156,11 @@ test('isFullWatchSeedItem: only a full list record (type + size + filePath) may 
 
 test('LOCK: #player-slot reserves a 16/9 frame while empty (the zero-height jump killer)', () => {
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  const idx = css.indexOf('#player-slot:empty');
+  // v1.390.0: anchored on the BASE rule's own selector (a phone-landscape twin of the reserved frame now sits
+  // earlier in the sheet, and a bare first-match read it); exactly one base rule, as the lock always assumed
+  const base = '\n.watch-container #player-slot:empty {';
+  assert.strictEqual(css.split(base).length - 1, 1, 'exactly one base empty-slot rule');
+  const idx = css.indexOf(base);
   assert.ok(idx !== -1, 'the empty-slot reservation rule exists');
   const rule = css.slice(idx, css.indexOf('}', idx));
   assert.match(rule, /aspect-ratio: 16 \/ 9/, 'reserved at the default aspect');
