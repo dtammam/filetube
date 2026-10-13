@@ -11,6 +11,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM, VirtualConsole } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>, not a menu in the panel
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
@@ -78,6 +79,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
+  SS.installUi(dom); // the sheet is built with the real ui.js + icon registry
   const baseFetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
   global.fetch = remote ? ((u, o) => (/\/api\/remote\/targets/.test(String(u)) ? Promise.resolve({ ok: true, status: 200, json: async () => remote.targets }) : baseFetch(u, o))) : baseFetch;
   const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0, rc: null, es: null, played: [] };
@@ -924,6 +926,9 @@ function makePipWindow() {
   return w;
 }
 const pipPanelOf = (w) => w.document.getElementById('music-nowplaying-panel');
+// v1.388.0: the sticker sheet opens IN the pop-out's own document (ui.sheet with {doc, win}); More holds Tray, Autoplay, Lighting
+const pipSheet = (w) => w.document.querySelector('.mms-ss-root:not(.is-closing)');
+const pipMore = (w) => { const sh = pipSheet(w); sh.querySelector('[data-skin-more]').dispatchEvent(new w.MouseEvent('click', { bubbles: true })); return sh; };
 const clickPopout = (dom) => dom.window.document.getElementById('music-popout-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
 
 test('v1.234 desktop: Document PiP renders the PICKED skin into the pop-out window', async () => {
@@ -1419,7 +1424,7 @@ test('v1.252 listen miss: an unresolvable id returns to the watch surface (never
   });
 });
 
-test('v1.252 Extras interop: the listen track (library-backed by construction) gets the sticker Extras entry', async () => {
+test('v1.252 Extras interop: the listen track (library-backed by construction) gets the sticker\'s live Like / Share / Download tiles', async () => {
   const calls = { loads: [], navs: [] };
   const log = [];
   await boot({
@@ -1429,13 +1434,18 @@ test('v1.252 Extras interop: the listen track (library-backed by construction) g
       const st = panel(dom).querySelector('[data-skin-sticker]');
       assert.ok(st, 'the sticker painted');
       st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
-      assert.ok(menu.querySelector('[data-skin-extras]'), 'the v1.249 Extras entry shows for the listen track');
+      for (let i = 0; i < 8; i++) await settle(); // the sheet loads the item once, at open
+      const menu = SS.sheetOf(dom);
+      for (const f of ['like', 'share', 'download']) {
+        const t = menu.querySelector('[data-skin-' + f + ']');
+        assert.ok(t, 'the ' + f + ' tile renders');
+        assert.notStrictEqual(t.getAttribute('aria-disabled'), 'true', 'and is live for the listen track (library-backed by construction)');
+      }
     },
   });
 });
 
-test('v1.252 the Watch way back: page 1 offers "Watch" for a LISTEN track, taps navigate to the watch page; a NORMAL track never shows it', async () => {
+test('v1.252 the Watch way back: the More page offers "Watch" for a LISTEN track, taps navigate to the watch page; a NORMAL track never shows it', async () => {
   const calls = { loads: [], navs: [] };
   const log = [];
   await boot({
@@ -1446,18 +1456,18 @@ test('v1.252 the Watch way back: page 1 offers "Watch" for a LISTEN track, taps 
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const st = panel(dom).querySelector('[data-skin-sticker]');
       st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+      const menu = moreOf(dom); // Watch moved to the More page (Dean, 2026-10-12)
       const wb = menu.querySelector('[data-skin-watchback]');
-      assert.ok(wb, 'the "Watch" row renders on page 1 for a listen track');
+      assert.ok(wb, 'the "Watch" row renders on More for a listen track');
       assert.match(wb.textContent, /Watch/, 'labeled Watch');
       wb.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
       assert.deepStrictEqual(navs, ['/watch.html?v=vid1'], 'the tap navigates back to THIS video\'s watch page');
-      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+      assert.ok(!SS.isOpen(dom), 'the sheet closed on the way out');
     },
   });
 });
 
-test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s page 1 has no Watch row', async () => {
+test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s More page has no Watch row', async () => {
   const calls = { loads: [], navs: [] };
   const track = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100, source: 'library', streamSrc: '/video/t9' };
   const fetchImpl = (u, init) => {
@@ -1472,8 +1482,10 @@ test('v1.252 the Watch way back (negative axis): a NORMAL music track\'s page 1 
     fetchImpl, playerOverride: listenPlayer(calls),
     run: async (dom) => {
       panel(dom).querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      const menu = SS.sheetOf(dom);
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
+      moreOf(dom);
+      assert.ok(menu.querySelector('[data-skin-extras-back]'), 'on the More page (non-vacuous)');
       assert.strictEqual(menu.querySelector('[data-skin-watchback]'), null, 'no Watch row for a normal track');
     },
   });
@@ -1501,8 +1513,9 @@ test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init
       const st = panel(dom).querySelector('[data-skin-sticker]');
       assert.ok(st, 'the skin re-painted on the dock-return');
       st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      const menu = SS.sheetOf(dom);
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
+      moreOf(dom);
       assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch row SURVIVES the re-init (the queue lookup misses; the marker carries)');
       // adversarial W2 - the END-OF-SESSION axis: a NORMAL play on the SAME module instance
       // (a third re-init through the continue arm) must CLEAR the marker; the Watch row is
@@ -1523,8 +1536,10 @@ test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init
       const st2 = panel(dom).querySelector('[data-skin-sticker]');
       assert.ok(st2, 'the skin painted for the normal track');
       st2.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu2 = panel(dom).querySelector('[data-skin-sticker-menu]');
-      assert.ok(menu2.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      const menu2 = SS.sheetOf(dom);
+      assert.ok(menu2.querySelector('[data-skin-speedtoggle]'), 'quick menu up (non-vacuous)');
+      moreOf(dom);
+      assert.ok(menu2.querySelector('[data-skin-extras-back]'), 'on the More page (non-vacuous)');
       assert.strictEqual(menu2.querySelector('[data-skin-watchback]'), null, 'the normal play ENDED the listen session - no stale Watch row');
       // ...and the DISTINCT stale-marker kill (adversarial W2's constructed harm): the OLD
       // listen id plays again through a NON-listen path while the queue cannot resolve it -
@@ -1541,8 +1556,10 @@ test('v1.252 (QA gate W1): the Watch way back SURVIVES a dock round-trip re-init
       const st3 = panel(dom).querySelector('[data-skin-sticker]');
       assert.ok(st3, 'the skin painted (populated first)');
       st3.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      const menu3 = panel(dom).querySelector('[data-skin-sticker-menu]');
-      assert.ok(menu3.querySelector('[data-skin-speed]'), 'quick menu up (non-vacuous)');
+      const menu3 = SS.sheetOf(dom);
+      assert.ok(menu3.querySelector('[data-skin-speedtoggle]'), 'quick menu up (non-vacuous)');
+      moreOf(dom);
+      assert.ok(menu3.querySelector('[data-skin-extras-back]'), 'on the More page (non-vacuous)');
       assert.strictEqual(menu3.querySelector('[data-skin-watchback]'), null, 'the CLEARED marker cannot resurrect a Watch row on a queue miss (the stale-marker axis)');
     },
   });
@@ -1729,10 +1746,12 @@ test('v1.368.0 Shuffle mode: the music view\'s sticker row writes ft-music-shuff
       for (let i = 0; i < 10; i++) await settle();
       const row = openSticker(dom).querySelector('[data-skin-shufflemode]');
       assert.ok(row, 'the music view supplies the Shuffle hook');
-      assert.strictEqual(row.getAttribute('aria-checked'), 'false', 'default OFF');
+      assert.strictEqual(row.getAttribute('aria-pressed'), 'false', 'default OFF');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-      assert.strictEqual(dom.window.localStorage.getItem('ft-music-shuffle'), '1', 'the row wrote the synced mode');
-      assert.strictEqual(openSticker(dom).querySelector('[data-skin-shufflemode]').getAttribute('aria-checked'), 'true', 'the row reads On');
+      assert.strictEqual(dom.window.localStorage.getItem('ft-music-shuffle'), '1', 'the tile wrote the synced mode');
+      const after = openSticker(dom).querySelector('[data-skin-shufflemode]');
+      assert.strictEqual(after.getAttribute('aria-pressed'), 'true', 'the tile reads On (R3: the selected state)');
+      assert.strictEqual(after.querySelector('.mms-ss__cap').textContent, 'On');
     },
   });
 });
@@ -1760,18 +1779,19 @@ test('item 0: the sticker Autoplay row switched OFF after the early append retra
       for (let i = 0; i < 10; i++) await settle();
       assert.strictEqual(typeof calls.navs[calls.navs.length - 1].onNext, 'function', 'precondition: the early append armed a Next');
       assert.deepStrictEqual(queueTitles(dom).filter((t) => /^Pick/.test(t)), ['Pick 1', 'Pick 2', 'Pick 3'], 'precondition: the picks are ON SCREEN');
-      const menu = openSticker(dom);
+      openSticker(dom);
+      const menu = moreOf(dom); // Autoplay moved to the More page (Dean, 2026-10-12)
       const row = menu.querySelector('[data-skin-autoplay]');
-      assert.ok(row, 'the sticker renders the Autoplay row');
-      assert.strictEqual(row.getAttribute('aria-checked'), 'true', 'precondition: on');
+      assert.ok(row, 'the sheet renders the Autoplay row on More');
+      assert.strictEqual(row.querySelector('.ui-switch').getAttribute('aria-checked'), 'true', 'precondition: on');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
       assert.strictEqual(dom.window.localStorage.getItem('ft-music-autoplay'), '0');
       assert.strictEqual(calls.navs[calls.navs.length - 1].onNext, undefined, 'the picks were retracted: the single song is the end of the queue again');
       // gate r1 (qa W3 = adversary W2): the rendered queue shows the truth; qa S6: the row reads Off
       assert.deepStrictEqual(queueTitles(dom).filter((t) => /^Pick/.test(t)), [], 'the skin\'s queue no longer lists the picks');
-      const row2 = openSticker(dom).querySelector('[data-skin-autoplay]');
-      assert.strictEqual(row2.getAttribute('aria-checked'), 'false', 'the sticker row reads Off');
-      assert.match(row2.textContent, /Off/);
+      openSticker(dom); // the repaint the retract caused closed the sheet (it described the old queue): reopen, and go to More
+      const row2 = moreOf(dom).querySelector('[data-skin-autoplay]');
+      assert.strictEqual(row2.querySelector('.ui-switch').getAttribute('aria-checked'), 'false', 'the switch reads Off');
       assert.strictEqual(calls.loads.length, 1, 'playback untouched');
     },
   });
@@ -2061,10 +2081,11 @@ test('v1.257 TRAY: dims by mode, the body marker + ipod donor, the toggle round-
     assert.ok(!pip1.document.body.classList.contains('mms-tray'), 'no tray marker in full mode');
     assert.match(pipPanelOf(pip1).className, /mms-apple/, 'the user\'s chosen skin governs the full pop-out');
     pipPanelOf(pip1).querySelector('[data-skin-sticker]').dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
-    const menu1 = pipPanelOf(pip1).querySelector('[data-skin-sticker-menu]');
+    assert.ok(pipSheet(pip1), 'the sheet opened in the pop-out\'s own document');
+    const menu1 = pipMore(pip1);
     const row1 = menu1.querySelector('[data-skin-tray]');
-    assert.ok(row1, 'the pop-out sticker offers the Tray row');
-    assert.strictEqual(row1.getAttribute('aria-checked'), 'false', 'Off before the toggle');
+    assert.ok(row1, 'the pop-out sheet offers the Tray row (on More)');
+    assert.strictEqual(row1.querySelector('.ui-switch').getAttribute('aria-checked'), 'false', 'Off before the toggle');
     // TOGGLE -> teardown + reopen at tray dims, marker on, ipod donor despite the apple pick
     holder.pip = makePipWindow();
     row1.dispatchEvent(new pip1.MouseEvent('click', { bubbles: true }));
@@ -2078,8 +2099,9 @@ test('v1.257 TRAY: dims by mode, the body marker + ipod donor, the toggle round-
     assert.strictEqual(dom.window.localStorage.getItem('ft-tray-mode'), '1', 'the mode persisted');
     // the strip's row reads On; toggling BACK restores full mode
     pipPanelOf(pip2).querySelector('[data-skin-sticker]').dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
-    const row2 = pipPanelOf(pip2).querySelector('[data-skin-tray]');
-    assert.strictEqual(row2.getAttribute('aria-checked'), 'true', 'On inside the tray');
+    pipMore(pip2);
+    const row2 = pipSheet(pip2).querySelector('[data-skin-tray]');
+    assert.strictEqual(row2.querySelector('.ui-switch').getAttribute('aria-checked'), 'true', 'On inside the tray');
     holder.pip = makePipWindow();
     row2.dispatchEvent(new pip2.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
@@ -2103,8 +2125,10 @@ test('v1.257 TRAY: the MAIN window\'s sticker never offers the row (the hook is 
     const st = panel(dom).querySelector('[data-skin-sticker]');
     assert.ok(st, 'the in-tab sticker painted (populated first)');
     st.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
+    const menu = SS.sheetOf(dom);
     assert.ok(menu.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
+    moreOf(dom);
+    assert.ok(menu.querySelector('[data-skin-extras-back]'), 'on the More page (non-vacuous)');
     assert.strictEqual(menu.querySelector('[data-skin-tray]'), null, 'no Tray row in the tab - the view never declares the hook');
   } });
 });
@@ -2123,8 +2147,9 @@ test('v1.257 (QA W1): the OLD window\'s queued pagehide cannot kill the freshly-
     // close only MARKS - keeping the late pagehide deliverable, as in every real browser.
     oldPip.close = function () { oldPip._closeCalls += 1; oldPip.closed = true; };
     pipPanelOf(oldPip).querySelector('[data-skin-sticker]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    pipMore(oldPip);
     holder.pip = makePipWindow();
-    pipPanelOf(oldPip).querySelector('[data-skin-tray]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
+    pipSheet(oldPip).querySelector('[data-skin-tray]').dispatchEvent(new oldPip.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
     const newPip = holder.pip;
     assert.ok(newPip.document.body.classList.contains('mms-tray'), 'the tray mounted (populated first)');
@@ -2156,35 +2181,40 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     clickPopout(dom); await settle(); await settle();
     const full = holder.pip;
     pipPanelOf(full).querySelector('[data-skin-sticker]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
-    assert.strictEqual(pipPanelOf(full).querySelectorAll('[data-skin-pick]').length, 0, 'v1.333: page 1 carries no skin chips (Skin is its own page)');
-    pipPanelOf(full).querySelector('[data-skin-skins]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // v1.333: the Skin page
-    const fullChips = [...pipPanelOf(full).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
-    assert.deepStrictEqual(fullChips, require('../../public/js/music-skins.js').IDS.slice().sort(), 'the FULL pop-out keeps ALL skin chips incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
-    assert.match(pipPanelOf(full).querySelector('[data-skin-sticker-menu]').textContent, /Skin/, 'the full pop-out heading says Skin');
-    pipPanelOf(full).querySelector('[data-skin-extras-back]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // back to page 1 (the Tray row)
+    assert.strictEqual(pipSheet(full).querySelectorAll('[data-skin-pick]').length, 0, 'v1.333: page 1 carries no skin chips (Skin is its own page)');
+    pipSheet(full).querySelector('[data-skin-skins]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // v1.333: the Skin page
+    // v1.388.0: the Skin page lists each skin once as a row (the Recent pills repeat the active one: rows only)
+    const fullChips = [...pipSheet(full).querySelectorAll('.ui-row[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick')).sort();
+    assert.deepStrictEqual(fullChips, require('../../public/js/music-skins.js').IDS.slice().sort(), 'the FULL pop-out keeps ALL skins incl. every Click colorway (adversarial W1: in-pip must not mean in-tray)');
+    assert.match(pipSheet(full).querySelector('.mms-ss__pg').textContent, /Skin/, 'the full pop-out page says Skin');
+    pipSheet(full).querySelector('[data-skin-extras-back]').dispatchEvent(new full.MouseEvent('click', { bubbles: true })); // back to page 1
     // toggle to tray: the chips vanish (the donor is forced - a pick would visibly no-op)
     holder.pip = makePipWindow();
-    pipPanelOf(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
+    pipMore(full);
+    pipSheet(full).querySelector('[data-skin-tray]').dispatchEvent(new full.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
     const tray = holder.pip;
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
-    assert.ok(pipPanelOf(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
+    pipMore(tray);
+    assert.ok(pipSheet(tray).querySelector('[data-skin-tray]'), 'the Tray row is there to toggle back (non-vacuous)');
+    pipSheet(tray).querySelector('[data-skin-extras-back]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true })); // the tray keeps its inline Color chips on page 1
     // v1.258: the chips are the COLORWAYS in tray - the Click family only (those picks
     // genuinely restyle the tray body; apple/spotify would visibly no-op). v1.332: every
     // Click colorway in the registry.
-    const trayChips = [...pipPanelOf(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
+    const trayChips = [...pipSheet(tray).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
     assert.deepStrictEqual(trayChips.sort(), require('../../public/js/music-skins.js').clickColorways().sort(), 'exactly the Click colorway chips inside the tray (the registry\'s own list)');
     assert.ok(trayChips.length >= 3 && !trayChips.includes('apple') && !trayChips.includes('spotify'), 'non-vacuous: the colorways, never the flat skins');
-    assert.match(pipPanelOf(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
+    assert.match(pipSheet(tray).querySelector('[data-skin-sticker-menu]').textContent, /Color/, 'the tray heading says Color (adversarial W2)');
     // the HEADLINE interaction: tapping a colorway restyles the LIVE tray (kills the
     // memoized-donor mutant - the wrap must consult the pick on every paint)
-    pipPanelOf(tray).querySelector('[data-skin-pick="ipod-black"]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    pipSheet(tray).querySelector('[data-skin-pick="ipod-black"]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     await settle();
     assert.match(pipPanelOf(tray).className, /mms-ipod-black/, 'the black colorway applied to the live tray on tap');
     pipPanelOf(tray).querySelector('[data-skin-sticker]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     // dispose the tray + reset the mode so the fallback assertion is about the ROW, not dims
     holder.pip = makePipWindow(); // the toggle-back mounts a FRESH window
-    pipPanelOf(tray).querySelector('[data-skin-tray]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
+    pipMore(tray);
+    pipSheet(tray).querySelector('[data-skin-tray]').dispatchEvent(new tray.MouseEvent('click', { bubbles: true }));
     await settle(); await settle();
     holder.pip.dispatchEvent(new holder.pip.Event('pagehide')); await settle();
     // the PLAIN fallback (no Document PiP): the named-window reuse breaks the toggle, so no row
@@ -2193,8 +2223,10 @@ test('v1.257/v1.258: the tray menu offers ONLY the colorway chips (live-flipping
     dom.window.open = () => plain;
     clickPopout(dom); await settle(); await settle();
     pipPanelOf(plain).querySelector('[data-skin-sticker]').dispatchEvent(new plain.MouseEvent('click', { bubbles: true }));
-    assert.ok(pipPanelOf(plain).querySelector('[data-skin-loop]'), 'the fallback menu rendered (non-vacuous)');
-    assert.strictEqual(pipPanelOf(plain).querySelector('[data-skin-tray]'), null, 'no Tray row without Document PiP');
+    assert.ok(pipSheet(plain).querySelector('[data-skin-loop]'), 'the fallback menu rendered (non-vacuous)');
+    pipMore(plain);
+    assert.ok(pipSheet(plain).querySelector('[data-skin-extras-back]'), 'on the More page (non-vacuous)');
+    assert.strictEqual(pipSheet(plain).querySelector('[data-skin-tray]'), null, 'no Tray row without Document PiP');
   } });
 });
 
@@ -2214,7 +2246,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
   assert.match(css, /--pk-tray-art:88px;/, '...88 px (v1.332 structure token)');
   assert.match(css, /\.mms-ipod \.ip-ttl,[^{]*\{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; \}/, 'the title ellipsizes in the strip (the one pocket text-line rule - the tray panel carries .mms-ipod, v1.332)');
   assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
-  assert.match(css, /body\.mms-tray \.mms-sticker-menu\{ position:fixed; inset:var\(--space-3\)/, 'the tray menu is a FULL-WINDOW overlay (the upward-opening base menu clipped to a sliver at 190px - v1.258.1)');
+  assert.doesNotMatch(css, /body\.mms-tray \.mms-sticker-menu\{/, 'v1.388.0: the tray\'s full-window popover overlay is retired - the sticker is a ui.sheet (90dvh, its body scrolls) in the tray window too');
   assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; border-radius:var\(--r-md\)/, 'the panel fills the pip viewport, rounded like the shell');
 });
 
@@ -2266,7 +2298,7 @@ test('v1.332 AC8: a fake Click colorway added to the REGISTRY alone reaches the 
     assert.ok(pip.document.body.classList.contains('mms-tray'), 'straight to the tray');
     assert.match(pipPanelOf(pip).className, /\bmms-ipod-fake\b/, 'the Nano tray kept the new colorway (a hand-kept trio would fall to base silver)');
     pipPanelOf(pip).querySelector('[data-skin-sticker]').dispatchEvent(new pip.MouseEvent('click', { bubbles: true }));
-    const chips = [...pipPanelOf(pip).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
+    const chips = [...pipSheet(pip).querySelectorAll('[data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
     assert.ok(chips.includes('ipod-fake'), 'the tray chips offer it: ' + chips.join(','));
   } });
 });
@@ -2286,14 +2318,15 @@ test('v1.332 AC8: ...and in the tab the fake colorway gets the pocket menus and 
 // v1.332 (Dean D7, AC10/AC11) through the REAL music view: the sticker's first row is Home and a HELD
 // MENU goes home too - both hand common.js the view's re-render (goHomeFromPlayer docks quietly, then
 // routes to /), and neither fires the view's origin-returning dock.
-test('v1.332 D7: the music skin\'s sticker leads with Home, and a held MENU goes home - each exactly once, never the MENU dock', async () => {
+test('v1.332 D7: the music skin\'s sheet header carries Home (R4: an icon button), and a held MENU goes home - each exactly once, never the MENU dock', async () => {
   await boot({ mobile: true, isMusic: true, skin: 'ipod-red', run: async (dom, spy) => {
     const calls = [];
     dom.window.FileTube.goHomeFromPlayer = (afterDock) => { calls.push(typeof afterDock); };
     const P = panel(dom);
     P.querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    const home = P.querySelector('[data-skin-sticker-menu] .mms-sm-sec [data-skin-home]');
-    assert.ok(home, 'Home leads the sticker menu');
+    const home = SS.sheetOf(dom).querySelector('.ui-sheet__header [data-skin-home]');
+    assert.ok(home, 'Home is an icon button in the sheet header');
+    assert.strictEqual(home.getAttribute('aria-label'), 'Home', 'with its accessible name');
     home.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     assert.deepStrictEqual(calls, ['function'], 'the row went home once, with the view\'s re-render');
     const docks = spy.dock;
@@ -2467,7 +2500,14 @@ function channelPlayer(calls) {
 }
 const openSticker = (dom) => {
   panel(dom).querySelector('[data-skin-sticker]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  return panel(dom).querySelector('[data-skin-sticker-menu]');
+  return SS.sheetOf(dom);
+};
+// the sheet's More page (Watch, Start radio, Autoplay, Lighting live there); the sheet element itself is returned
+const moreOf = (dom) => {
+  const sh = SS.sheetOf(dom);
+  const m = sh.querySelector('[data-skin-more]');
+  if (m) m.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  return sh;
 };
 
 test('v1.317 (M1): a LIBRARY-backed track with a channel folder gets "Go to channel" on page 1; the tap navigates via the SPA router to /?folder=<folder> and leaves the player alone', async () => {
@@ -2482,11 +2522,11 @@ test('v1.317 (M1): a LIBRARY-backed track with a channel folder gets "Go to chan
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
       const row = menu.querySelector('[data-skin-channel]');
-      assert.ok(row, 'the "Go to channel" row renders on page 1');
-      assert.match(row.textContent, /Go to channel/, 'labeled Go to channel');
+      assert.ok(row, 'the "Go to channel" control renders in the sheet header (R4)');
+      assert.strictEqual(row.getAttribute('aria-label'), 'Go to channel', 'named Go to channel');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
       assert.deepStrictEqual(navs, ['/?folder=The%20Channel%20Dir'], 'the SPA router navigates to the home grid filtered by THIS track\'s folder (D5)');
-      assert.strictEqual(menu.hidden, true, 'the menu closed on the way out');
+      assert.ok(!SS.isOpen(dom), 'the sheet closed on the way out');
       assert.deepStrictEqual([calls.loads.length, calls.docks, calls.closes], [1, 0, 0], 'no load/dock/close: the persistent host keeps playing across the swap');
       assert.ok(dom.window.document.getElementById('media-player'), 'the media element is untouched');
     },
@@ -2501,7 +2541,7 @@ test('v1.317 (M1) negative axes: a NATIVE track (folderName, no library source) 
     fetchImpl: continueFetch(native), playerOverride: channelPlayer(calls1),
     run: async (dom) => {
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'a native music-store track has no channel page');
       assert.strictEqual(calls1.loads[0].data.channelFolder, '', 'and carries no channel folder on the load data');
     },
@@ -2513,13 +2553,13 @@ test('v1.317 (M1) negative axes: a NATIVE track (folderName, no library source) 
     fetchImpl: continueFetch(noFolder), playerOverride: channelPlayer(calls2),
     run: async (dom) => {
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'a library track without a folderName has nowhere to go');
     },
   });
 });
 
-test('v1.317 (M1, D7): a LISTEN track carries its channel folder - page 1 shows Watch AND "Go to channel" (Watch first), and the tap targets the video\'s folder', async () => {
+test('v1.317 (M1, D7): a LISTEN track carries its channel folder - the header offers "Go to channel", More offers Watch, and the tap targets the video\'s folder', async () => {
   const calls = { loads: [], navs: [], docks: 0, closes: 0 };
   await boot({
     mobile: true, isMusic: true, query: '?play=vid1&listen=1',
@@ -2528,11 +2568,14 @@ test('v1.317 (M1, D7): a LISTEN track carries its channel folder - page 1 shows 
       const navs = [];
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
-      const wb = menu.querySelector('[data-skin-watchback]');
       const ch = menu.querySelector('[data-skin-channel]');
-      assert.ok(wb && ch, 'both rows render for a listen track');
-      assert.ok(wb.compareDocumentPosition(ch) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING, '"Go to channel" sits beside (after) Watch');
-      ch.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.ok(ch, 'the header offers "Go to channel" for a listen track');
+      assert.strictEqual(menu.querySelector('[data-skin-watchback]'), null, 'Watch is NOT on page 1 (it moved to More)');
+      moreOf(dom);
+      assert.ok(menu.querySelector('[data-skin-watchback]'), 'and More offers Watch');
+      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'the header icons give way to Back on a page');
+      menu.querySelector('[data-skin-extras-back]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      menu.querySelector('[data-skin-channel]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // the header is redrawn on Back: read it again
       assert.deepStrictEqual(navs, ['/?folder=The%20Channel'], 'the listen video\'s folderName is the target');
     },
   });
@@ -2557,7 +2600,7 @@ test('v1.317 (M1, D7): "Go to channel" SURVIVES the dock-return re-init - the ch
       const navs = [];
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered after the re-init (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered after the re-init (non-vacuous)');
       const row = menu.querySelector('[data-skin-channel]');
       assert.ok(row, 'the "Go to channel" row SURVIVES the re-init (the queue lookup misses; the meta carry serves it)');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -2618,8 +2661,9 @@ test('v1.317 gate r1 W2 in-tab: a LISTEN video with NO channel folder renders th
       assert.strictEqual(line.textContent, 'The Channel', 'the channel name still shows');
       assert.strictEqual(el.querySelector('[data-skin-artist]'), null, 'no hook');
       const menu = openSticker(dom);
-      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'and no "Go to channel" row either (no folder)');
-      assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch way back is the escape');
+      assert.strictEqual(menu.querySelector('[data-skin-channel]'), null, 'and no "Go to channel" control either (no folder)');
+      moreOf(dom);
+      assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch way back (on More) is the escape');
     },
   });
 });
@@ -2687,7 +2731,7 @@ test('v1.317 gate r1 ADV-A: after the artist-line drill REPLACES the queue, "Go 
       for (let i = 0; i < 6; i++) await settle();
       assert.ok(log.some((c) => /[?&]artist=The\+Channel|[?&]artist=The%20Channel/.test(c.url)), 'the artist drill loaded (and replaced the queue): ' + log.map((c) => c.url).join(' | '));
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       const row = menu.querySelector('[data-skin-channel]');
       assert.ok(row, 'the channel row survives the queue replacement (served by the nowPlaying carry)');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -2742,7 +2786,7 @@ test('v1.317 gate r1 S1 (the reflectChapter seam): a chaptered listen video ROLL
       const navs = [];
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       const row = menu.querySelector('[data-skin-channel]');
       assert.ok(row, 'the channel row survives: the chapter-cross record carries the folder');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -2775,7 +2819,7 @@ test('v1.317 gate r1 S4 (the restoreListenChapterQueue seam): a chaptered listen
       const navs = [];
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       const row = menu.querySelector('[data-skin-channel]');
       assert.ok(row, 'the channel row survives: the restore seam rebuilt the record with the folder');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -2890,8 +2934,10 @@ test('v1.317 gate r2 qa W1: a CHAPTERED listen video rolled into chapter two, th
       assert.strictEqual(dom.window.document.querySelector('.music-drill-header'), null, 'no drill opened');
       assert.strictEqual(empty.hidden, emptyBefore, 'the "No music yet" note is untouched by the tap');
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
+      moreOf(dom);
       assert.ok(menu.querySelector('[data-skin-watchback]'), 'the Watch row survives the chapter cross + browse');
+      menu.querySelector('[data-skin-extras-back]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // back to page 1 for the Skin row
       // a REPAINT while the browsed queue lacks the chapter (a skin pick from the same menu):
       // the cover's listen-marker fallback is the sibling reader of the same marker - it must
       // match the crossed chapter and serve the BASE video's thumbnail (a `::c` id is no media id).
@@ -2905,7 +2951,8 @@ test('v1.317 gate r2 qa W1: a CHAPTERED listen video rolled into chapter two, th
       const btn2 = panel(dom).querySelector('[data-skin-artist]');
       assert.ok(btn2, 'the repainted artist line is a control');
       assert.strictEqual(btn2.getAttribute('title'), 'Go to channel', 'titled for its target (gate r2 S4)');
-      const menu2 = openSticker(dom);
+      openSticker(dom);
+      const menu2 = moreOf(dom);
       const wb = menu2.querySelector('[data-skin-watchback]');
       assert.ok(wb, 'the Watch row is still offered after the repaint');
       wb.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -3092,10 +3139,12 @@ test('v1.317 gate r2 adversary W1: Watch -> Listen ADOPTS the loaded video, and 
         const navs = [];
         dom.window.FileTube.navigate = (u) => { navs.push(u); };
         const menu = openSticker(dom);
-        assert.ok(menu.querySelector('[data-skin-watchback]'), url + ': the Watch row (the listen marker) - non-vacuous');
         const row = menu.querySelector('[data-skin-channel]');
         assert.ok(row, url + ': "Go to channel" survives the re-init');
-        row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        moreOf(dom);
+        assert.ok(menu.querySelector('[data-skin-watchback]'), url + ': the Watch row (the listen marker) - non-vacuous');
+        menu.querySelector('[data-skin-extras-back]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+        menu.querySelector('[data-skin-channel]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // the header was redrawn on Back
         const btn = panel(dom).querySelector('[data-skin-artist]');
         assert.ok(btn && btn.tagName === 'BUTTON', url + ': the artist line is still the channel control');
         btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
@@ -3137,7 +3186,7 @@ test('v1.317 gate r2 adversary W1 (second drive): an AUDIO item loaded by the wa
       const navs = [];
       dom.window.FileTube.navigate = (u) => { navs.push(u); };
       const menu = openSticker(dom);
-      assert.ok(menu.querySelector('[data-skin-speed]'), 'the quick menu rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-speedtoggle]'), 'the quick menu rendered (non-vacuous)');
       const row = menu.querySelector('[data-skin-channel]');
       assert.ok(row, '"Go to channel" survives: the seed read the adopted meta\'s folder');
       row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));

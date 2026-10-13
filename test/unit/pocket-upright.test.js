@@ -145,13 +145,14 @@ test('CSS: the upright block turns the full player back by the screen angle, as 
   assert.match(box.body, /inset:auto; top:50%; left:50%;/);
   assert.match(box.body, /width:100vh; width:100dvh; height:100vw;/, 'the portrait box: the landscape height wide, its width tall');
   // every viewport unit the player sizes from, re-pointed to the box (its width is the landscape vh, its height the vw)
-  for (const [k, v] of [['70vw', '70vh'], ['26vw', '26vh'], ['86vh', '86vw'], ['dvh', '100vw'], ['88vw', '88vh'], ['92vw', '92vh']]) {
+  for (const [k, v] of [['70vw', '70vh'], ['26vw', '26vh'], ['88vw', '88vh'], ['92vw', '92vh']]) {
     assert.match(box.body, new RegExp('--mms-up-' + k + ':' + v + ';'), '--mms-up-' + k);
   }
   const src = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(src, /--pk-wheel-d:min\(var\(--mms-up-70vw, 70vw\),288px\); --pk-center-d:min\(var\(--mms-up-26vw, 26vw\),108px\);/, 'the chassis reads them');
   assert.match(src, /\.mms-sticker-menu\{ min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\); max-width:var\(--mms-up-92vw, 92vw\); max-height:86vh;/, 'the sticker menu reads them');
-  assert.match(src, /max-height:min\(var\(--mms-up-86vh, 86vh\), calc\(var\(--mms-up-dvh, 100dvh\)/, 'the phone sticker menu height reads them');
+  // v1.388.0: the sticker's sheet is a ui.sheet on <body> (capped by ui.css, never by the sticker): no height cap reads the box any more
+  assert.doesNotMatch(src, /--mms-up-86vh|--mms-up-dvh/, 'and the two units only the old popover cap read are retired');
   // the safe areas follow the glass: the notch (portrait top) lies on the screen's left at 90, its right at 270
   assert.match(r90.body, /--mms-up-top:env\(safe-area-inset-left,0px\); --mms-up-bottom:env\(safe-area-inset-right,0px\); --mms-up-left:env\(safe-area-inset-bottom,0px\);/);
   assert.match(r270.body, /--mms-up-top:env\(safe-area-inset-right,0px\); --mms-up-bottom:env\(safe-area-inset-left,0px\); --mms-up-left:env\(safe-area-inset-top,0px\);/);
@@ -169,7 +170,7 @@ test('CSS: the upright block turns the full player back by the screen angle, as 
 test('CSS: the inset readers fall back to today\'s env() (portrait and Sideways unchanged)', () => {
   const src = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
   assert.strictEqual((src.match(/var\(--mms-up-top, var\(--pk-top-inset, env\(safe-area-inset-top,0px\)\)\)/g) || []).length, 3, 'the three chassis top paddings');
-  assert.strictEqual((src.match(/var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\)/g) || []).length, 5, 'the chassis bottoms, the sticker, its menu');
+  assert.strictEqual((src.match(/var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\)/g) || []).length, 4, 'the chassis bottoms and the sticker (its menu is a sheet on <body> now)');
   assert.match(src, /left:calc\(var\(--mms-up-left, env\(safe-area-inset-left,0px\)\) \+ var\(--space-6\)\)/, 'the sticker\'s corner');
   // the variables are only ever SET inside the upright block
   const sets = RULES.filter((r) => /--mms-up-[a-z0-9]+\s*:/.test(r.body));

@@ -3694,5 +3694,11 @@
     "date": "2026-10-12",
     "title": "On a computer, the Account, Notifications and Queue panels open right under their button and stay put",
     "intent": "On a computer, the Account, Notifications, Queue and Sort panels now open directly under their button with their right edges lined up, and the Notifications panel no longer jumps up over the bell while its rows load. The download box's first field is no longer cut off at the top. Phones and the iPhone app look the same as before."
+  },
+  {
+    "version": "1.388.0",
+    "date": "2026-10-13",
+    "title": "The player's sticker menu is now a sheet with your daily controls up top",
+    "intent": "Tapping the sticker on the phone player now opens a clean sheet: like the chapter, chapters, loop, shuffle, speed, share and download are one tap each, with no scrolling. The skin picker is grouped and searchable, and autoplay, lighting and radio moved to More (Lighting's third choice is now called Bold)."
   }
 ]

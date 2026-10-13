@@ -12,6 +12,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
@@ -532,7 +533,7 @@ function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
   dom.window.isYtdlpManagedItem = (it) => !!(it && it.channelName);
   dom.window.showConfirmModal = (t, b, onConfirm) => { spy.legacyConfirm = { t, b, onConfirm }; };
   // UI pass S7: the Extras Delete asks ui.confirm - a HELD fake the test answers (onConfirm = true)
-  dom.window.ui = { confirm: (o) => new Promise((resolve) => { spy.confirm = { t: o.title, b: o.body, o, onConfirm: () => resolve(true), onCancel: () => resolve(false) }; }) };
+  SS.installUi(dom, { confirm: (o) => new Promise((resolve) => { spy.confirm = { t: o.title, b: o.body, o, onConfirm: () => resolve(true), onCancel: () => resolve(false) }; }) }); // the REAL ui.js builds the sheet; only confirm is held
   dom.window.showHardDeleteModal = (it, onConfirm) => { spy.hard = { it, onConfirm }; };
   dom.window.deleteResultToast = () => 'deleted-toast';
   global.fetch = (url, init) => {
@@ -557,7 +558,7 @@ function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
   });
 }
 const sClick = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-const sMenu = (dom) => panel(dom).querySelector('[data-skin-sticker-menu]');
+const sMenu = SS.menuOf; // the OPEN sheet's content node (null while closed)
 
 test('U2 sticker: absent without config (podcasts today); with config it paints, toggles, and drives speed/loop/skin', async () => {
   // default engine (no sticker config) -> no sticker markup at all
@@ -573,11 +574,12 @@ test('U2 sticker: absent without config (podcasts today); with config it paints,
     b.engine.paint();
     const st = panel(b.dom).querySelector('[data-skin-sticker]');
     assert.ok(st, 'sticker painted');
-    assert.strictEqual(sMenu(b.dom).hidden, true, 'menu starts hidden');
+    assert.strictEqual(sMenu(b.dom), null, 'no sheet until the sticker is tapped');
     sClick(b.dom, st);
-    assert.strictEqual(sMenu(b.dom).hidden, false, 'sticker tap opened the menu');
+    assert.ok(sMenu(b.dom), 'sticker tap opened the sheet');
     // speed drives the REAL element (both rate properties + persisted ft-rate)
     const mp = b.dom.window.document.getElementById('media-player');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-speedtoggle]'));
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-speed="1.5"]'));
     assert.strictEqual(mp.playbackRate, 1.5, 'playbackRate set');
     assert.strictEqual(mp.defaultPlaybackRate, 1.5, 'defaultPlaybackRate set (the survives-a-load carry, v1.238 CRITICAL)');
@@ -587,30 +589,36 @@ test('U2 sticker: absent without config (podcasts today); with config it paints,
     assert.deepStrictEqual(b.spy.setLoop, [true], 'loop toggle drove player.setLoop(true)');
     // skin pick: setActiveSkin persists + the view re-render hook fires
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]')); // v1.333: Skin is its own page
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-pick="apple"]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('.ui-row[data-skin-pick="apple"]'));
     assert.strictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'apple', 'SKINS.setActiveSkin persisted the pick');
     assert.strictEqual(b.spy.skinChange, 1, 'onSkinChange fired (the view repaints its surfaces)');
   } finally { b.restoreAll(); }
 });
 
-test('U2 extras entry: requires the hooks AND eligibility AND the main document', () => {
-  // sticker without extras hooks (the podcasts shape) -> no Extras entry
+test('U2 extras tiles: live only with the hooks AND eligibility AND the main document - otherwise DISABLED IN PLACE (R1)', async () => {
+  const live = (b, f) => { const t = sMenu(b.dom).querySelector('[data-skin-' + f + ']'); return !!t && t.getAttribute('aria-disabled') !== 'true'; };
+  // sticker without extras hooks (the podcasts shape) -> the item tiles are dimmed, never removed
   {
     const b = bootSticker({ extras: false });
     try {
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-      assert.ok(sMenu(b.dom).querySelector('[data-skin-speed]'), 'quick controls render');
-      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-extras]'), null, 'no extras hooks -> no entry');
+      for (let i = 0; i < 6; i++) await b.settle();
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-speedtoggle]'), 'quick controls render');
+      for (const f of ['like', 'share', 'download']) {
+        assert.ok(sMenu(b.dom).querySelector('[data-skin-' + f + ']'), 'the ' + f + ' tile keeps its place');
+        assert.ok(!live(b, f), 'no extras hooks -> the ' + f + ' tile is dimmed');
+      }
     } finally { b.restoreAll(); }
   }
-  // hooks + eligible -> entry present; hooks + NOT eligible -> absent
+  // hooks + eligible -> live; hooks + NOT eligible -> dimmed
   {
     const b = bootSticker({});
     try {
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-      assert.ok(sMenu(b.dom).querySelector('[data-skin-extras]'), 'eligible -> the Extras entry shows');
+      for (let i = 0; i < 6; i++) await b.settle();
+      for (const f of ['like', 'share', 'download']) assert.ok(live(b, f), 'eligible -> the ' + f + ' tile is live');
     } finally { b.restoreAll(); }
   }
   {
@@ -618,7 +626,9 @@ test('U2 extras entry: requires the hooks AND eligibility AND the main document'
     try {
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-extras]'), null, 'view says ineligible -> no entry');
+      for (let i = 0; i < 6; i++) await b.settle();
+      for (const f of ['like', 'share', 'download']) assert.ok(!live(b, f), 'view says ineligible -> the ' + f + ' tile is dimmed');
+      assert.ok(!b.calls.some((c) => c.url === '/api/videos/s1'), 'and the item is never fetched');
     } finally { b.restoreAll(); }
   }
 });
@@ -640,7 +650,6 @@ test('v1.338 extras Share: a download from another site offers its sourceShareUr
     try {
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
       for (let i = 0; i < 6; i++) await b.settle();
       sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="share"]'));
       assert.ok(modal.opts, 'a source exists -> the Share choice');
@@ -657,20 +666,21 @@ test('U2 extras page: opens with the /api/videos fetch, renders the gated action
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
     assert.ok(b.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'GET'), 'the open fetched the item');
-    for (const name of ['share', 'download', 'like', 'watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete']) {
-      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'action rendered: ' + name);
-    }
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-speed]'), null, 'page 2 replaced the quick controls');
+    for (const name of ['share', 'download', 'like']) assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'tile rendered: ' + name);
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="like"]'));
     for (let i = 0; i < 4; i++) await b.settle();
     assert.ok(b.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'POST'), 'Like POSTed the media-store endpoint');
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="like"]').textContent, 'Liked', 'flipped on 2xx');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="like"] .mms-ss__cap').textContent, 'Liked', 'flipped on 2xx');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
+    for (const name of ['watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete']) {
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'More row rendered: ' + name);
+    }
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-speedtoggle]'), null, 'the page replaced the quick controls');
     // Back returns to page 1
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras-back]'));
-    assert.ok(sMenu(b.dom).querySelector('[data-skin-speed]'), 'Back lands on the quick controls');
+    sClick(b.dom, SS.inSheet(b.dom, '[data-skin-extras-back]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-speedtoggle]'), 'Back lands on the quick controls');
   } finally { b.restoreAll(); }
 });
 
@@ -693,35 +703,41 @@ test('v1.287 PODCAST adapter: the generalized factory drives the podcast endpoin
     b.dom.window.shareMediaFile = (o) => { pod.fileShares.push(o); return Promise.resolve('shared'); };
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
     // the adapter's fetchItem was used - the video /api/videos fetch is NEVER called (not inert)
     assert.ok(!b.calls.some((c) => c.url === '/api/videos/s1'), 'the podcast adapter fetchItem replaced the /api/videos fetch');
-    // the applicable SUBSET renders; the N/A actions do not
-    for (const name of ['download', 'share', 'like', 'watched', 'queue', 'delete']) {
-      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'podcast action present: ' + name);
+    // the applicable SUBSET renders (tiles); the N/A actions do not
+    for (const name of ['download', 'share', 'like']) {
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'podcast tile present: ' + name);
     }
-    for (const gone of ['move', 'reheat', 'queue-next', 'transcript']) {
-      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="' + gone + '"]'), null, 'not a podcast action: ' + gone);
-    }
-    // played label (not "watched"); download href points at the episode arm
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Mark played', 'watched row reads "Mark played"');
     assert.ok(/\/episode\/s1\?download=1$/.test(sMenu(b.dom).querySelector('[data-skin-x="download"]').getAttribute('href')), 'download -> the episode arm');
     // Like drives the PODCAST endpoint (not /api/liked)
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="like"]'));
     for (let i = 0; i < 4; i++) await b.settle();
     assert.ok(b.calls.some((c) => c.url === '/api/podcasts/episodes/s1/liked' && c.method === 'POST'), 'Like -> the podcast liked endpoint');
     assert.ok(!b.calls.some((c) => c.url === '/api/liked/s1'), 'never the video liked endpoint');
-    // Played drives the podcast played endpoint
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="watched"]'));
-    for (let i = 0; i < 4; i++) await b.settle();
-    assert.ok(b.calls.some((c) => c.url === '/api/podcasts/episodes/s1/played' && c.method === 'POST'), 'Played -> the podcast played endpoint');
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Played', 'flips to "Played" on 2xx');
     // Share (no source) -> file-share directly
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="share"]'));
     for (let i = 0; i < 3; i++) await b.settle();
     assert.strictEqual(pod.fileShares.length, 1, 'Share -> shareMediaFile (file-only, no source link)');
     assert.strictEqual(pod.fileShares[0].url, '/episode/s1?download=1', 'file-share fetches the episode arm');
+    // the More page carries the applicable SUBSET too (the sheet closed behind Share: reopen it)
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
+    for (const name of ['watched', 'queue', 'delete']) {
+      assert.ok(sMenu(b.dom).querySelector('[data-skin-x="' + name + '"]'), 'podcast More row present: ' + name);
+    }
+    for (const gone of ['move', 'reheat', 'queue-next', 'transcript']) {
+      assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="' + gone + '"]'), null, 'not a podcast action: ' + gone);
+    }
+    // played label (not "watched")
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Mark played', 'watched row reads "Mark played"');
+    // Played drives the podcast played endpoint
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="watched"]'));
+    for (let i = 0; i < 4; i++) await b.settle();
+    assert.ok(b.calls.some((c) => c.url === '/api/podcasts/episodes/s1/played' && c.method === 'POST'), 'Played -> the podcast played endpoint');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="watched"] .mms-sm-actlbl').textContent, 'Played', 'flips to "Played" on 2xx');
   } finally { b.restoreAll(); }
 });
 
@@ -741,14 +757,14 @@ test('v1.287 PODCAST adapter: Queue + Delete route to the podcast handlers', asy
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="queue"]'));
     assert.deepStrictEqual(pod.queued, [{ id: 's1', pos: 'end' }], 'Queue -> the podcast onQueue (kind handled by the adapter)');
-    // reopen (queue closed the menu) and delete
+    // reopen (queue closed the sheet) and delete
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="delete"]'));
     for (let i = 0; i < 4; i++) await b.settle();
     assert.deepStrictEqual(pod.deleted, ['s1'], 'Delete -> the podcast onDelete (its own trash flow), never DELETE /api/videos');
@@ -762,8 +778,8 @@ test('U2 extras delete: the ui.confirm (danger) -> real DELETE -> player.close +
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="delete"]'));
     assert.ok(b.spy.confirm, 'the ui.confirm opened');
     assert.strictEqual(b.spy.legacyConfirm, undefined, 'never the legacy modal');
@@ -803,13 +819,16 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
     const st = pipPanel.querySelector('[data-skin-sticker]');
     assert.ok(st, 'the pop-out surface still gets the sticker (quick controls)');
     st.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
-    const m = pipPanel.querySelector('[data-skin-sticker-menu]');
-    assert.ok(m.querySelector('[data-skin-speed]'), 'quick controls render there (non-vacuous)');
-    assert.strictEqual(m.querySelector('[data-skin-extras]'), null, 'but never the Extras entry (main-document only)');
+    const m = pipDom.window.document.querySelector('.mms-ss-root');
+    assert.ok(m.querySelector('[data-skin-speedtoggle]'), 'quick controls render there (non-vacuous)');
+    for (const f of ['like', 'share', 'download']) assert.strictEqual(m.querySelector('[data-skin-' + f + ']').getAttribute('aria-disabled'), 'true', 'the ' + f + ' tile is dimmed - never live in a non-main document');
     // v1.363.1 (Dean): the pop-out HAS the Watch row now (its tap navigates the main window and brings
     // it forward - the view owns that); "Go to channel" still navigates the window behind it and stays out.
-    assert.ok(m.querySelector('[data-skin-watchback]'), 'the Watch row rides the pop-out (v1.363.1) - a visible() listen track');
-    assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'but not the "Go to channel" row (v1.317) - it navigates the window too');
+    assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'no "Go to channel" control (v1.317) - it navigates the window too');
+    assert.strictEqual(m.querySelector('[data-skin-home]'), null, 'and no Home (main document only)');
+    m.querySelector('[data-skin-more]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(m.querySelector('[data-skin-watchback]'), 'the Watch row rides the pop-out More page (v1.363.1) - a visible() listen track');
+    assert.strictEqual(m.querySelectorAll('[data-skin-x]').length, 0, 'but no item-action row (main-document only)');
     eng2.destroy();
   } finally { mainBoot.restoreAll(); }
 });
@@ -826,19 +845,24 @@ test('v1.368.0 Start radio: the hook\'s row shows only while visible() says a so
     });
     eng.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]')); // Start radio moved to More (Dean, 2026-10-12)
     const row = sMenu(b.dom).querySelector('[data-skin-radio]');
     assert.ok(row, 'the Start radio row rendered');
     assert.match(row.textContent, /Start radio/);
     sClick(b.dom, row);
     assert.strictEqual(state.starts, 1, 'the tap started the radio through the view hook');
+    assert.ok(!SS.isOpen(b.dom), 'and closed the sheet');
     state.visible = false;
     eng.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
+    assert.ok(SS.inSheet(b.dom, '[data-skin-extras-back]'), 'on More (non-vacuous)');
     assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no song up = no row');
     eng.destroy();
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no hook = no row (podcasts)');
   } finally { b.restoreAll(); }
 });
@@ -860,24 +884,25 @@ test('v1.368.0 Shuffle mode: the hook renders a page-1 row beside Loop on the ta
     eng.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     let row = sMenu(b.dom).querySelector('[data-skin-shufflemode]');
-    assert.ok(row, 'the Shuffle row rendered (hook present)');
-    assert.strictEqual(row.getAttribute('aria-checked'), 'false', 'reflects enabled()');
+    assert.ok(row, 'the Shuffle tile rendered (hook present)');
+    assert.strictEqual(row.getAttribute('aria-disabled'), null, 'live (a hook exists)');
+    assert.strictEqual(row.getAttribute('aria-pressed'), 'false', 'reflects enabled()');
     assert.match(row.textContent, /Shuffle\s*Off/, 'says Shuffle Off');
-    assert.ok(row.querySelector('.mms-sm-glyph svg path'), 'draws the skins\' shuffle glyph (the .icon-shuffle mask is retired)');
+    assert.ok(row.querySelector('.ui-btn__icon svg use'), 'draws its registry glyph');
     const order = [...sMenu(b.dom).querySelectorAll('[data-skin-loop], [data-skin-shufflemode]')].map((e) => (e.hasAttribute('data-skin-loop') ? 'loop' : 'shuffle'));
     assert.deepStrictEqual(order, ['loop', 'shuffle'], 'Shuffle sits right after Loop');
     sClick(b.dom, row);
     assert.strictEqual(state.on, true, 'the tap flipped the view state via onToggle');
     row = sMenu(b.dom).querySelector('[data-skin-shufflemode]');
-    assert.strictEqual(row.getAttribute('aria-checked'), 'true', 're-rendered to the new state');
+    assert.strictEqual(row.getAttribute('aria-pressed'), 'true', 're-rendered to the new state');
     eng.destroy();
     // the pop-out
     const eng2 = mk(pipDom.window.document.getElementById('panel'), pipDom.window);
     eng2.paint();
     const pipPanel = pipDom.window.document.getElementById('panel');
     pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
-    const prow = pipPanel.querySelector('[data-skin-sticker-menu] [data-skin-shufflemode]');
-    assert.ok(prow, 'the pop-out offers the Shuffle row');
+    const prow = pipDom.window.document.querySelector('.mms-ss-root [data-skin-shufflemode]');
+    assert.ok(prow, 'the pop-out offers the Shuffle tile');
     prow.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(state.on, false, 'the pop-out tap flips the shared setting');
     eng2.destroy();
@@ -885,7 +910,7 @@ test('v1.368.0 Shuffle mode: the hook renders a page-1 row beside Loop on the ta
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-shufflemode]'), null, 'no hook = no row');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-shufflemode]').getAttribute('aria-disabled'), 'true', 'no hook = the tile is dimmed in place (R1)');
   } finally { b.restoreAll(); }
 });
 
@@ -905,20 +930,21 @@ test('v1.254 autoplay toggle: the hook renders the page-1 row, a tap flips via o
     });
     eng.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-autoplay]'), null, 'Autoplay is not on page 1 any more (Dean, 2026-10-12: it moved to More)');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     let row = sMenu(b.dom).querySelector('[data-skin-autoplay]');
-    assert.ok(row, 'the Autoplay row rendered (hook present)');
-    assert.strictEqual(row.getAttribute('aria-checked'), 'true', 'reflects enabled()');
-    assert.match(row.textContent, /On/, 'says On');
+    assert.ok(row, 'the Autoplay row rendered on More (hook present)');
+    assert.strictEqual(row.querySelector('.ui-switch').getAttribute('aria-checked'), 'true', 'reflects enabled()');
     sClick(b.dom, row);
-    assert.strictEqual(state.on, false, 'the tap flipped the view state via onToggle');
+    assert.strictEqual(state.on, false, 'the tap flipped the view state via onToggle (once: the row carries the flag, the switch only draws)');
     row = sMenu(b.dom).querySelector('[data-skin-autoplay]');
-    assert.strictEqual(row.getAttribute('aria-checked'), 'false', 're-rendered to the new state');
-    assert.match(row.textContent, /Off/, 'says Off');
+    assert.strictEqual(row.querySelector('.ui-switch').getAttribute('aria-checked'), 'false', 're-rendered to the new state');
     eng.destroy();
     // podcast parity: bootSticker's own engine (no autoplay hook) renders NO row
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-autoplay]'), null, 'no hook = no row (podcasts keep their menu)');
   } finally { b.restoreAll(); }
 });
@@ -941,9 +967,10 @@ test('v1.254 autoplay toggle: the POP-OUT surface DOES offer it (device-global s
     eng2.paint();
     const pipPanel = pipDom.window.document.getElementById('panel');
     pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
-    const m = pipPanel.querySelector('[data-skin-sticker-menu]');
+    const m = pipDom.window.document.querySelector('.mms-ss-root');
+    m.querySelector('[data-skin-more]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
     const row = m.querySelector('[data-skin-autoplay]');
-    assert.ok(row, 'the pop-out offers the Autoplay row (nothing window-bound happens on a flip)');
+    assert.ok(row, 'the pop-out offers the Autoplay row on More (nothing window-bound happens on a flip)');
     row.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(state.on, false, 'the pop-out tap flips the shared setting');
     eng2.destroy();
@@ -956,8 +983,8 @@ test('U2 destroy(): stops a live reheat poll and invalidates an in-flight extras
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="reheat"]'));
     for (let i = 0; i < 4; i++) await b.settle();
     assert.ok(b.toasts.includes('Reheating…'), 'the 202 armed the poll');
@@ -1389,7 +1416,9 @@ test('v1.257 TRAY: a MAIN-document engine with a grafted tray hook still renders
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     const m = sMenu(b.dom);
     assert.ok(m.querySelector('[data-skin-loop]'), 'the menu rendered (non-vacuous)');
-    assert.strictEqual(m.querySelector('[data-skin-tray]'), null, 'the main-document surface refuses the row even with a willing hook (delete the gate and this reds)');
+    sClick(b.dom, m.querySelector('[data-skin-more]'));
+    assert.ok(SS.inSheet(b.dom, '[data-skin-extras-back]'), 'on the More page (non-vacuous)');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-tray]'), null, 'the main-document surface refuses the row even with a willing hook (delete the gate and this reds)');
     eng.destroy();
   } finally { b.restoreAll(); }
 });
@@ -1410,21 +1439,22 @@ test('v1.258.1 (Dean): the iPod LCD track bar is CLICK-SEEKABLE - a click maps x
   } finally { restore(); }
 });
 
-test('v1.258.1 (slim W1): a tap on the menu\'s DEAD SPACE closes it; a control tap does NOT (both axes)', () => {
+test('v1.388.0 (the old dead-space tap, now the sheet\'s own exits): a control tap keeps the sheet open; the scrim, Close and a drag handle are the ways out', () => {
   const b = bootSticker({ extras: false });
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
     const m = sMenu(b.dom);
-    assert.strictEqual(m.hidden, false, 'menu open (populated first)');
-    // a control tap keeps it open (speed chips re-render in place)
-    sClick(b.dom, m.querySelector('[data-skin-speed]'));
-    assert.strictEqual(sMenu(b.dom).hidden, false, 'a speed pick re-renders, does not dismiss');
-    // a dead-space tap - the Speed HEADING - closes (the tray overlay has no other honest exit)
-    const heading = [...sMenu(b.dom).querySelectorAll('.mms-sm-h')].find((h) => /Speed/.test(h.textContent));
-    assert.ok(heading, 'the heading exists (non-vacuous)');
-    sClick(b.dom, heading);
-    assert.strictEqual(sMenu(b.dom).hidden, true, 'dead space dismisses the menu');
+    assert.ok(m, 'sheet open (populated first)');
+    // a control tap keeps it open (the Speed strip opens in place)
+    sClick(b.dom, m.querySelector('[data-skin-speedtoggle]'));
+    assert.ok(sMenu(b.dom), 'a Speed tap redraws, does not dismiss');
+    // a tap on the grid's own dead space (between tiles) is NOT a dismissal: ui.sheet closes on its scrim only
+    sClick(b.dom, sMenu(b.dom).querySelector('.mms-ss__grid'));
+    assert.ok(sMenu(b.dom), 'a tap on the grid\'s gap does nothing');
+    sClick(b.dom, SS.sheetOf(b.dom).querySelector('.ui-sheet__close'));
+    assert.strictEqual(sMenu(b.dom), null, 'Close dismisses the sheet');
+    assert.ok(!SS.isOpen(b.dom));
   } finally { b.restoreAll(); }
 });
 
@@ -1993,7 +2023,10 @@ function bootPip(sticker) {
   eng.paint();
   const pipPanel = pipDom.window.document.getElementById('panel');
   pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
-  return { pipDom, mainBoot, eng, pipPanel, menu: pipPanel.querySelector('[data-skin-sticker-menu]') };
+  // v1.388.0: the sheet opens in the pop-out's own document; `menu` is the sheet element (header + body), `more` opens its More page
+  const sheet = pipDom.window.document.querySelector('.mms-ss-root');
+  const more = () => { const m = sheet.querySelector('[data-skin-more]'); if (m) m.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true })); return sheet; };
+  return { pipDom, mainBoot, eng, pipPanel, menu: sheet, more };
 }
 
 test('v1.363.1 pop-out Watch: the row follows visible() (an audio-only file gets NO row), and a tap reaches the view hook', () => {
@@ -2001,12 +2034,13 @@ test('v1.363.1 pop-out Watch: the row follows visible() (an audio-only file gets
     let taps = 0;
     const p = bootPip({ watchBack: { visible: () => visible, onTap: () => { taps += 1; } } });
     try {
+      p.more();
       const row = p.menu.querySelector('[data-skin-watchback]');
       assert.strictEqual(!!row, expectRow, 'visible()=' + visible + ' -> row ' + (expectRow ? 'present' : 'absent: never a dead button'));
       if (row) {
         row.dispatchEvent(new p.pipDom.window.MouseEvent('click', { bubbles: true }));
         assert.strictEqual(taps, 1, 'the tap called the view hook once');
-        assert.strictEqual(p.menu.hidden, true, 'and closed the menu');
+        assert.ok(p.menu.classList.contains('is-closing'), 'and closed the sheet');
       }
       p.eng.destroy();
     } finally { p.mainBoot.restoreAll(); }
@@ -2018,8 +2052,9 @@ test('v1.363.1 pop-out chapters row: label follows the hook, only the pop-out dr
   const hook = { visible: () => true, label: () => 'Add chapters', onTap: (d) => seen.push(d) };
   const p = bootPip({ chapters: hook });
   try {
+    p.more();
     const row = p.menu.querySelector('[data-skin-chapters]');
-    assert.ok(row, 'the pop-out draws the row');
+    assert.ok(row, 'the pop-out draws the row (on More)');
     assert.ok(/Add chapters/.test(row.textContent), 'the label is the hook\'s');
     row.dispatchEvent(new p.pipDom.window.MouseEvent('click', { bubbles: true }));
     assert.strictEqual(seen.length, 1, 'one tap, one open');
@@ -2028,7 +2063,7 @@ test('v1.363.1 pop-out chapters row: label follows the hook, only the pop-out dr
   } finally { p.mainBoot.restoreAll(); }
   // hidden when the view says no (no capability / nothing editable)
   const q = bootPip({ chapters: { visible: () => false, label: () => 'Add chapters', onTap: () => {} } });
-  try { assert.strictEqual(q.menu.querySelector('[data-skin-chapters]'), null, 'visible() false -> no row'); q.eng.destroy(); } finally { q.mainBoot.restoreAll(); }
+  try { q.more(); assert.strictEqual(q.menu.querySelector('[data-skin-chapters]'), null, 'visible() false -> no row'); q.eng.destroy(); } finally { q.mainBoot.restoreAll(); }
   // the MAIN document never draws it on page 1 (it reaches the editor through Extras)
   const b = bootSticker({ extras: false });
   try {
@@ -2039,7 +2074,14 @@ test('v1.363.1 pop-out chapters row: label follows the hook, only the pop-out dr
     });
     eng.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-chapters]'), null, 'main document: no page-1 chapters row');
+    const tileCh = sMenu(b.dom).querySelector('[data-skin-chapters]');
+    assert.ok(tileCh, 'v1.388.0: page 1 carries the Chapters TILE (fixed position)');
+    assert.strictEqual(tileCh.getAttribute('aria-disabled'), 'true', 'dimmed: nothing chaptered plays here (isChapterTrack is not a hook of this view)');
+    const handedBefore = seen.length;
+    sClick(b.dom, tileCh);
+    assert.strictEqual(seen.length, handedBefore, 'and a tap on the dimmed tile opens no editor');
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-chapters]'), null, 'main document: no pop-out chapters row on More either (it reaches the editor through the item rows)');
     eng.destroy();
   } finally { b.restoreAll(); }
 });
@@ -2056,8 +2098,8 @@ test('v1.363.1 Extras chapters action: Add vs Edit by the item\'s chapters, modi
     try {
       b.engine.paint();
       sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-      for (let i = 0; i < 6; i++) await b.settle();
+      for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
       const row = sMenu(b.dom).querySelector('[data-skin-x="chapters"]');
       if (expectLabel === null) { assert.strictEqual(row, null, 'no library-modify capability -> no row'); continue; }
       assert.ok(row, 'row present');
@@ -2071,8 +2113,8 @@ test('v1.363.1 Extras chapters action: Add vs Edit by the item\'s chapters, modi
   try {
     b.engine.paint();
     sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
-    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
-    for (let i = 0; i < 6; i++) await b.settle();
+    for (let i = 0; i < 6; i++) await b.settle(); // the sheet loads the item once, at open
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-more]'));
     assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="chapters"]'), null, 'no onChapters hook -> no row');
   } finally { b.restoreAll(); }
 });
@@ -2092,7 +2134,7 @@ function holdArt(b) {
 const pickChip = (b, id) => {
   sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
   sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-skins]'));
-  sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-pick="' + id + '"]'));
+  sClick(b.dom, sMenu(b.dom).querySelector('.ui-row[data-skin-pick="' + id + '"]'));
 };
 
 test('v1.386.0 sticker pick: a skin whose photos are not ready keeps the old look until they are, then saves + repaints', async () => {
@@ -2102,7 +2144,7 @@ test('v1.386.0 sticker pick: a skin whose photos are not ready keeps the old loo
     b.engine.paint();
     const release = hold('ipod-custom5-transparent-coil');
     pickChip(b, 'ipod-custom5-transparent-coil');
-    assert.strictEqual(sMenu(b.dom).hidden, true, 'the menu closes at the tap');
+    assert.strictEqual(sMenu(b.dom), null, 'the sheet closes at the tap');
     assert.notStrictEqual(b.dom.window.localStorage.getItem('ft-music-skin'), 'ipod-custom5-transparent-coil', 'not saved while the photos load');
     assert.strictEqual(b.spy.skinChange, 0, 'no repaint while the photos load (no frame without them)');
     await b.settle();

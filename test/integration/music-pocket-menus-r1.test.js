@@ -631,9 +631,10 @@ test('Chapter Snap x K4: a snap save through Music\'s "Fix chapter times" while 
       tapRow(h, 'Intro'); await settleNet(); // a FLAT pick (the Songs list)
       assert.strictEqual(h.player.currentId, 'djmix1::c0');
       click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
-      click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+      await settleNet(); // the sheet loads the item once, at open
+      click(h.dom, h.D.querySelector('.mms-ss-root [data-skin-more]'));
       await settleNet();
-      const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
+      const act = h.D.querySelector('.mms-ss-root [data-skin-x="chapter-snap"]');
       assert.ok(act, 'Extras offers "Fix chapter times" on the playing chapter');
       click(h.dom, act); await settleNet();
       assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
@@ -662,9 +663,10 @@ test('v1.331 gate r1: a chapter ADDED while a menu-picked album level plays re-l
         tapRow(h, 'Full Album Mix'); await settleNet();
         tapRow(h, 'Intro'); await settleNet(); // an ALBUM-level pick (list mode)
         click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
-        click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+        await settleNet(); // the sheet loads the item once, at open
+        click(h.dom, h.D.querySelector('.mms-ss-root [data-skin-more]'));
         await settleNet();
-        const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
+        const act = h.D.querySelector('.mms-ss-root [data-skin-x="chapter-snap"]');
         assert.ok(act, 'Extras offers "Fix chapter times" on the playing chapter');
         click(h.dom, act); await settleNet();
         assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');

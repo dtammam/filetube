@@ -16,6 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet in the surface's own document
 
 const ROOT = path.join(__dirname, '..', '..');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
@@ -100,7 +101,7 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   assert.deepStrictEqual(L.GAIN, { off: 0, subtle: 0.8, pronounced: 1, ambient: 1 }, 'second swing: Subtle = the old Pronounced travel, Pronounced = the same + the strong profile; v1.333: Ambient = Pronounced\'s travel (D2: the mechanics unchanged)');
   assert.strictEqual(L.TILT_RANGE_DEG, 20, 'a wrist tilt reaches the edge');
   const rows = skins.menuLightingItems({ strength: 'subtle', note: '' });
-  assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Pronounced', 'lighting', 'pronounced', false], ['Ambient', 'lighting', 'ambient', false]]);
+  assert.deepStrictEqual(rows.map((r) => [r.label, r.action, r.value, r.check]), [['Off', 'lighting', 'off', false], ['Subtle', 'lighting', 'subtle', true], ['Bold', 'lighting', 'pronounced', false], ['Ambient', 'lighting', 'ambient', false]]);
   assert.deepStrictEqual(skins.menuLightingItems(null).map((r) => r.check), [true, false, false, false], 'no driver state: Off is checked');
   assert.deepStrictEqual(skins.menuLightingItems({ strength: 'ambient', note: '' }).map((r) => r.check), [false, false, false, true], 'Ambient checks Ambient');
   const noted = skins.menuLightingItems({ strength: 'pronounced', note: L.NOTE_DENIED });
@@ -114,7 +115,7 @@ test('strength: device-local, default Off, garbage normalizes to Off; music-skin
   const html = skins.renderMenuList({ style: 'click', items: noted, cursor: 1, start: 0, end: 5, rowH: 0, state: 'ready' });
   const d = new JSDOM('<div>' + html + '</div>').window.document;
   assert.strictEqual(d.querySelectorAll('.ipm-check').length, 1, 'one check');
-  assert.ok(d.querySelector('.ipm-row.is-checked .ipm-lbl').textContent === 'Pronounced');
+  assert.ok(d.querySelector('.ipm-row.is-checked .ipm-lbl').textContent === 'Bold');
   assert.ok(d.querySelector('.ipm-noterow') && !d.querySelector('.ipm-noterow[data-skin-mi]'), 'the note wraps and is not an option');
 });
 
@@ -160,6 +161,7 @@ function boot({ skin = 'ipod', strength = 'pronounced', reduced = false, finePoi
   ls.setItem(L.KEY, strength);
   delete require.cache[skinsPath]; delete require.cache[surfacePath]; delete require.cache[lightPath];
   global.module = undefined;
+  SS.installUi(dom); // the sticker sheet is built with the real ui.js (read from the MAIN window)
   dom.window.FileTubeMusicSkins = require(skinsPath);
   dom.window.FileTubePocketLighting = require(lightPath);
   require(surfacePath);
@@ -199,6 +201,12 @@ const tap = (b, el) => {
   el.dispatchEvent(new b.win.MouseEvent('click', { bubbles: true }));
 };
 const pressMenu = (b) => tap(b, P(b).querySelector('[data-skin-menu]'));
+// the sticker sheet lives in the surface's own document; Lighting is ONE segmented control on its More page (v1.388.0)
+const sheetOf = (b) => b.doc.querySelector('.mms-ss-root:not(.is-closing)');
+const openSheet = (b) => { if (!sheetOf(b)) tap(b, P(b).querySelector('[data-skin-sticker]')); assert.ok(sheetOf(b), 'the sticker sheet is open'); return sheetOf(b); };
+const toMore = (b) => { const sh = openSheet(b); if (!sh.querySelector('[data-skin-lighting]') && sh.querySelector('[data-skin-more]')) tap(b, sh.querySelector('[data-skin-more]')); return sheetOf(b); };
+const lightItems = (b) => [...sheetOf(b).querySelectorAll('[data-skin-lighting]')];
+const lightPick = (b, v) => { const sh = toMore(b); const it = sh.querySelector('[data-skin-lighting="' + v + '"]'); assert.ok(it, 'the Lighting control offers ' + v); tap(b, it); };
 const lbls = (b) => [...P(b).querySelectorAll('.ipm-row:not(.ipm-skel) .ipm-lbl')].map((x) => x.textContent);
 const tapLabel = (b, label) => {
   const r = [...P(b).querySelectorAll('.ipm-row:not(.ipm-skel)')].find((x) => x.querySelector('.ipm-lbl').textContent === label);
@@ -370,8 +378,8 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     pressMenu(b); tapLabel(b, 'Settings');
     assert.deepStrictEqual(lbls(b), ['Lighting', 'About']);
     tapLabel(b, 'Lighting');
-    assert.deepStrictEqual(lbls(b), ['Off', 'Subtle', 'Pronounced', 'Ambient']);
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
+    assert.deepStrictEqual(lbls(b), ['Off', 'Subtle', 'Bold', 'Ambient']);
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Bold');
     tapLabel(b, 'Off'); await flush();
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Off', 'the check moved');
     assert.strictEqual(P(b).style.getPropertyValue('--lx'), '', '--lx cleared');
@@ -384,7 +392,7 @@ test('AC2 both axes on a POPULATED panel: Off clears the properties, the class a
     assert.strictEqual(S(b).raf, false);
     assert.strictEqual(b.ls.getItem(L.KEY), 'off', 'stored');
     tapLabel(b, 'Subtle'); await flush();
-    tapLabel(b, 'Pronounced'); await flush();
+    tapLabel(b, 'Bold'); await flush();
     assert.deepStrictEqual(listening(b), { orient: 1, move: 1, leave: 1 }, 'two picks: still exactly one listener each');
     assert.strictEqual(vis(b), 2);
     assert.ok(lit(b));
@@ -457,7 +465,7 @@ test('AC1 Ambient: lit = mms-lit + mms-lit-strong + mms-lit-ambient; Pronounced 
     // through the REAL Settings > Lighting path: Pronounced drops ONLY the Ambient class, Ambient restores it
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Ambient');
-    tapLabel(b, 'Pronounced'); await flush();
+    tapLabel(b, 'Bold'); await flush();
     assert.deepStrictEqual(cls(), ['mms-lit', 'mms-lit-strong'], 'Pronounced: never the Ambient class');
     tapLabel(b, 'Subtle'); await flush();
     assert.deepStrictEqual(cls(), ['mms-lit'], 'Subtle: the base profile only');
@@ -509,15 +517,14 @@ test('AC1 the lit gate holds for Ambient: no mms-lit-ambient before the first sa
 });
 
 // gate r1 W2 (both seats, measured): a pick from the STICKER moves Settings > Lighting's check on the LCD too
-test('AC6 sticker: a Lighting chip moves the LCD\'s Settings > Lighting check (the level open underneath)', async () => {
+test('AC6 sticker: a Lighting pick on the sheet moves the LCD\'s Settings > Lighting check (the level open underneath)', async () => {
   const b = boot({ strength: 'off', sticker: { getPlayer: () => null, onSkinChange() {} } });
   try {
     b.engine.paint();
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
     const checked = () => P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent;
     assert.strictEqual(checked(), 'Off', 'populated: the LCD shows Off checked');
-    tap(b, P(b).querySelector('[data-skin-sticker]'));
-    tap(b, P(b).querySelector('[data-skin-lighting="ambient"]'));
+    lightPick(b, 'ambient');
     assert.strictEqual(checked(), 'Ambient', 'the LCD check followed the sticker pick at once');
     await flush(); await flush();
     assert.strictEqual(checked(), 'Ambient', 'and after the answer');
@@ -525,168 +532,145 @@ test('AC6 sticker: a Lighting chip moves the LCD\'s Settings > Lighting check (t
   } finally { b.restore(); }
 });
 
-// gate r1 qa W2 / adversary S1: the delayed answer re-draws page 1 ONLY if the menu is still on page 1 - never over the
-// Skin or Extras page the user moved to (a device with no permission API and no fine pointer answers after SENSOR_WAIT_MS)
-test('AC6 sticker: the late answer re-draws page 1 (the no-sensor note) but never pulls the user off the Skin or Extras page', async () => {
+// gate r1 qa W2 / adversary S1: the delayed answer re-draws the Lighting page ONLY if the sheet is still on it - never over the
+// Skin page the user moved to (a device with no permission API and no fine pointer answers after SENSOR_WAIT_MS)
+test('AC6 sticker: the late answer re-draws More (the no-sensor note) but never pulls the user off the Skin page', async () => {
   const b = boot({ strength: 'off', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {} } });
-  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
+  const body = () => sheetOf(b).querySelector('[data-skin-sticker-menu]');
+  const note = () => (body().querySelector('.mms-ss__note') || {}).textContent;
   try {
     b.engine.paint();
-    tap(b, P(b).querySelector('[data-skin-sticker]'));
-    // the SHOWING axis first: stay on page 1 and the answer lands there
-    tap(b, menuEl().querySelector('[data-skin-lighting="subtle"]'));
+    // the SHOWING axis first: stay on More and the answer lands there
+    lightPick(b, 'subtle');
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'more', 'precondition: on More');
     b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
-    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_NO_SENSOR, 'populated: the late answer re-drew page 1 with its note');
-    // the Skin page: a pick, then the Skin row before the answer
-    tap(b, menuEl().querySelector('[data-skin-lighting="pronounced"]'));
-    tap(b, menuEl().querySelector('[data-skin-skins]'));
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
+    assert.strictEqual(note(), L.NOTE_NO_SENSOR, 'populated: the late answer re-drew More with its note');
+    // the Skin page: a pick, then Back, the Skin row before the answer
+    lightPick(b, 'pronounced');
+    tap(b, sheetOf(b).querySelector('[data-skin-extras-back]'));
+    tap(b, body().querySelector('[data-skin-skins]'));
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'skins');
     b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins', 'the answer left the Skin page alone');
-    assert.ok(menuEl().querySelector('[data-skin-pick]'), 'its chips still there');
-    // the Extras page (the same page marker the Extras menu sets)
-    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
-    tap(b, menuEl().querySelector('[data-skin-lighting="ambient"]'));
-    menuEl().setAttribute('data-sm-page', 'extras'); menuEl().innerHTML = '<div class="mms-sm-sec">extras</div>';
-    b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'extras', 'the answer left the Extras page alone');
-    assert.strictEqual(menuEl().textContent, 'extras');
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'skins', 'the answer left the Skin page alone');
+    assert.ok(body().querySelector('[data-skin-pick]'), 'its rows still there');
   } finally { b.restore(); }
 });
 
-// #281 (c) (v1.334; qa v1.333 r1 S3 + r2 N3): a page switch or a page-1 rebuild replaced the focused control and
-// focus fell to BODY; each chip group's aria-label repeated its visible heading.
-test('#281 (c) sticker focus: the Skin and Extras pages open on Back, Back returns to the row that opened them (the Extras page keeps Back focused across its async load), a chip rebuild refocuses the same chip; chip groups are named by their headings', async () => {
+// #281 (c) (v1.334; qa v1.333 r1 S3 + r2 N3): a page switch or a rebuild replaced the focused control and focus fell to BODY.
+// v1.388.0: the Skin and More pages open on their Back (in the header), Back returns to the control that opened them, a rebuild
+// refocuses the same control, and a late item load never steals focus.
+test('#281 (c) sticker focus: the Skin and More pages open on Back, Back returns to the control that opened them, a rebuild refocuses the same control, a late item load steals nothing', async () => {
   let resolveItem = null;
   const extras = { isEligible: () => true, getBaseId: () => 'v1', fetchItem: () => new Promise((r) => { resolveItem = r; }) };
   const b = boot({ strength: 'off', finePointer: false, sticker: { getPlayer: () => null, onSkinChange() {}, extras } });
-  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
+  const body = () => sheetOf(b).querySelector('[data-skin-sticker-menu]');
   const act = () => b.doc.activeElement;
   const keyTap = (el) => { el.focus(); tap(b, el); }; // a keyboard user: the control has focus when it is activated
   try {
     b.dom.window.localStorage.setItem('ft-music-skin', 'ipod');
     b.engine.paint();
     tap(b, P(b).querySelector('[data-skin-sticker]'));
-    // the names: every chip group is labelled BY its visible heading, never a repeated aria-label
-    const groups = [...menuEl().querySelectorAll('[role="group"]')];
-    assert.ok(groups.length >= 2, 'Speed and Lighting groups on page 1');
-    for (const g of groups) {
-      assert.ok(!g.hasAttribute('aria-label'), 'no aria-label repeating the heading');
-      const h = b.doc.getElementById(g.getAttribute('aria-labelledby'));
-      assert.ok(h && h.classList.contains('mms-sm-h') && h.parentNode === g.parentNode, 'aria-labelledby names the section\'s own heading');
-    }
-    assert.deepStrictEqual(groups.map((g) => b.doc.getElementById(g.getAttribute('aria-labelledby')).textContent), ['Speed', 'Lighting']);
     const ids = [...b.doc.querySelectorAll('[id]')].map((e) => e.id);
     assert.strictEqual(new Set(ids).size, ids.length, 'every id is unique in the document');
     // the Skin page opens on Back; Back returns to the Skin row (a NEW node: the rebuild replaced it)
-    const skinRow = menuEl().querySelector('[data-skin-skins]');
+    const skinRow = body().querySelector('[data-skin-skins]');
     keyTap(skinRow);
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'skins');
     assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'the Skin page opened on its Back');
-    const sg = menuEl().querySelector('[role="group"]');
-    assert.strictEqual(b.doc.getElementById(sg.getAttribute('aria-labelledby')).textContent, 'Skin', 'the Skin page\'s chips are named by its heading');
     keyTap(act());
-    assert.ok(act() && act().hasAttribute('data-skin-skins') && act().isConnected && act() !== skinRow, 'Back returned to the (rebuilt) Skin row, not BODY');
-    // the Extras page: Back while loading, Back again once the page lands, Back returns to Extras
-    keyTap(menuEl().querySelector('[data-skin-extras]'));
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'extras');
-    const loadingBack = act();
-    assert.ok(loadingBack && loadingBack.hasAttribute('data-skin-extras-back'), 'the loading Extras page opened on Back');
+    assert.ok(act() && act().closest('[data-skin-skins]') && act().isConnected && !skinRow.contains(act()), 'Back returned to the (rebuilt) Skin row, not BODY');
+    // the More page the same way (the item is still loading: More says so, Back is the header's)
+    keyTap(body().querySelector('[data-skin-more]'));
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'more');
+    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'the More page opened on its Back');
+    keyTap(act());
+    assert.ok(act() && act().hasAttribute('data-skin-more') && act().isConnected, 'Back returned to the More tile');
+    // a late item load redraws page 1 and keeps focus where the user is
+    body().querySelector('[data-skin-loop]').focus();
     resolveItem({ id: 'v1', title: 'T' }); await flush(); await flush(); await flush();
-    assert.ok(!loadingBack.isConnected, 'populated: the loaded page replaced the loading page (its Back is a new node)');
-    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'focus followed to the loaded page\'s Back');
-    keyTap(act());
-    assert.ok(act() && act().hasAttribute('data-skin-extras') && act().isConnected, 'Back returned to the Extras row');
-    // a page-1 rebuild (a Lighting chip, a Speed chip) refocuses the SAME control's new node
-    const chip = menuEl().querySelector('[data-skin-lighting="subtle"]');
+    assert.ok(act() && act().hasAttribute('data-skin-loop') && act().isConnected, 'the late item load left focus on Loop (redrawn, not stolen)');
+    // a page-1 rebuild (a Speed pick) refocuses the speed TILE's new node; the Lighting item on More keeps its place
+    keyTap(body().querySelector('[data-skin-speedtoggle]'));
+    keyTap(body().querySelector('[data-skin-speed="1.5"]'));
+    assert.ok(act() && act().hasAttribute('data-skin-speedtoggle') && act().isConnected, 'a Speed pick returns focus to the Speed tile (the pill is gone with the strip)');
+    keyTap(body().querySelector('[data-skin-more]'));
+    const chip = body().querySelector('[data-skin-lighting="subtle"]');
     keyTap(chip);
-    assert.ok(!chip.isConnected, 'the chip tap rebuilt page 1');
-    assert.strictEqual(act() && act().getAttribute('data-skin-lighting'), 'subtle', 'focus stayed on the Subtle chip');
-    // gate r1 (qa W3 = adversary W3): the "not available" arm replaces the loading page too - Back keeps focus
-    keyTap(menuEl().querySelector('[data-skin-extras]'));
-    resolveItem(null); await flush(); await flush(); await flush();
-    assert.match(menuEl().textContent, /available/, 'populated: the not-available page landed');
-    assert.ok(act() && act().hasAttribute('data-skin-extras-back') && act().isConnected, 'focus followed to its Back, not BODY');
-    // and a load never STEALS focus: moved off the loading Back first, the loaded page leaves it where it is
-    keyTap(act());
-    keyTap(menuEl().querySelector('[data-skin-extras]'));
-    const stk = P(b).querySelector('[data-skin-sticker]'); stk.focus();
-    resolveItem({ id: 'v1', title: 'T' }); await flush(); await flush(); await flush();
-    assert.strictEqual(act(), stk, 'focus stayed on the sticker the user moved to');
-    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
-    const sp = menuEl().querySelector('[data-skin-speed="1.5"]');
-    keyTap(sp);
-    assert.strictEqual(act() && act().getAttribute('data-skin-speed'), '1.5', 'and on the Speed chip');
+    assert.ok(!chip.isConnected, 'the Lighting tap rebuilt More');
+    assert.strictEqual(act() && act().getAttribute('data-skin-lighting'), 'subtle', 'focus stayed on the Subtle item');
     // the late answer's re-draw (no sensor after the wait) keeps focus where the user is
-    menuEl().querySelector('[data-skin-loop]').focus();
     b.clock.advance(L.SENSOR_WAIT_MS + 50); await flush(); await flush();
-    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_NO_SENSOR, 'the late answer re-drew page 1');
-    assert.ok(act() && act().hasAttribute('data-skin-loop') && act().isConnected, 'and focus stayed on Loop');
+    assert.strictEqual((body().querySelector('.mms-ss__note') || {}).textContent, L.NOTE_NO_SENSOR, 'the late answer re-drew More');
+    assert.ok(act() && act().getAttribute('data-skin-lighting') === 'subtle' && act().isConnected, 'and focus stayed on Subtle');
   } finally { b.restore(); }
 });
 
 // #281 (d) (v1.334; qa v1.333 r2 N1 = adversary r2 N1): the LCD's Lighting level re-draws when the answer lands -
 // the SECOND refreshLighting() (in the answer's .then) - so a deny shows its note on the LCD at once.
-test('#281 (d) sticker: a Lighting chip\'s DENY re-draws the LCD\'s open Lighting level with the note when the answer lands (the second refreshLighting)', async () => {
+test('#281 (d) sticker: a Lighting pick\'s DENY re-draws the LCD\'s open Lighting level with the note when the answer lands (the second refreshLighting)', async () => {
   let answer = null;
   const b = boot({ strength: 'off', finePointer: false, permission: () => new Promise((r) => { answer = r; }), sticker: { getPlayer: () => null, onSkinChange() {} } });
   try {
     b.engine.paint();
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
-    tap(b, P(b).querySelector('[data-skin-sticker]'));
-    tap(b, P(b).querySelector('[data-skin-lighting="pronounced"]'));
+    lightPick(b, 'pronounced');
     assert.ok(!lbls(b).includes(L.NOTE_DENIED), 'the answer is pending: no note yet');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced', 'the first refresh moved the check');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Bold', 'the first refresh moved the check');
     answer('denied'); await flush(); await flush(); await flush();
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'the LCD re-drew with the deny note when the answer landed');
   } finally { b.restore(); }
 });
 
-test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from INSIDE the tap and light the pick; never on a non-Click skin or in the tray; no Brick row; Skin is its own page', async () => {
+test('AC6 sticker: the four Lighting options (the stored one selected) ask iOS from INSIDE the tap and light the pick; never on a non-Click skin or in the tray; no Brick row; Skin is its own page', async () => {
   let asks = 0; let answer = 'granted';
   const permission = () => { asks += 1; return Promise.resolve(answer); };
   const stickerCfg = () => ({ getPlayer: () => null, onSkinChange() {}, brick: { visible: () => true, onTap() {} } });
   const b = boot({ strength: 'off', finePointer: false, permission, sticker: stickerCfg() });
-  const menuEl = () => P(b).querySelector('[data-skin-sticker-menu]');
-  const openSticker = () => { if (menuEl().hidden) tap(b, P(b).querySelector('[data-skin-sticker]')); assert.ok(!menuEl().hidden, 'the sticker menu is open'); return menuEl(); };
-  const chips = () => [...menuEl().querySelectorAll('[data-skin-lighting]')];
+  const body = () => sheetOf(b).querySelector('[data-skin-sticker-menu]');
+  const sel = () => lightItems(b).filter((c) => c.getAttribute('aria-checked') === 'true').map((c) => c.getAttribute('data-skin-lighting'));
   try {
-    b.dom.window.localStorage.setItem('ft-music-skin', 'ipod'); // the chips + the Skin row read the GLOBAL pick (SKINS.activeSkinId)
+    b.dom.window.localStorage.setItem('ft-music-skin', 'ipod'); // the Lighting control + the Skin row read the GLOBAL pick (SKINS.activeSkinId)
     b.engine.paint();
-    let m = openSticker();
-    assert.deepStrictEqual(chips().map((c) => [c.getAttribute('data-skin-lighting'), c.textContent]), [['off', 'Off'], ['subtle', 'Subtle'], ['pronounced', 'Pronounced'], ['ambient', 'Ambient']], 'the registry\'s four strengths, in order');
-    assert.deepStrictEqual(chips().filter((c) => c.getAttribute('aria-checked') === 'true').map((c) => c.getAttribute('data-skin-lighting')), ['off'], 'the stored strength is checked');
+    let m = openSheet(b);
+    assert.strictEqual(lightItems(b).length, 0, 'page 1 carries no Lighting control (Dean, 2026-10-12: it moved to More)');
     assert.ok(!m.querySelector('[data-skin-brick]') && !/Brick/.test(m.textContent), 'no Brick row, even with the view\'s hook saying yes (D4)');
     assert.strictEqual(m.querySelectorAll('[data-skin-pick]').length, 0, 'no skin chips on page 1 (D6)');
     assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Classic 5G White \(2005\)/, 'the Skin row names the active skin');
-    // the pick: the motion ask runs INSIDE the tap (user activation), the pick is stored and checked
-    tap(b, chips().find((c) => c.getAttribute('data-skin-lighting') === 'ambient'));
-    assert.strictEqual(asks, 1, 'requestPermission ran synchronously inside the chip tap');
+    m = toMore(b);
+    assert.deepStrictEqual(lightItems(b).map((c) => [c.getAttribute('data-skin-lighting'), c.textContent]), [['off', 'Off'], ['subtle', 'Subtle'], ['pronounced', 'Bold'], ['ambient', 'Ambient']], 'the registry\'s four strengths, in order, the third SHOWN as Bold (the stored value stays pronounced)');
+    assert.strictEqual(m.querySelectorAll('.ui-segmented').length, 1, 'ONE segmented control');
+    assert.deepStrictEqual(sel(), ['off'], 'the stored strength is selected');
+    // the pick: the motion ask runs INSIDE the tap (user activation), the pick is stored and selected
+    tap(b, lightItems(b).find((c) => c.getAttribute('data-skin-lighting') === 'ambient'));
+    assert.strictEqual(asks, 1, 'requestPermission ran synchronously inside the tap');
     assert.strictEqual(b.ls.getItem(L.KEY), 'ambient', 'stored');
-    assert.ok(!menuEl().hidden, 'the menu stays open on the pick');
-    assert.deepStrictEqual(chips().filter((c) => c.classList.contains('is-on')).map((c) => c.getAttribute('data-skin-lighting')), ['ambient'], 'the check moved');
+    assert.ok(sheetOf(b), 'the sheet stays open on the pick');
+    assert.deepStrictEqual(sel(), ['ambient'], 'the selection moved');
     await flush(); await flush();
     tiltTo(b, 0, 3); b.clock.advance(50); tiltTo(b, 0, 30); b.clock.advance(300);
-    assert.ok(['mms-lit', 'mms-lit-strong', 'mms-lit-ambient'].every((c) => P(b).classList.contains(c)), 'the chip lit Ambient through the driver');
+    assert.ok(['mms-lit', 'mms-lit-strong', 'mms-lit-ambient'].every((c) => P(b).classList.contains(c)), 'the pick lit Ambient through the driver');
     assert.ok(lx(b) < -0.5, 'and the light moves');
-    // a DENY shows the driver's note under the chips once the answer is in (the menu still on page 1)
+    // a DENY shows the driver's note under the control once the answer is in (the sheet still on More)
     answer = 'denied';
-    tap(b, chips().find((c) => c.getAttribute('data-skin-lighting') === 'pronounced'));
+    tap(b, lightItems(b).find((c) => c.getAttribute('data-skin-lighting') === 'pronounced'));
     assert.strictEqual(asks, 2);
     await flush(); await flush();
-    assert.strictEqual((menuEl().querySelector('.mms-sm-note') || {}).textContent, L.NOTE_DENIED, 'the note, as Settings > Lighting shows it');
-    // Skin page: the chips, Back to page 1; a chip there still switches skins
-    tap(b, menuEl().querySelector('[data-skin-skins]'));
-    assert.strictEqual(menuEl().getAttribute('data-sm-page'), 'skins');
-    assert.strictEqual(menuEl().querySelectorAll('[data-skin-pick]').length, skins.SKINS.length, 'every skin on the Skin page');
-    assert.strictEqual(chips().length, 0, 'the Skin page is only the skins');
-    tap(b, menuEl().querySelector('[data-skin-extras-back]'));
-    assert.ok(!menuEl().getAttribute('data-sm-page') && chips().length === 4, 'Back lands on page 1');
-    // a non-Click skin: no Lighting chips (the driver cannot light it)
+    assert.strictEqual((body().querySelector('.mms-ss__note') || {}).textContent, L.NOTE_DENIED, 'the note, as Settings > Lighting shows it');
+    // Skin page: the rows, Back to page 1; a row there still switches skins
+    tap(b, sheetOf(b).querySelector('[data-skin-extras-back]'));
+    tap(b, body().querySelector('[data-skin-skins]'));
+    assert.strictEqual(body().getAttribute('data-sm-page'), 'skins');
+    assert.strictEqual(body().querySelectorAll('.ui-row[data-skin-pick]').length, skins.SKINS.length, 'every skin on the Skin page');
+    assert.strictEqual(lightItems(b).length, 0, 'the Skin page is only the skins');
+    tap(b, sheetOf(b).querySelector('[data-skin-extras-back]'));
+    assert.ok(!body().getAttribute('data-sm-page') && body().querySelector('[data-skin-speedtoggle]'), 'Back lands on page 1');
+    // a non-Click skin: no Lighting control (the driver cannot light it)
     b.state.skin = 'apple'; b.engine.paint();
-    m = openSticker();
-    assert.strictEqual(chips().length, 0, 'a non-Click skin offers no Lighting chips');
-    assert.ok(m.querySelector('[data-skin-skins]'), 'but still its Skin row');
+    m = openSheet(b);
+    tap(b, m.querySelector('[data-skin-more]'));
+    assert.strictEqual(lightItems(b).length, 0, 'a non-Click skin offers no Lighting control');
+    tap(b, sheetOf(b).querySelector('[data-skin-extras-back]'));
+    assert.ok(sheetOf(b).querySelector('[data-skin-skins]'), 'but still its Skin row');
   } finally { b.restore(); }
   // the pop-out: offered (its Settings > Lighting row exists there, the pick is device-local) - but never in the tray
   for (const tray of [false, true]) {
@@ -696,24 +680,46 @@ test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from
       if (tray) p.doc.body.classList.add('mms-tray');
       p.engine.paint();
       tap(p, P(p).querySelector('[data-skin-sticker]'));
-      const mm = P(p).querySelector('[data-skin-sticker-menu]');
-      assert.strictEqual(mm.querySelectorAll('[data-skin-lighting]').length, tray ? 0 : 4, (tray ? 'the tray: no' : 'the pop-out: four') + ' Lighting chips');
-      assert.strictEqual(!!mm.querySelector('[data-skin-skins]'), !tray, tray ? 'the tray keeps its inline Color chips' : 'the pop-out gets the Skin row');
-      if (tray) assert.ok(mm.querySelectorAll('[data-skin-pick]').length >= 3, 'the tray\'s Color chips');
+      const sh = sheetOf(p);
+      assert.ok(sh, 'the sheet opened in the pop-out\'s own document');
+      assert.strictEqual(sh.querySelector('[data-skin-skins]') !== null, !tray, tray ? 'the tray keeps its inline Color chips (no Skin row)' : 'the pop-out gets the Skin row');
+      if (tray) assert.ok(sh.querySelectorAll('[data-skin-pick]').length >= 3, 'the tray\'s Color chips');
+      tap(p, sh.querySelector('[data-skin-more]'));
+      assert.strictEqual(sheetOf(p).querySelectorAll('[data-skin-lighting]').length, tray ? 0 : 4, (tray ? 'the tray: no' : 'the pop-out: four') + ' Lighting options');
     } finally { p.restore(); }
   }
-  // the plain-window pop-out fallback: body.mms-tray with NO tray hook - the tray is never lit, so no chips there either
+  // the plain-window pop-out fallback: body.mms-tray with NO tray hook - the tray is never lit, so no Lighting there either
   const q = boot({ strength: 'subtle', otherDoc: true, sticker: stickerCfg() });
   try {
     q.doc.body.classList.add('mms-tray'); q.engine.paint();
     tap(q, P(q).querySelector('[data-skin-sticker]'));
-    const qm = P(q).querySelector('[data-skin-sticker-menu]');
-    assert.strictEqual(qm.querySelectorAll('[data-skin-lighting]').length, 0, 'a tray body with no tray hook: no Lighting chips');
-    // gate r1 adversary W3: ...and its inline chips exactly as v1.332 drew them (the whole list, headed Skin), no Skin row
+    const qm = sheetOf(q).querySelector('[data-skin-sticker-menu]');
+    // gate r1 adversary W3: its inline chips exactly as v1.332 drew them (the whole list, headed Skin), no Skin row
     assert.strictEqual(qm.querySelectorAll('[data-skin-pick]').length, skins.SKINS.length, 'every skin inline, as before');
     assert.ok(!qm.querySelector('[data-skin-skins]'), 'no Skin page there');
     assert.match(qm.textContent, /Skin/);
+    tap(q, sheetOf(q).querySelector('[data-skin-more]'));
+    assert.strictEqual(sheetOf(q).querySelectorAll('[data-skin-lighting]').length, 0, 'a tray body with no tray hook: no Lighting options');
   } finally { q.restore(); }
+});
+
+// v1.388.0 (Dean: "Pronounced" is relabeled "Bold"): the STORED value never changes, so a device that saved "pronounced" selects
+// Bold on the sheet's Lighting control, the LCD's Settings > Lighting level says Bold, and picking Bold stores "pronounced".
+test('Bold: a stored "pronounced" selects Bold on the sheet and the LCD; picking Bold stores the unchanged value', async () => {
+  const b = boot({ strength: 'pronounced', sticker: { getPlayer: () => null, onSkinChange() {} } });
+  try {
+    b.engine.paint();
+    assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'precondition: the stored value is the OLD spelling');
+    toMore(b);
+    const sel = lightItems(b).filter((c) => c.getAttribute('aria-checked') === 'true');
+    assert.deepStrictEqual(sel.map((c) => [c.getAttribute('data-skin-lighting'), c.textContent]), [['pronounced', 'Bold']], 'the stored pronounced is the selected Bold');
+    assert.ok(!lightItems(b).some((c) => /Pronounced/.test(c.textContent)), 'the word Pronounced is shown nowhere on the control');
+    lightPick(b, 'subtle');
+    lightPick(b, 'pronounced');
+    assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'picking Bold stores pronounced - unchanged');
+    pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Bold', 'and the LCD level says Bold');
+  } finally { b.restore(); }
 });
 
 test('AC3 the PARKED dock (the probe\'s finding): with no sample in flight the frame loop is parked, so the release must be STRUCTURAL - the panel emptying or hiding unbinds within a microtask', async () => {
@@ -756,7 +762,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     b.engine.paint();
     assert.deepStrictEqual(listening(b), { orient: 0, move: 0, leave: 0 }, 'Off: nothing');
     pressMenu(b); tapLabel(b, 'Settings'); tapLabel(b, 'Lighting');
-    tapLabel(b, 'Pronounced');
+    tapLabel(b, 'Bold');
     assert.strictEqual(asks, 1, 'requestPermission ran inside the tap (user activation)');
     await flush(); await flush();
     assert.ok(lbls(b).includes(L.NOTE_DENIED), 'denied: the note row');
@@ -765,9 +771,9 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
     assert.strictEqual(b.engine.menuState().cursor, 3, 'clamped to the last option (Ambient since v1.333), not the note');
     assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Ambient');
     slowSpin(b, 1, -1);
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Pronounced', 'the wheel still moves among the options');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-cursor .ipm-lbl').textContent, 'Bold', 'the wheel still moves among the options');
     assert.strictEqual(b.ls.getItem(L.KEY), 'pronounced', 'the pick is kept (Dean: keep the strength + a note)');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Pronounced');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Bold');
     // gate r1 (adversary W3): a deny on a device with no mouse = the look stays TODAY's - not lit,
     // not listening (a lit band waiting for samples that never come is not "as today")
     assert.ok(!lit(b), 'not lit after a deny');
@@ -793,7 +799,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
   // no permission API (Android / desktop): binds directly; no sensor AND no fine pointer: the note
   const n = boot({ strength: 'off', finePointer: false });
   try {
-    n.engine.paint(); pressMenu(n); tapLabel(n, 'Settings'); tapLabel(n, 'Lighting'); tapLabel(n, 'Pronounced'); await flush();
+    n.engine.paint(); pressMenu(n); tapLabel(n, 'Settings'); tapLabel(n, 'Lighting'); tapLabel(n, 'Bold'); await flush();
     assert.ok(!lbls(n).includes(L.NOTE_NO_SENSOR), 'not yet: a sensor may still stream');
     n.clock.advance(L.SENSOR_WAIT_MS + 10); await flush(); await flush();
     assert.ok(lbls(n).includes(L.NOTE_NO_SENSOR), 'a coarse pointer and no sample within the wait: says so');
@@ -802,7 +808,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
   // a FINE pointer (a desktop) never gets the no-sensor note: the mouse is the light (gate r1 J12)
   const f = boot({ strength: 'off', finePointer: true });
   try {
-    f.engine.paint(); pressMenu(f); tapLabel(f, 'Settings'); tapLabel(f, 'Lighting'); tapLabel(f, 'Pronounced'); await flush();
+    f.engine.paint(); pressMenu(f); tapLabel(f, 'Settings'); tapLabel(f, 'Lighting'); tapLabel(f, 'Bold'); await flush();
     f.clock.advance(L.SENSOR_WAIT_MS + 10); await flush(); await flush();
     assert.ok(!lbls(f).includes(L.NOTE_NO_SENSOR), 'no note on a desktop');
   } finally { f.restore(); }
@@ -832,7 +838,7 @@ test('AC4 iOS permission: asked ONCE from the tap; denied keeps the strength + t
   let late = null;
   const d = boot({ strength: 'off', permission: () => new Promise((r) => { late = r; }) });
   try {
-    d.engine.paint(); pressMenu(d); tapLabel(d, 'Settings'); tapLabel(d, 'Lighting'); tapLabel(d, 'Pronounced');
+    d.engine.paint(); pressMenu(d); tapLabel(d, 'Settings'); tapLabel(d, 'Lighting'); tapLabel(d, 'Bold');
     d.engine.destroy();
     assert.deepStrictEqual(listening(d), { orient: 0, move: 0, leave: 0 });
     late('granted'); await flush(); await flush();
@@ -1167,19 +1173,19 @@ test('v1.334 the sticker catches the light through the REAL driver: an image sti
     assert.strictEqual(r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length, 1);
     // the sticker's own Lighting chips change the strength with NO repaint (the sticker button survives)
     const sb = r.btn();
-    tap(b, sb); tap(b, P(b).querySelector('[data-skin-lighting="subtle"]'));
+    lightPick(b, 'subtle');
     assert.strictEqual(r.btn(), sb, 'precondition: the same sticker (no repaint)');
     assert.strictEqual(r.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'a Subtle chip re-glosses fainter at once (B1)');
-    tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    lightPick(b, 'off');
     assert.strictEqual(r.btn(), sb, 'still the same sticker');
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the Off chip clears it with no repaint');
     const gOff = r.grads().length, shOff = r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length;
-    tap(b, P(b).querySelector('[data-skin-lighting="pronounced"]'));
+    lightPick(b, 'pronounced');
     assert.strictEqual(r.btn(), sb, 'the same sticker, lit again');
     assert.deepStrictEqual(r.parts(), { shade: true, gloss: true });
     assert.ok(r.grads().length > gOff, 'its NEW gloss canvas is drawn (the old drawing was forgotten with the canvases)');
     assert.ok(r.calls.filter((c) => c[0] === 'drawImage' && c[1] === 'mms-sticker-shade').length > shOff, 'and its new shade re-baked');
-    tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    lightPick(b, 'off');
     // Off by a repaint: nothing drawn
     b.ls.setItem(L.KEY, 'off'); b.engine.paint();
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'Off: no canvas at all (byte-identical)');
@@ -1262,7 +1268,7 @@ test('v1.334 a late-loading sticker image: unlit meanwhile = nothing drawn; lit 
     assert.ok(lit(b), 'lit');
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the image is not loaded yet: nothing drawn');
     const img = r.btn().querySelector('img');
-    tap(b, r.btn()); tap(b, P(b).querySelector('[data-skin-lighting="off"]'));
+    lightPick(b, 'off');
     assert.ok(!lit(b), 'the Off chip unlit the panel while the image was loading');
     loaded = true; img.dispatchEvent(new b.win.Event('load'));
     assert.deepStrictEqual(r.parts(), { shade: false, gloss: false }, 'the late load draws NOTHING on the unlit panel');
@@ -1276,7 +1282,7 @@ test('v1.334 a late-loading sticker image: unlit meanwhile = nothing drawn; lit 
     c.dom.window.localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', tilt: 'straight' }));
     c.engine.paint();
     const img = q.btn().querySelector('img');
-    tap(c, q.btn()); tap(c, P(c).querySelector('[data-skin-lighting="subtle"]'));
+    lightPick(c, 'subtle');
     assert.ok(lit(c));
     loaded2 = true; img.dispatchEvent(new c.win.Event('load'));
     assert.deepStrictEqual(q.parts(), { shade: true, gloss: true }, 'lit: the late load draws');
