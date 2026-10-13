@@ -1,8 +1,8 @@
 'use strict';
 
-// [UNIT] v1.238 (Dean): the "sticker" quick-menu. A FileTube-logo sticker in the
-// bottom-left of every music skin (+ the desktop pop-out) opens a compact menu =
-// speed + loop + skin picker. The menu items PROXY the existing controls so player.js
+// [UNIT] v1.238 (Dean): the "sticker" quick-menu -> v1.388.0 the sticker SHEET. A FileTube-logo sticker in the
+// bottom-left of every music skin (+ the desktop pop-out) opens a FileTube bottom sheet (ui.sheet) = a tile grid of the
+// daily controls (speed, loop, ...) + the Skin page. The menu items PROXY the existing controls so player.js
 // stays byte-unchanged: speed -> #media-player.playbackRate + 'ft-rate'; loop ->
 // player.setLoop/isLoopEnabled; skin -> SKINS.setActiveSkin. Boots real music.js with a
 // mobile viewport + an expanded music track so the skin panel actually renders, and binds
@@ -13,6 +13,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js');
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsApi = require('../../public/js/music-skins.js');
@@ -82,6 +83,7 @@ async function boot(run, opts) {
     },
   };
   global.window.addToQueue = () => {};
+  SS.installUi(dom); // the sheet is built with the real ui.js (v1.388.0)
   global.fetch = (u, init) => fetchMap(u, init);
   // Load music-skins.js INTO the jsdom window (its IIFE attaches window.FileTubeMusicSkins),
   // mirroring music.html loading it before music.js - music.js reads it at init time.
@@ -103,18 +105,18 @@ async function boot(run, opts) {
   } finally { delete require.cache[musicPath]; Object.assign(global, saved); }
 }
 
-const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
-const sticker = (dom) => panel(dom).querySelector('.mms-sticker[data-skin-sticker]');
-const menu = (dom) => panel(dom).querySelector('[data-skin-sticker-menu]');
-const click = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const panel = SS.panelOf;
+const sticker = SS.stickerOf;
+const menu = SS.menuOf; // the OPEN sheet's content node (null while closed)
+const click = SS.clickEl;
 
 test('T2: the sticker renders on the panel with a hidden menu (default skin)', async () => {
   await boot(async (dom) => {
     assert.ok(panel(dom).classList.contains('mms-full'), 'the skin panel rendered (mobile + expanded music)');
     assert.ok(sticker(dom), 'a sticker button is present');
-    const m = menu(dom);
-    assert.ok(m, 'the menu element is present');
-    assert.strictEqual(m.hidden, true, 'the menu starts hidden');
+    assert.strictEqual(menu(dom), null, 'no sheet is open until the sticker is tapped');
+    assert.strictEqual(panel(dom).querySelector('[data-skin-sticker-menu]'), null, 'and the panel carries no menu of its own (the sheet lives on <body>)');
+    assert.strictEqual(sticker(dom).getAttribute('aria-expanded'), 'false');
     // default icon = the FileTube logo mark
     assert.ok(sticker(dom).querySelector('img.mms-sticker-ic[src="/favicon.svg"]'), 'default icon is the FileTube favicon logo');
   });
@@ -125,27 +127,43 @@ test('T2 (shell coverage): the sticker renders on EVERY registered skin', async 
     await boot(async (dom) => {
       assert.ok(panel(dom).classList.contains('mms-' + id.replace('ipod-black', 'ipod-black')), 'panel carries the skin id class for ' + id);
       assert.ok(sticker(dom), 'sticker present on skin ' + id);
-      assert.ok(menu(dom), 'menu present on skin ' + id);
+      click(dom, sticker(dom));
+      assert.ok(menu(dom), 'the sheet opens on skin ' + id);
+      assert.ok(menu(dom).querySelector('[data-skin-speedtoggle]'), 'with its tile grid on skin ' + id);
     }, { skin: id });
   }
 });
 
-test('T3: tapping the sticker opens the menu; a second tap closes it', async () => {
+test('T3: tapping the sticker opens the sheet; its Close button, the scrim and Escape each close it', async () => {
   await boot(async (dom) => {
-    assert.strictEqual(menu(dom).hidden, true);
+    assert.ok(!SS.isOpen(dom));
     click(dom, sticker(dom));
-    assert.strictEqual(menu(dom).hidden, false, 'opened');
+    assert.ok(SS.isOpen(dom), 'opened');
     assert.strictEqual(sticker(dom).getAttribute('aria-expanded'), 'true');
-    click(dom, sticker(dom));
-    assert.strictEqual(menu(dom).hidden, true, 'closed');
+    click(dom, SS.inSheet(dom, '.ui-sheet__close'));
+    assert.ok(!SS.isOpen(dom), 'the Close button closes it');
     assert.strictEqual(sticker(dom).getAttribute('aria-expanded'), 'false');
+    await SS.settle();
+    click(dom, sticker(dom));
+    assert.ok(SS.isOpen(dom), 'reopens');
+    // the scrim: ui.sheet's own dismissal (a pointer-free click is not time-gated)
+    const scrims = dom.window.document.querySelectorAll('.ui-scrim'); // the first sheet's scrim may still be sliding out
+    click(dom, scrims[scrims.length - 1]);
+    assert.ok(!SS.isOpen(dom), 'the scrim closes it');
+    await SS.settle();
+    click(dom, sticker(dom));
+    assert.ok(SS.isOpen(dom));
+    dom.window.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.ok(!SS.isOpen(dom), 'Escape closes it');
   });
 });
 
-test('T3 (source-lock): the speed rows are EXACTLY player.js PLAYBACK_RATES', async () => {
+test('T3 (source-lock): the Speed strip is EXACTLY player.js PLAYBACK_RATES', async () => {
   const expected = playerPure.buildSpeedMenuModel(1).map((r) => r.rate);
   await boot(async (dom) => {
-    click(dom, sticker(dom)); // open (builds the rows fresh)
+    click(dom, sticker(dom)); // open (builds the tiles fresh)
+    click(dom, menu(dom).querySelector('[data-skin-speedtoggle]')); // the strip opens under the grid
+    assert.strictEqual(menu(dom).querySelector('.mms-ss__strip').hidden, false, 'the strip is shown');
     const rows = [...menu(dom).querySelectorAll('[data-skin-speed]')].map((b) => Number(b.getAttribute('data-skin-speed')));
     assert.deepStrictEqual(rows, expected, 'sticker speed rows match player.js PLAYBACK_RATES exactly (order + values)');
   });
@@ -155,15 +173,24 @@ test('T3 (anti-INERT): picking a speed sets playbackRate AND defaultPlaybackRate
   await boot(async (dom) => {
     const mp = dom.window.document.getElementById('media-player');
     click(dom, sticker(dom));
+    click(dom, menu(dom).querySelector('[data-skin-speedtoggle]'));
     const opt = menu(dom).querySelector('[data-skin-speed="1.5"]');
-    assert.ok(opt, 'a 1.5x row exists');
+    assert.ok(opt, 'a 1.5x pill exists');
     click(dom, opt);
     assert.strictEqual(mp.playbackRate, 1.5, 'the real media element rate changed');
     // v1.238 gate CRITICAL: defaultPlaybackRate MUST be set too, else the rate reverts on
     // the next load(). This is the axis that both seats found unbound.
     assert.strictEqual(mp.defaultPlaybackRate, 1.5, 'defaultPlaybackRate set (the survives-a-load carry)');
     assert.strictEqual(dom.window.localStorage.getItem('ft-rate'), '1.5', 'persisted for a page-reload re-apply');
-    assert.ok(menu(dom).querySelector('[data-skin-speed="1.5"].is-on'), 'the 1.5x row is now marked active');
+    assert.strictEqual(menu(dom).querySelector('.mms-ss__strip').hidden, true, 'a pick closes the strip');
+    const tile = menu(dom).querySelector('[data-skin-speedtoggle]');
+    assert.strictEqual(tile.querySelector('.mms-ss__glyph').textContent, '1.5\u00d7', 'the tile\'s big glyph is the live rate');
+    assert.strictEqual(tile.getAttribute('aria-pressed'), 'true', 'R3: a rate off 1x shows the tile selected');
+    click(dom, menu(dom).querySelector('[data-skin-speedtoggle]'));
+    assert.strictEqual(menu(dom).querySelector('[data-skin-speed="1.5"]').getAttribute('aria-pressed'), 'true', 'the 1.5x pill is marked selected when the strip reopens');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-speed="1"]').getAttribute('aria-pressed'), 'false');
+    click(dom, menu(dom).querySelector('[data-skin-speedtoggle]')); // the tile is redrawn on every state change: re-read it
+    assert.strictEqual(menu(dom).querySelector('.mms-ss__strip').hidden, true, 'tapping the tile again closes the strip');
   });
 });
 
@@ -171,6 +198,7 @@ test('T3 (gate CRITICAL): a sticker-set speed SURVIVES a track-change load() (th
   await boot(async (dom) => {
     const mp = dom.window.document.getElementById('media-player');
     click(dom, sticker(dom));
+    click(dom, menu(dom).querySelector('[data-skin-speedtoggle]'));
     click(dom, menu(dom).querySelector('[data-skin-speed="2"]'));
     assert.strictEqual(mp.playbackRate, 2, 'plays at 2x on the current track');
     // Simulate the player auto-advancing to a separate-file track: load() snaps playbackRate
@@ -183,11 +211,13 @@ test('T3 (gate CRITICAL): a sticker-set speed SURVIVES a track-change load() (th
 test('T3 (anti-INERT): the loop toggle drives player.setLoop and reflects state', async () => {
   await boot(async (dom, ctx) => {
     click(dom, sticker(dom));
-    assert.ok(menu(dom).querySelector('.mms-sm-loop:not(.is-on)'), 'loop starts Off');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-loop]').getAttribute('aria-pressed'), 'false', 'loop starts Off');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-loop] .mms-ss__cap').textContent, 'Off');
     click(dom, menu(dom).querySelector('[data-skin-loop]'));
     assert.deepStrictEqual(ctx.state.setLoopCalls, [true], 'player.setLoop(true) was called');
     assert.strictEqual(ctx.state.loop, true, 'loop is now on');
-    assert.ok(menu(dom).querySelector('.mms-sm-loop.is-on'), 'the loop row reflects On');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-loop]').getAttribute('aria-pressed'), 'true', 'R3: the Loop tile reflects On as its selected state');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-loop] .mms-ss__cap').textContent, 'On');
     click(dom, menu(dom).querySelector('[data-skin-loop]'));
     assert.deepStrictEqual(ctx.state.setLoopCalls, [true, false], 'a second tap turns it back off');
   });
@@ -197,8 +227,8 @@ test('T3 (anti-INERT): picking a skin chip calls SKINS.setActiveSkin and re-rend
   await boot(async (dom) => {
     click(dom, sticker(dom));
     click(dom, menu(dom).querySelector('[data-skin-skins]')); // v1.333: Skin is its own page
-    const chip = menu(dom).querySelector('[data-skin-pick="ipod"]');
-    assert.ok(chip, 'an iPod chip exists');
+    const chip = menu(dom).querySelector('.ui-row[data-skin-pick="ipod"]');
+    assert.ok(chip, 'an iPod row exists on the Skin page');
     click(dom, chip);
     assert.strictEqual(dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'setActiveSkin persisted the choice');
     assert.ok(panel(dom).classList.contains('mms-ipod'), 'the panel re-rendered as the iPod skin');
@@ -248,7 +278,7 @@ test('v1.241: injectSticker applies the SIZE and TILT classes (defaults, and an 
   await boot(async (dom) => {
     const cl = sticker(dom).classList;
     assert.ok(cl.contains('mms-sticker-sz-3x'), 'size 3x class applied');
-    assert.ok(sticker(dom).parentElement.classList.contains('mms-sticker-sz-3x'), 'v1.333: the WRAP carries the size too (the menu\'s cap reads it)');
+    assert.ok(!sticker(dom).parentElement.classList.contains('mms-sticker-sz-3x'), 'v1.388.0: the wrap no longer carries the size (the sheet is not capped by the sticker; only the button needs it)');
     assert.ok(cl.contains('mms-sticker-tilt-right'), 'tilt right class applied');
   }, { sticker: { kind: 'logo', size: '3x', tilt: 'right' } });
   // an unknown size/tilt falls back to the defaults
@@ -266,50 +296,45 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
   assert.match(css, /\.mms-sticker-sz-3x\{[^}]*--mms-sticker-px:156px/, '3x = 3 x base');
   assert.doesNotMatch(css, /\.mms-sticker-sz-5x/, 'v1.243: 5x removed (overlapped the wheel)');
-  // v1.333 (Dean's 2x sticker pushed the menu's top ~44px off-screen; measured): the menu's cap is the space
-  // ABOVE the sticker - bound to the SAME bottom offset the wrap uses and the sticker's own size var
+  // the corner sticker's own position: the wrap sits over the bottom inset (the iPod portrait lock: each inset reads
+  // --mms-up-* first, set only on the turned Upright player, else today's env())
   const wrapRule = (css.match(/\n {2}\.mms-sticker-wrap\{[^}]*\}/) || [''])[0];
-  // the iPod portrait lock: each inset reads --mms-up-* first (set only on the turned Upright player), else today's env()
   assert.match(wrapRule, /bottom:calc\(var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
-  const cap = (css.match(/\n {2}\.mms-sticker-wrap > \.mms-sticker-menu\{[^}]*\}/) || [''])[0];
-  assert.match(cap, /max-height:min\(var\(--mms-up-86vh, 86vh\), calc\(var\(--mms-up-dvh, 100dvh\) - var\(--mms-up-top, env\(safe-area-inset-top,0px\)\) - var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
-  // UI pass S7 (D7 landscape): the menu's side anchor is data its wrap sets (the wrap's left edge in
-  // portrait; its right edge in landscape, where the sticker moves to the right-hand corner).
-  assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:var\(--mms-sm-anchor-l\); right:var\(--mms-sm-anchor-r\); bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
-  assert.match(wrapRule, /--mms-sm-anchor-l:0; --mms-sm-anchor-r:auto;/, 'portrait: the menu opens from the wrap\'s left edge');
+  // v1.388.0 (D8): the popover is gone - its anchor and its height cap (the space ABOVE the sticker) retire with it. The sheet is a
+  // ui.sheet on <body>, capped by ui.css (90dvh) and never by the sticker.
+  assert.doesNotMatch(css, /\.mms-sticker-wrap > \.mms-sticker-menu/, 'no rule caps a menu above the sticker any more');
+  assert.doesNotMatch(css, /--mms-sm-anchor/, 'no side-anchor data is set or read: nothing hangs from the wrap');
+  assert.doesNotMatch(css, /\n {2}\.mms-sticker-menu\{ position:absolute;/, 'the phone positioning of the old popover is retired');
   assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
   assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
   assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');
 });
 
-test('T3: a click elsewhere on the panel closes an open menu', async () => {
+test('T3: a repaint of the panel (a skin change) closes an open sheet - it described the surface that was replaced', async () => {
   await boot(async (dom) => {
     click(dom, sticker(dom));
-    assert.strictEqual(menu(dom).hidden, false, 'open');
-    // click the panel background (not inside the sticker wrap)
-    click(dom, panel(dom));
-    assert.strictEqual(menu(dom).hidden, true, 'closed by an outside click');
+    assert.ok(SS.isOpen(dom), 'open');
+    click(dom, menu(dom).querySelector('[data-skin-skins]'));
+    click(dom, menu(dom).querySelector('.ui-row[data-skin-pick="ipod"]'));
+    assert.ok(!SS.isOpen(dom), 'a pick closes the sheet');
+    assert.ok(panel(dom).classList.contains('mms-ipod'), 'and the panel repainted');
   });
 });
 
-test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-menu row is thumb-sized', () => {
-  // Dean's friction report: the Extras entry + action rows were too small to tap. The size
-  // pass floors every interactive row at 44px (48px for the action list) with fs-md text
-  // and a wider menu. jsdom has no layout - lock the CSS floors (the v1.241 lock pattern).
+test('v1.252 L1 -> v1.388.0 source-lock: the rows that remain (the desktop actions menu\'s action rows) are thumb-sized; the tray\'s Color chips are the sheet\'s own pills', () => {
+  // Dean's friction report: the action rows were too small to tap. The size pass floors every interactive row at the
+  // touch token. v1.388.0 retired the speed options, the loop / Extras / Back rows (the sheet draws FileTube rows and tiles,
+  // sized by ui.css); what is left of this surface is the desktop /music actions menu and the tray's chips.
   const fs = require('node:fs'); const path = require('node:path');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
-  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\)/, 'the menu is wide enough for thumb rows (88vw; the turned Upright player\'s own width)');
-  // UI pass S7 (F70): ONE row height - every row reads the touch token (44px), the action rows'
-  // 48px (taller than their 44px neighbours) is gone.
-  assert.match(css, /\.mms-sm-opt\{[^}]*min-height:var\(--size-touch\)/, 'speed options = the touch height');
-  assert.match(css, /\.mms-sm-chip\{[^}]*min-height:var\(--size-touch\)/, 'skin chips = the touch height');
-  assert.match(css, /\.mms-sm-loop\{[^}]*min-height:var\(--size-touch\)/, 'the loop row = the touch height');
-  assert.match(css, /\.mms-sm-extras,\s*\.mms-sticker-menu \.mms-sm-back\{[^}]*min-height:var\(--size-touch\)/, 'Extras/Back rows = the touch height');
-  assert.match(css, /\.mms-sm-act\{[^}]*min-height:var\(--size-touch\)/, 'action rows = the touch height (was 48px beside 44px rows)');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\)/, 'the desktop menu is wide enough for thumb rows');
+  assert.match(css, /\.mms-sm-act\{[^}]*min-height:var\(--size-touch\)/, 'action rows = the touch height');
   assert.doesNotMatch(css, /\.mms-sm-[a-z]+\{[^}]*min-height:4[48]px/, 'no row keeps a raw height');
+  for (const gone of ['mms-sm-opt', 'mms-sm-loop', 'mms-sm-extras', 'mms-sm-back', 'mms-sm-speed', 'mms-sm-glyph', 'mms-sm-lbl', 'mms-sm-state', 'mms-sm-chip', 'mms-sm-skins', 'mms-sm-h']) {
+    assert.ok(css.indexOf('.' + gone) === -1, '.' + gone + ' has no user left and no rule');
+  }
   assert.match(require('../helpers/stylesheets.js').readTokensCss(), /--size-touch: 44px;/, 'the touch token is 44px');
-  assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text bumped to fs-md');
-  assert.match(css, /\.mms-sm-opt\{[^}]*font-size:var\(--fs-md\)/, 'speed text bumped to fs-md');
+  assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text = fs-md');
 });
 
 test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\'s design language', () => {
@@ -324,41 +349,36 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-ui\)/, 'the menu container carries the app font');
   assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-ui\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
-  assert.match(css, /\.mms-sm-h\{[^}]*letter-spacing:var\(--tracking-caps\)/, 'headings use the APP caps tracking token');
-  assert.ok(!/\.mms-sm-h\{[^}]*--mms-ls-caps/.test(css), 'the over-wide mms tracking is gone from headings');
-  assert.match(css, /\.mms-sm-lbl\{[^}]*font-weight:var\(--fw-semibold\)/, 'row labels are semibold (the settings-menu idiom)');
   assert.match(css, /\.mms-sm-title\{[^}]*font-weight:var\(--fw-semibold\)/, 'the Extras song title is a real title');
   // UI pass S7 (F70, D8.8: red is brand / primary / progress / danger only; selected is ink or a
   // tonal fill). Selected = the overlay's tonal fill (its lighter grey on the #222 surface) with an
   // ink border and semibold text - NOT red, which now only means Delete (.mms-sm-danger).
   const SEL = /\{ background:var\(--overlay-border\); color:inherit; border-color:currentColor; font-weight:var\(--fw-semibold\); \}/;
-  assert.match(css, new RegExp('\\.mms-sm-opt\\.is-on' + SEL.source), 'selected speed = tonal + ink, not red');
-  assert.match(css, new RegExp('\\.mms-sm-chip\\.is-on' + SEL.source), 'selected skin chip = tonal + ink');
   assert.match(css, new RegExp('\\.mms-sm-act\\.is-on' + SEL.source), 'active action row = tonal + ink');
-  assert.doesNotMatch(css, /\.mms-sm-(?:opt|chip|act|loop)\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
+  assert.doesNotMatch(css, /\.mms-sm-act\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
   assert.match(css, /\.mms-sm-danger\{ color:var\(--yt-red\); border-color:var\(--yt-red\); \}/, 'red stays the DANGER role (Delete)');
   assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
   assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:var\(--ring-w\) solid var\(--focus-ring\)/, 'keyboard focus = the focus ring role (red is not a focus colour)');
   // slim-gate S2: the two parity pillars the first lock missed
-  assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
-  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--overlay-border\); \}/, 'a selected chip cannot grey out under hover');
   // slim-gate S3: hover is gated to hover-capable inputs (the pop-out mouse), so a
   // phone tap never sticks a grey row (the Like/Watched rows neither close nor rebuild).
-  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-opt:hover/, 'hover rules live behind (hover: hover)');
+  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-act:hover/, 'hover rules live behind (hover: hover)');
   // v1.255 (Dean): the Extras page grows instead of scrolling on normal phones
   assert.match(css, /\.mms-sticker-menu\{[^}]*max-height:86vh/, 'the menu may grow to 86vh (the Extras list fits without scroll)');
 });
 
-test('v1.255 parity: the rows carry the watch-matching GLYPHS (rendered, not just source)', async () => {
-  // Dean: "watch should probably have a glyph. You should probably have the same matching
-  // glyphs." Bind the rendered menu: each row's mask-icon <i> from the app's icon set.
+test('v1.388.0: every tile carries its glyph from the app icon registry (rendered, not just source)', async () => {
+  // Dean (v1.255): "watch should probably have a glyph. You should probably have the same matching glyphs." The sheet's tiles
+  // draw ui.icon sprite glyphs (ui.icon THROWS on an unknown name: LESSONS 2, v1.387.2), so a tile whose glyph is missing from
+  // the registry would blank the whole sheet - this binds every tile through the real registry.
   await boot(async (dom) => {
     click(dom, sticker(dom));
     const m = menu(dom);
-    assert.ok(m.querySelector('[data-skin-loop] i.icon-refresh'), 'Loop carries its glyph');
-    assert.ok(m.querySelector('[data-skin-extras] i.icon-more'), 'Extras carries the More glyph (the watch-row icon)');
-    // the labels still read right with the icons in place (no textContent regression)
-    assert.match(m.querySelector('[data-skin-loop]').textContent, /Loop/);
+    const tiles = [...m.querySelectorAll('.mms-ss__tile')];
+    assert.strictEqual(tiles.length, 8, 'the grid holds 8 tiles');
+    const names = tiles.map((t) => (t.querySelector('use') || { getAttribute: () => '' }).getAttribute('href'));
+    assert.deepStrictEqual(names, ['#i-favorite', '#i-toc', '#i-repeat', '#i-shuffle', '', '#i-share', '#i-download', '#i-more_horiz'], 'each tile draws its own glyph (Speed draws its rate instead)');
+    assert.match(m.querySelector('[data-skin-loop]').textContent, /Loop/, 'the labels still read right with the icons in place');
   });
 });
 

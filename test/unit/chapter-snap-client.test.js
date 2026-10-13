@@ -16,6 +16,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>
 
 const musicPath = require.resolve('../../public/js/music.js');
 require('../../public/js/common.js');
@@ -116,6 +117,7 @@ async function boot(run, opts) {
   dom.window.fetchLikedTotal = () => Promise.resolve(0);
   dom.window.showToast = () => {};
   dom.window.addToQueue = () => {};
+  SS.installUi(dom); // the sheet is built with the real ui.js
   dom.window.showChapterSnapEditor = (id, o) => { editor.push({ id, opts: o }); return { close() {} }; };
   dom.window.showChaptersEditor = (id, lines, onSaved, d, o) => { editor.push({ id, text: true, lines, opts: Object.assign({ onSaved }, o || {}) }); };
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
@@ -139,15 +141,15 @@ const doc = (dom) => dom.window.document;
 const click = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
 const panel = (dom) => doc(dom).getElementById('music-nowplaying-panel');
 async function openStickerExtras(dom) {
-  const menu = panel(dom).querySelector('[data-skin-sticker-menu]');
   const sticker = panel(dom).querySelector('.mms-sticker[data-skin-sticker]');
   assert.ok(sticker, 'the skin sticker rendered (mobile)');
-  if (menu.hidden) click(dom, sticker);
-  const entry = menu.querySelector('[data-skin-extras]');
-  assert.ok(entry, 'the Extras entry is on page 1');
-  click(dom, entry);
-  await settleN(8);
-  return menu;
+  if (!SS.isOpen(dom)) click(dom, sticker);
+  await settleN(8); // the sheet loads the item once, at open
+  const more = SS.inSheet(dom, '[data-skin-more]');
+  assert.ok(more, 'the More tile is on page 1');
+  click(dom, more);
+  await settleN(2);
+  return SS.menuOf(dom); // the More page
 }
 async function openDesktopActions(dom) {
   const btn = doc(dom).getElementById('music-actions-btn');
@@ -162,7 +164,7 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
   test(`${label}: "Fix chapter times" opens the ONE editor on the backing file at the PLAYING chapter`, async () => {
     await boot(async (dom, ctx) => {
       const menu = await open(dom);
-      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered (non-vacuous)');
+      assert.ok(menu.querySelector('[data-skin-x="queue"]'), 'the Extras page rendered (non-vacuous)');
       const row = snapRow(menu);
       assert.ok(row, 'the row is offered on a playing chapter');
       assert.match(row.textContent, /Fix chapter times/);
@@ -178,12 +180,12 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
   test(`${label}: hidden for a viewer who may not modify the library, and for a plain (unchaptered) file`, async () => {
     await boot(async (dom) => {
       const menu = await open(dom);
-      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered for the member (populated)');
+      assert.ok(menu.querySelector('[data-skin-x="queue"]'), 'the Extras page rendered for the member (populated)');
       assert.strictEqual(snapRow(menu), null, 'no entry without modify rights');
     }, { desktop, canModify: false });
     await boot(async (dom) => {
       const menu = await open(dom);
-      assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered for the plain file (populated)');
+      assert.ok(menu.querySelector('[data-skin-x="queue"]'), 'the Extras page rendered for the plain file (populated)');
       assert.strictEqual(snapRow(menu), null, 'no entry on a plain file');
     }, { desktop, playId: 'lib1' });
   });

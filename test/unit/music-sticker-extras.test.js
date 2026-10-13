@@ -1,8 +1,8 @@
 'use strict';
 
-// [UNIT] v1.249 (F-EXTRAS): the sticker menu's SECOND page - the watch-page action
-// set (Share/Download/Like/Watched/Queue/Transcript/Reheat/Move/Delete) for the
-// playing music/YouTube-audio track. Boots real music.js (the music-sticker-menu
+// [UNIT] v1.249 (F-EXTRAS) -> v1.388.0 (the sticker SHEET): the watch-page action set
+// (Share/Download/Like on the tile grid; Watched/Queue/Transcript/Reheat/Move/Delete on the More page)
+// for the playing music/YouTube-audio track. Boots real music.js (the music-sticker-menu
 // harness) and binds, behaviourally: the "Extras >" entry's eligibility (library-
 // backed tracks only, never a native music-library track), the open-time
 // /api/videos/:baseId fetch (with the ::c chapter-suffix strip), per-action
@@ -14,6 +14,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js');
 
 const musicPath = require.resolve('../../public/js/music.js');
 require('../../public/js/common.js');
@@ -171,6 +172,7 @@ async function boot(run, opts) {
   dom.window.ui = Object.assign({}, require('../../public/js/ui.js'), {
     confirm: (o) => new Promise((resolve) => { confirmModals.push({ title: o.title, body: o.body, opts: o, onConfirm: () => resolve(true), onCancel: () => resolve(false) }); }),
   });
+  dom.window.FTIcons = require('../../public/js/icons.js'); // the sheet's icons (ui.icon throws on an unknown name)
   dom.window.cardDeleteConfirmCopy = require('../../public/js/main.js').cardDeleteConfirmCopy;
   dom.window.openTranscriptFor = (o) => { transcripts.push(o); return Promise.resolve(null); };
   dom.window.addToQueue = (id, position, kind) => { queued.push({ id, position, kind }); };
@@ -206,53 +208,61 @@ async function boot(run, opts) {
   }
 }
 
-const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
-const sticker = (dom) => panel(dom).querySelector('.mms-sticker[data-skin-sticker]');
-const menu = (dom) => panel(dom).querySelector('[data-skin-sticker-menu]');
-const click = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-const act = (dom, name) => menu(dom).querySelector('[data-skin-x="' + name + '"]');
+const panel = SS.panelOf;
+const menu = SS.menuOf;
+const click = SS.clickEl;
+const inSheet = SS.inSheet;
+const act = (dom, name) => inSheet(dom, '[data-skin-x="' + name + '"]');
+const tile = (dom, flag) => inSheet(dom, '[data-skin-' + flag + ']');
+const unavailable = (el) => !!el && el.getAttribute('aria-disabled') === 'true';
 
-// open the menu (if not already open), tap "Extras >", settle the open fetch.
-async function openExtras(dom) {
-  if (menu(dom).hidden) click(dom, sticker(dom));
-  const entry = menu(dom).querySelector('[data-skin-extras]');
-  assert.ok(entry, 'the Extras entry is on page 1');
-  click(dom, entry);
-  for (let i = 0; i < 6; i++) await settle();
-}
+// open the sheet (item load settled): page 1 = the tile grid. openMore goes on to the More page.
+const openExtras = (dom) => SS.openSheet(dom);
+const openMore = (dom) => SS.openMore(dom);
 
-test('the Extras entry shows for a library-backed track and NOT for a native music-library track', async () => {
+test('the Like / Share / Download tiles and the More page are live for a library-backed track, and DISABLED IN PLACE for a native music-library track', async () => {
   await boot(async (dom) => {
-    click(dom, sticker(dom));
-    assert.ok(menu(dom).querySelector('[data-skin-extras]'), 'library track: Extras entry present');
-    // page 1 keeps its quick controls alongside it
-    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'speed rows still on page 1');
+    await openExtras(dom);
+    for (const f of ['like', 'share', 'download']) assert.ok(tile(dom, f) && !unavailable(tile(dom, f)), 'library track: the ' + f + ' tile is live');
+    assert.ok(tile(dom, 'speedtoggle'), 'the quick controls sit beside them (this is not a blank sheet)');
+    assert.ok(tile(dom, 'more') && !unavailable(tile(dom, 'more')), 'More is always live');
   });
   await boot(async (dom) => {
-    click(dom, sticker(dom));
-    assert.strictEqual(menu(dom).querySelector('[data-skin-extras]'), null, 'native track (no library source): no Extras entry');
+    await openExtras(dom);
+    for (const f of ['like', 'share', 'download']) {
+      assert.ok(tile(dom, f), 'R1: the ' + f + ' tile is still THERE (fixed positions)');
+      assert.ok(unavailable(tile(dom, f)), 'native track (no library source): the ' + f + ' tile is dimmed in place');
+    }
+    const before = dom.window.document.querySelectorAll('.mms-ss-root [data-skin-x]').length;
+    click(dom, tile(dom, 'like'));
+    await SS.settle();
+    assert.strictEqual(dom.window.document.querySelectorAll('.mms-ss-root [data-skin-x]').length, before, 'a tap on a disabled tile does nothing (the sheet is unchanged)');
   }, { tracks: NATIVE_TRACKS });
 });
 
-test('opening Extras fetches /api/videos/:id and renders the FULL action set (admin, all capabilities)', async () => {
+test('opening the sheet fetches /api/videos/:id and the grid + More page render the FULL action set (admin, all capabilities)', async () => {
   await boot(async (dom, ctx) => {
     await openExtras(dom);
-    assert.ok(ctx.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'GET'), 'fetched the media item on open');
-    for (const name of ['share', 'download', 'like', 'watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete']) {
-      assert.ok(act(dom, name), 'action rendered: ' + name);
-    }
+    assert.ok(ctx.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'GET'), 'fetched the media item at open');
+    for (const name of ['share', 'download', 'like']) assert.ok(act(dom, name), 'tile rendered: ' + name);
     const dl = act(dom, 'download');
     assert.strictEqual(dl.tagName, 'A', 'Download is a real anchor (native download navigation)');
     assert.strictEqual(dl.getAttribute('href'), '/video/s1?download=1', 'Download hits the byte route download arm');
-    assert.ok(menu(dom).querySelector('[data-skin-extras-back]'), 'a Back control is present');
-    assert.strictEqual(menu(dom).querySelector('[data-skin-speed]'), null, 'page 2 replaced the quick controls');
+    assert.ok(dl.hasAttribute('download'), 'and carries the download attribute');
+    assert.strictEqual(inSheet(dom, '[data-skin-extras-back]'), null, 'page 1 has no Back');
+    await openMore(dom);
+    for (const name of ['watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete']) {
+      assert.ok(act(dom, name), 'More row rendered: ' + name);
+    }
+    assert.ok(inSheet(dom, '[data-skin-extras-back]'), 'a Back control is present on the page');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-speedtoggle]'), null, 'the page replaced the tile grid');
   });
 });
 
 test('a ::c chapter id is STRIPPED to its base file id for the open fetch', async () => {
   await boot(async (dom, ctx) => {
     // simulate the player holding a chapter track of another file (nav-back
-    // reseed: not in the live queue -> eligibility is unknown -> entry shows,
+    // reseed: not in the live queue -> eligibility is unknown -> the tiles try,
     // the fetch decides). The fetch must hit the BASE id.
     dom.window.FileTube.player.currentId = 's9::c3';
     await openExtras(dom);
@@ -261,50 +271,58 @@ test('a ::c chapter id is STRIPPED to its base file id for the open fetch', asyn
   });
 });
 
-test('availability gating: no watchUrl -> no Share/Reheat; no subtitles -> no Transcript; no RBAC -> no Move/Delete', async () => {
+test('availability gating: no watchUrl -> no Reheat; no subtitles -> no Transcript; no RBAC -> no Move/Delete', async () => {
   await boot(async (dom) => {
-    await openExtras(dom);
-    assert.ok(act(dom, 'share'), 'v1.287: Share is UNIVERSAL - present even with no watchUrl (file-share)');
+    await openMore(dom);
     assert.strictEqual(act(dom, 'reheat'), null, 'no watchUrl: Reheat absent');
     assert.strictEqual(act(dom, 'transcript'), null, 'no subtitles: Transcript absent');
     assert.strictEqual(act(dom, 'move'), null, 'member without canModifyLibrary: Move absent');
     assert.strictEqual(act(dom, 'delete'), null, 'member without canModifyLibrary: Delete absent');
     // the ungated core is still there (this test is not a blank page passing vacuously)
-    assert.ok(act(dom, 'download') && act(dom, 'like') && act(dom, 'watched') && act(dom, 'queue'), 'core actions present');
+    assert.ok(act(dom, 'watched') && act(dom, 'queue') && act(dom, 'queue-next'), 'core More rows present');
+    click(dom, inSheet(dom, '[data-skin-extras-back]'));
+    assert.ok(act(dom, 'share') && act(dom, 'download') && act(dom, 'like'), 'v1.287: Share is UNIVERSAL - the tile is live even with no watchUrl (file-share)');
+    assert.ok(!unavailable(act(dom, 'share')) && !unavailable(act(dom, 'like')), 'and not dimmed');
   }, { video: { watchUrl: undefined, hasSubtitles: false }, me: { user: { role: 'member' } } });
   // a member WITH the capability gets Move/Delete (the RBAC axis binds in both directions)
   await boot(async (dom) => {
-    await openExtras(dom);
+    await openMore(dom);
     assert.ok(act(dom, 'move') && act(dom, 'delete'), 'canModifyLibrary member: Move/Delete present');
   }, { me: { user: { role: 'member', canModifyLibrary: true } } });
 });
 
-test('a 404 item (native track that slipped through / deleted) renders the honest note, no actions', async () => {
+test('a 404 item (native track that slipped through / deleted): the tiles stay disabled in place and the More page says so, no actions', async () => {
   await boot(async (dom) => {
-    dom.window.FileTube.player.currentId = 's9'; // unknown to the queue -> entry shows
+    dom.window.FileTube.player.currentId = 's9'; // unknown to the queue -> eligible until the fetch settles it
     await openExtras(dom);
-    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'a note is rendered');
-    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'no action buttons');
-    assert.ok(menu(dom).querySelector('[data-skin-extras-back]'), 'Back still offered');
+    for (const f of ['like', 'share', 'download']) assert.ok(unavailable(tile(dom, f)), 'no item behind it: the ' + f + ' tile is dimmed');
+    await openMore(dom);
+    const note = menu(dom).querySelector('.mms-ss__note');
+    assert.ok(note, 'a note is rendered');
+    assert.ok(note.textContent.indexOf('aren’t available') !== -1, 'it says so honestly');
+    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'no action rows');
+    assert.ok(inSheet(dom, '[data-skin-extras-back]'), 'Back still offered');
   }, { video: null });
 });
 
 test('anti-INERT Like/Watched: each tap fires the REAL media-store endpoint and flips only on success', async () => {
   await boot(async (dom, ctx) => {
     await openExtras(dom);
+    assert.strictEqual(act(dom, 'like').querySelector('.mms-ss__cap').textContent, 'track', 'R2: the caption says what it will like');
     click(dom, act(dom, 'like'));
-    await settle(); await settle();
+    await SS.settle(); await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'POST'), 'Like POSTs /api/liked/:id');
-    assert.strictEqual(act(dom, 'like').textContent, 'Liked', 'button reflects the new state');
-    assert.ok(act(dom, 'like').classList.contains('is-on'));
+    assert.strictEqual(act(dom, 'like').querySelector('.mms-ss__cap').textContent, 'Liked', 'the tile reflects the new state');
+    assert.strictEqual(act(dom, 'like').getAttribute('aria-pressed'), 'true', 'selected');
     // QA gate (v1.33.1 class): the count-gated Liked sidebar cache is re-primed
     assert.deepStrictEqual(ctx.likedTotalCalls, [true], 'fetchLikedTotal(force) busts the session cache');
     click(dom, act(dom, 'like'));
-    await settle(); await settle();
+    await SS.settle(); await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/liked/s1' && c.method === 'DELETE'), 'second tap DELETEs (unlike)');
-    assert.strictEqual(act(dom, 'like').textContent, 'Like');
+    assert.strictEqual(act(dom, 'like').querySelector('.mms-ss__cap').textContent, 'track');
+    await openMore(dom);
     click(dom, act(dom, 'watched'));
-    await settle(); await settle();
+    await SS.settle(); await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/watched/s1' && c.method === 'POST'), 'Watched POSTs /api/watched/:id');
     assert.strictEqual(act(dom, 'watched').textContent, 'Watched');
   });
@@ -312,11 +330,11 @@ test('anti-INERT Like/Watched: each tap fires the REAL media-store endpoint and 
 
 test('anti-INERT Queue: Add-to-queue / Play-next call the shared addToQueue with the MEDIA kind (watch-page parity)', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'queue'));
     assert.deepStrictEqual(ctx.queued, [{ id: 's1', position: 'end', kind: undefined }], 'kind stays the default media kind - a projected id is NOT in ns.tracks, kind track would 404');
-    assert.strictEqual(menu(dom).hidden, true, 'menu closes after queueing');
-    await openExtras(dom);
+    assert.ok(!SS.isOpen(dom), 'the sheet closes after queueing');
+    await openMore(dom);
     click(dom, act(dom, 'queue-next'));
     assert.strictEqual(ctx.queued.length, 2);
     assert.deepStrictEqual(ctx.queued[1], { id: 's1', position: 'next', kind: undefined });
@@ -327,16 +345,16 @@ test('v1.287 Share (source exists, no position) -> a BOTH choice: Share file OR 
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'share'));
-    await settle();
+    await SS.settle();
     // an item WITH a source link offers both file and link (Dean's "both when a source exists").
     assert.strictEqual(ctx.choiceModals.length, 1, 'choice modal offered');
     assert.deepStrictEqual(ctx.choiceModals[0].choices.map((c) => c.label), ['Share file', 'Share link'], 'no position -> file + link only');
     ctx.choiceModals[0].choices[0].onPick(); // Share file
-    await settle();
+    await SS.settle();
     assert.strictEqual(ctx.fileShares.length, 1, 'Share file -> shareMediaFile');
     assert.strictEqual(ctx.fileShares[0].url, '/video/s1?download=1', 'file-share fetches the download arm');
     ctx.choiceModals[0].choices[1].onPick(); // Share link
-    await settle();
+    await SS.settle();
     assert.strictEqual(ctx.shares[0].url, VIDEO_DEFAULT.watchUrl, 'Share link -> the original YouTube link');
   });
 });
@@ -349,7 +367,7 @@ test('v1.287 Share with a live position >= 1s adds a "Share link at <time>" choi
     assert.strictEqual(ctx.choiceModals.length, 1, 'choice modal offered');
     assert.strictEqual(ctx.choiceModals[0].choices.length, 3, 'file + link + link-at-time');
     ctx.choiceModals[0].choices[2].onPick(); // the timed link
-    await settle();
+    await SS.settle();
     assert.strictEqual(ctx.shares[0].url, VIDEO_DEFAULT.watchUrl + '&t=65s', 'the timed pick shares withShareStartTime');
   });
 });
@@ -358,7 +376,7 @@ test('v1.287 Share with NO source link (podcast/local) -> file-share directly, n
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'share'));
-    await settle();
+    await SS.settle();
     assert.strictEqual(ctx.choiceModals.length, 0, 'no source -> no choice');
     assert.strictEqual(ctx.fileShares.length, 1, 'file-share directly');
   }, { video: { watchUrl: undefined } });
@@ -366,7 +384,7 @@ test('v1.287 Share with NO source link (podcast/local) -> file-share directly, n
 
 test('anti-INERT Transcript: hands the item to the shared openTranscriptFor flow', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'transcript'));
     assert.strictEqual(ctx.transcripts.length, 1);
     assert.strictEqual(ctx.transcripts[0].id, 's1');
@@ -377,18 +395,18 @@ test('anti-INERT Transcript: hands the item to the shared openTranscriptFor flow
 test('anti-INERT Reheat: POSTs the repull route; the 202 poll reports OUR terminal entry, never a stale other-item one', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'reheat'));
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/ytdlp/repull-metadata/item/s1' && c.method === 'POST'), 'fired the repull');
     assert.ok(ctx.toasts.includes('Reheating…'), '202 acknowledged');
     // tick 1: a STALE terminal entry from another item's reheat - must be ignored
     t.mock.timers.tick(1000);
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(!ctx.toasts.some((m) => m === 'Reheat finished.'), 'a stale other-item entry is not reported as ours');
     // tick 2: ours lands
     t.mock.timers.tick(1000);
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.toasts.includes('Reheat finished.'), 'our terminal entry is reported');
   }, {
     statusEntries: [
@@ -401,11 +419,11 @@ test('anti-INERT Reheat: POSTs the repull route; the 202 poll reports OUR termin
 test('Reheat honesty: a no-source run says so, a failed outcome is never dressed as success', async (t) => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'reheat'));
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     t.mock.timers.tick(1000);
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.toasts.some((m) => m.indexOf('nothing to refresh') !== -1), 'networkRan:false reports the truth');
     assert.ok(!ctx.toasts.includes('Reheat finished.'));
   }, { statusEntries: [{ 'repull-metadata-item': { state: 'done', mediaId: 's1', networkRan: false } }] });
@@ -413,9 +431,9 @@ test('Reheat honesty: a no-source run says so, a failed outcome is never dressed
 
 test('anti-INERT Move: loads the folder list, opens the shared move modal; a confirmed move re-keys -> player closed + view refreshed', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'move'));
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/config'), 'fetched the folder list');
     assert.strictEqual(ctx.moveModals.length, 1, 'showMoveModal opened');
     assert.deepStrictEqual(ctx.moveModals[0].folders, ['Music', 'Podcasts']);
@@ -424,7 +442,7 @@ test('anti-INERT Move: loads the folder list, opens the shared move modal; a con
     let toreDown = false;
     const statusEl = dom.window.document.createElement('div');
     ctx.moveModals[0].onMove('Podcasts', { teardown: () => { toreDown = true; }, statusEl, reenable: () => {} });
-    for (let i = 0; i < 6; i++) await settle();
+    for (let i = 0; i < 6; i++) await SS.settle();
     assert.deepStrictEqual(ctx.requestedMoves, [{ id: 's1', folder: 'Podcasts' }], 'requestMoveItem fired');
     assert.ok(toreDown, 'modal torn down on success');
     assert.ok(ctx.state.closed, 'player closed (the move re-keys the id the player still holds)');
@@ -440,7 +458,7 @@ test('anti-INERT Move: loads the folder list, opens the shared move modal; a con
 test('Delete asks ONE danger ui.confirm (the card menu copy) and only its OK fires the real DELETE; Cancel sends nothing', async () => {
   // yt-dlp-managed (channelName present)
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'delete'));
     assert.strictEqual(ctx.confirmModals.length, 1, 'one confirm opened');
     const c = ctx.confirmModals[0];
@@ -452,13 +470,13 @@ test('Delete asks ONE danger ui.confirm (the card menu copy) and only its OK fir
     assert.ok(c.body.indexOf('Song One') !== -1, 'the confirm names the item');
     assert.ok(c.body.indexOf('cannot be re-downloaded') === -1, 'a yt-dlp item has no local-file line');
     assert.ok(c.opts.signal, 'bound to the view signal (a teardown closes it)');
-    assert.strictEqual(menu(dom).hidden, true, 'the menu closed behind the confirm');
-    await openExtras(dom); // reopen Extras under the held confirm and tap Delete again
+    assert.ok(!SS.isOpen(dom), 'the sheet closed behind the confirm');
+    await openMore(dom); // reopen More under the held confirm and tap Delete again
     click(dom, act(dom, 'delete'));
     assert.strictEqual(ctx.confirmModals.length, 1, 'a second Delete while the confirm is open opens nothing');
     assert.ok(!ctx.calls.some((x) => x.method === 'DELETE'), 'nothing is deleted before the answer');
     c.onConfirm();
-    for (let i = 0; i < 8; i++) await settle();
+    for (let i = 0; i < 8; i++) await SS.settle();
     assert.strictEqual(ctx.calls.filter((x) => x.method === 'DELETE').length, 1, 'exactly one DELETE');
     assert.ok(ctx.calls.some((x) => x.url === '/api/videos/s1' && x.method === 'DELETE'), 'the real DELETE, same route');
     assert.ok(ctx.state.closed, 'player closed before the DELETE');
@@ -468,13 +486,13 @@ test('Delete asks ONE danger ui.confirm (the card menu copy) and only its OK fir
   });
   // local/irreplaceable (no channel identity): the same confirm, with the local-file line
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'delete'));
     assert.strictEqual(ctx.hardDeletes.length, 0, 'no hard-delete modal');
     assert.strictEqual(ctx.confirmModals.length, 1);
     assert.ok(ctx.confirmModals[0].body.indexOf('This local file cannot be re-downloaded.') !== -1, 'a local file says it cannot be re-downloaded');
     ctx.confirmModals[0].onCancel();
-    for (let i = 0; i < 8; i++) await settle();
+    for (let i = 0; i < 8; i++) await SS.settle();
     assert.ok(!ctx.calls.some((x) => x.method === 'DELETE'), 'Cancel deletes nothing');
     assert.strictEqual(ctx.state.closed, false, 'and leaves playback alone');
   }, { video: { channelName: undefined, channelId: undefined, channelUrl: undefined, watchUrl: undefined } });
@@ -487,14 +505,14 @@ test('Delete asks ONE danger ui.confirm (the card menu copy) and only its OK fir
 // skin up. The Delete test above is the control (s1 still playing: closed, skin torn down).
 test('R1 T-C4: an auto-advance while the Delete confirm is open - s1 is deleted, s2 keeps playing and keeps its skin', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'delete'));
     assert.strictEqual(ctx.confirmModals.length, 1, 'precondition: the trash confirm is open (held)');
     ctx.nav().onNext(); // the track ends under the modal: the production advance path
-    for (let i = 0; i < 12; i++) await settle();
+    for (let i = 0; i < 12; i++) await SS.settle();
     assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 'precondition: the player advanced to s2');
     ctx.confirmModals[0].onConfirm();
-    for (let i = 0; i < 12; i++) await settle();
+    for (let i = 0; i < 12; i++) await SS.settle();
     assert.ok(ctx.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'DELETE'), 'the confirmed item (s1) is deleted');
     assert.strictEqual(ctx.state.closed, false, 'the player playing s2 was NOT closed');
     assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 's2 is still the current track');
@@ -502,61 +520,67 @@ test('R1 T-C4: an auto-advance while the Delete confirm is open - s1 is deleted,
   });
 });
 
-test('two-page nav: Back returns to the quick controls; closing and reopening the menu RESETS to page 1', async () => {
+test('two-page nav: Back returns to the tile grid; closing and reopening the sheet RESETS to page 1', async () => {
   await boot(async (dom) => {
-    await openExtras(dom);
-    assert.ok(act(dom, 'like'), 'on page 2');
-    click(dom, menu(dom).querySelector('[data-skin-extras-back]'));
-    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'Back re-renders the quick controls');
-    assert.strictEqual(menu(dom).querySelector('[data-skin-x]'), null, 'the actions are gone');
-    // now: page 2 open -> close the whole menu -> reopen -> page 1 (never a stale Extras resume)
-    await openExtras(dom);
-    click(dom, sticker(dom)); // close
-    assert.strictEqual(menu(dom).hidden, true);
-    click(dom, sticker(dom)); // reopen
-    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'reopen lands on page 1');
+    await openMore(dom);
+    assert.ok(act(dom, 'queue'), 'on the More page');
+    click(dom, inSheet(dom, '[data-skin-extras-back]'));
+    assert.ok(menu(dom).querySelector('[data-skin-speedtoggle]'), 'Back re-renders the tile grid');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-x="queue"]'), null, 'the More rows are gone');
+    // now: More open -> close the whole sheet -> reopen -> page 1 (never a stale More resume)
+    await openMore(dom);
+    await SS.closeSheet(dom);
+    assert.ok(!SS.isOpen(dom), 'closed');
+    await SS.openSheet(dom);
+    assert.ok(menu(dom).querySelector('[data-skin-speedtoggle]'), 'reopen lands on page 1');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-x="queue"]'), null, 'not on More');
   });
 });
 
-test('a REAL track advance (setTrackNav.onNext) repaints the panel and destroys an open Extras page', async () => {
+test('a REAL track advance (setTrackNav.onNext) repaints the panel and closes an open More page: a late tap on its stale Delete does nothing', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     const staleDelete = act(dom, 'delete');
-    assert.ok(staleDelete, 'page 2 is up with a live Delete for s1');
+    assert.ok(staleDelete, 'More is up with a live Delete for s1');
     assert.ok(typeof ctx.nav().onNext === 'function', 'music.js registered a real onNext');
     ctx.nav().onNext(); // the production advance path: playAt -> loadTrack -> repaint
-    for (let i = 0; i < 12; i++) await settle();
+    for (let i = 0; i < 12; i++) await SS.settle();
     assert.strictEqual(dom.window.FileTube.player.currentId, 's2', 'the player advanced');
-    assert.ok(!staleDelete.isConnected, 'the old Delete button is DETACHED - a late tap cannot delete the wrong track');
-    assert.strictEqual(panel(dom).querySelectorAll('[data-skin-x]').length, 0, 'no extras action survives the repaint');
-    const m = menu(dom);
-    assert.ok(m && m.hidden, 'the fresh panel carries a closed page-1 menu');
+    assert.ok(!SS.isOpen(dom), 'the open sheet CLOSED with the repaint (it described s1)');
+    click(dom, staleDelete); // the sheet is sliding out: the activation guard refuses a late tap
+    assert.strictEqual(ctx.confirmModals.length, 0, 'a late tap on the stale Delete opened no confirm - it cannot delete the wrong track');
+    assert.strictEqual(panel(dom).querySelectorAll('[data-skin-x]').length, 0, 'no extras action lives in the panel');
   });
 });
 
-test('a late open-fetch response after Back never repaints page 2 over page 1 (token/page guard)', async () => {
+test('a late item load after Back lands on page 1 as live tiles and never draws More over it (page guard)', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom); // deferred - Loading note up
-    click(dom, menu(dom).querySelector('[data-skin-extras-back]'));
-    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'Back landed on page 1 with the fetch still in flight');
+    await openExtras(dom); // the /api/videos fetch is held
+    assert.ok(unavailable(tile(dom, 'like')), 'while the item is out the Like tile is dimmed in place');
+    click(dom, tile(dom, 'more'));
+    assert.ok(menu(dom).querySelector('.mms-ss__note'), 'More says Loading while the item is out');
+    click(dom, inSheet(dom, '[data-skin-extras-back]'));
+    assert.ok(menu(dom).querySelector('[data-skin-speedtoggle]'), 'Back landed on page 1 with the fetch still in flight');
     ctx.releaseVideo();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.ok(menu(dom).querySelector('[data-skin-speed]'), 'still page 1 after the late response');
-    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the late response rendered nothing');
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(menu(dom).querySelector('[data-skin-speedtoggle]'), 'still page 1 after the late response');
+    assert.ok(!unavailable(tile(dom, 'like')), 'the late item enabled the Like tile');
+    assert.strictEqual(menu(dom).querySelector('[data-skin-x="queue"]'), null, 'and drew no More rows over page 1');
   }, { deferVideo: true });
 });
 
 test('a SILENT track change mid-fetch (no repaint event) is caught by the same-id guard', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom); // deferred
+    await openExtras(dom); // the fetch is held
     // direct assignment fires no media event - nothing repaints the panel, so
     // only the post-await same-id re-check stands between the s1 payload and a
-    // menu claiming to act on what is now s2.
+    // sheet claiming to act on what is now s2.
     dom.window.FileTube.player.currentId = 's2';
     ctx.releaseVideo();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the stale s1 payload did not render');
-    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'the page stays on its note');
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(unavailable(tile(dom, 'like')), 'the stale s1 payload did not enable the tiles');
+    await openMore(dom);
+    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'and More drew no rows for it');
   }, { deferVideo: true });
 });
 
@@ -564,17 +588,18 @@ test('a FAILED like/watched write flips NOTHING and says so (the flips-only-on-2
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'like'));
-    await settle(); await settle();
-    assert.strictEqual(act(dom, 'like').textContent, 'Like', 'a 500 leaves the shown state alone');
-    assert.ok(!act(dom, 'like').classList.contains('is-on'));
+    await SS.settle(); await SS.settle();
+    assert.strictEqual(act(dom, 'like').querySelector('.mms-ss__cap').textContent, 'track', 'a 500 leaves the shown state alone');
+    assert.strictEqual(act(dom, 'like').getAttribute('aria-pressed'), 'false');
     assert.ok(ctx.toasts.includes('Could not update Like.'), 'the failure is reported');
     assert.deepStrictEqual(ctx.likedTotalCalls, [], 'no cache bust on failure');
     click(dom, act(dom, 'like'));
-    await settle(); await settle();
+    await SS.settle(); await SS.settle();
     const likeCalls = ctx.calls.filter((c) => c.url === '/api/liked/s1');
     assert.deepStrictEqual(likeCalls.map((c) => c.method), ['POST', 'POST'], 'internal state did not flip either - the retry is still an ADD');
+    await openMore(dom);
     click(dom, act(dom, 'watched'));
-    await settle(); await settle();
+    await SS.settle(); await SS.settle();
     assert.strictEqual(act(dom, 'watched').textContent, 'Mark watched', 'watched failure leaves state alone too');
   }, { failLike: true });
 });
@@ -583,21 +608,21 @@ test('a second Reheat tap replaces the first poll - no orphaned interval keeps h
   t.mock.timers.enable({ apis: ['setInterval'] });
   await boot(async (dom, ctx) => {
     const statusCalls = () => ctx.calls.filter((c) => c.url === '/api/subscriptions/status').length;
-    await openExtras(dom);
-    click(dom, act(dom, 'reheat')); // 202 -> poll 1 armed (menu closes)
-    for (let i = 0; i < 4; i++) await settle();
-    await openExtras(dom);
+    await openMore(dom);
+    click(dom, act(dom, 'reheat')); // 202 -> poll 1 armed (the sheet closes)
+    for (let i = 0; i < 4; i++) await SS.settle();
+    await openMore(dom);
     click(dom, act(dom, 'reheat')); // 202 -> poll 1 must be STOPPED, poll 2 armed
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     t.mock.timers.tick(1000); // running
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     t.mock.timers.tick(1000); // terminal for s1 -> toast + stop
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.toasts.includes('Reheat finished.'), 'the poll reached the terminal entry');
     const quiescent = statusCalls();
     assert.strictEqual(quiescent, 2, 'exactly ONE poll ran (one status fetch per tick)');
     t.mock.timers.tick(3000);
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.strictEqual(statusCalls(), quiescent, 'nothing polls after the terminal entry - no leaked interval');
   }, {
     statusEntries: [
@@ -607,20 +632,29 @@ test('a second Reheat tap replaces the first poll - no orphaned interval keeps h
   });
 });
 
-test('the desktop POP-OUT sticker menu never offers Extras (its modals would open in the main window behind it)', async () => {
+test('the desktop POP-OUT sticker sheet never offers the item actions (its modals would open in the main window behind it)', async () => {
   const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
   try {
     await boot(async (dom) => {
       dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pipDom.window) };
       const btn = dom.window.document.getElementById('music-popout-btn');
       click(dom, btn);
-      for (let i = 0; i < 8; i++) await settle();
+      for (let i = 0; i < 8; i++) await SS.settle();
       const pipPanel = pipDom.window.document.getElementById('music-nowplaying-panel');
       assert.ok(pipPanel, 'the pop-out surface mounted');
-      const pipMenu = pipPanel.querySelector('[data-skin-sticker-menu]');
-      assert.ok(pipMenu, 'the pop-out has the sticker menu');
-      assert.ok(pipMenu.querySelector('[data-skin-speed]'), 'quick controls render there (this test is not passing on a blank menu)');
-      assert.strictEqual(pipMenu.querySelector('[data-skin-extras]'), null, 'but no Extras entry - main-document surface only');
+      const pipSticker = pipPanel.querySelector('[data-skin-sticker]');
+      assert.ok(pipSticker, 'the pop-out has the sticker');
+      pipSticker.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await SS.settle();
+      const pipSheet = pipDom.window.document.querySelector('.mms-ss-root');
+      assert.ok(pipSheet, 'the sheet opened IN the pop-out document (not behind it in the main window)');
+      assert.strictEqual(dom.window.document.querySelector('.mms-ss-root'), null, 'and not in the main document');
+      assert.ok(pipSheet.querySelector('[data-skin-speedtoggle]'), 'quick controls render there (this test is not passing on a blank sheet)');
+      for (const f of ['like', 'share', 'download']) assert.strictEqual(pipSheet.querySelector('[data-skin-' + f + ']').getAttribute('aria-disabled'), 'true', 'the ' + f + ' tile is dimmed in the pop-out (main-document surface only)');
+      assert.strictEqual(pipSheet.querySelector('[data-skin-home]'), null, 'no Home icon in the pop-out');
+      pipSheet.querySelector('[data-skin-more]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 4; i++) await SS.settle();
+      assert.strictEqual(pipSheet.querySelectorAll('[data-skin-x]').length, 0, 'More carries no item-action rows in the pop-out');
     }, { desktop: true });
   } finally {
     // QA delta CRITICAL (belt to boot()'s braces): even if teardown regresses,
@@ -632,15 +666,15 @@ test('the desktop POP-OUT sticker menu never offers Extras (its modals would ope
 test('Reheat 404 honesty: an error-bodied 404 (real route) says "no source"; a bodyless 404 (module off) never lies', async () => {
   // Adversarial delta residual (N2): both arms of the module-off branch bound.
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'reheat'));
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.toasts.includes('This track has no source to reheat from.'), 'the real route 404 keeps the no-source copy');
   }, { repull404: 'body' });
   await boot(async (dom, ctx) => {
-    await openExtras(dom);
+    await openMore(dom);
     click(dom, act(dom, 'reheat'));
-    for (let i = 0; i < 4; i++) await settle();
+    for (let i = 0; i < 4; i++) await SS.settle();
     assert.ok(ctx.toasts.includes('Reheat isn’t available on this server.'), 'a bodyless Express 404 = module off, said honestly');
     assert.ok(!ctx.toasts.some((m) => m.indexOf('no source') !== -1), 'and never the no-source lie');
   }, { repull404: 'plain' });
@@ -648,65 +682,67 @@ test('Reheat 404 honesty: an error-bodied 404 (real route) says "no source"; a b
 
 test('RBAC probe failure fails CLOSED: a rejected fetchCurrentUser hides Move/Delete', async () => {
   await boot(async (dom) => {
-    await openExtras(dom);
+    await openMore(dom);
     assert.strictEqual(act(dom, 'move'), null, 'no Move on a failed capability probe');
     assert.strictEqual(act(dom, 'delete'), null, 'no Delete on a failed capability probe');
-    assert.ok(act(dom, 'download') && act(dom, 'like'), 'the ungated core still rendered');
+    assert.ok(act(dom, 'queue') && act(dom, 'watched'), 'the ungated core still rendered');
+    click(dom, inSheet(dom, '[data-skin-extras-back]'));
+    assert.ok(act(dom, 'download') && act(dom, 'like'), 'and the tiles');
   }, { meReject: true });
 });
 
-test('the TOCTOU TOKEN alone rejects a superseded open: Back + reopen while the FIRST fetch is in flight (adversarial S1)', async () => {
-  // Constructed so every OTHER post-await guard passes for the stale response: after Back +
-  // a fresh Extras tap the menu is connected, open, on the extras page, and the SAME base id
-  // is playing - only the bumped token distinguishes fetch #1 from fetch #2. Binds the token
-  // check distinctly (its removal mutant survived every v1.249 test - a carried vacuity).
+test('the TOCTOU TOKEN alone rejects a superseded load: close + reopen while the FIRST fetch is in flight (adversarial S1)', async () => {
+  // Constructed so every OTHER post-await guard passes for the stale response: after a close and a
+  // fresh open the sheet is connected, open, and the SAME base id is playing - only the bumped token
+  // distinguishes fetch #1 from fetch #2. Binds the token check distinctly (its removal mutant
+  // survived every v1.249 test - a carried vacuity).
   await boot(async (dom, ctx) => {
-    await openExtras(dom);                                    // fetch #1 in flight
-    click(dom, menu(dom).querySelector('[data-skin-extras-back]')); // token bump, page 1
-    click(dom, menu(dom).querySelector('[data-skin-extras]'));      // fetch #2 in flight, page 'extras'
-    ctx.releaseVideo();                                       // resolve fetch #1 (STALE)
-    for (let i = 0; i < 6; i++) await settle();
-    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the superseded response rendered nothing (only the token could reject it)');
-    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'still the loading note');
-    ctx.releaseVideo();                                       // resolve fetch #2 (CURRENT)
-    for (let i = 0; i < 6; i++) await settle();
-    assert.ok(act(dom, 'like'), 'the current open rendered normally');
+    await openExtras(dom);                       // fetch #1 in flight
+    await SS.closeSheet(dom);                    // token bump
+    await SS.openSheet(dom);                     // fetch #2 in flight, same id playing
+    ctx.releaseVideo();                          // resolve fetch #1 (STALE)
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(unavailable(tile(dom, 'like')), 'the superseded response enabled nothing (only the token could reject it)');
+    ctx.releaseVideo();                          // resolve fetch #2 (CURRENT)
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(!unavailable(tile(dom, 'like')), 'the current load enabled the tiles');
   }, { deferVideo: true });
 });
 
-test('stale-fetch guard (TOCTOU): closing the menu while the open fetch is in flight renders NO extras', async () => {
+test('stale-fetch guard (TOCTOU): closing the sheet while the open fetch is in flight draws nothing', async () => {
   await boot(async (dom, ctx) => {
-    await openExtras(dom); // fetch deferred - page shows Loading
-    assert.ok(menu(dom).querySelector('.mms-sm-note'), 'loading note up while deferred');
-    click(dom, sticker(dom)); // close with the fetch still pending
-    assert.strictEqual(menu(dom).hidden, true);
+    await openExtras(dom); // fetch deferred - the tiles are dimmed
+    assert.ok(unavailable(tile(dom, 'like')), 'dimmed while deferred');
+    await SS.closeSheet(dom); // close with the fetch still pending
+    assert.ok(!SS.isOpen(dom));
     ctx.releaseVideo();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.strictEqual(menu(dom).querySelectorAll('[data-skin-x]').length, 0, 'the late response did not render into the closed menu');
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(!SS.isOpen(dom), 'the late response did not reopen or redraw anything');
     // and the guard is not just "never renders": a fresh open still works
-    click(dom, sticker(dom));
-    click(dom, menu(dom).querySelector('[data-skin-extras]'));
-    await settle();
+    await SS.openSheet(dom);
     ctx.releaseVideo();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.ok(act(dom, 'like'), 'a fresh open renders normally (the guard is scoped, not a dead switch)');
+    for (let i = 0; i < 6; i++) await SS.settle();
+    assert.ok(!unavailable(tile(dom, 'like')), 'a fresh open enables the tiles (the guard is scoped, not a dead switch)');
   }, { deferVideo: true });
 });
 
-test('v1.255 slim-gate CRITICAL binding: the Like/Watched GLYPHS survive an in-place toggle (the label span carries the text)', async () => {
-  // Adversarial-measured at 9479a80f: extrasToggleFlag's bare el.textContent write
-  // destroyed the row's <i> glyph on the menu's most-tapped rows - the wave's own
-  // feature regressing on its primary interaction, invisible to the exact-textContent
-  // asserts. The label now lives in .mms-sm-actlbl and ONLY that span is rewritten.
+test('the Like heart and the Watched glyph survive an in-place toggle (the tile and row are redrawn whole, never textContent-flattened)', async () => {
+  // v1.255 slim-gate CRITICAL (adversarial-measured at 9479a80f): extrasToggleFlag's bare el.textContent write destroyed the
+  // row's glyph on the menu's most-tapped rows. In the sheet the flag's hook redraws the tile / row from the item, so the
+  // icon, label and caption all survive; the label text stays exactly what the flag wrote.
   await boot(async (dom) => {
     await openExtras(dom);
     click(dom, act(dom, 'like'));
-    for (let i = 0; i < 4; i++) await settle();
-    assert.ok(act(dom, 'like').querySelector('i.icon-heart'), 'the heart survives the Like toggle');
-    assert.strictEqual(act(dom, 'like').textContent, 'Liked', 'the toggled text still reads exactly Liked');
+    for (let i = 0; i < 4; i++) await SS.settle();
+    const like = act(dom, 'like');
+    assert.ok(like.querySelector('.ui-btn__icon svg use'), 'the heart survives the Like toggle');
+    assert.strictEqual(like.querySelector('.ui-btn__label').textContent, 'Like', 'the label stays');
+    assert.strictEqual(like.querySelector('.mms-ss__cap').textContent, 'Liked', 'the caption reads Liked');
+    assert.strictEqual(like.querySelector('use').getAttribute('href'), '#i-favorite-fill', 'and the heart is the FILLED one');
+    await openMore(dom);
     click(dom, act(dom, 'watched'));
-    for (let i = 0; i < 4; i++) await settle();
-    assert.ok(act(dom, 'watched').querySelector('i.icon-history'), 'the history glyph survives the Watched toggle');
+    for (let i = 0; i < 4; i++) await SS.settle();
+    assert.ok(act(dom, 'watched').querySelector('.ui-row__media svg'), 'the row glyph survives the Watched toggle');
     assert.strictEqual(act(dom, 'watched').textContent, 'Watched', 'the toggled text still reads exactly Watched');
   });
 });

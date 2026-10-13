@@ -15,6 +15,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet in the surface's own document
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
@@ -33,6 +34,7 @@ function boot({ skin = 'ipod', onHome = true, otherDoc = false, menu = true, tra
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
   dom.window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  SS.installUi(dom); // the sheet is built with the real ui.js (the engine reads window.ui of the MAIN window)
   delete require.cache[skinsPath]; delete require.cache[surfacePath];
   global.module = undefined;
   dom.window.FileTubeMusicSkins = require(skinsPath);
@@ -74,7 +76,7 @@ const click = (b, el) => {
   el.dispatchEvent(new W.MouseEvent('click', { bubbles: true }));
 };
 const openSticker = (b) => b.panel.querySelector('[data-skin-sticker]').dispatchEvent(new b.sdom.window.MouseEvent('click', { bubbles: true }));
-const rows = (b) => [...b.panel.querySelectorAll('[data-skin-sticker-menu] .mms-sm-sec')];
+const sheetIn = (b) => b.sdom.window.document.querySelector('.mms-ss-root:not(.is-closing)'); // the open sheet, in the surface's own document
 const menuZone = (b) => b.panel.querySelector('.ip-z-menu');
 const down = (b, el, x, y) => el.dispatchEvent(new b.sdom.window.MouseEvent('pointerdown', { bubbles: true, clientX: x == null ? 90 : x, clientY: y == null ? 0 : y }));
 const move = (b, el, x, y) => el.dispatchEvent(new b.sdom.window.MouseEvent('pointermove', { bubbles: true, clientX: x, clientY: y }));
@@ -82,35 +84,34 @@ const up = (b, el, type) => el.dispatchEvent(new b.sdom.window.MouseEvent(type |
 const clickOnly = (b, el) => el.dispatchEvent(new b.sdom.window.MouseEvent('click', { bubbles: true }));
 
 // ---------------------------------------------------------------- AC10: the sticker's Home row
-test('AC10: the sticker menu\'s FIRST row is Home on every skin that draws the sticker; one tap goes home and closes the menu', () => {
+test('AC10 (v1.388.0, R4): the sticker sheet\'s HEADER carries Home on every skin that draws the sticker; one tap goes home and closes the sheet', () => {
   const skins = require('../../public/js/music-skins.js').IDS;
   assert.ok(skins.length >= 12, 'precondition: every registry skin (' + skins.length + ')');
   for (const skin of skins) {
     const b = boot({ skin });
     try {
       openSticker(b);
-      const first = rows(b)[0];
-      const home = first && first.querySelector('[data-skin-home]');
-      assert.ok(home, skin + ': the first row is Home');
-      assert.match(home.textContent, /Home/);
-      assert.ok(home.querySelector('.icon-home'), skin + ': the app\'s home icon');
-      assert.match(rows(b)[1].textContent, /Speed/, skin + ': the menu\'s other rows follow, unchanged (Speed next)');
+      const home = sheetIn(b).querySelector('.ui-sheet__header [data-skin-home]');
+      assert.ok(home, skin + ': the header has the Home button');
+      assert.strictEqual(home.getAttribute('aria-label'), 'Home');
+      assert.ok(home.querySelector('use[href="#i-home"]'), skin + ': the app\'s home icon');
+      assert.ok(sheetIn(b).querySelector('[data-skin-speedtoggle]'), skin + ': the tile grid follows, unchanged');
       clickOnly(b, home);
       assert.strictEqual(b.spy.home, 1, skin + ': ONE tap after opening the sticker goes home');
       assert.strictEqual(b.spy.dock, 0, skin + ': the view\'s onHome docks - never the engine\'s origin-returning dock as well');
-      assert.strictEqual(b.panel.querySelector('[data-skin-sticker-menu]').hidden, true, skin + ': the menu closed');
+      assert.strictEqual(sheetIn(b), null, skin + ': the sheet closed');
     } finally { b.restore(); }
   }
 });
 
 test('AC10: no Home row without the view\'s hook, and none in the desktop pop-out (decided: its router is the main window\'s)', () => {
   const a = boot({ onHome: false });
-  try { openSticker(a); assert.ok(!a.panel.querySelector('[data-skin-home]'), 'no hook: no row (never a row that leads nowhere)'); } finally { a.restore(); }
+  try { openSticker(a); assert.ok(sheetIn(a), 'precondition: the sheet opened'); assert.ok(!sheetIn(a).querySelector('[data-skin-home]'), 'no hook: no button (never a control that leads nowhere)'); } finally { a.restore(); }
   const p = boot({ otherDoc: true });
   try {
     openSticker(p);
-    assert.ok(p.panel.querySelector('[data-skin-sticker-menu] .mms-sm-sec'), 'precondition: the pop-out menu rendered');
-    assert.ok(!p.panel.querySelector('[data-skin-home]'), 'the pop-out draws no Home row');
+    assert.ok(sheetIn(p).querySelector('[data-skin-speedtoggle]'), 'precondition: the pop-out sheet rendered');
+    assert.ok(!sheetIn(p).querySelector('[data-skin-home]'), 'the pop-out draws no Home button');
   } finally { p.restore(); }
 });
 

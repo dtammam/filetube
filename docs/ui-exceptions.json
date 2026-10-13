@@ -10281,18 +10281,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|border",
-        "count": 1,
-        "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|border",
-        "count": 1,
-        "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-sticker-menu|border",
         "count": 1,
         "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
@@ -10312,12 +10300,6 @@
       },
       {
         "key": "public/css/style.css|.mms-sticker-sz-3x|--mms-sticker-px",
-        "count": 1,
-        "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-wrap > .mms-sticker-menu|max-height",
         "count": 1,
         "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
         "added": "2026-09-27"
@@ -13559,24 +13541,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-back|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|border-radius",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-danger|border-color",
         "count": 1,
         "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
@@ -13589,43 +13553,7 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-extras .mms-sm-state|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-h|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-lbl|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-loop .mms-sm-state|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-note|font-size",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|border-radius",
-        "count": 1,
-        "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|font-size",
         "count": 1,
         "reason": "legacy token, no role equal in all 8 era x mode combinations (true-up 2026-09-30): kept",
         "added": "2026-09-28"
@@ -15157,36 +15085,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".mms-sm-back",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mms-sm-chip",
-        "count": 4,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mms-sm-extras",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mms-sm-loop",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mms-sm-opt",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".mms-sticker",
         "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
@@ -15194,7 +15092,7 @@
       },
       {
         "key": ".mms-sticker-menu",
-        "count": 4,
+        "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
@@ -15663,36 +15561,6 @@
       {
         "key": "public/js/skin-surface.js|<button>|mms-sm-act",
         "count": 12,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mms-sm-back",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mms-sm-chip",
-        "count": 2,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mms-sm-extras",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mms-sm-loop",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mms-sm-opt",
-        "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },
@@ -16226,7 +16094,7 @@
     "token-exempt": [
       {
         "key": "public/css/style.css|token-exempt",
-        "count": 198,
+        "count": 197,
         "reason": "counted token-exempt annotations (gate r1, adversary 6): each exempts a raw value from no-raw-values; shrink-only, a new one grows this file",
         "added": "2026-09-28"
       },

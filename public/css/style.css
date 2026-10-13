@@ -8559,10 +8559,8 @@ a.tv-continue-card { text-decoration: none; }
   --mms-r-art:16px; --mms-r-art-ipod:6px; --mms-r-queue:16px; --mms-r-th:6px; --mms-ipod-r-sm:2px;
   --mms-ls-caps:.14em; --mms-ls-caps2:.1em; --mms-ls-tight:-.02em; --mms-lh-ttl:1.1;
 }
-  /* v1.278: the sticker/actions menu PRESENTATION is shell-agnostic - the desktop /music
-     actions menu reuses the exact same .mms-sticker-menu box + .mms-sm-* item rules. Only
-     the mobile POSITIONING (bottom-anchored over the corner sticker; the tray overlay)
-     stays in the @media (max-width:768px) block below. */
+  /* v1.278: the desktop /music actions menu is the one .mms-sticker-menu box + .mms-sm-act item rules left here. v1.388.0: the
+     sticker itself is a ui.sheet (the .mms-ss-* block further down) and the old popover's rules are gone. */
   /* (the [hidden] lesson - a flex/grid menu's own display beats [hidden] - is ui.css's global
      [hidden] rule, which every shell and the pop-out window load) */
   .mms-sticker-menu{ min-width:min(320px, var(--mms-up-88vw, 88vw)); max-width:var(--mms-up-92vw, 92vw); max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
@@ -8575,35 +8573,18 @@ a.tv-continue-card { text-decoration: none; }
   .mms-sticker-menu .mms-sm-sec{ display:flex; flex-direction:column; gap:var(--space-4); }
   /* v1.255: section headings use the APP's caps idiom (.md-group-title: bold + the app
      tracking token) - the old --mms-ls-caps was ~3x the app's own letter-spacing. */
-  .mms-sticker-menu .mms-sm-h{ font-size:var(--fs-xs); letter-spacing:var(--tracking-caps); text-transform:uppercase; font-weight:var(--fw-bold); opacity:.6; }
   /* v1.255: the row-label chassis (settings-menu idiom: label semibold, value normal) +
      the Extras page's song title (was wrongly the 11px uppercase heading class). */
-  .mms-sticker-menu .mms-sm-lbl{ display:inline-flex; align-items:center; gap:var(--space-3); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
-  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:var(--icon-sm); text-align:center; opacity:.7; flex:none; }
-  .mms-sticker-menu .mms-sm-glyph svg{ display:block; width:100%; height:auto; fill:currentColor; }
-  .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
-  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
-  .mms-sticker-menu .mms-sm-loop{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:var(--size-touch); }
-  .mms-sticker-menu .mms-sm-loop .mms-sm-state{ font-size:var(--fs-md); opacity:.7; }
-  .mms-sticker-menu .mms-sm-loop.is-on .mms-sm-state{ opacity:1; font-weight:var(--fw-semibold); }
-  .mms-sticker-menu .mms-sm-skins{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
-  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
+  .mms-sticker-menu .mms-sm-act i{ width:var(--icon-sm); text-align:center; opacity:.7; flex:none; }
   /* v1.255: interactive states, matching the app (.account-menu-item hover, .md-row focus). */
   @media (hover: hover){
-  .mms-sticker-menu .mms-sm-opt:hover, .mms-sticker-menu .mms-sm-chip:hover, .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
-  .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--overlay-border); }
+  .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
   }
   .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:var(--ring-w) solid var(--focus-ring); outline-offset:calc(-1 * var(--ring-w)); }
   /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
      row's full-width chassis; the action list is a single column of the same
      bordered rows as the speed/skin options, left-aligned for scanability. */
-  .mms-sticker-menu .mms-sm-extras,
-  .mms-sticker-menu .mms-sm-back{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:var(--size-touch); }
-  .mms-sticker-menu .mms-sm-back{ justify-content:flex-start; gap:var(--space-3); font-size:var(--fs-md); opacity:.8; }
-  .mms-sticker-menu .mms-sm-extras .mms-sm-state{ font-size:var(--fs-lg); line-height:var(--lh-tight); opacity:.7; }
   .mms-sticker-menu .mms-sm-acts{ display:flex; flex-direction:column; gap:var(--space-3); }
   .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-act.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
@@ -8615,8 +8596,7 @@ a.tv-continue-card { text-decoration: none; }
      siblings render in, then takes that family back). Inside the sticker menu
      those rows lay out exactly as their bare siblings do: these two rules sit AFTER both row bases (file order decides). */
   .mms-sticker-menu .ui-btn.mms-sm-act{ justify-content:flex-start; height:auto; font-style:revert; font-weight:revert; line-height:revert; white-space:revert; }
-  .mms-sticker-menu .ui-btn.mms-sm-extras{ height:auto; font:revert; font-family:var(--font-ui); white-space:revert; border-radius:revert; }
-  .mms-sticker-menu .ui-btn:is(.mms-sm-act, .mms-sm-extras)::after{ content:none; }
+  .mms-sticker-menu .ui-btn.mms-sm-act::after{ content:none; }
   .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
   .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-md); opacity:.7; }
   /* v1.278: desktop actions menu - anchored under its top-toolbar button (a positioned
@@ -8691,11 +8671,6 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .ip-artist, :where(html.is-phone, html.mms-popout) body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); }
   :where(html.is-phone, html.mms-popout) body.mms-tray .ip-stars{ display:none; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
-  /* v1.258.1 (Dean: the tray menu "way too small when clicked, not really usable"): the
-     base menu opens UPWARD from the bottom-anchored sticker with a max-height taller
-     than the whole 190px window - the pip edge clipped it to a sliver. In tray it is a
-     full-window overlay instead. */
-  :where(html.is-phone, html.mms-popout) body.mms-tray .mms-sticker-menu{ position:fixed; inset:var(--space-3); max-height:none; min-width:0; max-width:none; }
   :where(html.is-phone, html.mms-popout) .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }
@@ -8735,7 +8710,7 @@ a.tv-continue-card { text-decoration: none; }
      corner of EVERY skin + the desktop pop-out; tapping it opens a compact
      popover = speed + loop + skin picker. Self-contained dark overlay surface so
      it reads on any skin's palette; positioned over the safe-area inset. */
-  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap{ --mms-sm-anchor-l:0; --mms-sm-anchor-r:auto; position:absolute; left:calc(var(--mms-up-left, env(safe-area-inset-left,0px)) + var(--space-6)); bottom:calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap{ position:absolute; left:calc(var(--mms-up-left, env(safe-area-inset-left,0px)) + var(--space-6)); bottom:calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
   /* v1.240 (Dean): a slight counter-clockwise tilt so it reads like a literal peel-and-stick
      sticker. On the BUTTON only - the pop-up menu (a sibling) stays upright. */
   /* v1.240/1.241 (Dean): a placed-sticker feel. --mms-sticker-px drives the size (bumped base
@@ -8758,13 +8733,6 @@ a.tv-continue-card { text-decoration: none; }
      circular chrome + the round image crop (emoji keeps the chip). */
   :where(html.is-phone, html.mms-popout) .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }
   :where(html.is-phone, html.mms-popout) .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
-  :where(html.is-phone, html.mms-popout) .mms-sticker-menu{ position:absolute; left:var(--mms-sm-anchor-l); right:var(--mms-sm-anchor-r); bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */ }
-  /* v1.333 (Dean: "I can't scroll in the extras menu"; measured: with a 2x sticker the 86vh menu's TOP sat
-     ~44px above the screen, so Home and Speed were out of reach - no scroll brings back what sits above
-     scrollTop 0). The menu hangs above the sticker, so its cap is the space ABOVE the sticker: the
-     viewport less both safe-area insets, the wrap's bottom offset, the sticker (the wrap carries its size
-     class) and the gap - never more than the old 86vh. The tray's full-window menu keeps its own rule. */
-  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(var(--mms-up-86vh, 86vh), calc(var(--mms-up-dvh, 100dvh) - var(--mms-up-top, env(safe-area-inset-top,0px)) - var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
   /* v1.334 TAP TO PLAY (Dean: a notification opens the song but iOS refuses to start it - "one tap plays"):
      one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
@@ -11129,10 +11097,8 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
   :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
   :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
-  /* the sticker moves to the RIGHT corner: bottom-left is the screen / the cover now; its menu opens
-     up from it, right-aligned so it stays on the screen */
-  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
-    --mms-sm-anchor-l:auto; --mms-sm-anchor-r:0; }
+  /* the sticker moves to the RIGHT corner: bottom-left is the screen / the cover now */
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6)); }
 }
 
 /* ===================== POCKET STAYS UPRIGHT (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it") =====
@@ -11153,7 +11119,7 @@ a.tv-continue-card { text-decoration: none; }
     inset:auto; top:50%; left:50%;
     width:100vh; width:100dvh; height:100vw;
     --mms-up-70vw:70vh; --mms-up-26vw:26vh;
-    --mms-up-86vh:86vw; --mms-up-dvh:100vw; --mms-up-88vw:88vh; --mms-up-92vw:92vh; }
+    --mms-up-88vw:88vh; --mms-up-92vw:92vh; }
   html.is-phone.pk-upright[data-ft-rot="90"] .mms-full{ transform:translate(-50%, -50%) rotate(-90deg);
     --mms-up-top:env(safe-area-inset-left,0px); --mms-up-bottom:env(safe-area-inset-right,0px); --mms-up-left:env(safe-area-inset-bottom,0px); }
   html.is-phone.pk-upright[data-ft-rot="90"] .mms-full :is(.ip-listview, .ipm-list, .mms-qlist),
@@ -11166,6 +11132,55 @@ a.tv-continue-card { text-decoration: none; }
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
 @media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } .mms-look-original .ip-wheel::after{ transform:none; }
   .mms-ipod .ipm-slide, .mms-ipod .ipm-slide.is-drift{ transition:none; transform:none; } }
+
+/* ===================== v1.388.0: the STICKER SHEET (plan 2026-10-12-sticker-sheet) =====================
+   The sticker opens a ui.sheet bottom sheet on <body> (skin-surface.js): FileTube's grab bar, header, scrim and rows, the
+   skin's only voice being --sticker-accent on the selected / active states (D6: the skin's accent where it defines one -
+   Cider and Nordic - else the app accent). The sheet scrolls in its body (ui.css .ui-sheet__body); nothing here clips and
+   rounds on one element. */
+.mms-ss-root{ --sticker-accent:var(--accent); }
+.mms-ss-root[data-skin="apple"]{ --sticker-accent:var(--mms-apple-accent); }
+.mms-ss-root[data-skin="spotify"]{ --sticker-accent:var(--mms-sp-accent); }
+.mms-ss-root .mms-ss__head{ display:flex; align-items:center; gap:var(--space-4); flex:1; min-width:0; }
+.mms-ss-root .mms-ss__head .ui-avatar, .mms-ss-root .mms-ss__head .ui-art{ flex:none; }
+.mms-ss-root .mms-ss__ttl{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.mms-ss-root .mms-ss__t{ font:var(--t-callout); color:var(--ink-1); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mms-ss-root .mms-ss__pg{ flex:1; text-align:center; font:var(--t-title); }
+.mms-ss-root .mms-ss__m{ font:var(--t-meta); color:var(--ink-2); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.mms-ss-root .mms-ss{ display:flex; flex-direction:column; gap:var(--space-4); padding-bottom:var(--space-4); }
+.mms-ss-root .mms-ss__grid{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:var(--space-4); padding:0 var(--inset); }
+.mms-ss-root .mms-ss__tile{ min-width:0; width:100%; flex-shrink:0; }
+.mms-ss-root .mms-ss__lbl{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mms-ss-root .mms-ss__cap{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:var(--t-caption); color:var(--ink-2); }
+.mms-ss-root .mms-ss__glyph{ width:auto; min-width:var(--icon-lg); font:var(--t-title); font-variant-numeric:tabular-nums; }
+.mms-ss-root .mms-ss__tile[aria-pressed="true"], .mms-ss-root .mms-ss__tile[aria-pressed="true"] .mms-ss__cap{ color:var(--sticker-accent); }
+.mms-ss-root .mms-ss__tile.is-unavailable{ opacity:.4; cursor:default; }
+.mms-ss-root .mms-ss__ring{ position:relative; border-radius:var(--radius-full); background:conic-gradient(var(--sticker-accent) calc(var(--p, 0) * 360deg), var(--separator) 0); }
+.mms-ss-root .mms-ss__ring::after{ content:""; position:absolute; inset:var(--space-2); border-radius:inherit; background:var(--surface-2); }
+.mms-ss-root .mms-ss__strip, .mms-ss-root .mms-ss__chips{ display:flex; gap:var(--space-3); padding:0 var(--inset); overflow-x:auto; }
+.mms-ss-root .mms-ss__strip .ui-chip, .mms-ss-root .mms-ss__chips .ui-chip{ flex:none; }
+.mms-ss-root .mms-ss__chips--wrap{ flex-wrap:wrap; overflow-x:visible; padding:0; }
+.mms-ss-root .ui-chip--filter[aria-pressed="true"]{ color:var(--sticker-accent); }
+.mms-ss-root .mms-ss__note{ margin:0; padding:0 var(--inset); font:var(--t-footnote); color:var(--ink-2); }
+.mms-ss-root .mms-ss__h{ padding:0 var(--inset); font:var(--t-footnote); color:var(--ink-2); }
+.mms-ss-root .mms-ss__pages, .mms-ss-root .mms-ss__groups{ display:flex; flex-direction:column; gap:var(--space-8); }
+.mms-ss-root .mms-ss__grp{ display:flex; flex-direction:column; gap:var(--space-2); }
+.mms-ss-root .mms-ss__recent{ display:flex; flex-direction:column; gap:var(--space-2); }
+.mms-ss-root .mms-ss__light{ display:flex; flex-direction:column; gap:var(--space-3); padding:0 var(--inset); }
+.mms-ss-root .mms-ss__light .mms-ss__h, .mms-ss-root .mms-ss__light .mms-ss__note{ padding:0; }
+.mms-ss-root .mms-ss__search{ padding:0 var(--inset); }
+.mms-ss-root .mms-ss__gh{ width:calc(100% - 2 * var(--inset)); margin:0 var(--inset); justify-content:flex-start; }
+.mms-ss-root .mms-ss__gh .ui-btn__label{ margin-inline-end:auto; }
+.mms-ss-root .mms-ss__gh .ui-btn__icon{ order:3; }
+.mms-ss-root .mms-ss__gc{ order:2; font:var(--t-meta); color:var(--ink-2); }
+.mms-ss-root .mms-ss__gh[aria-expanded="true"] .ui-icon{ transform:rotate(180deg); }
+.mms-ss-root .mms-ss__gh[aria-disabled="true"] .ui-btn__icon{ visibility:hidden; }
+.mms-ss-root .mms-ss__sw{ display:grid; place-items:center; width:var(--icon-md); }
+.mms-ss-root .mms-ss__sw .skin-swatch{ width:var(--space-8); height:auto; padding:0; min-width:0; } /* the .mms-ipod panel rules reach this swatch's class: its padding would make a 16px box 40px wide */
+.mms-ss-root .ui-switch[aria-checked="true"]{ background-color:var(--sticker-accent); }
+.mms-ss-root .ui-segmented__item[aria-checked="true"]{ color:var(--sticker-accent); }
+.mms-ss-root .ui-row[aria-current="true"] .ui-icon{ color:var(--sticker-accent); }
+.mms-ss-root .mms-ss__tray{ padding:0 var(--inset); }
 
 .music-empty { color: var(--ink-2); padding: var(--space-12) 0; }
 

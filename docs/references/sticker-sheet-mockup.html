@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticker Menu A2</title>
+<style>
+:root{
+  --bg:#000; --surface-1:#1c1c1e; --surface-2:#2c2c2e; --surface-overlay:#1c1c1e;
+  --ink-1:#fff; --ink-2:#a1a1a6; --ink-3:#8e8e93; --accent:#ff453a;
+  --fill-selected:rgba(120,120,128,.32); --hair:rgba(84,84,88,.6);
+  --r-md:12px; --r-lg:16px; --font:'Geist','Roboto','Helvetica Neue',system-ui,Arial,sans-serif;
+}
+:root[data-theme="light"]{
+  --bg:#f2f2f7; --surface-1:#fff; --surface-2:#e5e5ea; --surface-overlay:#fff;
+  --ink-1:#000; --ink-2:#5e5e63; --ink-3:#6c6c70; --accent:#d70015;
+  --fill-selected:rgba(120,120,128,.16); --hair:rgba(60,60,67,.29);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink-1);font:400 15px/20px var(--font);padding:16px}
+h1{font:600 22px/28px var(--font);margin:0 0 4px}
+.lede{color:var(--ink-2);margin:0 0 16px;max-width:70ch}
+.bar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.bar button{font:inherit;color:var(--ink-1);background:var(--surface-2);border:0;border-radius:999px;padding:6px 14px}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+.col{width:358px;max-width:100%}
+.col h2{font:600 17px/22px var(--font);margin:0 0 2px}
+.col p.sub{color:var(--ink-2);font-size:13px;line-height:18px;margin:0 0 10px;min-height:54px}
+.phone{position:relative;width:100%;height:740px;border-radius:28px;overflow:hidden;
+  background:linear-gradient(160deg,#5a6b7a,#22262b 60%,#111);box-shadow:0 0 0 1px var(--hair)}
+.ipod{position:absolute;left:50%;top:60px;transform:translateX(-50%);width:210px;height:340px;border-radius:26px;
+  background:linear-gradient(#e9e9ea,#c9c9cc);opacity:.55}
+.ipod:before{content:"";position:absolute;left:18px;right:18px;top:18px;height:130px;border-radius:6px;background:#9fb7c9}
+.ipod:after{content:"";position:absolute;left:50%;top:175px;width:130px;height:130px;margin-left:-65px;border-radius:50%;background:#fff}
+.sticker{position:absolute;left:14px;bottom:20px;width:52px;height:52px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ffd34d,#e08a00);box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.35)}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface-overlay);border-radius:var(--r-lg) var(--r-lg) 0 0;
+  padding:6px 0 26px;max-height:92%;overflow:auto}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--ink-3);opacity:.5;margin:2px auto 6px}
+.hdr{display:flex;align-items:center;gap:10px;padding:4px 16px 10px}
+.hdr .art{width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#7b5,#357)}
+.hdr .t{flex:1;min-width:0}
+.hdr .t b{display:block;font:600 15px/20px var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr .t span{display:block;color:var(--ink-2);font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.x{width:30px;height:30px;border-radius:50%;background:var(--surface-2);border:0;color:var(--ink-2);font:600 14px var(--font)}
+.acts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px}
+.act{background:var(--surface-2);border:0;border-radius:var(--r-md);color:var(--ink-1);font:500 12px/16px var(--font);
+  padding:10px 4px 8px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.act i{font-style:normal;font-size:20px;line-height:22px}
+.act.on{background:var(--fill-selected);color:var(--accent)}
+.act small{display:block;color:var(--ink-2);font-size:11px;line-height:13px}
+.group{margin:0 16px 12px;background:var(--surface-2);border-radius:var(--r-md);overflow:hidden}
+.group.flat{background:transparent}
+.row{display:flex;align-items:center;min-height:44px;padding:0 14px;gap:10px;position:relative;width:100%;
+  background:none;border:0;color:var(--ink-1);font:inherit;text-align:left}
+.row+.row:before{content:"";position:absolute;left:14px;right:0;top:0;border-top:1px solid var(--hair)}
+.row .l{flex:1}
+.row .v{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.row .chev{color:var(--ink-3)}
+.row.danger .l{color:var(--accent)}
+.sw{width:51px;height:31px;border-radius:16px;background:var(--fill-selected);position:relative;flex:none;border:0}
+.sw:after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;transition:left .15s}
+.sw.on{background:#34c759}.sw.on:after{left:22px}
+.seg{display:flex;background:var(--fill-selected);border-radius:9px;padding:2px;margin:0 14px 10px}
+.seg button{flex:1;border:0;background:none;color:var(--ink-1);font:500 13px/18px var(--font);padding:5px 0;border-radius:7px}
+.seg button.on{background:var(--surface-1);box-shadow:0 1px 3px rgba(0,0,0,.25);font-weight:600}
+.lbl{font:500 13px/18px var(--font);color:var(--ink-2);padding:10px 14px 6px}
+.chips{display:flex;gap:8px;padding:0 14px 10px;overflow-x:auto;scrollbar-width:none}
+.chip{flex:none;height:32px;padding:0 12px;border-radius:999px;border:0;background:var(--surface-1);color:var(--ink-1);font:500 13px var(--font)}
+.chip.on{background:var(--fill-selected);font-weight:700}
+.stepper{display:flex;align-items:center;gap:6px}
+.stepper button{width:32px;height:32px;border-radius:50%;border:0;background:var(--surface-1);color:var(--ink-1);font:600 18px var(--font)}
+.stepper span{min-width:58px;text-align:center;font-weight:600}
+.page{display:none}.page.show{display:block}
+.back{background:none;border:0;color:var(--accent);font:inherit;padding:0}
+.search{margin:0 16px 10px;background:var(--surface-2);border-radius:10px;padding:8px 12px;color:var(--ink-3)}
+.sk{display:flex;align-items:center;gap:12px}
+.sw8{width:22px;height:30px;border-radius:5px;flex:none}
+.note{color:var(--ink-2);font-size:12px;line-height:16px;padding:0 16px 8px}
+/* old (today) */
+.old{position:absolute;left:14px;bottom:80px;width:300px;max-height:640px;overflow:auto;background:rgba(30,30,30,.92);
+  border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:10px;color:#fff}
+.old .h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;opacity:.6;margin:8px 0 6px}
+.old .ch{display:flex;flex-wrap:wrap;gap:6px}
+.old .ch span{border:1px solid rgba(255,255,255,.35);border-radius:4px;min-height:44px;padding:0 10px;display:flex;align-items:center;font-size:14px}
+.old .ch span.on{border-color:#fff;font-weight:700}
+.old .r{display:flex;justify-content:space-between;min-height:44px;align-items:center;font-size:15px}
+.old .r em{font-style:normal;opacity:.7}
+.fold{position:absolute;left:0;right:0;border-top:2px dashed #ff453a;color:#ff453a;font:600 11px var(--font);padding:2px 8px}
+.call{font-size:13px;line-height:18px;color:var(--ink-2);margin:10px 0 0;padding-left:16px}
+.call li{margin-bottom:4px}
+</style>
+<style>
+.acts8{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 16px 12px}
+.act .val{font-weight:700;color:var(--ink-1)}
+.act.on small{color:var(--accent)}
+.pop{margin:-4px 16px 12px;background:var(--surface-2);border-radius:var(--r-md);padding:10px 0 0;display:none}
+.pop.show{display:block}
+</style></head>
+<body>
+<h1>Sticker menu: direction A, revised</h1>
+<p class="lede">The top grid holds your daily controls: Like, Chapters, Loop, Shuffle, Speed, Share, Download and More. Tap Speed to open its strip. Tap Loop, Shuffle or Like to toggle them. Skin opens the grouped picker.</p>
+<div class="bar"><button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='light'?'dark':'light'">Toggle light / dark</button></div>
+
+<div class="grid">
+<!-- TODAY -->
+<div class="col">
+  <h2>Today</h2>
+  <p class="sub">Measured at 390x844 with iPhone safe-area insets. Page 1 is 701px tall (about 790px with Watch and Chapters), so Extras falls below the fold. The Skin page scrolls about 9 screens.</p>
+  <div class="phone">
+    <div class="ipod"></div>
+    <div class="old">
+      <div class="r">Home <em>›</em></div>
+      <div class="h">Speed</div>
+      <div class="ch"><span>0.25</span><span>0.5</span><span>0.75</span><span class="on">Normal</span><span>1.25</span><span>1.5</span><span>1.75</span><span>2</span></div>
+      <div class="r">Loop chapter <em>Off</em></div>
+      <div class="r">Shuffle <em>Off</em></div>
+      <div class="r">Autoplay <em>On</em></div>
+      <div class="r">Skin <em>Custom 5D Transparent Coil… ›</em></div>
+      <div class="h">Lighting</div>
+      <div class="ch"><span>Off</span><span class="on">Subtle</span><span>Pronounced</span><span>Ambient</span></div>
+      <div class="r">Watch <em>›</em></div>
+      <div class="r">Go to channel <em>›</em></div>
+      <div class="r">Start radio <em>›</em></div>
+      <div class="r">Chapters <em>›</em></div>
+      <div class="r">Extras (Like lives here) <em>›</em></div>
+    </div>
+    <div class="fold" style="bottom:80px">fold: rows below need a scroll</div>
+    <div class="sticker"></div>
+  </div>
+</div>
+
+<!-- A2 -->
+<div class="col">
+  <h2>A, revised</h2>
+  <p class="sub">A FileTube bottom sheet with your 8 daily controls in a 4x2 grid. Each tile shows its current state (On, 1x). Below the grid: Skin and the navigation links. Autoplay, Lighting and Start radio moved to More.</p>
+  <div class="phone" id="A">
+    <div class="ipod"></div><div class="sticker"></div><div class="scrim"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="page show" data-p="main">
+        <div class="hdr"><div class="art"></div><div class="t"><b>Ch. 4 - Midnight City</b><span>Long Mix Vol. 2 · Some Channel</span></div><button class="x">✕</button></div>
+        <div class="acts8">
+          <button class="act" onclick="tg(this)"><i>♥</i>Like<small>chapter</small></button>
+          <button class="act"><i>≡</i>Chapters<small>4 of 12</small></button>
+          <button class="act" onclick="tg(this)"><i>↻</i>Loop<small>Off</small></button>
+          <button class="act" onclick="tg(this)"><i>⤨</i>Shuffle<small>Off</small></button>
+          <button class="act" onclick="document.getElementById('spd').classList.toggle('show')"><i class="val" id="spv">1×</i>Speed<small>Normal</small></button>
+          <button class="act"><i>↗</i>Share<small>&nbsp;</small></button>
+          <button class="act"><i>⤓</i>Download<small>&nbsp;</small></button>
+          <button class="act" onclick="go('A','more')"><i>⋯</i>More<small>&nbsp;</small></button>
+        </div>
+        <div class="pop" id="spd"><div class="chips" id="spc"><button class="chip">0.25</button><button class="chip">0.5</button><button class="chip">0.75</button><button class="chip on">1×</button><button class="chip">1.25</button><button class="chip">1.5</button><button class="chip">1.75</button><button class="chip">2</button></div></div>
+        <div class="group">
+          <button class="row" onclick="go('A','skin')"><span class="l">Skin</span><span class="v">Custom 5D Transparent Coil 2005</span><span class="chev">›</span></button>
+        </div>
+        <div class="group">
+          <div class="row"><span class="l">Go to channel</span><span class="chev">›</span></div>
+          <div class="row"><span class="l">Home</span><span class="chev">›</span></div>
+        </div>
+      </div>
+      <div class="page" data-p="more">
+        <div class="hdr"><button class="back" onclick="go('A','main')">‹ Back</button><div class="t" style="text-align:center"><b>More</b></div><button class="x">✕</button></div>
+        <div class="group">
+          <div class="row"><span class="l">Add to queue</span></div><div class="row"><span class="l">Play next</span></div>
+          <div class="row"><span class="l">Mark watched</span></div><div class="row"><span class="l">Transcript</span></div>
+          <div class="row"><span class="l">Watch video</span><span class="chev">›</span></div>
+          <div class="row"><span class="l">Start radio</span><span class="chev">›</span></div>
+        </div>
+        <div class="group">
+          <div class="row"><span class="l">Fix chapter times</span></div><div class="row"><span class="l">Edit chapters</span></div>
+          <div class="row"><span class="l">Reheat</span></div><div class="row"><span class="l">Move to folder</span><span class="chev">›</span></div>
+        </div>
+        <div class="group">
+          <div class="row"><span class="l">Autoplay</span><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+          <div class="lbl" style="padding-top:8px">Lighting</div>
+          <div class="seg"><button>Off</button><button class="on">Subtle</button><button>Bold</button><button>Ambient</button></div>
+        </div>
+        <div class="group"><div class="row danger"><span class="l">Delete</span></div></div>
+      </div>
+<div class="page" data-p="skin">
+        <div class="hdr"><button class="back" onclick="go('A','main')">‹ Back</button><div class="t" style="text-align:center"><b>Skin</b></div><button class="x">✕</button></div>
+        <div class="search">Search 131 skins</div>
+        <div class="lbl" style="padding-left:16px">Recent</div>
+        <div class="chips" style="padding-left:16px"><button class="chip on">Coil 2005</button><button class="chip">Classic 5G Black</button><button class="chip">Nano 3G Silver</button><button class="chip">Mini Pink</button></div>
+        <div class="lbl" style="padding-left:16px">Classic</div>
+        <div class="group">
+          <div class="row sk"><span class="sw8" style="background:#ddd"></span><span class="l">5th gen · White · 2005</span></div>
+          <div class="row sk"><span class="sw8" style="background:#222"></span><span class="l">5th gen · Black · 2005</span></div>
+          <div class="row sk"><span class="sw8" style="background:#c33"></span><span class="l">4th gen · U2 Special Edition · 2004</span></div>
+          <div class="row"><span class="l" style="color:var(--ink-2)">18 more</span><span class="chev">›</span></div>
+        </div>
+        <div class="lbl" style="padding-left:16px">Custom</div>
+        <div class="group">
+          <div class="row sk"><span class="sw8" style="background:linear-gradient(#9cf,#fff)"></span><span class="l">5D Transparent Coil · 2005</span><span>✓</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+    <ul class="call">
+    <li>Loop shows "Loop chapter" behavior on a chaptered track, same as today, with the tile reading On or Off.</li>
+    <li>Speed tile shows the current rate. Tapping it opens all 8 rates in one scrolling strip, and tapping the tile again closes it.</li>
+    <li>More holds Autoplay, Start radio, Lighting (still a one-line Off / Subtle / Bold / Ambient control), and every other Extras action as a FileTube list, with Delete set apart in red.</li>
+    <li>Estimated height: about 430px closed, about 480px with the Speed strip open. Fits under the notch.</li>
+  </ul>
+</div>
+
+</div>
+<script>
+function tg(b){b.classList.toggle('on');const s=b.querySelector('small');if(s&&(s.textContent==='On'||s.textContent==='Off'))s.textContent=b.classList.contains('on')?'On':'Off'}
+document.addEventListener('click',e=>{if(e.target.closest('#spc')&&e.target.classList.contains('chip')){document.getElementById('spv').textContent=e.target.textContent==='1×'?'1×':e.target.textContent+'×'}});
+
+const SP=['0.25','0.5','0.75','Normal','1.25','1.5','1.75','2'];
+function step(b,d){const s=b.parentNode.querySelector('span');let i=SP.indexOf(s.textContent)+d;i=Math.max(0,Math.min(SP.length-1,i));s.textContent=SP[i]}
+function go(id,p){document.querySelectorAll('#'+id+' .page').forEach(e=>e.classList.toggle('show',e.dataset.p===p))}
+function tog(id){const e=document.getElementById(id);e.style.display=e.style.display==='none'?'block':'none'}
+document.querySelectorAll('.seg').forEach(s=>s.addEventListener('click',e=>{if(e.target.tagName!=='BUTTON')return;s.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===e.target))}));
+document.querySelectorAll('.chips').forEach(s=>s.addEventListener('click',e=>{if(!e.target.classList.contains('chip'))return;s.querySelectorAll('.chip').forEach(b=>b.classList.toggle('on',b===e.target))}));
+</script>
+</body>
+</html>
