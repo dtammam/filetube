@@ -600,3 +600,20 @@ test('r1 S3: a rotate mid-drag ends the drag: the next move does not scroll', as
   assert.strictEqual(h.page.y, at);
   assert.ok(!m.defaultPrevented);
 });
+
+test('r2 W4: a long press that lands on a glide still engages the hold and RELEASES it at the lift (no stuck 2x)', async () => {
+  const h = await boot(VIDEO);
+  const g = drag(h, -200, { stepMs: 10 });
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 5);
+  h.frame(16);
+  assert.strictEqual(h.pending(), 1, 'precondition: gliding');
+  fire(h.w, h.v, 'touchstart', 300, 200, g.t + 100);
+  await wait(650);
+  assert.strictEqual(h.v.playbackRate, 2, 'the hold engaged');
+  fire(h.w, h.v, 'touchend', 300, 200, g.t + 800);
+  assert.strictEqual(h.v.playbackRate, 1, 'released at the lift');
+  fire(h.w, h.v, 'touchstart', 300, 200, g.t + 2000);
+  fire(h.w, h.v, 'touchend', 300, 200, g.t + 2040);
+  await wait(450);
+  assert.strictEqual(h.pauses(), 1, 'and the next tap is an ordinary tap (the flag did not stay set)');
+});

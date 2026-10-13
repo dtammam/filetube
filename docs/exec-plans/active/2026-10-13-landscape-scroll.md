@@ -108,3 +108,5 @@ Removing or retesting the loupe guard; portrait player height; the fullscreen la
 
 Gate: APPROVED r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — qa
 Gate: CHANGES r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — adversary (W1 tap that stops a glide pauses; W2 iPad landscape gets the drag; W3 four unbound guards; see report)
+Gate: CHANGES r2 @d42ee8a0e3e6cf21c3198251f96aab9dca8cc589 — adversary (W1/W2/W3 verified fixed; NEW W4: a hold on the touch that caught a glide is never released, 2x stuck)
+Gate: CHANGES r2 @d42ee8a0e3e6cf21c3198251f96aab9dca8cc589 — qa (W1: the catch-a-glide lift swallows hold release; stuck 2x)

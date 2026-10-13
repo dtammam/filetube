@@ -6121,18 +6121,20 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       scrollDragLive = false;
-      if (scrollTouchCaught) { // the lift of the touch that stopped a glide: no tap, no pause
-        scrollTouchCaught = false;
-        if (e.cancelable) e.preventDefault();
-        lastTapTime = 0;
-        minimizeGestureLive = false;
-        return;
-      }
       minimizeGestureLive = false;
       if (holdActive && holdGestureLive) {
         e.preventDefault();
         holdGestureLive = false;
         if (!holdLocked) releaseHold();
+        lastTapTime = 0;
+        scrollTouchCaught = false;
+        return;
+      }
+      // v1.390.0: the lift of the touch that stopped a glide is no tap and no pause (after the hold release above,
+      // which a long press on a glide still needs)
+      if (scrollTouchCaught) {
+        scrollTouchCaught = false;
+        if (e.cancelable) e.preventDefault();
         lastTapTime = 0;
         return;
       }
