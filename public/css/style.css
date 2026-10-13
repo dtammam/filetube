@@ -3852,6 +3852,49 @@ select {
   }
 }
 
+/* v1.390.0 (Dean, 2026-10-13: a phone held sideways could barely scroll the watch page): the INLINE player
+   (not faux fullscreen, not docked) is about 70% of the screen height, 16:9 and centered, so the title row
+   peeks under it and the page has room to scroll on both sides. Before, the picture filled the width: 796 x
+   488 on an 844 x 390 phone (125% of the screen, the title 585px down). The old v1.50 landscape cap above
+   covers only <=768px; this one follows the DEVICE (html.is-phone), the same class the sideways menu uses.
+   `--ls-bar` is the strip under the picture (padding-bottom + the wrapper's 2px border): one row above
+   768px, the two-row bar at <=768px, none with native controls (tokens in tokens.css). Specificity beats the v1.50 cap and the desktop
+   width cap (>1024px, never a phone) without !important; `.css-fullscreen` is excluded so its
+   `max-height: none` still wins. The wrapper's width is derived from the same height so it stays 16:9. */
+@media (orientation: landscape) {
+  html.is-phone .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    --ls-bar: var(--ls-bar-one);
+    width: min(100%, calc((var(--ls-player-frac) * 100vh - var(--ls-bar)) * 16 / 9 + var(--ls-bar-none)));
+    width: min(100%, calc((var(--ls-player-frac) * 100dvh - var(--ls-bar)) * 16 / 9 + var(--ls-bar-none)));
+    margin-inline: auto;
+  }
+  html.is-phone .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) #media-player {
+    max-height: calc(var(--ls-player-frac) * 100vh - var(--ls-bar));
+    max-height: calc(var(--ls-player-frac) * 100dvh - var(--ls-bar));
+  }
+  /* the loading frame reserves the same box so the mount does not jump */
+  html.is-phone .watch-container #player-slot:empty {
+    width: min(100%, calc((var(--ls-player-frac) * 100vh - var(--ls-bar-one)) * 16 / 9 + var(--ls-bar-none)));
+    width: min(100%, calc((var(--ls-player-frac) * 100dvh - var(--ls-bar-one)) * 16 / 9 + var(--ls-bar-none)));
+    margin-inline: auto;
+  }
+  html.is-phone .watch-container #player-slot #player-wrapper.native-controls:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    --ls-bar: var(--ls-bar-none);
+  }
+}
+@media (max-width: 768px) and (orientation: landscape) {
+  html.is-phone .watch-container #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    --ls-bar: var(--ls-bar-two);
+  }
+  html.is-phone .watch-container #player-slot #player-wrapper.native-controls:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) {
+    --ls-bar: var(--ls-bar-none);
+  }
+  html.is-phone .watch-container #player-slot:empty {
+    width: min(100%, calc((var(--ls-player-frac) * 100vh - var(--ls-bar-two)) * 16 / 9 + var(--ls-bar-none)));
+    width: min(100%, calc((var(--ls-player-frac) * 100dvh - var(--ls-bar-two)) * 16 / 9 + var(--ls-bar-none)));
+  }
+}
+
 /* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
    dominates the screen. Before this change, .player-container (line ~614)
    had NO mobile-specific height cap at all -- only width:100%/aspect-ratio:
