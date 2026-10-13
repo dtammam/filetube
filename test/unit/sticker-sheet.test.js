@@ -236,6 +236,20 @@ test('every tile dispatches through its existing handler: Loop, Shuffle, Speed, 
   } finally { b.restore(); }
 });
 
+// ---- capabilities: a media type that offers a SUBSET (podcasts) draws only that subset -----------------------------------------
+test('capabilities: a subset (share + like only) dims Download in place and leaves More with none of the rows the type does not offer', async () => {
+  const b = bootSheet({ sticker: { extras: { getBaseId: () => 's1', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, capabilities: ['share', 'like'], fetchItem: () => ({ id: 's1', title: 'Ep', liked: false, watchState: 'unwatched', hasSubtitles: true, watchUrl: 'https://x.test/v' }) } } });
+  try {
+    await open(b);
+    assert.ok(!off(tile(b, 'share')) && !off(tile(b, 'like')), 'the offered tiles are live');
+    assert.ok(off(tile(b, 'download')), 'Download is not offered: dimmed in place, not removed');
+    click(b, tile(b, 'more'));
+    for (const gone of ['watched', 'queue', 'queue-next', 'transcript', 'reheat', 'move', 'delete', 'chapters', 'chapter-snap']) {
+      assert.strictEqual(SS.menuOf(b.dom).querySelector('[data-skin-x="' + gone + '"]'), null, gone + ' is not offered by this type');
+    }
+  } finally { b.restore(); }
+});
+
 // ---- the header (R4) ---------------------------------------------------------------------------------------------------------
 test('D1/R4: the header shows the playing item (art, one-line title, meta) with Home and Go to channel as icon buttons, only where they apply; Close sits last', async () => {
   const b = bootSheet({ sticker: { channel: { visible: () => true, onTap: () => b.spy.taps.push(['channel']) } } });
