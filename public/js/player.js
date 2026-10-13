@@ -1334,13 +1334,54 @@ function minimizeAllowedDecision(f) {
 // claim, prevented anyway because W0 measured that an unprevented first move hands the gesture to the
 // browser (every later move non-cancelable); 'none' = not ours. scrollY is the page's scroll at TOUCHSTART:
 // scrolled down, the pull is not a minimize (R2b). Since v1.362.3 (E1) every touch that starts on the picture is
-// cancelled, so a pull there neither scrolls the page nor minimizes: scroll from below the picture first.
+// cancelled, so a pull there is never the browser's own scroll; since v1.390.0 a SIDEWAYS phone scrolls the page
+// from that drag itself (pictureScrollDragDecision), and in portrait it still does not: scroll from below the picture.
 function minimizeDragDecision(ctx) {
   var o = ctx || {};
   var dx = Number(o.dx), dy = Number(o.dy), sy = Number(o.scrollY);
   if (o.holdActive || !isFinite(dx) || !isFinite(dy) || !isFinite(sy) || sy > 1) return 'none';
   if (!(dy > 0 && dy > Math.abs(dx) * MINIMIZE_DOMINANCE)) return 'none';
   return dy >= MINIMIZE_CLAIM_PX ? 'claim' : 'guard';
+}
+
+// v1.390.0 (D2, Dean 2026-10-13: "one can barely scroll as it doesn't work on the video area"): on a phone held
+// SIDEWAYS the picture is most of the screen, and the loupe cancel (pictureTouchCancelDecision) takes the
+// browser's own scroll from every finger that starts on it, so the app scrolls the page itself. R1: the one
+// surface that offers it - the phone's inline watch player, sideways (minimizeAllowedDecision's flags, with the
+// width test swapped for the orientation one, and no scroll lock holding the page). Pure; the player's
+// pictureScrollAllowed() only gathers the flags.
+function pictureScrollAllowedDecision(f) {
+  var o = f || {};
+  return !!(o.stateFull && o.inSlot && o.watchView && !o.cssFullscreen && !o.audioExpanded &&
+    !o.nativeFullscreen && !o.nativeControls && o.mobile && o.landscape && !o.bodyLocked);
+}
+
+// R2: 'claim' = this drag scrolls the page (past `moveTol` - the same tolerance the tap logic uses - and mostly
+// vertical by SCROLL_DRAG_DOMINANCE, the minimize pull's own constant, so it is disjoint from a swipe back);
+// 'drop' = never ours (a hold owns the drag, the minimize pull has claimed it, or it went sideways first);
+// 'wait' = still inside the tap tolerance.
+var SCROLL_DRAG_DOMINANCE = 1.5;
+function pictureScrollDragDecision(ctx) {
+  var o = ctx || {};
+  var dx = Number(o.dx), dy = Number(o.dy), tol = Number(o.moveTol);
+  if (o.holdActive || o.minimizeOwns || !isFinite(dx) || !isFinite(dy) || !isFinite(tol)) return 'drop';
+  var ady = Math.abs(dy), adx = Math.abs(dx);
+  if (ady > tol && ady > adx * SCROLL_DRAG_DOMINANCE) return 'claim';
+  return adx > tol ? 'drop' : 'wait';
+}
+
+// R3: the glide after the lift. Starts only from a release velocity of at least SCROLL_GLIDE_MIN_V (px per ms:
+// a finger that rested before lifting leaves none), loses SCROLL_GLIDE_FRICTION of its speed per 16.67 ms
+// frame, and ends below SCROLL_GLIDE_STOP_V. Reduced motion has no glide. `v` is the PAGE's velocity (the
+// finger's, negated). Pure: returns the speed to glide at, or 0 for none.
+var SCROLL_GLIDE_MIN_V = 0.15;
+var SCROLL_GLIDE_STOP_V = 0.02;
+var SCROLL_GLIDE_FRICTION = 0.95;
+function pictureScrollGlideDecision(ctx) {
+  var o = ctx || {};
+  var v = Number(o.velocityPxPerMs);
+  if (o.reducedMotion || !isFinite(v) || Math.abs(v) < SCROLL_GLIDE_MIN_V) return 0;
+  return v;
 }
 
 // v1.362.1 (D1, Dean 2026-10-04: the always-up chevron felt awkward): the chevron peeks. Shown where
@@ -1425,7 +1466,8 @@ function inTapRunDecision(o) {
 // one-finger touch that starts on the picture or the art is cancelled: one finger, not native full
 // screen, not native-controls mode, the player FULL (the docked tap must still synthesize the click
 // that expands it). Accepted cost (Dean's ruling): a finger that starts on the picture no longer
-// scrolls the page; taps, holds, the pull-down minimize and swipe back are the app's own.
+// scrolls the page by the browser's own scroll (v1.390.0: a sideways phone scrolls it from the app's own
+// drag instead); taps, holds, the pull-down minimize and swipe back are the app's own.
 function pictureTouchCancelDecision(o) {
   var opts = o || {};
   return opts.touches === 1 && !opts.nativeFs && !opts.nativeControls && opts.state === 'full';
@@ -2203,6 +2245,14 @@ if (typeof module !== 'undefined' && module.exports) {
     minimizeDragDecision,
     minimizeReleaseDecision,
     minimizeDragTransform,
+    // v1.390.0: a drag on the picture scrolls the page on a sideways phone, with a glide after the lift.
+    pictureScrollAllowedDecision,
+    pictureScrollDragDecision,
+    pictureScrollGlideDecision,
+    SCROLL_DRAG_DOMINANCE,
+    SCROLL_GLIDE_MIN_V,
+    SCROLL_GLIDE_STOP_V,
+    SCROLL_GLIDE_FRICTION,
     MINIMIZE_COMMIT_FRAC,
     MINIMIZE_FLICK_V,
     shouldArtSingleTapAct,
@@ -5416,6 +5466,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // always a single.
     skipChainUntil = 0;
     clearMinimizeDrag(); // v1.362: the one remover of the minimize pull's transform (R5)
+    abortScrollDrag(); // v1.390.0: a drag or glide never outlives the surface it scrolled from
     endMinimizePeek(); // v1.362.1 (D3): a dock, close, new load or backgrounding ends the chevron's peek
     // v1.362.1 gate r1 (adversary): a single tap still waiting out the double-tap window never lands on the
     // surface that replaced it (a tap, then a minimize inside 350 ms, paused the docked player).
@@ -5646,6 +5697,142 @@ if (typeof module !== 'undefined' && module.exports) {
     return (endDy - first[1]) / (endStamp - first[0]);
   }
 
+  // ---- v1.390.0 (D2): a drag on the picture scrolls the page, sideways (plan 2026-10-13-landscape-scroll) ----
+  // The finger that BEGAN on the picture (the gesture surfaces' touchstart) while pictureScrollAllowed(); the
+  // host's ONE non-passive touchmove hands every move the minimize pull did not claim to scrollDragTouchMove
+  // (no second non-passive listener, LESSONS 4); the surface's touchend ends it and starts the glide. The page
+  // that scrolls is the document (window): measured as document.scrollingElement = <html> on the watch page.
+  var scrollDragLive = false;
+  var scrollDragClaimed = false;
+  var scrollDragAnchorY = 0;      // the finger's Y at the claim: the page follows from here, so it never jumps
+  var scrollDragAnchorScroll = 0; // the page's scroll at the claim
+  var scrollSamples = [];
+  var scrollGlideRaf = 0;
+  var scrollGlideStop = null;
+
+  function pictureScrollAllowed() {
+    var parent = host && host.parentNode;
+    var BL = playerBodyLock();
+    return pictureScrollAllowedDecision({
+      stateFull: state === STATE_FULL,
+      inSlot: !!(parent && parent.id === 'player-slot'),
+      watchView: !!(document.body && document.body.getAttribute('data-view') === 'watch'),
+      cssFullscreen: !!(host && host.classList.contains('css-fullscreen')),
+      audioExpanded: !!(host && host.classList.contains('audio-expanded')),
+      nativeFullscreen: inNativeFullscreen(),
+      nativeControls: inNativeControlsMode(),
+      mobile: isMobileFormFactor(),
+      landscape: matchMediaBool('(orientation: landscape)') === true,
+      bodyLocked: !!(BL && typeof BL.isLocked === 'function' && BL.isLocked(document)),
+    });
+  }
+
+  // Place the page at y, clamped to its scroll range (a locked page is never moved: pictureScrollAllowed refuses it).
+  function placePage(y) {
+    var max = Math.max(0, (document.documentElement.scrollHeight || 0) - (window.innerHeight || 0));
+    var target = Math.min(max, Math.max(0, y));
+    var BL = playerBodyLock();
+    if (BL && typeof BL.scrollTo === 'function') BL.scrollTo(document, window, target);
+    else window.scrollTo(0, target);
+  }
+
+  function stopScrollGlide() {
+    if (scrollGlideRaf && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(scrollGlideRaf);
+    scrollGlideRaf = 0;
+    if (scrollGlideStop) { document.removeEventListener('touchstart', scrollGlideStop, true); scrollGlideStop = null; }
+  }
+
+  function beginScrollDrag() {
+    // (a running glide is already ended: its document-level touchstart runs first, in the capture phase)
+    scrollDragClaimed = false;
+    scrollSamples = [];
+    scrollDragLive = pictureScrollAllowed();
+  }
+
+  // A second finger, a touchcancel, a teardown or a rotate: the drag and the glide both end, no glide starts.
+  function abortScrollDrag() {
+    scrollDragLive = false;
+    scrollDragClaimed = false;
+    scrollSamples = [];
+    stopScrollGlide();
+  }
+
+  function claimScrollDrag(y) {
+    scrollDragClaimed = true;
+    // A claim ends the tap (like the minimize claim): no hold, no single-tap toggle, no double-tap pairing.
+    tapGestureMoved = true;
+    clearTimeout(holdTimer);
+    lastTapTime = 0;
+    cancelPendingArtTap();
+    scrollDragAnchorY = y;
+    scrollDragAnchorScroll = pageScrollY();
+    scrollSamples = [];
+  }
+
+  function scrollDragTouchMove(e) {
+    if (!scrollDragLive) return;
+    var t = e.touches && e.touches[0];
+    if (!t || e.touches.length > 1) { abortScrollDrag(); return; }
+    if (!scrollDragClaimed) {
+      var d = pictureScrollDragDecision({
+        dx: t.clientX - startX, dy: t.clientY - startY, moveTol: MOVE_TOL,
+        holdActive: holdActive && holdGestureLive, minimizeOwns: minimizeClaimed,
+      });
+      if (d === 'drop') { scrollDragLive = false; return; }
+      if (d === 'wait') return;
+      claimScrollDrag(t.clientY);
+    }
+    if (e.cancelable) e.preventDefault();
+    placePage(scrollDragAnchorScroll - (t.clientY - scrollDragAnchorY));
+    scrollSamples.push([e.timeStamp, t.clientY]);
+    while (scrollSamples.length > 2 && e.timeStamp - scrollSamples[0][0] > MINIMIZE_SAMPLE_MS) scrollSamples.shift();
+  }
+
+  // The page's velocity at the lift (px per ms, the finger's negated) from the last ~80 ms of moves; NaN when
+  // the finger had rested.
+  function scrollReleaseVelocity(endY, endStamp) {
+    var first = null;
+    for (var i = 0; i < scrollSamples.length; i++) {
+      if (endStamp - scrollSamples[i][0] <= MINIMIZE_SAMPLE_MS) { first = scrollSamples[i]; break; }
+    }
+    if (!first || !(endStamp > first[0])) return NaN;
+    return -(endY - first[1]) / (endStamp - first[0]);
+  }
+
+  // The surface's touchend, for a claimed scroll drag: never a tap; a glide when the finger left moving.
+  function finishScrollDrag(e) {
+    var t = e.changedTouches && e.changedTouches[0];
+    var v = t ? scrollReleaseVelocity(t.clientY, e.timeStamp) : NaN;
+    scrollDragLive = false;
+    scrollDragClaimed = false;
+    scrollSamples = [];
+    var speed = pictureScrollGlideDecision({ velocityPxPerMs: v, reducedMotion: minimizeReducedMotion() });
+    if (speed) startScrollGlide(speed);
+  }
+
+  function startScrollGlide(v0) {
+    if (typeof window.requestAnimationFrame !== 'function') return;
+    stopScrollGlide();
+    var slot = host && host.parentNode; // the page's own player slot: a view swap or a new load leaves a different one
+    var v = v0;
+    var last = null;
+    scrollGlideStop = function () { stopScrollGlide(); }; // any new touch ends it, like the browser's own scroll
+    document.addEventListener('touchstart', scrollGlideStop, { capture: true, passive: true });
+    function step(now) {
+      scrollGlideRaf = 0;
+      // the glide never outlives its page: a view swap, a dock, fullscreen, a rotate or a scroll lock ends it
+      if (!slot || !slot.isConnected || !host || host.parentNode !== slot || !pictureScrollAllowed()) { stopScrollGlide(); return; }
+      var dt = last === null ? 16 : Math.min(48, Math.max(1, now - last));
+      last = now;
+      var y0 = pageScrollY();
+      placePage(y0 + v * dt);
+      v *= Math.pow(SCROLL_GLIDE_FRICTION, dt / 16.67);
+      if (Math.abs(v) < SCROLL_GLIDE_STOP_V || pageScrollY() === y0) { stopScrollGlide(); return; }
+      scrollGlideRaf = window.requestAnimationFrame(step);
+    }
+    scrollGlideRaf = window.requestAnimationFrame(step);
+  }
+
   // The surface's touchend, for a claimed pull.
   function finishMinimizeDrag(e) {
     var t = e.changedTouches && e.changedTouches[0];
@@ -5847,12 +6034,14 @@ if (typeof module !== 'undefined' && module.exports) {
         clearTimeout(holdTimer);
         if (holdGestureLive || !holdLocked) releaseHold();
         abortMinimizeGesture(); // v1.362: a second finger is never a minimize
+        abortScrollDrag(); // v1.390.0: nor a page scroll
         return;
       }
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tapGestureMoved = false; // gate W2 (v1.134 fix round): fresh gesture, no movement yet
       beginMinimizeGesture(); // v1.362: this finger may become a pull into the mini player
+      beginScrollDrag(); // v1.390.0: or, on a sideways phone, a drag that scrolls the page
       peekMinimizeButton(); // v1.362.1 (D1): any touch on the picture shows the chevron for a while
       guardMinimizeTap(Date.now() + DOUBLE_TAP_MS); // gate r1: the next tap here still belongs to the picture
       clearTimeout(holdTimer);
@@ -5904,6 +6093,7 @@ if (typeof module !== 'undefined' && module.exports) {
       clearTimeout(holdTimer);
       if (holdGestureLive || !holdLocked) releaseHold();
       abortMinimizeGesture(); // v1.362 R3: a cancel always springs back
+      abortScrollDrag(); // v1.390.0: a cancel ends the scroll drag with no glide
     }, { passive: true });
 
     el.addEventListener('touchend', function (e) {
@@ -5917,6 +6107,14 @@ if (typeof module !== 'undefined' && module.exports) {
         finishMinimizeDrag(e);
         return;
       }
+      // v1.390.0: a claimed scroll drag ends here (a glide, or nothing), never as a tap.
+      if (scrollDragClaimed) {
+        if (e.cancelable) e.preventDefault();
+        lastTapTime = 0;
+        finishScrollDrag(e);
+        return;
+      }
+      scrollDragLive = false;
       minimizeGestureLive = false;
       if (holdActive && holdGestureLive) {
         e.preventDefault();
@@ -9197,10 +9395,11 @@ if (typeof module !== 'undefined' && module.exports) {
     host.addEventListener('touchmove', function (e) {
       if (holdActive && holdGestureLive) { if (e.cancelable) e.preventDefault(); return; }
       minimizeTouchMove(e);
+      scrollDragTouchMove(e); // v1.390.0: the same listener again (the one non-passive touchmove): a sideways page scroll
     }, { passive: false });
     // v1.362: a rotate or resize mid-pull springs back at once (the geometry it followed is gone).
     window.addEventListener('resize', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
-    window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
+    window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); abortScrollDrag(); refreshMinimizeButton(); });
     // gate r1 (QA suggestion): picture-in-picture is a native presentation (inNativeFullscreen), so the
     // chevron follows it in and out.
     ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged'].forEach(function (t) {
