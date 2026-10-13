@@ -278,7 +278,7 @@ test('v1.241: injectSticker applies the SIZE and TILT classes (defaults, and an 
   await boot(async (dom) => {
     const cl = sticker(dom).classList;
     assert.ok(cl.contains('mms-sticker-sz-3x'), 'size 3x class applied');
-    assert.ok(sticker(dom).parentElement.classList.contains('mms-sticker-sz-3x'), 'v1.333: the WRAP carries the size too (the menu\'s cap reads it)');
+    assert.ok(!sticker(dom).parentElement.classList.contains('mms-sticker-sz-3x'), 'v1.388.0: the wrap no longer carries the size (the sheet is not capped by the sticker; only the button needs it)');
     assert.ok(cl.contains('mms-sticker-tilt-right'), 'tilt right class applied');
   }, { sticker: { kind: 'logo', size: '3x', tilt: 'right' } });
   // an unknown size/tilt falls back to the defaults
@@ -296,17 +296,15 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
   assert.match(css, /\.mms-sticker-sz-3x\{[^}]*--mms-sticker-px:156px/, '3x = 3 x base');
   assert.doesNotMatch(css, /\.mms-sticker-sz-5x/, 'v1.243: 5x removed (overlapped the wheel)');
-  // v1.333 (Dean's 2x sticker pushed the menu's top ~44px off-screen; measured): the menu's cap is the space
-  // ABOVE the sticker - bound to the SAME bottom offset the wrap uses and the sticker's own size var
+  // the corner sticker's own position: the wrap sits over the bottom inset (the iPod portrait lock: each inset reads
+  // --mms-up-* first, set only on the turned Upright player, else today's env())
   const wrapRule = (css.match(/\n {2}\.mms-sticker-wrap\{[^}]*\}/) || [''])[0];
-  // the iPod portrait lock: each inset reads --mms-up-* first (set only on the turned Upright player), else today's env()
   assert.match(wrapRule, /bottom:calc\(var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
-  const cap = (css.match(/\n {2}\.mms-sticker-wrap > \.mms-sticker-menu\{[^}]*\}/) || [''])[0];
-  assert.match(cap, /max-height:min\(var\(--mms-up-86vh, 86vh\), calc\(var\(--mms-up-dvh, 100dvh\) - var\(--mms-up-top, env\(safe-area-inset-top,0px\)\) - var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
-  // UI pass S7 (D7 landscape): the menu's side anchor is data its wrap sets (the wrap's left edge in
-  // portrait; its right edge in landscape, where the sticker moves to the right-hand corner).
-  assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:var\(--mms-sm-anchor-l\); right:var\(--mms-sm-anchor-r\); bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
-  assert.match(wrapRule, /--mms-sm-anchor-l:0; --mms-sm-anchor-r:auto;/, 'portrait: the menu opens from the wrap\'s left edge');
+  // v1.388.0 (D8): the popover is gone - its anchor and its height cap (the space ABOVE the sticker) retire with it. The sheet is a
+  // ui.sheet on <body>, capped by ui.css (90dvh) and never by the sticker.
+  assert.doesNotMatch(css, /\.mms-sticker-wrap > \.mms-sticker-menu/, 'no rule caps a menu above the sticker any more');
+  assert.doesNotMatch(css, /--mms-sm-anchor/, 'no side-anchor data is set or read: nothing hangs from the wrap');
+  assert.doesNotMatch(css, /\n {2}\.mms-sticker-menu\{ position:absolute;/, 'the phone positioning of the old popover is retired');
   assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
   assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
   assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');
@@ -323,24 +321,20 @@ test('T3: a repaint of the panel (a skin change) closes an open sheet - it descr
   });
 });
 
-test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-menu row is thumb-sized', () => {
-  // Dean's friction report: the Extras entry + action rows were too small to tap. The size
-  // pass floors every interactive row at 44px (48px for the action list) with fs-md text
-  // and a wider menu. jsdom has no layout - lock the CSS floors (the v1.241 lock pattern).
+test('v1.252 L1 -> v1.388.0 source-lock: the rows that remain (the desktop actions menu\'s action rows) are thumb-sized; the tray\'s Color chips are the sheet\'s own pills', () => {
+  // Dean's friction report: the action rows were too small to tap. The size pass floors every interactive row at the
+  // touch token. v1.388.0 retired the speed options, the loop / Extras / Back rows (the sheet draws FileTube rows and tiles,
+  // sized by ui.css); what is left of this surface is the desktop /music actions menu and the tray's chips.
   const fs = require('node:fs'); const path = require('node:path');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
-  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\)/, 'the menu is wide enough for thumb rows (88vw; the turned Upright player\'s own width)');
-  // UI pass S7 (F70): ONE row height - every row reads the touch token (44px), the action rows'
-  // 48px (taller than their 44px neighbours) is gone.
-  assert.match(css, /\.mms-sm-opt\{[^}]*min-height:var\(--size-touch\)/, 'speed options = the touch height');
-  assert.match(css, /\.mms-sm-chip\{[^}]*min-height:var\(--size-touch\)/, 'skin chips = the touch height');
-  assert.match(css, /\.mms-sm-loop\{[^}]*min-height:var\(--size-touch\)/, 'the loop row = the touch height');
-  assert.match(css, /\.mms-sm-extras,\s*\.mms-sticker-menu \.mms-sm-back\{[^}]*min-height:var\(--size-touch\)/, 'Extras/Back rows = the touch height');
-  assert.match(css, /\.mms-sm-act\{[^}]*min-height:var\(--size-touch\)/, 'action rows = the touch height (was 48px beside 44px rows)');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\)/, 'the desktop menu is wide enough for thumb rows');
+  assert.match(css, /\.mms-sm-act\{[^}]*min-height:var\(--size-touch\)/, 'action rows = the touch height');
   assert.doesNotMatch(css, /\.mms-sm-[a-z]+\{[^}]*min-height:4[48]px/, 'no row keeps a raw height');
+  for (const gone of ['mms-sm-opt', 'mms-sm-loop', 'mms-sm-extras', 'mms-sm-back', 'mms-sm-speed', 'mms-sm-glyph', 'mms-sm-lbl', 'mms-sm-state', 'mms-sm-chip', 'mms-sm-skins', 'mms-sm-h']) {
+    assert.ok(css.indexOf('.' + gone) === -1, '.' + gone + ' has no user left and no rule');
+  }
   assert.match(require('../helpers/stylesheets.js').readTokensCss(), /--size-touch: 44px;/, 'the touch token is 44px');
-  assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text bumped to fs-md');
-  assert.match(css, /\.mms-sm-opt\{[^}]*font-size:var\(--fs-md\)/, 'speed text bumped to fs-md');
+  assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text = fs-md');
 });
 
 test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\'s design language', () => {
@@ -355,27 +349,20 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-ui\)/, 'the menu container carries the app font');
   assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-ui\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
-  assert.match(css, /\.mms-sm-h\{[^}]*letter-spacing:var\(--tracking-caps\)/, 'headings use the APP caps tracking token');
-  assert.ok(!/\.mms-sm-h\{[^}]*--mms-ls-caps/.test(css), 'the over-wide mms tracking is gone from headings');
-  assert.match(css, /\.mms-sm-lbl\{[^}]*font-weight:var\(--fw-semibold\)/, 'row labels are semibold (the settings-menu idiom)');
   assert.match(css, /\.mms-sm-title\{[^}]*font-weight:var\(--fw-semibold\)/, 'the Extras song title is a real title');
   // UI pass S7 (F70, D8.8: red is brand / primary / progress / danger only; selected is ink or a
   // tonal fill). Selected = the overlay's tonal fill (its lighter grey on the #222 surface) with an
   // ink border and semibold text - NOT red, which now only means Delete (.mms-sm-danger).
   const SEL = /\{ background:var\(--overlay-border\); color:inherit; border-color:currentColor; font-weight:var\(--fw-semibold\); \}/;
-  assert.match(css, new RegExp('\\.mms-sm-opt\\.is-on' + SEL.source), 'selected speed = tonal + ink, not red');
-  assert.match(css, new RegExp('\\.mms-sm-chip\\.is-on' + SEL.source), 'selected skin chip = tonal + ink');
   assert.match(css, new RegExp('\\.mms-sm-act\\.is-on' + SEL.source), 'active action row = tonal + ink');
-  assert.doesNotMatch(css, /\.mms-sm-(?:opt|chip|act|loop)\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
+  assert.doesNotMatch(css, /\.mms-sm-act\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
   assert.match(css, /\.mms-sm-danger\{ color:var\(--yt-red\); border-color:var\(--yt-red\); \}/, 'red stays the DANGER role (Delete)');
   assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
   assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:var\(--ring-w\) solid var\(--focus-ring\)/, 'keyboard focus = the focus ring role (red is not a focus colour)');
   // slim-gate S2: the two parity pillars the first lock missed
-  assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
-  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--overlay-border\); \}/, 'a selected chip cannot grey out under hover');
   // slim-gate S3: hover is gated to hover-capable inputs (the pop-out mouse), so a
   // phone tap never sticks a grey row (the Like/Watched rows neither close nor rebuild).
-  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-opt:hover/, 'hover rules live behind (hover: hover)');
+  assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-act:hover/, 'hover rules live behind (hover: hover)');
   // v1.255 (Dean): the Extras page grows instead of scrolling on normal phones
   assert.match(css, /\.mms-sticker-menu\{[^}]*max-height:86vh/, 'the menu may grow to 86vh (the Extras list fits without scroll)');
 });

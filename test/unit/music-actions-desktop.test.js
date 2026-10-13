@@ -32,9 +32,9 @@ test('createExtrasMenu is exported so BOTH the skin engine and the desktop menu 
 
 test('the sticker/actions item styling is lifted OUT of the mobile media query (else the desktop menu ships unstyled)', () => {
   const actIdx = CSS.indexOf('.mms-sticker-menu .mms-sm-act{');
-  const mobileStickerIdx = CSS.indexOf('body.mms-tray .mms-sticker-menu{ position:fixed');
+  const mobileStickerIdx = CSS.indexOf('.mms-sticker-wrap{ position:absolute;');
   assert.ok(actIdx > 0, 'the .mms-sm-act item rule exists');
-  assert.ok(mobileStickerIdx > 0, 'the mobile-only tray positioning still exists (inside @media)');
+  assert.ok(mobileStickerIdx > 0, 'the corner sticker\'s mobile positioning still exists (inside the pocket scope)');
   assert.ok(actIdx < mobileStickerIdx,
     'the .mms-sm-act item rule sits ABOVE the mobile sticker @media block - i.e. it is unconditional, so the desktop actions menu is styled');
 });

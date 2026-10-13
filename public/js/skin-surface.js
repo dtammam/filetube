@@ -2583,12 +2583,28 @@
       list.appendChild(row);
       return list;
     }
-    // The TRAY keeps its short inline Color chips exactly as v1.332 drew them (the plain-window pop-out fallback shows the
-    // tray with NO tray hook, so it lists the whole registry headed Skin).
+    // The TRAY keeps its short inline Color chips (v1.332: the registry's Click colorways - those picks genuinely restyle the
+    // tray, the rest would no-op there; the plain-window pop-out fallback shows the tray with NO tray hook, so it lists the
+    // whole registry headed Skin). The same picks, headings and data-skin-pick hook as ever, drawn as the sheet's own
+    // filter pills (v1.388.0: the old .mms-sm-chip look retired with the popover).
     function buildTrayChips() {
-      var wrap = mk('div', 'mms-ss__tray');
+      var U = uiApi();
       var trayActive = trayIsActive();
-      wrap.innerHTML = '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + skinChipsHtml(trayActive) + '</div></div>';
+      var active = skinAccentId();
+      var chipSkins = (SKINS.SKINS || []).filter(function (s) { return !trayActive || s.menus === 'click'; });
+      var wrap = mk('div', 'mms-ss__tray');
+      var h = mk('div', 'mms-ss__h', trayActive ? 'Color' : 'Skin');
+      h.id = smId('skin');
+      wrap.appendChild(h);
+      var g = mk('div', 'mms-ss__chips mms-ss__chips--wrap');
+      g.setAttribute('role', 'group');
+      g.setAttribute('aria-labelledby', h.id);
+      chipSkins.forEach(function (s) {
+        var c = U.chip({ kind: 'filter', selected: s.id === active, label: s.label, doc: doc });
+        c.setAttribute('data-skin-pick', s.id);
+        g.appendChild(c);
+      });
+      wrap.appendChild(g);
       return wrap;
     }
     function offlineNote() { // the failed save's words (offline.js ERROR_COPY), under the grid
@@ -2643,19 +2659,6 @@
         head.appendChild(mk('b', 'mms-ss__t mms-ss__pg', sheetPage === 'skins' ? 'Skin' : 'More'));
       }
     }
-    // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
-    // genuinely restyle the tray, the rest would no-op there). Page 1 of the tray, the Skin page elsewhere.
-    function skinChipsHtml(trayActive) {
-      var skins = SKINS.SKINS || [];
-      var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
-      var chipSkins = trayActive ? skins.filter(function (s) { return s.menus === 'click'; }) : skins; // the registry's Click colorways (v1.332)
-      return chipSkins.map(function (s) {
-        var on = s.id === active;
-        return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
-          '" data-skin-pick="' + escapeHtml(s.id) + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
-          escapeHtml(s.label) + '</button>';
-      }).join('');
-    }
     // v1.333: can the lighting driver light the skin this surface shows? (the driver's own isPocket)
     function lightingHere() {
       if (!lighting) return false;
@@ -2673,9 +2676,6 @@
       var imgCls = (pref.kind === 'emoji' && pref.value) ? '' : ' mms-sticker--img';
       var szCls = ' mms-sticker-sz-' + stickerSize();     // default | 2x | 3x
       var tiltCls = ' mms-sticker-tilt-' + stickerTilt();  // straight | left | right
-      // v1.333: the WRAP carries the size too, so the menu (the button's sibling) reads --mms-sticker-px -
-      // its max-height is the space ABOVE the sticker (Dean's 2x sticker pushed the menu's top off-screen)
-      wrap.className += szCls;
       closeStickerMenu(); // a repaint (an auto-advance, a skin change) replaces the surface the open sheet describes: it closes, as the popover did
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>';

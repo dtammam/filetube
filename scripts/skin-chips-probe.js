@@ -25,6 +25,7 @@ const { spawn } = require('node:child_process');
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const VPS = (process.argv.slice(2).length ? process.argv.slice(2) : ['390x844', '375x667', '380x700', '1280x800']).map((s) => { const [w, h] = s.split('x').map(Number); return { w, h }; });
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
+const MODE = process.env.PROBE_MODE === 'dark' ? 'dark' : 'light'; // the app's light / dark axis (localStorage ft-mode); the crops of v1.388.0 shoot both
 
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -53,6 +54,20 @@ const GEOM = (sel, menuSel) => `(function () {
     menu: m ? { xywh: r(m), scrollH: m.scrollHeight, clientH: m.clientHeight, scrolls: m.scrollHeight > m.clientHeight + 1 } : null,
     vw: innerWidth, vh: innerHeight, docOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`;
+
+  // the sheet's geometry (v1.388.0): ui.sheet lives on <body>, its scroller is .ui-sheet__body
+const SHEET_GEOM = (sel) => `(function () {
+    var sh = document.querySelector('.mms-ss-root'); if (!sh) return null;
+    var body = sh.querySelector('.ui-sheet__body'); var sb = sh.getBoundingClientRect();
+    var r = function (el) { var b = el.getBoundingClientRect(); return [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
+    var els = Array.prototype.slice.call(sh.querySelectorAll(${JSON.stringify(sel)}));
+    var like = sh.querySelector('[data-skin-like]'); var lr = like ? like.getBoundingClientRect() : null;
+    var tops = {}; els.forEach(function (e) { tops[Math.round(e.getBoundingClientRect().y)] = 1; });
+    return { sheet: { xywh: r(sh), bodyScrollH: body.scrollHeight, bodyClientH: body.clientHeight, scrolls: body.scrollHeight > body.clientHeight + 1, top: Math.round(sb.top * 10) / 10, bottom: Math.round(sb.bottom * 10) / 10 },
+      n: els.length, rows: Object.keys(tops).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pick') || e.getAttribute('data-skin-x') || (e.textContent || '').trim().slice(0, 12), xywh: r(e) }; }),
+      likeInView: !!(lr && lr.height > 0 && lr.top >= sb.top - 0.5 && lr.bottom <= sb.bottom + 0.5 && lr.top >= 0 && lr.bottom <= innerHeight),
+      vw: innerWidth, vh: innerHeight };
+  })()`;
 
 async function main() {
   const chromeBin = findChrome();
@@ -116,18 +131,6 @@ async function main() {
     // before v1.388.0 the menu lived in the panel; the sheet lives on <body> (ui.sheet), its scroller is .ui-sheet__body
     const SHEET = '.mms-ss-root';
     const MENU = '#music-nowplaying-panel [data-skin-sticker-menu]';
-    const SHEET_GEOM = (sel) => `(function () {
-      var sh = document.querySelector('.mms-ss-root'); if (!sh) return null;
-      var body = sh.querySelector('.ui-sheet__body'); var sb = sh.getBoundingClientRect();
-      var r = function (el) { var b = el.getBoundingClientRect(); return [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
-      var els = Array.prototype.slice.call(sh.querySelectorAll(${JSON.stringify(sel)}));
-      var like = sh.querySelector('[data-skin-like]'); var lr = like ? like.getBoundingClientRect() : null;
-      var tops = {}; els.forEach(function (e) { tops[Math.round(e.getBoundingClientRect().y)] = 1; });
-      return { sheet: { xywh: r(sh), bodyScrollH: body.scrollHeight, bodyClientH: body.clientHeight, scrolls: body.scrollHeight > body.clientHeight + 1, top: Math.round(sb.top * 10) / 10, bottom: Math.round(sb.bottom * 10) / 10 },
-        n: els.length, rows: Object.keys(tops).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pick') || e.getAttribute('data-skin-x') || (e.textContent || '').trim().slice(0, 12), xywh: r(e) }; }),
-        likeInView: !!(lr && lr.height > 0 && lr.top >= sb.top - 0.5 && lr.bottom <= sb.bottom + 0.5 && lr.top >= 0 && lr.bottom <= innerHeight),
-        vw: innerWidth, vh: innerHeight };
-    })()`;
     // v1.388.0 (W0): two scenarios per size and inset set - (a) a plain song, (b) a CHAPTERED track played as a
     // listen video (Watch + Chapters offered), the heavy page the sticker sheet must fit without scrolling.
     const SCEN = [{ name: 'plain-song', url: '/music?play=nd1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` },
@@ -139,21 +142,21 @@ async function main() {
         let insetOk = true;
         try { await send('Emulation.setSafeAreaInsetsOverride', { insets: Object.assign({ left: 0, right: 0 }, insets) }); } catch (_) { insetOk = !insets.top; }
         if (!insetOk) continue; // this Chromium has no inset override: the zero-inset run stands alone
-        await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
+        await ev(`localStorage.setItem('ft-mode', ${JSON.stringify(MODE)}); localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
         await send('Page.navigate', { url: base + scen.url });
         await waitFor(scen.until, 20000, scen.name + ' pocket (html.is-phone: ' + (await ev(`document.documentElement.classList.contains('is-phone')`)) + ')');
         await sleep(600);
         await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
         await sleep(400);
         const tag = { scenario: scen.name, vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
-        await sleep(500); // the sheet's slide-in finishes before anything is measured
+        if (await ev(`!!document.querySelector('.mms-ss-root')`)) { await waitFor(`!!document.querySelector('.mms-ss-root.is-open')`, 5000, 'the sheet opening'); await sleep(450); } // the slide-in (--dur-sheet) finishes before anything is measured
         const sheetNow = await ev(`!!document.querySelector(${JSON.stringify(SHEET)})`);
         if (sheetNow) {
           const gs = await ev(SHEET_GEOM('.mms-ss__tile'));
           gs.sheet.fits = !gs.sheet.scrolls; gs.sheet.topInReach = gs.sheet.top >= insets.top - 0.5;
           gs.sections = await ev(`Array.prototype.map.call(document.querySelectorAll('.mms-ss-root .ui-sheet__body > [data-skin-sticker-menu] > *'), function (x) { return [(x.className || '').slice(0, 20), Math.round(x.getBoundingClientRect().height)]; })`);
           out(Object.assign({ surface: 'sheet-main' }, tag, gs));
-          await shot('main-' + scen.name + '-' + size + '-' + insets.top);
+          await shot(MODE + '-main-' + scen.name + '-' + size + '-' + insets.top);
           if (process.env.PROBE_EVAL) out({ surface: 'eval', scenario: scen.name, value: await ev(process.env.PROBE_EVAL) }); // a one-off DOM question, asked of the open sheet
           if (scen.name === 'plain-song') {
             await ev(`document.querySelector('.mms-ss-root [data-skin-skins]').click(); true`);
@@ -161,7 +164,7 @@ async function main() {
             const sk = await ev(SHEET_GEOM('.mms-ss-root [data-skin-pick].ui-row'));
             sk.sheet.fits = !sk.sheet.scrolls;
             out(Object.assign({ surface: 'sheet-skin' }, tag, sk));
-            await shot('skin-' + size + '-' + insets.top);
+            await shot(MODE + '-skin-' + size + '-' + insets.top);
             await ev(`document.querySelector('.mms-ss-root [data-skin-extras-back]').click(); true`);
             await sleep(300);
             await ev(`document.querySelector('.mms-ss-root [data-skin-more]').click(); true`);
@@ -169,7 +172,7 @@ async function main() {
             const mo = await ev(SHEET_GEOM('.mms-ss-root .ui-row'));
             mo.sheet.fits = !mo.sheet.scrolls;
             out(Object.assign({ surface: 'sheet-more' }, tag, mo));
-            await shot('more-' + size + '-' + insets.top);
+            await shot(MODE + '-more-' + size + '-' + insets.top);
           }
           await ev(`var c = document.querySelector('.mms-ss-root .ui-sheet__close'); if (c) c.click(); true`);
           await sleep(500);
@@ -221,8 +224,12 @@ async function main() {
   if (pop) {
     const P = await connect(pop.webSocketDebuggerUrl);
     await P.ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
-    await sleep(500);
-    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('#music-nowplaying-panel .mms-sm-chip', '#music-nowplaying-panel [data-skin-sticker-menu]'))));
+    await sleep(700);
+    // v1.388.0: the pop-out's sheet (the plain-window fallback has no Tray row; the tray body keeps its inline Color chips)
+    const sheetInPop = await P.ev(`!!document.querySelector('.mms-ss-root')`);
+    out(Object.assign({ surface: 'popout-sheet', vp: await P.ev('innerWidth + "x" + innerHeight'), sheetInPop }, sheetInPop ? await P.ev(SHEET_GEOM('.mms-ss__tile')) : {}));
+    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('.mms-ss-root .mms-sm-chip', '.mms-ss-root [data-skin-sticker-menu]'))));
+    if (process.env.PROBE_SHOTS) { const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.mkdirSync(process.env.PROBE_SHOTS, { recursive: true }); fs.writeFileSync(path.join(process.env.PROBE_SHOTS, MODE + '-popout.png'), Buffer.from(r.data, 'base64')); }
     P.ws.close();
   } else out({ surface: 'tray-chips', error: 'no pop-out opened' });
   ws.close();

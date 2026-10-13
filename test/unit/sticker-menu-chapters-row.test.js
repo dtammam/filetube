@@ -36,29 +36,17 @@ test('W2c: the Extras chapters row (ui-btn + mms-sm-act) lays out from the start
   assert.ok(!('font-family' in d) && !('font' in d), 'the family stays the menu\'s (.mms-sticker-menu button): a revert there measured Arial');
 });
 
-test('W2c: the pop-out chapters row (ui-btn + mms-sm-extras) matches the Extras/Home rows: height and font', () => {
-  const d = decls(one('.mms-sticker-menu .ui-btn.mms-sm-extras').body);
-  assert.strictEqual(d.height, 'auto');
-  for (const p of ['font', 'white-space', 'border-radius']) assert.strictEqual(d[p], 'revert', p + ' back to the button default the siblings render in (13.33px/400)');
-  assert.strictEqual(d['font-family'], 'var(--font-ui)', 'then the menu\'s family back (.mms-sticker-menu button), never the UA Arial');
-  const keys = Object.keys(d);
-  assert.ok(keys.indexOf('font-family') > keys.indexOf('font'), 'the family AFTER the shorthand (the shorthand would reset it)');
-  assert.ok(!('justify-content' in d), 'the row base\'s space-between stays (label left, chevron right)');
-});
+// (v1.388.0: the pop-out's chapters row is a ui.row on the sheet's More page; its .ui-btn.mms-sm-extras reset and the row family it matched are retired)
 
-test('W2c: no ui-btn tint layer on those rows (the siblings have none; the act rows keep their own hover fill)', () => {
-  const d = decls(one('.mms-sticker-menu .ui-btn:is(.mms-sm-act, .mms-sm-extras)::after').body);
+test('W2c: no ui-btn tint layer on that row (the siblings have none; the act rows keep their own hover fill)', () => {
+  const d = decls(one('.mms-sticker-menu .ui-btn.mms-sm-act::after').body);
   assert.strictEqual(d.content, 'none');
 });
 
-test('W2c: file order - the resets sit AFTER both row bases (equal specificity elsewhere would let the base win)', () => {
+test('W2c: file order - the reset sits AFTER the row base (equal specificity elsewhere would let the base win)', () => {
   const act = one('.mms-sticker-menu .ui-btn.mms-sm-act');
-  const ext = one('.mms-sticker-menu .ui-btn.mms-sm-extras');
   const actBase = one('.mms-sticker-menu .mms-sm-act');
-  const extBase = rules.find((r) => r.sel.replace(/\s+/g, ' ') === '.mms-sticker-menu .mms-sm-extras, .mms-sticker-menu .mms-sm-back');
-  assert.ok(extBase, 'the extras/back base rule exists');
-  assert.ok(act.index > actBase.index && act.index > extBase.index, 'act reset after both bases');
-  assert.ok(ext.index > actBase.index && ext.index > extBase.index, 'extras reset after both bases');
+  assert.ok(act.index > actBase.index, 'act reset after its base');
 });
 
 test('W2c: the rows the resets are for still render with ui-btn (reachability of the selectors)', () => {
