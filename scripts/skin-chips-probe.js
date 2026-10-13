@@ -149,7 +149,7 @@ async function main() {
         await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
         await sleep(400);
         const tag = { scenario: scen.name, vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
-        if (await ev(`!!document.querySelector('.mms-ss-root')`)) { await waitFor(`!!document.querySelector('.mms-ss-root.is-open')`, 5000, 'the sheet opening'); await sleep(450); } // the slide-in (--dur-sheet) finishes before anything is measured
+        if (await ev(`!!document.querySelector('.mms-ss-root')`)) { await waitFor(`(function(){ var r = document.querySelector('.mms-ss-root.is-open'); return !!r && r.getBoundingClientRect().bottom <= innerHeight + 0.5; })()`, 8000, 'the sheet settled on screen'); await sleep(150); } // the slide-in (--dur-sheet) finishes before anything is measured
         const sheetNow = await ev(`!!document.querySelector(${JSON.stringify(SHEET)})`);
         if (sheetNow) {
           const gs = await ev(SHEET_GEOM('.mms-ss__tile'));
@@ -228,7 +228,7 @@ async function main() {
     // v1.388.0: the pop-out's sheet (the plain-window fallback has no Tray row; the tray body keeps its inline Color chips)
     const sheetInPop = await P.ev(`!!document.querySelector('.mms-ss-root')`);
     out(Object.assign({ surface: 'popout-sheet', vp: await P.ev('innerWidth + "x" + innerHeight'), sheetInPop }, sheetInPop ? await P.ev(SHEET_GEOM('.mms-ss__tile')) : {}));
-    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('.mms-ss-root .mms-sm-chip', '.mms-ss-root [data-skin-sticker-menu]'))));
+    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('.mms-ss-root [data-skin-pick]', '.mms-ss-root [data-skin-sticker-menu]'))));
     if (process.env.PROBE_SHOTS) { const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.mkdirSync(process.env.PROBE_SHOTS, { recursive: true }); fs.writeFileSync(path.join(process.env.PROBE_SHOTS, MODE + '-popout.png'), Buffer.from(r.data, 'base64')); }
     P.ws.close();
   } else out({ surface: 'tray-chips', error: 'no pop-out opened' });

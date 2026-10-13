@@ -11169,6 +11169,12 @@ a.tv-continue-card { text-decoration: none; }
 .mms-ss-root .mms-ss__light{ display:flex; flex-direction:column; gap:var(--space-3); padding:0 var(--inset); }
 .mms-ss-root .mms-ss__light .mms-ss__h, .mms-ss-root .mms-ss__light .mms-ss__note{ padding:0; }
 .mms-ss-root .mms-ss__search{ padding:0 var(--inset); }
+.mms-ss-root .mms-ss__gh{ width:calc(100% - 2 * var(--inset)); margin:0 var(--inset); justify-content:flex-start; }
+.mms-ss-root .mms-ss__gh .ui-btn__label{ margin-inline-end:auto; }
+.mms-ss-root .mms-ss__gh .ui-btn__icon{ order:3; }
+.mms-ss-root .mms-ss__gc{ order:2; font:var(--t-meta); color:var(--ink-2); }
+.mms-ss-root .mms-ss__gh[aria-expanded="true"] .ui-icon{ transform:rotate(180deg); }
+.mms-ss-root .mms-ss__gh[aria-disabled="true"] .ui-btn__icon{ visibility:hidden; }
 .mms-ss-root .mms-ss__sw{ display:grid; place-items:center; width:var(--icon-md); }
 .mms-ss-root .mms-ss__sw .skin-swatch{ width:var(--space-8); height:auto; padding:0; min-width:0; } /* the .mms-ipod panel rules reach this swatch's class: its padding would make a 16px box 40px wide */
 .mms-ss-root .ui-switch[aria-checked="true"]{ background-color:var(--sticker-accent); }

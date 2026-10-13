@@ -2459,7 +2459,8 @@
     }
     function offlineApi() { // the iOS app only (offline.js: `enabled` needs the host's `downloads` capability); null in a browser
       var o = (typeof window !== 'undefined' && window.FileTube && window.FileTube.offline) || null;
-      return (o && o.enabled && inMainDoc) ? o : null;
+      // opt-in by the VIEW (extras.offlineKind: music says 'track'): a view that names no kind (podcasts) keeps the browser download
+      return (o && o.enabled && inMainDoc && extrasCfg && extrasCfg.offlineKind) ? o : null;
     }
     function skinAccentId() { var id = ''; try { id = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : ''; } catch (_) { id = ''; } return id; }
     function trayIsActive() {
@@ -2501,7 +2502,7 @@
       var off = offlineApi();
       var baseId = extrasCfg ? extrasCfg.getBaseId() : null;
       if (off && baseId) {
-        var st = off.state('track', baseId);
+        var st = off.state(extrasCfg.offlineKind, baseId);
         var active = st.state === 'queued' || st.state === 'downloading' || st.state === 'paused' || st.state === 'waitingForWifi';
         var pct = (typeof st.progress === 'number') ? Math.round(st.progress * 100) : null;
         var cap = st.state === 'done' ? 'Saved' : (active ? (pct === null ? 'Saving' : pct + '%') : (st.state === 'failed' ? 'Retry' : 'Save'));
@@ -2513,7 +2514,7 @@
       var href = '';
       if (item) { try { href = extrasDownloadHref(item); } catch (_) { href = ''; } }
       var d = stickerTile({ icon: 'download', label: 'Download', tag: 'a', off: !ready || !extrasMenu.has('download'),
-        attrs: { 'data-skin-x': 'download', 'data-skin-download': '', href: href || null, download: '' } });
+        attrs: { 'data-skin-x': 'download', 'data-skin-download': '', href: (ready && extrasMenu.has('download') && href) || null, download: '' } });
       return d;
     }
     function extrasDownloadHref(item) {
@@ -2611,7 +2612,7 @@
       var off = offlineApi();
       var baseId = extrasCfg ? extrasCfg.getBaseId() : null;
       if (!off || !baseId) return null;
-      var st = off.state('track', baseId);
+      var st = off.state(extrasCfg.offlineKind, baseId);
       if (st.state !== 'failed') return null;
       var n = mk('p', 'mms-ss__note', off.errorCopy(st.error));
       n.setAttribute('role', 'status');
@@ -2733,18 +2734,37 @@
       body.appendChild(recentWrap);
       var groups = mk('div', 'mms-ss__groups');
       var fams = (typeof SKINS.skinFamilies === 'function') ? SKINS.skinFamilies() : [{ key: 'all', label: 'Skins', ids: all.map(function (s) { return s.id; }) }];
+      // v1.388.0 (Dean): the groups are the registry's LINES (Classic, Mini, Nano, ...), each COLLAPSED to one header row
+      // (name, count, chevron) except the one holding the active skin; a family with no line (Original, Cider, Nordic) is its own group
+      var lineLabel = {};
+      (typeof SKINS.skinLines === 'function' ? SKINS.skinLines() : []).forEach(function (ln) { lineLabel[ln.key] = ln.label; });
+      var grp = [];
+      var byKey = {};
       fams.forEach(function (fam) {
+        var key = fam.line || fam.key;
+        if (!byKey[key]) { byKey[key] = { key: key, label: fam.line ? (lineLabel[fam.line] || fam.line) : fam.label, ids: [] }; grp.push(byKey[key]); }
+        byKey[key].ids = byKey[key].ids.concat(fam.ids);
+      });
+      grp.forEach(function (g) {
+        var open = g.ids.indexOf(active) >= 0;
         var sec = mk('section', 'mms-ss__grp');
-        sec.setAttribute('data-fam', fam.label.toLowerCase());
-        sec.appendChild(mk('div', 'mms-ss__h', fam.label));
-        var list = U.list({ size: 'compact', media: 'avatar', aside: 'text', grouped: true, label: fam.label, doc: doc });
-        fam.ids.forEach(function (id) {
+        sec.setAttribute('data-fam', g.label.toLowerCase());
+        sec.setAttribute('data-open', open ? '1' : '0');
+        var head = U.button({ variant: 'plain', size: 'md', icon: 'expand_more', label: g.label, doc: doc });
+        head.classList.add('mms-ss__gh');
+        head.setAttribute('data-skin-group', g.key);
+        head.setAttribute('aria-expanded', open ? 'true' : 'false');
+        head.appendChild(mk('span', 'mms-ss__gc', String(g.ids.length)));
+        sec.appendChild(head);
+        var list = U.list({ size: 'compact', media: 'avatar', aside: 'text', grouped: true, label: g.label, doc: doc });
+        list.hidden = !open;
+        g.ids.forEach(function (id) {
           var s = byId[id];
           if (!s) return;
           var label = skinRowLabel(s);
           var row = U.row({ title: label, media: skinSwatch(id), aside: id === active ? icn('check') : null, onClick: noop, doc: doc });
           row.setAttribute('data-skin-pick', id);
-          row.setAttribute('data-label', (label + ' ' + s.label + ' ' + fam.label).toLowerCase());
+          row.setAttribute('data-label', (label + ' ' + s.label + ' ' + g.label).toLowerCase());
           if (id === active) row.setAttribute('aria-current', 'true');
           list.appendChild(row);
         });
@@ -2768,6 +2788,12 @@
             if (hit) { any = true; shown++; }
           }
           secs[i].hidden = !any;
+          // search ignores collapse: while there is text every match shows and the header is not a toggle; clearing restores
+          var hd = secs[i].querySelector('.mms-ss__gh');
+          var isOpen = secs[i].getAttribute('data-open') === '1';
+          secs[i].querySelector('.ui-list').hidden = q ? false : !isOpen;
+          hd.setAttribute('aria-expanded', (q || isOpen) ? 'true' : 'false');
+          if (q) hd.setAttribute('aria-disabled', 'true'); else hd.removeAttribute('aria-disabled');
         }
         none.hidden = shown > 0;
         recentWrap.hidden = !!q;
@@ -3078,13 +3104,22 @@
         if (stickerCfg.chapters && typeof stickerCfg.chapters.onTap === 'function') { try { stickerCfg.chapters.onTap(doc); } catch (_) { /* editor open best-effort */ } }
         return;
       }
+      var gh = t.closest('[data-skin-group]');
+      if (gh) { // a Skin-page line header: toggle its group (a disabled header, while searching, never reaches here)
+        var gsec = gh.closest('.mms-ss__grp');
+        var nowOpen = gsec.getAttribute('data-open') !== '1';
+        gsec.setAttribute('data-open', nowOpen ? '1' : '0');
+        gh.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+        gsec.querySelector('.ui-list').hidden = !nowOpen;
+        return;
+      }
       if (t.closest('[data-skin-more]')) { openSheetPage('more', '[data-skin-more]'); return; }
       if (t.closest('[data-skin-extras-back]')) { var back = stickerReturnSel; stickerReturnSel = null; showPage('main'); if (back) focusInMenu(back); return; }
       var offTile = t.closest('[data-skin-offline]');
       if (offTile) { // R7 (the iOS app): Save / cancel / remove through offline.js's own dispatcher
         var off = offlineApi();
         var offId = extrasCfg ? extrasCfg.getBaseId() : null;
-        if (off && offId) { var oe = off.menuEntry('track', offId); off.runMenuAction(oe.id, 'track', offId); redrawDownloadTile(); }
+        if (off && offId) { var oe = off.menuEntry(extrasCfg.offlineKind, offId); off.runMenuAction(oe.id, extrasCfg.offlineKind, offId); redrawDownloadTile(); }
         return;
       }
       var xact = t.closest('[data-skin-x]');

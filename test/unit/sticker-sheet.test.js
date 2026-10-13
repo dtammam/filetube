@@ -66,7 +66,7 @@ function bootSheet(o) {
     getPlayer: () => ({ isLoopEnabled: () => state.loop, setLoop: (on) => { state.loop = !!on; spy.loop.push(!!on); }, getCurrentTime: () => null, close() {} }),
     isChapterTrack: () => state.chapter,
     shuffle: { enabled: () => state.shuffle, onToggle: () => { state.shuffle = !state.shuffle; spy.shuffle += 1; } },
-    extras: { getBaseId: () => 's1', isEligible: () => true, onMutated() {}, signal: new AbortController().signal },
+    extras: { getBaseId: () => 's1', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, offlineKind: 'track' },
   }, o.sticker || {});
   const engine = dom.window.FileTubeSkinSurface.create({
     panel: dom.window.document.getElementById('panel'),
@@ -291,9 +291,9 @@ test('D5: the Skin page - search filters as you type, Recent holds the active sk
     const recent = [...m.querySelectorAll('.mms-ss__chips [data-skin-pick]')].map((c) => c.getAttribute('data-skin-pick'));
     assert.deepStrictEqual(recent, ['ipod', 'ipod-black', 'ipod-silver', 'apple'], 'the active skin first, then the last picks, 4 in all');
     assert.strictEqual(m.querySelector('.mms-ss__chips [data-skin-pick="ipod"]').getAttribute('aria-pressed'), 'true');
-    const fams = SKINS.skinFamilies();
     const groups = [...m.querySelectorAll('.mms-ss__grp')];
-    assert.deepStrictEqual(groups.map((g) => g.querySelector('.mms-ss__h').textContent), fams.map((f) => f.label), 'the groups ARE skinFamilies() (SKIN_LINES)');
+    const lineNames = SKINS.skinLines().map((l) => l.label);
+    assert.deepStrictEqual(groups.map((g) => g.querySelector('.ui-btn__label').textContent).filter((n) => lineNames.indexOf(n) >= 0), lineNames, 'the groups ARE the registry\'s lines (SKIN_LINES), in order');
     const all = [...m.querySelectorAll('.ui-row[data-skin-pick]')];
     assert.strictEqual(all.length, SKINS.SKINS.length, 'every registered skin is a row, once');
     const lbl = (id) => m.querySelector('.ui-row[data-skin-pick="' + id + '"] .ui-row__title').textContent;
@@ -310,6 +310,7 @@ test('D5: the Skin page - search filters as you type, Recent holds the active sk
     assert.ok(shown.length > 5 && shown.length < all.length, 'a filtered subset (' + shown.length + ')');
     assert.ok(shown.every((r) => /nano/.test(r.getAttribute('data-label'))), 'every shown row is a Nano');
     assert.ok(groups.filter((g) => g.hidden).length > 0 && groups.filter((g) => !g.hidden).every((g) => /^nano/i.test(g.getAttribute('data-fam'))), 'non-matching groups hide');
+    assert.ok(groups.filter((g) => !g.hidden).every((g) => !g.querySelector('.ui-list').hidden && g.querySelector('.mms-ss__gh').getAttribute('aria-disabled') === 'true'), 'search ignores collapse: matching groups are open and their headers are not toggles');
     assert.ok(m.querySelector('.mms-ss__recent').hidden, 'Recent steps aside while searching');
     input.value = 'zzzz'; input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
     assert.ok(all.every((r) => r.hidden));
@@ -351,6 +352,95 @@ test('R5: the Skin row carries a swatch of the ACTIVE skin (the Settings picker\
     assert.strictEqual(row.querySelector('.ui-row__meta').textContent, SKINS.skinById('ipod-black').label, 'the active label');
     assert.ok(row.querySelector('svg use[href="#i-chevron_right"]'), 'a chevron');
   } finally { b.restore(); }
+});
+
+// ---- D5 amendment (Dean, 2026-10-13): line groups collapsed to a header row, only the active skin's group open ----------------
+test('D5 collapse: every line group is one header row (name, count, chevron) COLLAPSED by default except the active skin\'s; a header tap toggles it (aria-expanded); search shows matches from collapsed groups and the headers stop toggling', async () => {
+  const b = bootSheet({});
+  try {
+    b.dom.window.localStorage.setItem('ft-music-skin', 'ipod-nano3-red'); // a Nano: the Nano group is the open one
+    await open(b);
+    click(b, SS.inSheet(b.dom, '[data-skin-skins]'));
+    const m = SS.menuOf(b.dom);
+    const head = (k) => m.querySelector('[data-skin-group="' + k + '"]');
+    const listOf = (k) => head(k).closest('.mms-ss__grp').querySelector('.ui-list');
+    const lines = SKINS.skinLines().map((l) => l.key);
+    for (const k of lines) {
+      const open = k === 'nano';
+      assert.strictEqual(head(k).getAttribute('aria-expanded'), String(open), k + ': ' + (open ? 'the active group is open' : 'collapsed by default'));
+      assert.strictEqual(listOf(k).hidden, !open, k + ' list ' + (open ? 'shown' : 'hidden'));
+    }
+    assert.match(head('classic').textContent, /Classic\d+/, 'a header carries its name and its count');
+    assert.ok(head('classic').querySelector('svg use[href="#i-expand_more"]'), 'and a chevron');
+    // a tap toggles (and a second closes it again)
+    click(b, head('classic'));
+    assert.strictEqual(head('classic').getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(listOf('classic').hidden, false);
+    click(b, head('classic'));
+    assert.strictEqual(listOf('classic').hidden, true, 'closes again');
+    // search reaches INTO the collapsed groups
+    const input = m.querySelector('input[type="search"]');
+    input.value = 'mini'; input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
+    assert.strictEqual(listOf('mini').hidden, false, 'a collapsed group with matches opens for the search');
+    assert.ok(m.querySelectorAll('.mms-ss__grp:not([hidden]) .ui-row:not([hidden])').length > 0);
+    assert.strictEqual(head('mini').getAttribute('aria-disabled'), 'true', 'its header is not a toggle while searching');
+    click(b, head('mini'));
+    assert.strictEqual(listOf('mini').hidden, false, 'a tap on it while searching changes nothing');
+    // clearing restores the collapse (the user\'s own opens included)
+    input.value = ''; input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
+    assert.strictEqual(listOf('mini').hidden, true, 'back to collapsed');
+    assert.strictEqual(listOf('nano').hidden, false, 'the active group stays open');
+    assert.strictEqual(head('mini').hasAttribute('aria-disabled'), false);
+    assert.strictEqual(m.querySelectorAll('.ui-row[data-skin-pick]').length, SKINS.SKINS.length, 'every skin is still a row (collapsed rows are hidden, not removed)');
+  } finally { b.restore(); }
+});
+
+// ---- the offline tile is opt-in by the view (adversary r1 W1) ---------------------------------------------------------------
+test('R7 opt-in: a view that names no offlineKind (podcasts) keeps the browser download even inside the app', async () => {
+  const off2 = fakeOffline();
+  const b = bootSheet({ sticker: { extras: { getBaseId: () => 'ep1', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, capabilities: ['download', 'share', 'queue', 'delete', 'like', 'watched'], downloadUrl: (it) => '/episode/' + it.id + '?download=1', fetchItem: () => ({ id: 'ep1', title: 'Ep', liked: false, watchState: 'unwatched' }) } } });
+  b.dom.window.FileTube = { offline: off2.api };
+  try {
+    await open(b);
+    const t = tile(b, 'download');
+    assert.strictEqual(t.tagName, 'A', 'still a link');
+    assert.strictEqual(t.getAttribute('href'), '/episode/ep1?download=1', 'to the episode arm');
+    click(b, t);
+    assert.deepStrictEqual(off2.ran, [], 'and nothing asks native to save a track under an episode id');
+    assert.strictEqual(off2.listeners.length, 0, 'no offline subscription');
+  } finally { b.restore(); }
+});
+
+test('R1/capabilities: Share and Like dim in place when the type does not offer them; a dimmed Download carries no href', async () => {
+  const mk = (caps) => bootSheet({ sticker: { extras: { getBaseId: () => 's1', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, capabilities: caps, fetchItem: () => ({ id: 's1', title: 'S', liked: false }) } } });
+  const a = mk(['like', 'download']);
+  try { await open(a); assert.ok(off(tile(a, 'share')), 'no share capability: Share dims'); assert.ok(!off(tile(a, 'like'))); } finally { a.restore(); }
+  const c = mk(['share', 'download']);
+  try { await open(c); assert.ok(off(tile(c, 'like')), 'no like capability: Like dims'); assert.ok(!off(tile(c, 'share'))); } finally { c.restore(); }
+  const d = mk(['share', 'like']);
+  try { await open(d); assert.ok(off(tile(d, 'download'))); assert.strictEqual(tile(d, 'download').hasAttribute('href'), false, 'a dimmed link has no href (a long-press or middle-click cannot navigate)'); } finally { d.restore(); }
+});
+
+test('Download href encodes the id (an id with a space or slash cannot break out of the route)', async () => {
+  const b = bootSheet({ sticker: { extras: { getBaseId: () => 'a b/c', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, fetchItem: () => ({ id: 'a b/c', title: 'S', liked: false }) } } });
+  try { await open(b); assert.strictEqual(tile(b, 'download').getAttribute('href'), '/video/a%20b%2Fc?download=1'); } finally { b.restore(); }
+});
+
+test('pop-out document: the icon sprite is injected into a document that has none, so the sheet\'s glyphs resolve', async () => {
+  const pip = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const main = bootSheet({});
+  try {
+    assert.strictEqual(pip.window.document.getElementById('ft-icon-sprite'), null, 'precondition: no sprite');
+    const eng = main.dom.window.FileTubeSkinSurface.create({
+      panel: pip.window.document.getElementById('panel'), win: pip.window, getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => main.dom.window.document.getElementById(id), sticker: { onSkinChange() {} },
+    });
+    eng.paint();
+    pip.window.document.querySelector('[data-skin-sticker]').dispatchEvent(new pip.window.MouseEvent('click', { bubbles: true }));
+    assert.ok(pip.window.document.querySelector('.mms-ss-root'), 'the sheet opened');
+    assert.ok(pip.window.document.getElementById('ft-icon-sprite'), 'the sprite was injected into the pop-out document');
+    eng.destroy();
+  } finally { main.restore(); }
 });
 
 // ---- R7: the Download tile --------------------------------------------------------------------------------------------------
@@ -409,7 +499,7 @@ test('R7 (the iOS app): the Download tile is the offline save - Save, then a pro
 
 test('R7 (the parent id): a chapter row saves its PARENT file - the id comes from the view\'s base id, never the ::c id', async () => {
   const off2 = fakeOffline();
-  const b = bootSheet({ sticker: { extras: { getBaseId: () => 'f9', isEligible: () => true, onMutated() {}, signal: new AbortController().signal } } });
+  const b = bootSheet({ sticker: { extras: { getBaseId: () => 'f9', isEligible: () => true, onMutated() {}, signal: new AbortController().signal, offlineKind: 'track' } } });
   b.dom.window.FileTube = { offline: off2.api };
   try {
     await open(b);
