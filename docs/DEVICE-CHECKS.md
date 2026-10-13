@@ -5,6 +5,16 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Sideways scrolling (v1.390.0)
+
+Phone held sideways, a video's watch page (not fullscreen), Safari and the FileTube app:
+
+- [ ] v1.390.0 - Leave fullscreen if it opened there: the video is a little shorter and centered, with the title row starting just under it on the first screen.
+- [ ] v1.390.0 - Drag up and down with a finger ON the video: the page scrolls with your finger, and a quick flick glides on and slows down by itself. A finger put down on a gliding page stops it and does not pause the video.
+- [ ] v1.390.0 - Pull down at the top of the page on the video (a narrower phone, or the app): it still shrinks to the mini player. Tap pauses, double-tap skips, hold plays at 2x and lets go when you lift, swipe right goes back.
+- [ ] v1.390.0 - Upright: the video and every gesture are exactly as before (a finger on the video still does not scroll the page). iPad and computer: unchanged.
+- [ ] v1.390.0 - Does the grey magnifier still stay away on a hold on the video, sideways? (nothing in the scroll turns it back on; say if it shows)
+
 ## Phone sideways (v1.389.0)
 
 - [ ] v1.389.0 - Safari, phone held sideways, any page: no side menu on the left; the menu button (top left) shows. Tap it: the menu slides in over the page; tap the page, a link in it, or turn the phone: it closes.

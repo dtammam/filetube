@@ -17,7 +17,7 @@
   7. v1.362.1 - VoiceOver cursor on the chevron: stays or vanishes
   8. v1.362.1 - follow the VPN runbook once, say where it was unclear, send run ids
   9. v1.362.3 - any hold on the picture (plain, after a double-tap; inline, full screen, art): 2x, no magnifier
-  10. v1.362.3 - regressions (taps, chains, hold, lock, pull, swipe, mini player); the picture no longer scrolls the page
+  10. v1.362.3 - regressions (taps, chains, hold, lock, pull, swipe, mini player); the picture no longer scrolls the page (a sideways phone scrolls from the app's own drag since v1.390.0)
   11. v1.362.3 - black picture, four runs: taps / taps with no glyph / tap-pause bar-resume / holds then bar
   12. v1.362.2 - whenever it goes black: Export log and send the file
   13. v1.362.2 - lifecycle log records in the background; Export log gives a .txt; Clear asks
@@ -890,6 +890,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - **Fix**: v1.387.0's offline rows named two icons the registry never had (`download_for_offline`, `offline_pin`); `ui.icon` throws on an unknown name by design, so inside the iOS app (the only place those rows exist, from app v0.9.0) the You menu and every More menu aborted before opening. They now use the registered `arrow_downward` (add) and `close` (remove / cancel). Reproduced and verified in WebKit with an injected host.
 - **Guard**: test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property incl. toggle objects and both ternary arms, any icon call incl. `u.icon`, `songIconHtml` and ui.js's own `icon()`) must be in the registry; nine mutations each turn it red. Gate: adversary, CHANGES r1 (five missed call shapes) -> APPROVED r2 @16c5c92a. Plan: `docs/exec-plans/completed/2026-10-12-offline-icons.md`.
+
+### v1.390.0 - A sideways phone can scroll the watch page, on the video too (2026-10-13)
+
+- **Shorter player**: on a phone (html.is-phone) held sideways, the inline watch player is 70% of the screen height, 16:9, centered (tokens `--ls-player-frac`, `--ls-bar-*` in tokens.css). Measured at 844x390: 796x488.6 (125% of the screen, title top y=584.6) before, 412.7x273 (70.0%, title top y=369) after; 667x375 0.695, 932x430 0.700. Portrait 390x844 and desktop 1280x800 identical to main.
+- **Drag to scroll**: the loupe guard (unchanged) cancels the browser's own scroll for every finger that starts on the picture, so a sideways drag there now scrolls the page itself (`window`, the document is the scroller), anchored at the claim so it never jumps (200 px drag = 180 px, the rest is the tap tolerance), with a glide from the release velocity (friction 0.95 per frame, none under reduced motion or from a rested finger). It rides the host's one non-passive touchmove, never taps or holds, leaves the pull-down minimize alone (down at the top on a <=768 phone still docks) and stops on a rotate, dock, view swap, fullscreen, scroll lock or any new touch.
+- **Gate**: adversary + qa, three rounds (Dean asked for the third). r1: a touch that caught a glide paused the video, a landscape iPad got the drag (now gated on is-phone), four guards unbound; r2: the caught-touch swallow returned before the hold release and left 2x stuck (both seats, independently); r3 APPROVED @64522c73. Tests: landscape-scroll-css.test.js, landscape-scroll-drag.test.js (29 tests, real listeners, mutation-checked), probes in tools/landscape-scroll-proof/. Plan: `docs/exec-plans/completed/2026-10-13-landscape-scroll.md`.
+- Disclosed: the drag is untested on iOS (rubber-band at the page ends, the URL bar collapsing mid-glide, whether touchmove stays cancelable after the unprevented first move are device checks, docs/DEVICE-CHECKS.md "Sideways scrolling"); at 568-667 wide the player is 2 px under 70% (no frame border); Safari's own momentum scroll is not matched exactly (tune on the device).
 
 ### v1.389.0 - A sideways phone stays a phone: the side menu is a drawer, a video opened sideways is fullscreen (2026-10-13)
 

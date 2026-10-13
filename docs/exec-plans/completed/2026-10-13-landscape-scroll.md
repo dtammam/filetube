@@ -3,11 +3,11 @@ plan: landscape-scroll
 harness: v2 · full
 branch: fix/v1.390.0-landscape-scroll
 anchor: spec
-status: Planned
-next: builder - Step 0, then M0 (measure the sideways watch page on main) before any edit
+status: Shipped v1.390.0
+next: release v1.390.0 (gate closed at 64522c73)
 design: Dean's screenshot + ask 2026-10-13 ("one can barely scroll as it doesn't work on the video area"), Root's diagnosis the same day; Dean picked options 1 + 2. Base = main 038be5c6 (v1.389.0 + baselines).
 builder: standard (a CSS height cap plus one gesture branch inside the existing picture touch handlers; the loupe cancel stays)
-gate: -
+gate: adversary + qa APPROVED r3 @64522c73 (r1 and r2 changes fixed)
 ---
 
 # v1.390.0: a sideways phone can scroll the watch page, on the video too
@@ -97,16 +97,13 @@ the mini player; tap, double-tap and hold still work; portrait unchanged.
 Removing or retesting the loupe guard; portrait player height; the fullscreen layout; tablets.
 
 ## Evidence (builder fills)
-- M0: 
-- M1: 
-- Scrolling element used: 
-- Gesture cases: 
-- Mutations: 
-- Full suite runs (counts, verbatim): 
-- Gate verdicts: 
-- Device checks Dean owes: 
+- M0: main 038be5c6, 844x390 inline (after leaving the v1.389.0 sideways fullscreen): host 796x488.6 = 1.253 of the viewport height, side margins 24, title top y=584.6 (below the fold), scroll range 913; the 844x390 drag probe on main: a 200 px drag on the video scrolls 0 px (a drag with the page at 100 stays 100). tools/landscape-scroll-proof/probe-geometry.js, probe-drag.js.
+- M1: branch, same probe: host 412.7x273 = 0.700 of vh, side margins 215.7, title top y=369 (inside the viewport), scroll range 698; 667x375 0.695 (322.9x260.5), 932x430 0.700, 568x320 0.694 (QA). Bar overflow: none (411 and 323 wide). Portrait 390x844 (host 0,72,390x299.4, title 387.4, range 310) and desktop 1280x800 (host 254,80,598x377.3, title 473.3, range 189) identical to main.
+- Scrolling element used: the document (`document.scrollingElement` = <html>), `window.scrollTo` via FileTubeBodyLock.scrollTo, clamped to scrollHeight - innerHeight; the watch page has no inner scroller.
+- Gesture cases (real Chromium, raw CDP touch with explicit event clocks, probe-drag.js, 844x390 unless noted): up 200 slow: page 0 -> 180, 20/20 moves cancelable, 19 prevented (the first, inside the tolerance, is not), not paused; up 200 flick (20 px per 10 ms): 180 at the lift then a glide to 698 (the end of the page); scrolled 100, down 100: 20; 667x375 down 200 at the top: state docked, page 0 (minimize unchanged); portrait and desktop up 200: page 0, 0 prevented, same as main. jsdom, real listeners (landscape-scroll-drag.test.js): up/down/clamps, minimize vs scroll on a narrow phone, tap under the tolerance, double-tap skip, hold 2x and hold-lock, sideways swipe, tap then drag (no pause), glide decay / rested finger / reduced motion / end of page / new touch / rotate, dock, view swap, fullscreen, scroll lock, second finger, touchcancel, caught-glide touch (tap, hold release, touch elsewhere), the loupe guard on the same touches as main.
+- Mutations: player.js, 24 mutants in the first round (all killed but M21, `tapGestureMoved`/`holdTimer` in claimScrollDrag: truly masked, the surface touchmove does both at the same MOVE_TOL first), 8 more after gate r1 and 1 after r2 (all killed); CSS 6 mutants killed; the loupe guard 2 mutants killed; the seats ran their own (adversary: 4 survivors turned into tests; qa: 2 survivors in the redundant flag clear, not blocking).
+- Full suite runs (counts, verbatim): `npm test` Node 22.23.1 on 6ed7ae12: # tests 12505, # pass 12492, # fail 0, # cancelled 0, # skipped 13 (exit 0). Final run on the close-out tree (version 1.390.0, docs, ledger): `npm test` Node 22.23.1: # tests 12513, # pass 12500, # fail 0, # cancelled 0, # skipped 13 (exit 0).
+- Gate verdicts: qa APPROVED r1 @6ed7ae12; adversary CHANGES r1 (W1 caught-touch pause, W2 iPad, W3 four unbound guards) -> fixed d42ee8a0; both CHANGES r2 (W4 stuck 2x on a hold that lands on a glide) -> fixed 64522c73 (Dean ruled to run a third round); APPROVED r3 @64522c73 adversary and qa.
+- Device checks Dean owes: docs/DEVICE-CHECKS.md "Sideways scrolling (v1.390.0)": shorter player with the title below; drag and flick on the video in Safari and the app, a finger on a gliding page stops it without pausing; pull-down at the top still minimizes; tap, double-tap, hold 2x and swipe back; upright and iPad unchanged; the loupe still absent on a sideways hold. Unconfirmed on iOS: touchmove stays cancelable after the unprevented first move, rubber-band at the page ends, URL bar collapse mid-glide.
 
-Gate: APPROVED r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — qa
-Gate: CHANGES r1 @6ed7ae123a9c5e916ab52ca787d841ffa45e8c88 — adversary (W1 tap that stops a glide pauses; W2 iPad landscape gets the drag; W3 four unbound guards; see report)
-Gate: CHANGES r2 @d42ee8a0e3e6cf21c3198251f96aab9dca8cc589 — adversary (W1/W2/W3 verified fixed; NEW W4: a hold on the touch that caught a glide is never released, 2x stuck)
-Gate: CHANGES r2 @d42ee8a0e3e6cf21c3198251f96aab9dca8cc589 — qa (W1: the catch-a-glide lift swallows hold release; stuck 2x)
+Close-out binding (no seat re-check, docs/RELEASING.md): approval at 64522c73; `git diff --name-only 64522c73..HEAD` of the close-out is ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS.md, docs/exec-plans/completed/2026-10-13-landscape-scroll.md, docs/releases.json, package-lock.json, package.json; `git diff 64522c73..HEAD -- package.json package-lock.json` changes only the three `"version"` lines, 1.389.0 -> 1.390.0.
