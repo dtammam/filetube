@@ -133,6 +133,8 @@
     function extrasStillOnPage() { try { return typeof cfg.stillOnPage !== 'function' || !!cfg.stillOnPage(); } catch (_) { return false; } }
     // ---- the v1.249 Extras page (present only when the view supplies extras hooks) --------
     var extrasItem = null;     // the /api/videos/:id payload the OPEN page renders
+    var extrasCanModify = false; // v1.388.0: the viewer's library-modify right, read with the item (load())
+    var extrasLoadToken = 0;   // v1.388.0: TOCTOU guard for load(): only the newest load may set the item
     var extrasReqToken = 0;    // TOCTOU guard: only the newest open's fetch may render (v1.104 scar)
     var extrasReheatTimer = null;
     var extrasReheatAbortHooked = false;
@@ -270,6 +272,7 @@
           return;
         }
         extrasItem = item;
+        extrasCanModify = !!rs[1];
         menu.innerHTML = buildExtrasHtml(item, rs[1]);
         if (typeof cfg.onRendered === 'function') { try { cfg.onRendered(hadBack); } catch (_) { /* best-effort */ } }
       });
@@ -344,6 +347,8 @@
           } else {
             item.watchState = nextOn ? 'watched' : 'unwatched';
           }
+          // v1.388.0: the sticker sheet re-draws its Like tile / More row from the item (the desktop menu passes no hook)
+          if (typeof cfg.onFlagChange === 'function') { try { cfg.onFlagChange(kind, item); } catch (_) { /* view redraw best-effort */ } }
           if (!el || !el.isConnected) return;
           el.classList.toggle('is-on', nextOn);
           el.setAttribute('aria-pressed', nextOn ? 'true' : 'false');
@@ -549,9 +554,29 @@
       if (act === 'move') { extrasClose(); extrasMove(item); return; }
       if (act === 'delete') { extrasClose(); extrasDelete(item); }
     }
-    function cancelPending() { extrasReqToken++; }
-    function destroy() { stopExtrasReheatPoll(); extrasReqToken++; extrasItem = null; }
-    return { open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy };
+    // v1.388.0 (sticker sheet): the sheet needs the item BEFORE any page opens (its Like tile says liked or not, Share and
+    // Download need an id, the More page gates every row on it), so it loads once when it opens and the actions below
+    // read the same stamped item (likeTargetId / chapterSnapIndex captured HERE, at open time). The newest load wins; the
+    // item is dropped first so a stale one never drives a tap for a different track. Resolves the item, or null.
+    function load() {
+      extrasItem = null; extrasCanModify = false;
+      var baseId = extrasBaseId();
+      if (!baseId) return Promise.resolve(null);
+      var token = ++extrasLoadToken;
+      return Promise.all([extrasFetchItem(baseId), extrasCanModifyLibrary()]).then(function (rs) {
+        if (token !== extrasLoadToken || extrasBaseId() !== baseId) return null; // a newer load, or the track moved on
+        var item = rs[0];
+        if (!item || item.id !== baseId) { extrasItem = null; extrasCanModify = false; }
+        else { extrasItem = item; extrasCanModify = !!rs[1]; }
+        if (typeof cfg.onLoaded === 'function') { try { cfg.onLoaded(extrasItem, extrasCanModify); } catch (_) { /* view redraw best-effort */ } }
+        return extrasItem;
+      });
+    }
+    function cancelPending() { extrasReqToken++; extrasLoadToken++; }
+    function destroy() { stopExtrasReheatPoll(); extrasReqToken++; extrasLoadToken++; extrasItem = null; extrasCanModify = false; }
+    return { open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy,
+      load: load, getItem: function () { return extrasItem; }, canModify: function () { return extrasCanModify; }, has: extrasCap,
+      hasSource: function (item) { return !!item && extrasShareLink(item) !== ''; } };
   }
 
   // v1.311.2: the shared iOS body lock. Always the MAIN window's module - a
@@ -2382,161 +2407,241 @@
       if (!extrasCfg || !inMainDoc) return false;
       try { return !!extrasCfg.isEligible(); } catch (_) { return false; }
     }
-    // v1.368.0: the ONE builder of a page-1 On/Off row (Loop, Shuffle, Autoplay, Tray) - the four
-    // rows were four hand copies of this markup (and the UI ratchet counts each copy as debt).
-    // `icon` is a mask class (icon-play), or { svg } for a drawn mark (Shuffle: the .icon-shuffle mask
-    // is retired - test/unit/shuffle-rescan-icon.test.js - so it draws the skins' own glyph).
-    function stickerToggleRow(flag, icon, label, on) {
-      var mark = (icon && typeof icon === 'object') ? '<i class="mms-sm-glyph">' + icon.svg + '</i>' : '<i class="' + icon + '"></i>';
-      return '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (on ? ' is-on' : '') +
-        '" ' + flag + ' aria-checked="' + (on ? 'true' : 'false') + '"><span class="mms-sm-lbl">' + mark + label + '</span><span class="mms-sm-state">' + (on ? 'On' : 'Off') + '</span></button></div>';
+    // ==== v1.388.0 THE STICKER SHEET (plan 2026-10-12-sticker-sheet) ==========================================
+    // The sticker opens a FileTube bottom sheet (ui.sheet: grab bar, scrim, close button, Escape, drag down), not the old
+    // hand-rolled popover. Page 1 is a 4 x 2 grid of the daily controls in a FIXED order (Like, Chapters, Loop, Shuffle /
+    // Speed, Share, Download, More): a tile that does not apply renders DISABLED in place, never removed, so a thumb finds
+    // each one where it was yesterday. Below the grid sits the Skin row; Skin and More are pages of the SAME sheet (the header
+    // swaps to a Back button). The sheet is built with ui.js builders into the sheet's body - the engine owns what each
+    // control DOES (the handlers below are the v1.238-v1.368 ones), this block owns what it LOOKS like.
+    //   ctl = ui.sheet(...)        sheetBody = the content node ([data-skin-sticker-menu], data-sm-page = skins | more)
+    //   sheetHead = the header slot (the playing item, or Back + the page name)
+    var STICKER_RECENT_KEY = 'ft-sticker-recent-skins'; // the last skins picked FROM the sheet on this device (Skin page, Recent)
+    var sheetCtl = null;
+    var sheetBody = null;
+    var sheetHead = null;
+    var sheetPage = 'main'; // main | skins | more
+    var speedOpen = false;  // the Speed strip under the grid
+    var offUnsub = null;    // the offline.onChange unsubscribe while the sheet is open (iOS app only)
+    var stickerReturnSel = null; // the page-1 control that opened the Skin or More page: Back returns focus to it (#281 c)
+    function uiApi() { return (typeof window !== 'undefined' && window.ui) || null; }
+    function sheetOpen() { return !!(sheetCtl && sheetCtl.isOpen()); }
+    function mk(tag, cls, text) {
+      var n = doc.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined && text !== null && text !== '') n.textContent = text;
+      return n;
     }
-    // v1.368.0: the ONE builder of a page-1 link row (an action with a chevron or a value): Watch,
-    // Go to channel, Start radio, Skin, Extras, Home were hand copies of this markup.
-    function stickerLinkRow(flag, icon, label, state) {
-      return '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" ' + flag + '><span class="mms-sm-lbl"><i class="' + icon + '"></i>' + label + '</span><span class="mms-sm-state">' + (state || '&rsaquo;') + '</span></button></div>';
+    function flag(n, attrs) {
+      for (var k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k) && attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]); }
+      return n;
     }
-    function buildStickerMenuHtml() {
+    function noop() {}
+    function clearNode(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+    function icn(name, size) { return uiApi().icon(name, { size: size || 'md', doc: doc }); }
+    function setUnavailable(n) { n.setAttribute('aria-disabled', 'true'); n.classList.add('is-unavailable'); return n; }
+
+    // ---- state the page reads (each from the view's own hook, as the v1.238-v1.368 rows did) ----
+    function hookBool(group, name) {
+      var h = stickerCfg && stickerCfg[group];
+      if (!h || typeof h[name] !== 'function') return null;
+      try { return !!h[name](); } catch (_) { return false; }
+    }
+    function isChapterNow() {
+      try { return !!(stickerCfg && typeof stickerCfg.isChapterTrack === 'function' && stickerCfg.isChapterTrack()); } catch (_) { return false; }
+    }
+    function chapterPosition() { // "4 of 12": the playing chapter's place in the queue the skins list
+      try {
+        var c = getCtx() || {};
+        if (c.total > 1 && c.curNum > 0) return c.curNum + ' of ' + c.total;
+      } catch (_) { /* no ctx */ }
+      return '';
+    }
+    function offlineApi() { // the iOS app only (offline.js: `enabled` needs the host's `downloads` capability); null in a browser
+      var o = (typeof window !== 'undefined' && window.FileTube && window.FileTube.offline) || null;
+      return (o && o.enabled && inMainDoc) ? o : null;
+    }
+    function skinAccentId() { var id = ''; try { id = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : ''; } catch (_) { id = ''; } return id; }
+    function trayIsActive() {
+      if (inMainDoc || !stickerCfg || !stickerCfg.tray || typeof stickerCfg.tray.enabled !== 'function') return false;
+      try { return !!stickerCfg.tray.enabled(); } catch (_) { return false; }
+    }
+    function trayBodyNow() { try { return !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; } }
+
+    // ---- the tile grid ----
+    // o: { icon | glyph, label, cap, pressed, off (disabled in place), attrs, tag: 'a' (Download on the web) }
+    function stickerTile(o) {
+      var U = uiApi();
+      var b = U.button({ variant: 'tonal', shape: 'stack', icon: o.icon, label: o.label, pressed: o.pressed, doc: doc });
+      b.classList.add('mms-ss__tile');
+      if (o.glyph) { // Speed: the current rate IS the tile's big glyph
+        var g = mk('span', 'ui-btn__icon mms-ss__glyph', o.glyph);
+        b.insertBefore(g, b.firstChild);
+      }
+      var lbl = b.querySelector('.ui-btn__label');
+      b.appendChild(mk('span', 'mms-ss__cap', o.cap || ' '));
+      if (lbl) lbl.classList.add('mms-ss__lbl');
+      flag(b, o.attrs || {});
+      if (o.tag === 'a') { // a link styled as a tile: the web Download tile keeps today's browser download
+        var a = mk('a', b.className);
+        while (b.firstChild) a.appendChild(b.firstChild);
+        for (var i = 0; i < b.attributes.length; i++) { if (b.attributes[i].name !== 'class' && b.attributes[i].name !== 'type') a.setAttribute(b.attributes[i].name, b.attributes[i].value); }
+        b = a;
+      }
+      if (o.off) setUnavailable(b);
+      return b;
+    }
+    function ringNode(progress) { // the offline progress ring (--p is data the stylesheet consumes, as ui.thumb's progress does)
+      var r = mk('span', 'ui-btn__icon mms-ss__ring');
+      r.setAttribute('aria-hidden', 'true');
+      r.style.setProperty('--p', String(Math.max(0, Math.min(1, Number(progress) || 0))));
+      return r;
+    }
+    function downloadTile(item, ready) {
+      var off = offlineApi();
+      var baseId = extrasCfg ? extrasCfg.getBaseId() : null;
+      if (off && baseId) {
+        var st = off.state('track', baseId);
+        var active = st.state === 'queued' || st.state === 'downloading' || st.state === 'paused' || st.state === 'waitingForWifi';
+        var pct = (typeof st.progress === 'number') ? Math.round(st.progress * 100) : null;
+        var cap = st.state === 'done' ? 'Saved' : (active ? (pct === null ? 'Saving' : pct + '%') : (st.state === 'failed' ? 'Retry' : 'Save'));
+        var t = stickerTile({ icon: st.state === 'done' ? 'check' : 'download', label: 'Download', cap: cap, pressed: st.state === 'done' || active, off: !baseId || !extrasEligible(),
+          attrs: { 'data-skin-offline': '', 'data-skin-download': '' } });
+        if (active) { var slot = t.querySelector('.ui-btn__icon'); if (slot) t.replaceChild(ringNode(st.progress), slot); }
+        return t;
+      }
+      var href = '';
+      if (item) { try { href = extrasDownloadHref(item); } catch (_) { href = ''; } }
+      var d = stickerTile({ icon: 'download', label: 'Download', tag: 'a', off: !ready || !extrasMenu.has('download'),
+        attrs: { 'data-skin-x': 'download', 'data-skin-download': '', href: href || null, download: '' } });
+      return d;
+    }
+    function extrasDownloadHref(item) {
+      try { if (extrasCfg && typeof extrasCfg.downloadUrl === 'function') return extrasCfg.downloadUrl(item); } catch (_) { /* fall through */ }
+      return '/video/' + encodeURIComponent(item.id) + '?download=1';
+    }
+    function buildGrid() {
       var rate = liveRate();
-      var speed = MMS_SPEED_RATES.map(function (r) {
-        var on = r === rate;
-        return '<button type="button" role="menuitemradio" class="mms-sm-opt' + (on ? ' is-on' : '') +
-          '" data-skin-speed="' + r + '" aria-checked="' + (on ? 'true' : 'false') + '">' +
-          (r === 1 ? 'Normal' : r + '×') + '</button>';
-      }).join('');
       var loopOn = liveLoop();
-      // v1.279 (Dean): when a chaptered `::c` track is playing, Loop already loops the CURRENT
-      // CHAPTER (music.js enforceChapterLoop), not the whole file - so say so, else there is
-      // "no clear way to loop a chapter". The view supplies the chapter test (isChapterTrack);
-      // plain "Loop" for a normal song.
-      var loopIsChapter = false;
-      try { loopIsChapter = !!(stickerCfg && typeof stickerCfg.isChapterTrack === 'function' && stickerCfg.isChapterTrack()); } catch (_) { loopIsChapter = false; }
-      var loopLabel = loopIsChapter ? 'Loop chapter' : 'Loop';
-      var skins = SKINS.SKINS || [];
-      var active = (typeof SKINS.activeSkinId === 'function') ? SKINS.activeSkinId() : '';
-      // v1.257 (QA S3) -> v1.258 (Dean's colorway round): inside the TRAY the chips are
-      // FILTERED to the Click colorways - those picks genuinely restyle the tray (each
-      // colorway's body roles); non-family picks would visibly
-      // no-op there and stay hidden. NOTE the pick still writes the GLOBAL skin pref
-      // (the tray colorway IS the skin choice - disclosed).
-      var trayActive = false;
-      if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
-        try { trayActive = !!stickerCfg.tray.enabled(); } catch (_) { trayActive = false; }
-      }
-      var chips = skinChipsHtml(trayActive);
+      var chapterNow = isChapterNow();
+      var item = extrasMenu.getItem();
+      var ready = extrasEligible() && !!item;
+      var grid = mk('div', 'mms-ss__grid');
+      grid.setAttribute('role', 'group');
+      grid.setAttribute('aria-label', 'Player controls');
+      // Like: says what it will like (R2) - the playing chapter when it has its own row, else the track
+      var liked = !!(item && item.liked === true);
+      var chapterLike = !!(item && typeof item.likeTargetId === 'string' && item.likeTargetId);
+      var likeTile = stickerTile({ icon: { off: 'favorite', on: 'favorite.fill' }, label: 'Like', pressed: liked, off: !ready || !extrasMenu.has('like'),
+        cap: liked ? 'Liked' : (chapterLike ? 'chapter' : 'track'), attrs: { 'data-skin-x': 'like', 'data-skin-like': '' } });
+      grid.appendChild(likeTile);
+      // Chapters: the existing Add / Edit chapters editor (Dean, 2026-10-13); only on a chaptered track the viewer may edit
+      var chOk = chapterNow && hookBool('chapters', 'visible') === true;
+      grid.appendChild(stickerTile({ icon: 'toc', label: 'Chapters', cap: chOk ? chapterPosition() : '', off: !chOk, attrs: { 'data-skin-chapters': '' } }));
+      // Loop / Shuffle: toggles; on = the selected state (R3). The chapter-loop meaning (v1.279) rides the caption.
+      grid.appendChild(stickerTile({ icon: 'repeat', label: 'Loop', pressed: loopOn, cap: loopOn ? (chapterNow ? 'Chapter' : 'On') : 'Off', attrs: { 'data-skin-loop': '' } }));
+      var shHook = hookBool('shuffle', 'enabled');
+      grid.appendChild(stickerTile({ icon: 'shuffle', label: 'Shuffle', pressed: shHook === true, cap: shHook === true ? 'On' : 'Off', off: shHook === null,
+        attrs: { 'data-skin-shufflemode': '' } }));
+      var sp = stickerTile({ glyph: (rate === 1 ? '1' : String(rate)) + '×', label: 'Speed', pressed: rate !== 1, cap: rate === 1 ? 'Normal' : (rate < 1 ? 'Slower' : 'Faster'),
+        attrs: { 'data-skin-speedtoggle': '', 'aria-expanded': speedOpen ? 'true' : 'false', 'data-rate': String(rate) } });
+      grid.appendChild(sp);
+      grid.appendChild(stickerTile({ icon: 'share', label: 'Share', off: !ready || !extrasMenu.has('share'), attrs: { 'data-skin-x': 'share', 'data-skin-share': '' } }));
+      grid.appendChild(downloadTile(item, ready));
+      grid.appendChild(stickerTile({ icon: 'more_horiz', label: 'More', attrs: { 'data-skin-more': '' } }));
+      return grid;
+    }
+    function buildSpeedStrip() {
+      var U = uiApi();
+      var rate = liveRate();
+      var strip = mk('div', 'mms-ss__strip');
+      strip.setAttribute('role', 'group');
+      strip.setAttribute('aria-label', 'Playback speed');
+      strip.hidden = !speedOpen;
+      MMS_SPEED_RATES.forEach(function (r) {
+        var c = U.chip({ kind: 'filter', selected: r === rate, label: (r === 1 ? '1' : String(r)) + '×', doc: doc });
+        c.setAttribute('data-skin-speed', String(r));
+        strip.appendChild(c);
+      });
+      return strip;
+    }
+    function skinSwatch(id) { // the same swatch Settings draws (style.css .skin-swatch.mms-<id>); no per-skin colour is invented
+      var s = (typeof SKINS.skinById === 'function') ? SKINS.skinById(id) : null;
+      var w = mk('span', 'mms-ss__sw');
+      w.setAttribute('aria-hidden', 'true');
+      w.appendChild(mk('span', 'skin-swatch mms-' + id + (s && s.base ? ' mms-' + s.base : '') + (s && s.look ? ' mms-look-' + s.look : '')));
+      return w;
+    }
+    function buildSkinRow() {
+      var U = uiApi();
+      var active = skinAccentId();
       var activeLabel = '';
-      skins.forEach(function (s) { if (s.id === active) activeLabel = s.label; });
-      // v1.252 (Listen-mode): the "Watch" way back - rendered ONLY when the view supplies
-      // the watchBack hook AND says it applies to the playing item (music: a listen track).
-      // Rides the Extras row chassis (44px full-width) with its own dispatch hook.
-      var watchBack = '';
-      // v1.363.1 (Dean: the pop-out had no way to switch to watching): the row now rides BOTH surfaces.
-      // v1.252 kept it main-document only, because a tap navigates the window BEHIND the always-on-top
-      // pop-out. The view's onTap owns that: it navigates AND brings the main window forward (the
-      // music view leaving takes the pop-out down with it), and visible() is still only a listen
-      // track, so an audio-only file offers no Watch at all rather than a dead button.
-      if (stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
-        var wbOn = false;
-        try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
-        if (wbOn) watchBack = stickerLinkRow('data-skin-watchback', 'icon-tv', 'Watch');
+      (SKINS.SKINS || []).forEach(function (s) { if (s.id === active) activeLabel = s.label; });
+      var list = U.list({ size: 'media', media: 'avatar', actions: 1, grouped: true, label: 'Skin', doc: doc });
+      var row = U.row({ title: 'Skin', meta: activeLabel, media: skinSwatch(active), actions: [icn('chevron_right')], onClick: noop, doc: doc });
+      row.setAttribute('data-skin-skins', '');
+      list.appendChild(row);
+      return list;
+    }
+    // The TRAY keeps its short inline Color chips exactly as v1.332 drew them (the plain-window pop-out fallback shows the
+    // tray with NO tray hook, so it lists the whole registry headed Skin).
+    function buildTrayChips() {
+      var wrap = mk('div', 'mms-ss__tray');
+      var trayActive = trayIsActive();
+      wrap.innerHTML = '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + skinChipsHtml(trayActive) + '</div></div>';
+      return wrap;
+    }
+    function offlineNote() { // the failed save's words (offline.js ERROR_COPY), under the grid
+      var off = offlineApi();
+      var baseId = extrasCfg ? extrasCfg.getBaseId() : null;
+      if (!off || !baseId) return null;
+      var st = off.state('track', baseId);
+      if (st.state !== 'failed') return null;
+      var n = mk('p', 'mms-ss__note', off.errorCopy(st.error));
+      n.setAttribute('role', 'status');
+      return n;
+    }
+    function renderMain() {
+      var body = sheetBody;
+      if (!body) return;
+      clearNode(body);
+      body.removeAttribute('data-sm-page');
+      body.appendChild(buildGrid());
+      body.appendChild(buildSpeedStrip());
+      var note = offlineNote();
+      if (note) body.appendChild(note);
+      body.appendChild((trayIsActive() || trayBodyNow()) ? buildTrayChips() : buildSkinRow());
+    }
+
+    // ---- the header: the playing item on page 1, Back + the page name on a page ----
+    function ctxTrack() { try { return (getCtx() || {}).track || {}; } catch (_) { return {}; } }
+    function iconButton(name, label, attrs) {
+      var b = uiApi().button({ variant: 'plain', shape: 'icon', icon: name, ariaLabel: label, doc: doc });
+      return flag(b, attrs);
+    }
+    function renderHead() {
+      var head = sheetHead;
+      if (!head) return;
+      clearNode(head);
+      var U = uiApi();
+      if (sheetPage === 'main') {
+        var tr = ctxTrack();
+        var title = tr.title || 'Now playing';
+        head.appendChild(U.avatar({ kind: 'album', size: 'md', url: tr.artUrl || '', name: title, doc: doc }));
+        var tx = mk('div', 'mms-ss__ttl');
+        tx.appendChild(mk('b', 'mms-ss__t', title));
+        var meta = [tr.artist, tr.album].filter(function (x) { return !!x; }).join(' · ');
+        tx.appendChild(mk('span', 'mms-ss__m', meta));
+        head.appendChild(tx);
+        if (homeAvailable()) head.appendChild(iconButton('home', 'Home', { 'data-skin-home': '' }));
+        var chOn = inMainDoc ? hookBool('channel', 'visible') : null;
+        if (chOn) head.appendChild(iconButton('folder', 'Go to channel', { 'data-skin-channel': '' }));
+      } else {
+        var back = U.button({ variant: 'plain', size: 'md', icon: 'arrow_back', label: 'Back', doc: doc });
+        back.setAttribute('data-skin-extras-back', '');
+        head.appendChild(back);
+        head.appendChild(mk('b', 'mms-ss__t mms-ss__pg', sheetPage === 'skins' ? 'Skin' : 'More'));
       }
-      // v1.317 (M1, Dean: "a smooth way to access the channel"): the "Go to channel" row beside
-      // Watch - rendered ONLY when the view supplies the channel hook AND says the playing item
-      // has one (music: a library-backed track with a channel folder). Main-document only, the
-      // watchBack posture: the tap NAVIGATES the window (to the home grid filtered by folder).
-      var channelRow = '';
-      if (inMainDoc && stickerCfg.channel && typeof stickerCfg.channel.visible === 'function') {
-        var chOn = false;
-        try { chOn = !!stickerCfg.channel.visible(); } catch (_) { chOn = false; }
-        if (chOn) channelRow = stickerLinkRow('data-skin-channel', 'icon-folder', 'Go to channel');
-      }
-      // v1.368.0 (R3, R14): Start radio from the song now playing - both surfaces (it replaces the
-      // queue in the view that owns the player; nothing window-bound), only when the view's hook
-      // says a song is up (music does; podcasts supply no hook).
-      var radioRow = '';
-      if (stickerCfg.radio && typeof stickerCfg.radio.visible === 'function') {
-        var rdOn = false;
-        try { rdOn = !!stickerCfg.radio.visible(); } catch (_) { rdOn = false; }
-        if (rdOn) radioRow = stickerLinkRow('data-skin-radio', 'icon-radio', 'Start radio');
-      }
-      // v1.254 (ENDLESS AUTOPLAY): the toggle rides page 1 like Loop - rendered only when
-      // the view supplies the autoplay hook (music does; podcasts deliberately not). On
-      // BOTH surfaces (the setting is device-global localStorage, so the pop-out toggling
-      // it is coherent - unlike watchBack's navigation, nothing window-bound happens).
-      var autoplay = '';
-      if (stickerCfg.autoplay && typeof stickerCfg.autoplay.enabled === 'function') {
-        var apOn = false;
-        try { apOn = !!stickerCfg.autoplay.enabled(); } catch (_) { apOn = false; }
-        autoplay = stickerToggleRow('data-skin-autoplay', 'icon-play', 'Autoplay', apOn);
-      }
-      // v1.368.0 (R5, R16): the Shuffle MODE toggle rides page 1 beside Loop and Autoplay, on BOTH
-      // surfaces, rendered only when the view supplies the hook (music does; podcasts not). The
-      // setting is the synced ft-music-shuffle; the view owns what ON / OFF do to its queue.
-      var shuffleRow = '';
-      if (stickerCfg.shuffle && typeof stickerCfg.shuffle.enabled === 'function') {
-        var shOn = false;
-        try { shOn = !!stickerCfg.shuffle.enabled(); } catch (_) { shOn = false; }
-        var shGlyph = (SKINS && typeof SKINS.shuffleGlyph === 'function') ? SKINS.shuffleGlyph() : '';
-        shuffleRow = stickerToggleRow('data-skin-shufflemode', { svg: shGlyph }, 'Shuffle', shOn);
-      }
-      // v1.257 (TRAY PLAYER): the pop-out-ONLY row - the first !inMainDoc-gated one (the
-      // inverse of watchBack/Extras): a tray toggle makes no sense in the tab, and the
-      // hook only exists when the pop-out shell injected it.
-      var trayRow = '';
-      if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
-        var trOn = false;
-        try { trOn = !!stickerCfg.tray.enabled(); } catch (_) { trOn = false; }
-        trayRow = stickerToggleRow('data-skin-tray', 'icon-download', 'Tray', trOn);
-      }
-      // v1.363.1: the pop-out's Add / Edit chapters row (the pop-out has no Extras page; the main
-      // document reaches the same editor through Extras). The tap hands the editor THIS document.
-      var chaptersRow = '';
-      if (!inMainDoc && stickerCfg.chapters && typeof stickerCfg.chapters.visible === 'function') {
-        var chOk = false;
-        var chLbl = 'Add chapters';
-        try { chOk = !!stickerCfg.chapters.visible(); if (chOk && typeof stickerCfg.chapters.label === 'function') chLbl = String(stickerCfg.chapters.label() || chLbl); } catch (_) { chOk = false; }
-        if (chOk) chaptersRow = '<div class="mms-sm-sec"><button type="button" class="ui-btn ui-btn--plain mms-sm-extras" data-skin-chapters><span class="mms-sm-lbl"><i class="icon-list"></i>' + escapeHtml(chLbl) + '</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
-      }
-      // v1.333 (Dean: "We have brick there. I don't think we need it to be there"): the sticker no
-      // longer offers Brick. The game lives on at the pocket menus' Extras > Games > Brick, which rides
-      // the SAME view hook (stickerCfg.brick -> menuGames, main document only - the v1.270 slim W4 gate).
-      // v1.333 (Dean: "we could add lighting there as well"): the four strengths as chips, only where
-      // the driver can light THIS skin (a Click colorway, pocket-lighting.js loaded), never in the tray
-      // (the tray is never lit). The tap is the Settings > Lighting call (see handleStickerClick).
-      var lightRow = '';
-      if (!trayActive && lightingHere()) {
-        var lst = null;
-        try { lst = lighting.state(); } catch (_) { lst = null; }
-        var cur = (lst && lst.strength) || 'off';
-        var lchips = (SKINS.LIGHTING_STRENGTHS || []).map(function (r) {
-          var on = r.value === cur;
-          return '<button type="button" role="menuitemradio" class="mms-sm-chip' + (on ? ' is-on' : '') +
-            '" data-skin-lighting="' + escapeHtml(r.value) + '" aria-checked="' + (on ? 'true' : 'false') + '">' + escapeHtml(r.label) + '</button>';
-        }).join('');
-        var lnote = (lst && lst.note) ? '<div class="mms-sm-note">' + escapeHtml(lst.note) + '</div>' : '';
-        lightRow = '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('light') + '">Lighting</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('light') + '">' + lchips + '</div>' + lnote + '</div>';
-      }
-      // v1.333 (Dean: Skin on its own page, so page 1 fits a phone): the row names the active skin and
-      // opens the chips (the Extras pattern). The TRAY keeps its short inline Color chips.
-      // (gate r1 W3: the plain-window pop-out fallback shows the tray with NO tray hook, so trayActive is false
-      // there; it keeps its inline chips exactly as v1.332 drew them - the whole list, headed Skin)
-      var trayBody = false;
-      try { trayBody = !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { trayBody = false; }
-      var skinSec = (trayActive || trayBody)
-        ? '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + chips + '</div></div>'
-        : stickerLinkRow('data-skin-skins', 'icon-photos', 'Skin', escapeHtml(activeLabel) + ' &rsaquo;');
-      // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
-      var extras = extrasEligible()
-        ? stickerLinkRow('data-skin-extras', 'icon-more', 'Extras')
-        : '';
-      // D7: Home leads the menu - two taps from any screen or menu depth
-      var homeRow = homeAvailable()
-        ? stickerLinkRow('data-skin-home', 'icon-home', 'Home')
-        : '';
-      return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('speed') + '">Speed</div><div class="mms-sm-speed" role="group" aria-labelledby="' + smId('speed') + '">' + speed + '</div></div>' +
-        stickerToggleRow('data-skin-loop', 'icon-refresh', loopLabel, loopOn) +
-        shuffleRow + autoplay + trayRow + skinSec + lightRow +
-        watchBack + channelRow + radioRow + chaptersRow + extras;
     }
     // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
     // genuinely restyle the tray, the rest would no-op there). Page 1 of the tray, the Skin page elsewhere.
@@ -2558,17 +2663,7 @@
       // lit, whatever the sticker's tray hook says: the plain-window pop-out fallback has none)
       try { return SKINS.menuStyle(getSkinId()) === 'click' && !(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { return false; }
     }
-    function openStickerSkins() {
-      var menu = panel.querySelector('[data-skin-sticker-menu]');
-      if (!menu) return;
-      extrasMenu.cancelPending(); // (a stale Extras fetch never lands on this page)
-      menu.setAttribute('data-sm-page', 'skins');
-      warmSkinArtList(); // v1.386.0: start every listed skin's photos while the list is read
-      stickerReturnSel = '[data-skin-skins]'; // #281 (c): Back returns focus to the row that opened this page
-      menu.innerHTML = extrasBackHtml() + '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">Skin</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + skinChipsHtml(false) + '</div></div>';
-      focusInMenu('[data-skin-extras-back]'); // #281 (c): the page opens on its Back, never on BODY
-    }
-    // Inject the sticker + its (initially hidden) menu into a freshly-painted panel. The
+    // Inject the sticker + its button into a freshly-painted panel. The
     // v1.240 marker keys off what stickerIconHtml ACTUALLY renders (a partial emoji pref
     // with no value falls through to the logo image and must be un-circled - both seats).
     function injectSticker() {
@@ -2581,30 +2676,232 @@
       // v1.333: the WRAP carries the size too, so the menu (the button's sibling) reads --mms-sticker-px -
       // its max-height is the space ABOVE the sticker (Dean's 2x sticker pushed the menu's top off-screen)
       wrap.className += szCls;
+      closeStickerMenu(); // a repaint (an auto-advance, a skin change) replaces the surface the open sheet describes: it closes, as the popover did
       wrap.innerHTML =
-        '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>' +
-        '<div class="mms-sticker-menu" data-skin-sticker-menu role="menu" hidden>' + buildStickerMenuHtml() + '</div>';
+        '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>';
       panel.appendChild(wrap);
     }
-    // #281 (c) (v1.334): a page switch or a page-1 rebuild replaces the focused control, and focus fell to
-    // BODY (qa v1.333 r1 S3). The Skin / Extras page opens on its Back; Back returns to the row that opened
-    // the page; a rebuild (a Speed / Loop / Lighting tap, a late Lighting answer) refocuses the SAME control.
-    var stickerReturnSel = null; // the page-1 row that opened the Skin or Extras page
-    function smId(name) { return 'mms-sm-' + name; } // the headings' ids (aria-labelledby): one sticker menu per document
+    // ---- the Skin page: search, the last skins picked, then the registry's own groups (SKIN_LINES via skinFamilies) ----
+    function recentSkinIds() {
+      var raw = [];
+      try { raw = JSON.parse(window.localStorage.getItem(STICKER_RECENT_KEY) || '[]'); } catch (_) { raw = []; }
+      if (!Array.isArray(raw)) raw = [];
+      var known = (SKINS.SKINS || []).map(function (s) { return s.id; });
+      return raw.filter(function (id) { return typeof id === 'string' && known.indexOf(id) >= 0; });
+    }
+    function noteRecentSkin(id) {
+      var list = recentSkinIds().filter(function (x) { return x !== id; });
+      list.unshift(id);
+      try { window.localStorage.setItem(STICKER_RECENT_KEY, JSON.stringify(list.slice(0, 8))); } catch (_) { /* private mode: no history */ }
+    }
+    function skinRowLabel(s) { // the group header names the line and generation: "5G White · 2005"
+      return s.line ? (s.gen + 'G ' + s.color + ' · ' + s.year) : s.label;
+    }
+    function renderSkins() {
+      var body = sheetBody;
+      if (!body) return;
+      var U = uiApi();
+      clearNode(body);
+      body.setAttribute('data-sm-page', 'skins');
+      warmSkinArtList(); // v1.386.0: start every listed skin's photos while the list is read
+      var active = skinAccentId();
+      var all = SKINS.SKINS || [];
+      var byId = {};
+      all.forEach(function (s) { byId[s.id] = s; });
+      var search = mk('div', 'mms-ss__search');
+      var input = mk('input', 'ui-field__input');
+      input.setAttribute('type', 'search');
+      input.setAttribute('placeholder', 'Search ' + all.length + ' skins');
+      input.setAttribute('aria-label', 'Search skins');
+      input.setAttribute('autocomplete', 'off');
+      input.setAttribute('data-skin-search', '');
+      search.appendChild(input);
+      body.appendChild(search);
+      // Recent: the active skin first, then the last picks (4 in all)
+      var recent = [active].concat(recentSkinIds().filter(function (x) { return x !== active; })).filter(function (x) { return !!byId[x]; }).slice(0, 4);
+      var recentWrap = mk('div', 'mms-ss__recent');
+      recentWrap.appendChild(mk('div', 'mms-ss__h', 'Recent'));
+      var chips = mk('div', 'mms-ss__chips');
+      chips.setAttribute('role', 'group');
+      chips.setAttribute('aria-label', 'Recent skins');
+      recent.forEach(function (id) {
+        var c = U.chip({ kind: 'filter', selected: id === active, label: byId[id].label, doc: doc });
+        c.setAttribute('data-skin-pick', id);
+        chips.appendChild(c);
+      });
+      recentWrap.appendChild(chips);
+      body.appendChild(recentWrap);
+      var groups = mk('div', 'mms-ss__groups');
+      var fams = (typeof SKINS.skinFamilies === 'function') ? SKINS.skinFamilies() : [{ key: 'all', label: 'Skins', ids: all.map(function (s) { return s.id; }) }];
+      fams.forEach(function (fam) {
+        var sec = mk('section', 'mms-ss__grp');
+        sec.setAttribute('data-fam', fam.label.toLowerCase());
+        sec.appendChild(mk('div', 'mms-ss__h', fam.label));
+        var list = U.list({ size: 'compact', media: 'avatar', aside: 'text', grouped: true, label: fam.label, doc: doc });
+        fam.ids.forEach(function (id) {
+          var s = byId[id];
+          if (!s) return;
+          var label = skinRowLabel(s);
+          var row = U.row({ title: label, media: skinSwatch(id), aside: id === active ? icn('check') : null, onClick: noop, doc: doc });
+          row.setAttribute('data-skin-pick', id);
+          row.setAttribute('data-label', (label + ' ' + s.label + ' ' + fam.label).toLowerCase());
+          if (id === active) row.setAttribute('aria-current', 'true');
+          list.appendChild(row);
+        });
+        sec.appendChild(list);
+        groups.appendChild(sec);
+      });
+      body.appendChild(groups);
+      var none = mk('p', 'mms-ss__note', 'No skins match.');
+      none.hidden = true;
+      body.appendChild(none);
+      input.addEventListener('input', function () {
+        var q = input.value.trim().toLowerCase();
+        var shown = 0;
+        var secs = groups.querySelectorAll('.mms-ss__grp');
+        for (var i = 0; i < secs.length; i++) {
+          var rows = secs[i].querySelectorAll('.ui-row');
+          var any = false;
+          for (var j = 0; j < rows.length; j++) {
+            var hit = !q || (rows[j].getAttribute('data-label') || '').indexOf(q) >= 0;
+            rows[j].hidden = !hit;
+            if (hit) { any = true; shown++; }
+          }
+          secs[i].hidden = !any;
+        }
+        none.hidden = shown > 0;
+        recentWrap.hidden = !!q;
+      });
+    }
+
+    // ---- the More page: today's Extras regrouped as FileTube rows (every render gate kept) ----
+    function moreList(label) { return uiApi().list({ size: 'default', media: 'avatar', grouped: true, label: label, doc: doc }); }
+    function moreRow(o) { // o: { title (text or node), icon, attrs, danger }
+      var r = uiApi().row({ title: o.title, media: icn(o.icon), onClick: noop, danger: !!o.danger, doc: doc });
+      return flag(r, o.attrs || {});
+    }
+    function toggleRow(o) { // a switch row: the ROW carries the flag (one toggle per tap), the switch only draws the state
+      var U = uiApi();
+      var sw = U.switch({ checked: !!o.on, label: o.title, doc: doc });
+      var r = U.row({ title: o.title, media: icn(o.icon), onClick: noop, actions: [sw, null], doc: doc });
+      return flag(r, o.attrs || {});
+    }
+    function actTitle(text) { var t = mk('span', 'mms-sm-actlbl', text); return t; } // extrasToggleFlag writes the label here
+    function renderMore() {
+      var body = sheetBody;
+      if (!body) return;
+      var U = uiApi();
+      clearNode(body);
+      body.setAttribute('data-sm-page', 'more');
+      var item = extrasMenu.getItem();
+      var canModify = extrasMenu.canModify();
+      var ready = extrasEligible() && !!item;
+      var pg = mk('div', 'mms-ss__pages');
+      // group 1: Autoplay, Start radio, Watch (+ the pop-out's Tray); each only where the view supplies its hook
+      var g1 = U.list({ size: 'default', media: 'avatar', actions: 2, grouped: true, label: 'Playback', doc: doc });
+      var gAny = false;
+      if (stickerCfg.autoplay && typeof stickerCfg.autoplay.enabled === 'function') {
+        var apOn = hookBool('autoplay', 'enabled') === true;
+        g1.appendChild(toggleRow({ title: 'Autoplay', icon: 'play_arrow', on: apOn, attrs: { 'data-skin-autoplay': '' } })); gAny = true;
+      }
+      if (hookBool('radio', 'visible')) { g1.appendChild(moreRow({ title: 'Start radio', icon: 'radio', attrs: { 'data-skin-radio': '' } })); gAny = true; }
+      if (hookBool('watchBack', 'visible')) { g1.appendChild(moreRow({ title: 'Watch', icon: 'tv', attrs: { 'data-skin-watchback': '' } })); gAny = true; }
+      if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
+        var trOn = hookBool('tray', 'enabled') === true;
+        g1.appendChild(toggleRow({ title: 'Tray', icon: 'picture_in_picture_alt', on: trOn, attrs: { 'data-skin-tray': '' } })); gAny = true;
+      }
+      if (gAny) pg.appendChild(g1);
+      // group 2: Lighting as ONE segmented control (Off / Subtle / Bold / Ambient), only where the driver can light THIS skin
+      if (!trayIsActive() && lightingHere()) {
+        var lst = null;
+        try { lst = lighting.state(); } catch (_) { lst = null; }
+        var cur = (lst && lst.strength) || 'off';
+        var sec = mk('section', 'mms-ss__light');
+        sec.appendChild(mk('div', 'mms-ss__h', 'Lighting'));
+        var seg = U.segmented({ label: 'Lighting', value: cur, doc: doc, options: (SKINS.LIGHTING_STRENGTHS || []).map(function (r) { return { value: r.value, label: r.label }; }) });
+        var segItems = seg.querySelectorAll('.ui-segmented__item');
+        for (var si = 0; si < segItems.length; si++) segItems[si].setAttribute('data-skin-lighting', segItems[si].getAttribute('data-value'));
+        sec.appendChild(seg);
+        if (lst && lst.note) sec.appendChild(mk('p', 'mms-ss__note', lst.note));
+        pg.appendChild(sec);
+      }
+      // group 3: the item actions (a library-backed track, in the main document: Extras' own gate)
+      if (ready) {
+        var has = extrasMenu.has;
+        var watched = item.watchState === 'watched';
+        var wOn = (extrasCfg.watchedLabels && extrasCfg.watchedLabels.on) || 'Watched';
+        var wOff = (extrasCfg.watchedLabels && extrasCfg.watchedLabels.off) || 'Mark watched';
+        var hasWatchUrl = extrasMenu.hasSource(item);
+        var g3 = moreList('Actions');
+        if (has('queue')) g3.appendChild(moreRow({ title: 'Add to queue', icon: 'playlist_add', attrs: { 'data-skin-x': 'queue' } }));
+        if (has('queue-next')) g3.appendChild(moreRow({ title: 'Play next', icon: 'queue_music', attrs: { 'data-skin-x': 'queue-next' } }));
+        if (has('watched')) g3.appendChild(moreRow({ title: actTitle(watched ? wOn : wOff), icon: 'visibility', attrs: { 'data-skin-x': 'watched', 'aria-pressed': watched ? 'true' : 'false'} }));
+        if (has('transcript') && item.hasSubtitles === true) g3.appendChild(moreRow({ title: 'Transcript', icon: 'subject', attrs: { 'data-skin-x': 'transcript' } }));
+        if (has('reheat') && hasWatchUrl) g3.appendChild(moreRow({ title: 'Reheat', icon: 'local_fire_department', attrs: { 'data-skin-x': 'reheat' } }));
+        if (g3.firstChild) pg.appendChild(g3);
+        // group 4: chapters and the folder - the library-modify gates are Extras' own
+        var g4 = moreList('Library');
+        if (canModify && typeof extrasCfg.onChapterSnap === 'function' && typeof item.chapterSnapIndex === 'number') g4.appendChild(moreRow({ title: 'Fix chapter times', icon: 'schedule', attrs: { 'data-skin-x': 'chapter-snap' } }));
+        if (canModify && typeof extrasCfg.onChapters === 'function' && has('chapters')) {
+          var hasCh = Array.isArray(item.chapters) && item.chapters.length > 0;
+          g4.appendChild(moreRow({ title: hasCh ? 'Edit chapters' : 'Add chapters', icon: 'edit', attrs: { 'data-skin-x': 'chapters' } }));
+        }
+        if (has('move') && canModify) g4.appendChild(moreRow({ title: 'Move to folder', icon: 'folder', attrs: { 'data-skin-x': 'move' } }));
+        if (g4.firstChild) pg.appendChild(g4);
+        // group 5: Delete, alone
+        if (has('delete') && (canModify || extrasCfg.deleteNeedsModify === false)) {
+          var g5 = moreList('Danger');
+          g5.appendChild(moreRow({ title: 'Delete', icon: 'delete', danger: true, attrs: { 'data-skin-x': 'delete' } }));
+          pg.appendChild(g5);
+        }
+      } else if (!inMainDoc && stickerCfg.chapters && hookBool('chapters', 'visible')) {
+        // the pop-out has no item page: its one library action is the chapter editor, opened in THIS window
+        var gp = moreList('Library');
+        var chLbl = 'Add chapters';
+        try { if (typeof stickerCfg.chapters.label === 'function') chLbl = String(stickerCfg.chapters.label() || chLbl); } catch (_) { /* keep the default */ }
+        gp.appendChild(moreRow({ title: chLbl, icon: 'edit', attrs: { 'data-skin-chapters': '' } }));
+        pg.appendChild(gp);
+      } else if (inMainDoc && extrasEligible() && !item && !extrasLoadDone) {
+        pg.appendChild(mk('p', 'mms-ss__note', 'Loading…'));
+      } else if (inMainDoc && extrasEligible() && !item) {
+        pg.appendChild(mk('p', 'mms-ss__note', 'More actions aren’t available for this track.'));
+      }
+      body.appendChild(pg);
+    }
+    // The "watched" row was drawn with .is-on by the old Extras page; the flag's flip toggles aria-pressed and the label only.
+    // (extrasToggleFlag also toggles .is-on on the element: harmless on a row, it carries no .is-on rule.)
+
+    function showPage(p) {
+      if (!sheetBody) return;
+      sheetPage = p;
+      renderHead();
+      if (p === 'skins') renderSkins(); else if (p === 'more') renderMore(); else renderMain();
+    }
+    var extrasLoadDone = false; // the sheet's open-time item load settled (a null item then means "not available", not "loading")
+
+    // #281 (c) (v1.334) kept: a page switch or a rebuild replaces the focused control, and focus must not fall to BODY.
+    // A page opens on its Back; Back returns to the control that opened it; a rebuild (a Speed / Loop / Lighting tap, a
+    // late answer) refocuses the SAME control. The header (Back) and the body are both searched.
+    function smId(name) { return 'mms-sm-' + name; } // the tray chips' heading id (aria-labelledby): one sticker sheet per document
     function focusInMenu(sel) {
-      var menu = sel ? panel.querySelector('[data-skin-sticker-menu]') : null;
-      var el = menu ? menu.querySelector(sel) : null;
+      var host = sheetOpen() ? sheetCtl.el : null;
+      var el = (host && sel) ? host.querySelector(sel) : null;
+      // a ui.row with trailing actions is a DIV whose title carries the button (ui.js row): focus the control inside it
+      if (el && !/^(BUTTON|A|INPUT)$/.test(el.tagName)) el = el.querySelector('button, a, input, [tabindex]') || el;
       if (el && typeof el.focus === 'function') { try { el.focus(); } catch (_) { /* detached */ } }
     }
-    // The focused menu control's identity, as a selector that finds its twin after a rebuild.
-    function menuFocusSel(menu) {
+    // The focused control's identity, as a selector that finds its twin after a rebuild.
+    function menuFocusSel() {
+      var host = sheetOpen() ? sheetCtl.el : null;
       var a = null;
       try { a = doc.activeElement; } catch (_) { a = null; }
-      if (!a || !menu || !menu.contains(a) || typeof a.getAttribute !== 'function') return null;
-      var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick'];
-      for (var i = 0; i < valued.length; i++) { var v = a.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
-      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray', 'data-skin-radio'];
-      for (var j = 0; j < flags.length; j++) { if (a.hasAttribute(flags[j])) return '[' + flags[j] + ']'; }
+      if (!a || !host || !host.contains(a) || typeof a.getAttribute !== 'function') return null;
+      var el = a.closest ? (a.closest('[data-skin-lighting],[data-skin-speed],[data-skin-pick],[data-skin-x]') || a) : a;
+      var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick', 'data-skin-x'];
+      for (var i = 0; i < valued.length; i++) { var v = el.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
+      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-more', 'data-skin-speedtoggle', 'data-skin-home', 'data-skin-watchback',
+        'data-skin-channel', 'data-skin-chapters', 'data-skin-tray', 'data-skin-radio', 'data-skin-offline', 'data-skin-extras-back', 'data-skin-search'];
+      for (var j = 0; j < flags.length; j++) { var f = a.closest ? a.closest('[' + flags[j] + ']') : null; if (f) return '[' + flags[j] + ']'; }
       return null;
     }
     // ---- v1.334 THE STICKER CATCHES THE LIGHT (Dean: "It should have like sheen on it ... as if it's
@@ -2625,22 +2922,77 @@
       var on = !!stickerLight && panel.classList.contains('mms-lit') && panel.classList.contains('mms-ipod');
       LIT.paintSticker(btn, on ? stickerLight : null, { strong: panel.classList.contains('mms-lit-strong'), win: win, doc: doc });
     }
+    // Re-render the page the sheet is on (a toggle, a pick, a late answer), keeping the focused control. The Speed strip
+    // state is the sheet's, so a re-render of page 1 keeps it as it is.
     function refreshStickerMenu(focusSel) {
-      var menu = panel.querySelector('[data-skin-sticker-menu]');
-      if (!menu) return;
-      var keep = focusSel || menuFocusSel(menu); // read BEFORE the rebuild replaces the control
-      // Always lands on page 1: a reopen/back never resumes a stale Extras page, and bumping
-      // the token invalidates any in-flight Extras fetch (v1.249).
-      extrasMenu.cancelPending();
-      menu.removeAttribute('data-sm-page');
-      menu.innerHTML = buildStickerMenuHtml();
+      if (!sheetOpen() || !uiApi()) return; // (a late answer after the page is gone has no ui to draw with)
+      var keep = focusSel || menuFocusSel(); // read BEFORE the rebuild replaces the control
+      renderHead();
+      if (sheetPage === 'skins') { /* the skin page is a list the user is scanning: a refresh never rebuilds it */ }
+      else if (sheetPage === 'more') renderMore();
+      else renderMain();
       if (keep) focusInMenu(keep);
     }
     function closeStickerMenu() {
-      var menu = panel.querySelector('[data-skin-sticker-menu]');
-      var btn = panel.querySelector('[data-skin-sticker]');
-      if (menu) menu.hidden = true;
-      if (btn) btn.setAttribute('aria-expanded', 'false');
+      if (sheetCtl) { try { sheetCtl.close(); } catch (_) { /* already closing */ } }
+    }
+    // Opens the sheet: ui.sheet builds the container (scrim, grab bar, header with Close, scroll body); the item the
+    // actions need loads once, here, and the tiles that depend on it redraw when it lands (a null item = those tiles
+    // stay disabled in place).
+    function openStickerSheet() {
+      var U = uiApi();
+      if (!U || typeof U.sheet !== 'function' || sheetOpen()) return;
+      try { var FI = window.FTIcons; if (FI && typeof FI.inject === 'function') FI.inject(undefined, doc); } catch (_) { /* the main document already carries the sprite */ } // a pop-out document has no sprite of its own
+      sheetPage = 'main';
+      speedOpen = false;
+      stickerReturnSel = null;
+      extrasLoadDone = false;
+      var body = mk('div', 'mms-ss');
+      body.setAttribute('data-skin-sticker-menu', '');
+      sheetBody = body;
+      var ctl = U.sheet({
+        variant: 'bottom', label: 'Player options', content: body, doc: doc, win: win,
+        signal: (extrasCfg && extrasCfg.signal) || undefined,
+        onClosing: function () {
+          if (sheetCtl === ctl) { sheetCtl = null; sheetBody = null; sheetHead = null; }
+          if (offUnsub) { try { offUnsub(); } catch (_) { /* gone */ } offUnsub = null; }
+          extrasMenu.cancelPending(); // a late item never lands on a closed sheet
+          var btn = panel.querySelector('[data-skin-sticker]');
+          if (btn) btn.setAttribute('aria-expanded', 'false');
+        },
+      });
+      sheetCtl = ctl;
+      var closeBtn = ctl.el.querySelector('.ui-sheet__close');
+      sheetHead = mk('div', 'mms-ss__head');
+      ctl.el.querySelector('.ui-sheet__header').insertBefore(sheetHead, closeBtn);
+      renderHead();
+      renderMain();
+      ctl.el.addEventListener('click', handleSheetClick);
+      ctl.open();
+      ctl.el.classList.add('mms-ss-root'); // AFTER open(): ui.sheet re-writes the element's className when it opens
+      ctl.el.setAttribute('data-skin', skinAccentId());
+      var sbtn = panel.querySelector('[data-skin-sticker]');
+      if (sbtn) sbtn.setAttribute('aria-expanded', 'true');
+      var off = offlineApi();
+      if (off && typeof off.onChange === 'function') offUnsub = off.onChange(function () { if (sheetOpen() && sheetPage === 'main') redrawDownloadTile(); });
+      if (extrasEligible()) extrasMenu.load().then(function () { extrasLoadDone = true; });
+      else extrasLoadDone = true;
+    }
+    function redrawDownloadTile() { // an offline state change touches ONLY the Download tile (and the error line under the grid)
+      if (!sheetBody) return;
+      var old = sheetBody.querySelector('[data-skin-download]');
+      var keep = (old && doc.activeElement === old);
+      if (old && old.parentNode) {
+        var item = extrasMenu.getItem();
+        var fresh = downloadTile(item, extrasEligible() && !!item);
+        old.parentNode.replaceChild(fresh, old);
+        if (keep) { try { fresh.focus(); } catch (_) { /* detached */ } }
+      }
+      var oldNote = sheetBody.querySelector('.mms-ss__note');
+      var note = offlineNote();
+      if (oldNote && !note) oldNote.parentNode.removeChild(oldNote);
+      else if (note && !oldNote) sheetBody.insertBefore(note, sheetBody.querySelector('.mms-ss__strip').nextSibling);
+      else if (note && oldNote) oldNote.textContent = note.textContent;
     }
     function applyStickerSpeed(rate) {
       var r = Number(rate);
@@ -2661,21 +3013,16 @@
       if (pl && typeof pl.setLoop === 'function') pl.setLoop(!liveLoop());
     }
 
-    // v1.278: the Extras action core now lives in the shared createExtrasMenu factory
-    // (reused by the desktop /music actions menu). The two-page "Back" chrome + the
-    // data-sm-page TOCTOU marker stay here (skin-only); the skin path is byte-identical.
-    function extrasBackHtml() {
-      return '<div class="mms-sm-sec"><button type="button" class="mms-sm-back" data-skin-extras-back>&lsaquo; Back</button></div>';
-    }
+    // v1.278: the Extras action core lives in the shared createExtrasMenu factory (reused by the desktop /music actions
+    // menu). v1.388.0: the sheet loads the item once at open (load()) and dispatches Like / Share / Download and every More
+    // row through the same handleAction; it passes no menu element or Back chrome - the sheet owns those.
     var extrasMenu = createExtrasMenu({
-      getMenuEl: function () { return panel.querySelector('[data-skin-sticker-menu]'); },
       getBaseId: function () { return extrasCfg ? extrasCfg.getBaseId() : null; },
       getPlayer: stickerPlayer,
       getSignal: function () { return (extrasCfg && extrasCfg.signal) || null; },
       close: closeStickerMenu,
-      backHtml: extrasBackHtml,
-      stillOnPage: function () { var m = panel.querySelector('[data-skin-sticker-menu]'); return !!m && m.getAttribute('data-sm-page') === 'extras'; },
-      onRendered: function (hadBack) { if (hadBack) focusInMenu('[data-skin-extras-back]'); }, // #281 (c): the loaded page replaces the loading page's Back
+      onLoaded: function () { if (sheetOpen() && sheetPage !== 'skins') refreshStickerMenu(); },
+      onFlagChange: function () { if (sheetOpen() && sheetPage !== 'skins') refreshStickerMenu(); },
       onMutated: function (info) { if (extrasCfg && typeof extrasCfg.onMutated === 'function') { try { extrasCfg.onMutated(info); } catch (_) { /* view refresh best-effort */ } } },
       // v1.287: forward the media-type ADAPTER fields (undefined for music/video -> the factory
       // defaults preserve their behaviour; podcasts supply the podcast endpoints/capabilities).
@@ -2692,102 +3039,108 @@
       onChapterSnap: extrasCfg ? extrasCfg.onChapterSnap : undefined, // Chapter Snap (2026-09-24): "This chapter starts wrong"
       onChapters: extrasCfg ? extrasCfg.onChapters : undefined, // v1.363.1: Add / Edit chapters
     });
-    function openStickerExtras() {
-      var menu = panel.querySelector('[data-skin-sticker-menu]');
-      if (!menu) return;
-      menu.setAttribute('data-sm-page', 'extras');
-      stickerReturnSel = '[data-skin-extras]'; // #281 (c)
-      extrasMenu.open();
-      focusInMenu('[data-skin-extras-back]'); // the loading page's Back (the loaded page keeps it: see onRendered)
-    }
-    // The sticker's slice of the delegated click dispatch. Returns true when it consumed
-    // the click (the caller returns) - ORDER MATTERS: these run before the transport hooks
-    // so a menu tap never falls through to a surface behind it.
+    // The sticker button's own click (it lives in the panel): open the sheet. Everything inside the sheet is handleSheetClick.
     function handleStickerClick(e) {
       if (!stickerCfg) return false;
       if (e.target.closest('[data-skin-sticker]')) {
-        var mn = panel.querySelector('[data-skin-sticker-menu]');
-        var sbtn = panel.querySelector('[data-skin-sticker]');
-        if (mn) {
-          var willOpen = mn.hidden;
-          if (willOpen) refreshStickerMenu(); // reflect the live rate/loop/skin on open
-          mn.hidden = !willOpen;
-          if (sbtn) sbtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-        }
+        if (!sheetOpen()) { openStickerSheet(); }
         e.stopPropagation();
         return true;
       }
-      if (e.target.closest('[data-skin-home]')) { if (homeAvailable()) goHome(); return true; } // D7
-      if (e.target.closest('[data-skin-watchback]')) {
+      return false;
+    }
+    // The sheet's delegated clicks (the header and the body). ORDER MATTERS as it did in the popover: a tap never falls
+    // through to a surface behind the sheet. ui.sheet's activation guard (LESSONS 4): ctl.accepts(e) refuses a pointer
+    // click inside the first 450 ms (the second tap of the double-tap that opened it) and any click once it is closing.
+    function openSheetPage(p, returnSel) {
+      stickerReturnSel = returnSel;
+      showPage(p);
+      focusInMenu('[data-skin-extras-back]'); // #281 (c): the page opens on its Back, never on BODY
+    }
+    function handleSheetClick(e) {
+      if (!sheetCtl || !sheetCtl.accepts(e)) return;
+      var t = e.target;
+      if (!t || typeof t.closest !== 'function') return;
+      if (t.closest('[aria-disabled="true"]')) { e.preventDefault(); return; } // R1: a tile that does not apply is dimmed in place and does nothing
+      if (t.closest('[data-skin-home]')) { if (homeAvailable()) goHome(); return; } // D7
+      if (t.closest('[data-skin-watchback]')) {
         closeStickerMenu();
         if (stickerCfg.watchBack && typeof stickerCfg.watchBack.onTap === 'function') { try { stickerCfg.watchBack.onTap(); } catch (_) { /* view nav best-effort */ } }
-        return true;
+        return;
       }
-      if (e.target.closest('[data-skin-channel]')) { // v1.317 M1: the same navigate-away shape as Watch
+      if (t.closest('[data-skin-channel]')) { // v1.317 M1: the same navigate-away shape as Watch
         closeStickerMenu();
         if (stickerCfg.channel && typeof stickerCfg.channel.onTap === 'function') { try { stickerCfg.channel.onTap(); } catch (_) { /* view nav best-effort */ } }
-        return true;
+        return;
       }
-      if (e.target.closest('[data-skin-chapters]')) { // v1.363.1: the pop-out's chapter editor, opened in THIS document
+      if (t.closest('[data-skin-chapters]')) { // v1.363.1: the chapter editor, opened in THIS document
         closeStickerMenu();
         if (stickerCfg.chapters && typeof stickerCfg.chapters.onTap === 'function') { try { stickerCfg.chapters.onTap(doc); } catch (_) { /* editor open best-effort */ } }
-        return true;
+        return;
       }
-      if (e.target.closest('[data-skin-extras]')) { openStickerExtras(); return true; }
-      if (e.target.closest('[data-skin-extras-back]')) { var back = stickerReturnSel; stickerReturnSel = null; refreshStickerMenu(back); return true; }
-      var xact = e.target.closest('[data-skin-x]');
-      if (xact) { extrasMenu.handleAction(xact.getAttribute('data-skin-x'), xact); return true; }
-      var spOpt = e.target.closest('[data-skin-speed]');
-      if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); refreshStickerMenu(); return true; }
-      if (e.target.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return true; }
+      if (t.closest('[data-skin-more]')) { openSheetPage('more', '[data-skin-more]'); return; }
+      if (t.closest('[data-skin-extras-back]')) { var back = stickerReturnSel; stickerReturnSel = null; showPage('main'); if (back) focusInMenu(back); return; }
+      var offTile = t.closest('[data-skin-offline]');
+      if (offTile) { // R7 (the iOS app): Save / cancel / remove through offline.js's own dispatcher
+        var off = offlineApi();
+        var offId = extrasCfg ? extrasCfg.getBaseId() : null;
+        if (off && offId) { var oe = off.menuEntry('track', offId); off.runMenuAction(oe.id, 'track', offId); redrawDownloadTile(); }
+        return;
+      }
+      var xact = t.closest('[data-skin-x]');
+      if (xact) { extrasMenu.handleAction(xact.getAttribute('data-skin-x'), xact); return; }
+      if (t.closest('[data-skin-speedtoggle]')) { speedOpen = !speedOpen; refreshStickerMenu('[data-skin-speedtoggle]'); return; }
+      var spOpt = t.closest('[data-skin-speed]');
+      if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); speedOpen = false; refreshStickerMenu('[data-skin-speedtoggle]'); return; }
+      if (t.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return; }
       // v1.257: the tray toggle - the shell tears this window down and reopens at the
       // new dims, so no re-render here (this document is about to die).
-      if (e.target.closest('[data-skin-tray]')) {
+      if (t.closest('[data-skin-tray]')) {
         if (stickerCfg.tray && typeof stickerCfg.tray.onToggle === 'function') { try { stickerCfg.tray.onToggle(); } catch (_) { /* shell best-effort */ } }
-        return true;
+        return;
       }
-      // v1.368.0: Start radio from the song now playing - the view replaces the queue; the menu closes
+      // v1.368.0: Start radio from the song now playing - the view replaces the queue; the sheet closes
       // onto Now Playing like any other play from the menu.
-      if (e.target.closest('[data-skin-radio]')) {
+      if (t.closest('[data-skin-radio]')) {
         if (stickerCfg.radio && typeof stickerCfg.radio.onStart === 'function') { try { stickerCfg.radio.onStart(); } catch (_) { /* view best-effort */ } }
         closeStickerMenu();
-        return true;
+        return;
       }
       // v1.368.0: the Shuffle mode toggle - flip via the view's hook, re-render for the new state.
-      if (e.target.closest('[data-skin-shufflemode]')) {
+      if (t.closest('[data-skin-shufflemode]')) {
         if (stickerCfg.shuffle && typeof stickerCfg.shuffle.onToggle === 'function') { try { stickerCfg.shuffle.onToggle(); } catch (_) { /* view toggle best-effort */ } }
         refreshStickerMenu();
-        return true;
+        return;
       }
       // v1.254: the autoplay toggle - flip via the view's hook, re-render for the new state.
-      if (e.target.closest('[data-skin-autoplay]')) {
+      if (t.closest('[data-skin-autoplay]')) {
         if (stickerCfg.autoplay && typeof stickerCfg.autoplay.onToggle === 'function') { try { stickerCfg.autoplay.onToggle(); } catch (_) { /* view toggle best-effort */ } }
         refreshStickerMenu();
-        return true;
+        return;
       }
-      // v1.333: the Skin row opens the chips on their own page (Back = the extras Back, page 1)
-      if (e.target.closest('[data-skin-skins]')) { openStickerSkins(); return true; }
-      // v1.333: a Lighting chip is the Settings > Lighting pick - lighting.choose() runs SYNCHRONOUSLY
+      // v1.333: the Skin row opens the grouped, searchable list on its own page (Back = page 1)
+      if (t.closest('[data-skin-skins]')) { openSheetPage('skins', '[data-skin-skins]'); return; }
+      // v1.333: a Lighting pick is the Settings > Lighting pick - lighting.choose() runs SYNCHRONOUSLY
       // inside this click, so on iOS the motion ask has its user activation (the first-tap ask's
       // capture listener, if armed, asked from the same gesture; choose() owns the answer from here).
-      var lopt = e.target.closest('[data-skin-lighting]');
+      var lopt = t.closest('[data-skin-lighting]');
       if (lopt) {
         var lpr = null;
         if (lightingHere()) { try { lpr = lighting.choose(lopt.getAttribute('data-skin-lighting')); } catch (_) { lpr = null; } }
         refreshStickerMenu();
         if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting(); // the LCD's check too (gate r1 W2)
-        // the answer (a denied / no-sensor note) re-draws page 1 if the menu is still open ON page 1 - never
-        // over the Skin or Extras page the user moved to meanwhile - and the LCD's Lighting level
+        // the answer (a denied / no-sensor note) re-draws More if the sheet is still ON More - never over the page the
+        // user moved to meanwhile - and the LCD's Lighting level
         Promise.resolve(lpr).then(function () {
-          var lm = panel.querySelector('[data-skin-sticker-menu]');
-          if (lm && !lm.hidden && !lm.getAttribute('data-sm-page')) refreshStickerMenu();
+          if (sheetOpen() && sheetPage === 'more') refreshStickerMenu();
           if (pocket && typeof pocket.refreshLighting === 'function') pocket.refreshLighting();
         }, function () { /* the driver's promise never rejects */ });
-        return true;
+        return;
       }
-      var pick = e.target.closest('[data-skin-pick]');
+      var pick = t.closest('[data-skin-pick]');
       if (pick) {
         var sid = pick.getAttribute('data-skin-pick');
+        noteRecentSkin(sid);
         closeStickerMenu();
         // v1.386.0: saved and painted once its photos can paint (at once when it has none or they are decoded)
         whenSkinArt('pick', sid, function (live) {
@@ -2795,21 +3148,8 @@
           if (typeof SKINS.setActiveSkin === 'function') SKINS.setActiveSkin(sid);
           if (live && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // re-render with the new skin
         });
-        return true;
+        return;
       }
-      // v1.258.1 slim-gate W1: a tap on the menu's own DEAD SPACE (headings, section
-      // padding - anything that is not a control) CLOSES it. The tray's full-window
-      // overlay left a 6px rim as the only non-mutating exit; this gives every surface
-      // the standard dismiss instead. Controls are all button/a, so the guard is exact.
-      if (e.target.closest('[data-skin-sticker-menu]') && !e.target.closest('button, a')) {
-        closeStickerMenu();
-        return true;
-      }
-      // A click anywhere that is NOT inside the sticker wrap closes an open menu (then
-      // falls through to normal handling so the tapped control still acts).
-      var openSm = panel.querySelector('[data-skin-sticker-menu]:not([hidden])');
-      if (openSm && !e.target.closest('.mms-sticker-wrap')) closeStickerMenu();
-      return false;
     }
 
     // ---- v1.232 marquee: overflowing title/artist/album lines scroll like a real iPod ----
@@ -3744,6 +4084,7 @@
       clearCenterHold();      // v1.364.0 (W2a): a pending center hold dies with the surface
       hideLcdNote();          // ...and so does its LCD note's timer
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
+      closeStickerMenu();     // v1.388.0: and an open sticker sheet (it lives on <body>, outside the panel)
       surfaceGone = true;     // v1.386.0: a pick still waiting on its photos saves, but never repaints a dead surface
       if (bound) {
         panel.removeEventListener('click', onClick);

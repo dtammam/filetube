@@ -21,7 +21,9 @@ const SKIN = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'),
 test('createExtrasMenu is exported so BOTH the skin engine and the desktop menu reuse ONE core (DRY, no second menu)', () => {
   assert.match(SKIN, /createExtrasMenu:\s*createExtrasMenu/, 'FileTubeSkinSurface exposes createExtrasMenu');
   assert.match(SKIN, /function createExtrasMenu\(cfg\)/, 'the factory exists');
-  assert.match(SKIN, /return \{ open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy \};/, 'the documented shape');
+  // v1.388.0: the sticker SHEET reads the same core through load() / getItem() / canModify() / has() / hasSource() (the desktop
+  // menu keeps open + handleAction exactly as they were)
+  assert.match(SKIN, /return \{ open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy,\s*load: load, getItem: [^}]*\}, canModify: [^}]*\}, has: extrasCap,\s*hasSource: [^}]*\} \};/, 'the documented shape: the desktop pair plus the sheet\'s readers');
 });
 
 // ---- Task 3: the CSS lift - the .mms-sm-* item styling is UNCONDITIONAL so the desktop

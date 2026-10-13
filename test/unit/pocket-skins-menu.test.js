@@ -8,6 +8,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
@@ -74,6 +75,7 @@ function boot({ withSticker = true } = {}) {
   const saved = { window: global.window, document: global.document, Event: global.Event, localStorage: global.localStorage };
   Object.assign(global, { window: dom.window, document: dom.window.document, Event: dom.window.Event, localStorage: dom.window.localStorage });
   dom.window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  SS.installUi(dom); // the sticker sheet is built with the real ui.js
   delete require.cache[skinsPath]; delete require.cache[surfacePath];
   global.module = undefined;
   dom.window.FileTubeMusicSkins = require(skinsPath);
@@ -384,8 +386,8 @@ test('v1.386.0: the Skins list starts every skin\'s photos once per visit, after
 // every MENU (the saved skin was the sticker's, the panel showed the old one).
 const stickerPick = (b, id) => {
   tap(b, P(b).querySelector('[data-skin-sticker]'));
-  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-skins]'));
-  tap(b, P(b).querySelector('[data-skin-sticker-menu] [data-skin-pick="' + id + '"]'));
+  tap(b, SS.sheetOf(b.dom).querySelector('[data-skin-skins]'));
+  tap(b, SS.sheetOf(b.dom).querySelector('.ui-row[data-skin-pick="' + id + '"]'));
 };
 test('v1.386.0 (gate r2): a sticker pick over a waiting Pocket Select lands, and MENU never brings the held look back', async () => {
   const b = boot();

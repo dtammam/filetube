@@ -64,5 +64,7 @@ test('W2c: file order - the resets sit AFTER both row bases (equal specificity e
 test('W2c: the rows the resets are for still render with ui-btn (reachability of the selectors)', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
   assert.match(js, /class="ui-btn ui-btn--plain mms-sm-act" data-skin-x="chapters"/, 'the Extras chapters row');
-  assert.match(js, /class="ui-btn ui-btn--plain mms-sm-extras" data-skin-chapters/, 'the pop-out chapters row');
+  // v1.388.0: the pop-out's chapters row is a ui.row on the sheet's More page now (not a ui-btn in the old popover)
+  assert.doesNotMatch(js, /class="ui-btn ui-btn--plain mms-sm-extras" data-skin-chapters/, 'the old pop-out chapters row markup is gone');
+  assert.match(js, /moreRow\(\{ title: chLbl, icon: 'edit', attrs: \{ 'data-skin-chapters': '' \} \}\)/, 'the pop-out chapters row rides the More page');
 });

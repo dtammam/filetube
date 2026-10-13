@@ -18,6 +18,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>
 
 const musicPath = require.resolve('../../public/js/music.js');
 require('../../public/js/common.js');
@@ -76,6 +77,7 @@ async function boot(run, opts) {
   dom.window.matchMedia = () => ({ matches: mobile, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  SS.installUi(dom); // the sticker sheet is built with the real ui.js
 
   const calls = [];
   const toasts = [];
@@ -230,16 +232,12 @@ test('a plain projected file row writes the media store under the FILE id; a nat
 // ---- AC10: the Extras "Like" row, BOTH writers -----------------------------------
 
 const panel = (dom) => doc(dom).getElementById('music-nowplaying-panel');
-const stickerMenu = (dom) => panel(dom).querySelector('[data-skin-sticker-menu]');
-async function openStickerExtras(dom) {
+async function openStickerExtras(dom) { // the Like TILE is on page 1 of the sheet (the item loads once, at open)
   const sticker = panel(dom).querySelector('.mms-sticker[data-skin-sticker]');
   assert.ok(sticker, 'the skin sticker rendered (mobile)');
-  if (stickerMenu(dom).hidden) click(dom, sticker);
-  const entry = stickerMenu(dom).querySelector('[data-skin-extras]');
-  assert.ok(entry, 'the Extras entry is on page 1');
-  click(dom, entry);
+  if (!SS.isOpen(dom)) click(dom, sticker);
   await settleN(8);
-  return stickerMenu(dom);
+  return SS.menuOf(dom);
 }
 async function openDesktopActions(dom) {
   const btn = doc(dom).getElementById('music-actions-btn');
@@ -249,6 +247,9 @@ async function openDesktopActions(dom) {
   return doc(dom).getElementById('music-actions-menu');
 }
 const likeRow = (menu) => menu.querySelector('[data-skin-x="like"]');
+// the two writers draw the flag differently: a sheet TILE (caption + aria-pressed) and a desktop ROW (label span + .is-on)
+const likeText = (row) => { const cap = row.querySelector('.mms-ss__cap'); return cap ? (cap.textContent === 'Liked' ? 'Liked' : 'Like') : row.querySelector('.mms-sm-actlbl').textContent; };
+const likeOn = (row) => (row.classList.contains('mms-ss__tile') ? row.getAttribute('aria-pressed') === 'true' : row.classList.contains('is-on'));
 
 for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras, false], ['desktop actions menu', openDesktopActions, true]]) {
   test(`${label}: the Like row reads the playing CHAPTER's flag (overlaid from /api/music/<chapterId>, not the file's) and toggles /api/liked/<chapterId>`, async () => {
@@ -259,22 +260,23 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
       assert.ok(ctx.calls.some((c) => c.url === '/api/music/' + ENC_C1 && c.method === 'GET'), 'AND the chapter row, for its own like flag');
       const row = likeRow(menu);
       assert.ok(row, 'the Like row rendered');
-      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Liked', 'shows the CHAPTER as liked although the file is not');
-      assert.ok(row.classList.contains('is-on'));
+      assert.strictEqual(likeText(row), 'Liked', 'shows the CHAPTER as liked although the file is not');
+      assert.ok(likeOn(row));
       click(dom, row);
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['DELETE /api/liked/' + ENC_C1], 'the tap unlikes the CHAPTER, never the file');
-      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Like');
+      assert.strictEqual(likeText(likeRow(menu)), 'Like');
+      if (!desktop) assert.strictEqual(likeRow(menu).querySelector('.mms-ss__cap').textContent, 'chapter', 'R2: an unliked CHAPTER says it will like the chapter');
     }, { desktop });
     // The other direction: an unliked chapter POSTs its chapter id.
     await boot(async (dom, ctx) => {
       const menu = await open(dom);
       const row = likeRow(menu);
-      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Like');
+      assert.strictEqual(likeText(row), 'Like');
       click(dom, row);
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/' + ENC_C1], 'POST under the chapter id');
-      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Liked');
+      assert.strictEqual(likeText(likeRow(menu)), 'Liked');
       assert.deepStrictEqual(ctx.likedTotalCalls, [true], 'the Liked sidebar count is re-primed');
     }, { desktop, tracks: tracksFixture({ 'f1::c1': { liked: false } }) });
   });
@@ -282,6 +284,7 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
   test(`${label}: a plain library track's Like still targets the FILE; a listen-mode chapter of a VIDEO keeps the file (audio only)`, async () => {
     await boot(async (dom, ctx) => {
       const menu = await open(dom);
+      if (!desktop) assert.strictEqual(likeRow(menu).querySelector('.mms-ss__cap').textContent, 'track', 'R2: a plain track says it will like the track');
       click(dom, likeRow(menu));
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/lib1'], 'a non-chapter track likes the file');
@@ -289,6 +292,7 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
     await boot(async (dom, ctx) => {
       const menu = await open(dom);
       assert.ok(ctx.calls.some((c) => c.url === '/api/videos/v1' && c.method === 'GET'), 'fetched the base VIDEO item');
+      if (!desktop) assert.strictEqual(likeRow(menu).querySelector('.mms-ss__cap').textContent, 'track', 'R2: a video chapter\'s like is the whole file: the caption says track');
       click(dom, likeRow(menu));
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/v1'], 'a video chapter likes the whole video (today\'s behaviour; the server accepts chapter likes for audio items only)');
@@ -336,8 +340,8 @@ for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras,
       const menu = await open(dom);
       assert.ok(ctx.calls.some((c) => c.url === '/api/music/' + ENC_C1 && c.method === 'GET'), 'the overlay fetch was attempted');
       const row = likeRow(menu);
-      assert.strictEqual(row.querySelector('.mms-sm-actlbl').textContent, 'Like', 'a failed overlay reads as not liked');
-      assert.ok(!row.classList.contains('is-on'));
+      assert.strictEqual(likeText(row), 'Like', 'a failed overlay reads as not liked');
+      assert.ok(!likeOn(row));
       click(dom, row);
       await settleN(4);
       assert.deepStrictEqual(writes(ctx, '/api/liked/'), ['POST /api/liked/' + ENC_C1], 'the tap is an ADD under the chapter id (the server answers idempotently), never a DELETE');

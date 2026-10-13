@@ -86,6 +86,7 @@ function createPocketHarness(env) {
       player,
     };
     if (skin) dom.window.localStorage.setItem('ft-music-skin', skin);
+    require('./sticker-sheet.js').installUi(dom); // v1.388.0: the sticker opens a ui.sheet built with the real ui.js
     if (setup) setup(dom);
     const D = dom.window.document;
     D.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });

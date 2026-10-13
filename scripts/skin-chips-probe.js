@@ -78,19 +78,26 @@ async function main() {
   const connect = async (url) => {
     const ws = new WebSocket(url); await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
     let mid = 0; const pending = new Map();
-    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+      // a page error is evidence, not noise: it goes to stderr (v1.388.0: a More page that threw drew an empty sheet)
+      else if (m.method === 'Runtime.exceptionThrown') console.error('PAGE ERROR', JSON.stringify((m.params.exceptionDetails.exception && m.params.exceptionDetails.exception.description) || m.params.exceptionDetails.text).slice(0, 600));
+    };
     const send = (method, params) => new Promise((resolve, reject) => { const i = ++mid; pending.set(i, (m) => (m.error ? reject(new Error(method + ': ' + m.error.message)) : resolve(m.result))); ws.send(JSON.stringify({ id: i, method, params: params || {} })); });
     const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }); return r.result.value; };
     return { ws, send, ev };
   };
   const { ws, send, ev } = await connect(list.find((t) => t.type === 'page').webSocketDebuggerUrl);
-  await send('Network.enable'); await send('Page.enable');
+  await send('Network.enable'); await send('Page.enable'); await send('Runtime.enable');
   await send('Network.setCookie', { name: cname, value: cvalue, url: base });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // v1.388.0 (W0): a wait that times out THROWS with what it waited for (it used to return false and the next
   // line died on a null: the probe "ran" and measured nothing)
   const waitFor = async (expr, ms, what) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } throw new Error('timed out waiting for ' + (what || expr)); };
   const out = (o) => console.log(JSON.stringify(o));
+  // PROBE_SHOTS=<dir>: a PNG of each sheet page (v1.388.0: the light / dark crops the PR carries)
+  const shot = async (name) => { if (!process.env.PROBE_SHOTS) return; fs.mkdirSync(process.env.PROBE_SHOTS, { recursive: true }); const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(process.env.PROBE_SHOTS, name + '.png'), Buffer.from(r.data, 'base64')); };
   for (const vp of VPS) {
     const mobile = vp.w <= 768;
     // v1.388.0 (W0): html.is-phone needs a COARSE primary pointer and a screen short side <= 500, which a bare
@@ -106,7 +113,21 @@ async function main() {
     await sleep(900);
     out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .skin-tile'))));
     if (!mobile) continue;
+    // before v1.388.0 the menu lived in the panel; the sheet lives on <body> (ui.sheet), its scroller is .ui-sheet__body
+    const SHEET = '.mms-ss-root';
     const MENU = '#music-nowplaying-panel [data-skin-sticker-menu]';
+    const SHEET_GEOM = (sel) => `(function () {
+      var sh = document.querySelector('.mms-ss-root'); if (!sh) return null;
+      var body = sh.querySelector('.ui-sheet__body'); var sb = sh.getBoundingClientRect();
+      var r = function (el) { var b = el.getBoundingClientRect(); return [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
+      var els = Array.prototype.slice.call(sh.querySelectorAll(${JSON.stringify(sel)}));
+      var like = sh.querySelector('[data-skin-like]'); var lr = like ? like.getBoundingClientRect() : null;
+      var tops = {}; els.forEach(function (e) { tops[Math.round(e.getBoundingClientRect().y)] = 1; });
+      return { sheet: { xywh: r(sh), bodyScrollH: body.scrollHeight, bodyClientH: body.clientHeight, scrolls: body.scrollHeight > body.clientHeight + 1, top: Math.round(sb.top * 10) / 10, bottom: Math.round(sb.bottom * 10) / 10 },
+        n: els.length, rows: Object.keys(tops).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pick') || e.getAttribute('data-skin-x') || (e.textContent || '').trim().slice(0, 12), xywh: r(e) }; }),
+        likeInView: !!(lr && lr.height > 0 && lr.top >= sb.top - 0.5 && lr.bottom <= sb.bottom + 0.5 && lr.top >= 0 && lr.bottom <= innerHeight),
+        vw: innerWidth, vh: innerHeight };
+    })()`;
     // v1.388.0 (W0): two scenarios per size and inset set - (a) a plain song, (b) a CHAPTERED track played as a
     // listen video (Watch + Chapters offered), the heavy page the sticker sheet must fit without scrolling.
     const SCEN = [{ name: 'plain-song', url: '/music?play=nd1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` },
@@ -125,6 +146,35 @@ async function main() {
         await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
         await sleep(400);
         const tag = { scenario: scen.name, vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
+        await sleep(500); // the sheet's slide-in finishes before anything is measured
+        const sheetNow = await ev(`!!document.querySelector(${JSON.stringify(SHEET)})`);
+        if (sheetNow) {
+          const gs = await ev(SHEET_GEOM('.mms-ss__tile'));
+          gs.sheet.fits = !gs.sheet.scrolls; gs.sheet.topInReach = gs.sheet.top >= insets.top - 0.5;
+          gs.sections = await ev(`Array.prototype.map.call(document.querySelectorAll('.mms-ss-root .ui-sheet__body > [data-skin-sticker-menu] > *'), function (x) { return [(x.className || '').slice(0, 20), Math.round(x.getBoundingClientRect().height)]; })`);
+          out(Object.assign({ surface: 'sheet-main' }, tag, gs));
+          await shot('main-' + scen.name + '-' + size + '-' + insets.top);
+          if (process.env.PROBE_EVAL) out({ surface: 'eval', scenario: scen.name, value: await ev(process.env.PROBE_EVAL) }); // a one-off DOM question, asked of the open sheet
+          if (scen.name === 'plain-song') {
+            await ev(`document.querySelector('.mms-ss-root [data-skin-skins]').click(); true`);
+            await sleep(500);
+            const sk = await ev(SHEET_GEOM('.mms-ss-root [data-skin-pick].ui-row'));
+            sk.sheet.fits = !sk.sheet.scrolls;
+            out(Object.assign({ surface: 'sheet-skin' }, tag, sk));
+            await shot('skin-' + size + '-' + insets.top);
+            await ev(`document.querySelector('.mms-ss-root [data-skin-extras-back]').click(); true`);
+            await sleep(300);
+            await ev(`document.querySelector('.mms-ss-root [data-skin-more]').click(); true`);
+            await sleep(600);
+            const mo = await ev(SHEET_GEOM('.mms-ss-root .ui-row'));
+            mo.sheet.fits = !mo.sheet.scrolls;
+            out(Object.assign({ surface: 'sheet-more' }, tag, mo));
+            await shot('more-' + size + '-' + insets.top);
+          }
+          await ev(`var c = document.querySelector('.mms-ss-root .ui-sheet__close'); if (c) c.click(); true`);
+          await sleep(500);
+          continue;
+        }
         const g1 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' .mms-sm-opt', MENU));
         g1.menu.top = g1.menu.xywh[1];
         g1.menu.topInReach = g1.menu.top >= insets.top - 0.5;   // the first row is on screen, below the notch
