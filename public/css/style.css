@@ -3842,6 +3842,15 @@ select {
     display: inline-flex;
   }
 }
+/* The 768px block makes every ui-btn here a 44px target, which would stretch the compact mobile
+   header (--mobile-header-h, 56px) to 61px and tuck its sticky bars under it. The button keeps its
+   44px hit box and takes the 36px layout slot instead (negative block margins, LESSONS 6). The
+   same (0,3,1) as the show rule above, later in the file. */
+@media (max-width: 768px) and (orientation: landscape) {
+  html.is-phone .header-left > .menu-toggle {
+    margin-block: calc((var(--ctl-md) - var(--ctl-lg)) / 2);
+  }
+}
 
 /* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
    dominates the screen. Before this change, .player-container (line ~614)

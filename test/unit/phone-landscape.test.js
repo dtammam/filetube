@@ -182,6 +182,7 @@ test('D1 CSS: ONE phone-width block carries the drawer rules (off-canvas, open, 
 test('D1 CSS: a phone held sideways shows the hamburger (the portrait bottom nav is not there); portrait still hides it', () => {
   const m = /@media \(orientation: landscape\) \{\s*html\.is-phone \.header-left > \.menu-toggle \{\s*display: inline-flex;\s*\}\s*\}/.exec(css);
   assert.ok(m, 'the landscape hamburger rule');
+  assert.ok(/@media \(max-width: 768px\) and \(orientation: landscape\) \{\s*html\.is-phone \.header-left > \.menu-toggle \{\s*margin-block: calc\(\(var\(--ctl-md\) - var\(--ctl-lg\)\) \/ 2\);\s*\}\s*\}/.test(css), 'at <= 768px the shown button keeps its 44px hit box in a 36px layout slot, so the 56px mobile header does not grow (probe: 61px without it)');
   const hide = css.indexOf('  .header-left > .menu-toggle {');
   assert.ok(hide > 0 && /display:\s*none/.test(css.slice(hide, hide + 120)), 'the 768px block still hides it for the portrait shell');
 });
