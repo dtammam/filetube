@@ -85,6 +85,11 @@
 
 ### Bugs
 
+- [ ] **Stray text selection outside text fields** _(Dean, 2026-10-13, via the FileTube Root)_ - he sees text drag / selection
+  highlights on UI surfaces where nothing should be selectable. Make app chrome non-selectable (`user-select: none` on the shell,
+  cards, menus, sheets, player) and keep selection ONLY in real text inputs (search and every other field, textarea,
+  contenteditable). Audit which surfaces should stay selectable on purpose (descriptions, transcripts, book text) and ask before
+  locking those. Repro first: find the surfaces where it happens (long-press on a phone, drag on desktop).
 - [ ] **The One-off download box's first field shows a cut focus ring on a phone sheet (v1.387.3, disclosed)** - the desktop fix
   pads `.oneoff-form` only in non-bottom sheets (the same class is the playlist picker's sheet); on a 390 px bottom sheet the
   2 px ring is still clipped at the top. Measure the picker and One-off sheets together, then pad the sheet body instead.
@@ -410,6 +415,17 @@
 
 ### Features
 
+- [ ] **Scrape YouTube comments with yt-dlp** _(Dean, 2026-10-13, via the FileTube Root)_ - fetch a video's comments
+  (`--write-comments`, written into the info JSON) at download time and on demand for existing items, store them in a
+  feature-owned place (not per-item `db.metadata`, LESSONS 9), show them on the watch page. Verify the flags and extractor args
+  (sort, max count) against yt-dlp source before planning (LESSONS 2, 11); large threads need a cap.
+- [ ] **Clickable links in video descriptions (and comments, once they exist)** _(Dean, 2026-10-13, via the FileTube Root)_ -
+  turn URLs in the watch page description into links (open in a new tab, `rel="noopener noreferrer"`), built from text nodes,
+  never by injecting HTML (escape first; only http/https). The same renderer is reused for comments.
+- [ ] **External search with quick download** _(Dean, 2026-10-13, via the FileTube Root)_ - a basic in-app search of outside
+  sites (YouTube, Reddit, and more) that lists results with a one-tap download button feeding the existing download queue.
+  Likely through yt-dlp's search extractors (e.g. `ytsearch`) server-side; security matters (SSRF, who may download: the
+  existing download permission). Scope the site list and the result page with Dean at kickoff.
 - [ ] **Auto picture-in-picture from an inline video on swipe-home when hosted** _(iOS Root, 2026-10-11)_ - the PiP button and full-screen PiP work in the app; only inline swipe-home does not auto-enter.
 - [ ] **The iOS app (filetube-ios): a host for the web UI** _(Dean, 2026-10-11: committed long-term)_ - decision record docs/references/ios-host.md; contract docs/references/native-bridge.md + native-bridge.v1.schema.json. Spin one: the web half (docs/exec-plans/completed/2026-10-11-native-bridge-web.md) and the Mac spike (docs/references/ios-spike-1.md). Later steps, each its own plan: a native audio engine (only if the in-app web player still has gaps), a native Downloads page (offline), APNs push, widgets, the share sheet, CarPlay, an App Store build.
 - [ ] **Pocket: a black top edge cut like the top of a real iPod** _(Dean, 2026-10-11/12, via the FileTube Root; after offline playback)_ - web only (the Pocket skin's own drawing); no bridge change.
