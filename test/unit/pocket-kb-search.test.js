@@ -671,6 +671,7 @@ const CLASSIFIED = [
   ['public/js/common.js', "document.addEventListener('keydown', onKey);", 'bubble'],
   ['public/js/common.js', "document.removeEventListener('keydown', onKey);", 'bubble'],
   ['public/js/common.js', "document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });", 'bubble'],
+  ['public/js/common.js', "doc.addEventListener('keydown', (e) => {\n    if (e.key === 'Escape') closeSidebarDrawer(sidebar);", 'bubble'],
   ['public/js/ui.js', "doc.addEventListener('keydown', onKey);", 'bubble'],
   ['public/js/ui.js', "doc.removeEventListener('keydown', onKey);", 'bubble'],
   ['public/js/read.js', "document.addEventListener('keydown', (event) => {", 'bubble'],

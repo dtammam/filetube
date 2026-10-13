@@ -125,8 +125,9 @@ function theatreGuideEls(doc) {
   return e.body && e.sidebar && e.main ? e : null;
 }
 function setGuideCollapsed(e, collapsed) {
+  // v1.389.0 (D2): the DESKTOP collapse only (theatre runs at 1025px+, where `.mobile-open`, the
+  // phone drawer, is never set); it used to flip `.mobile-open` with the other two.
   e.sidebar.classList.toggle('hidden', collapsed);
-  e.sidebar.classList.toggle('mobile-open', collapsed);
   e.main.classList.toggle('expanded', collapsed);
 }
 function theatreGuideCollapse(doc, owner) {

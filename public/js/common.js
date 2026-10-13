@@ -17688,6 +17688,58 @@ function armSidebarSlide(sidebar) {
   const timer = setTimeout(done, SIDEBAR_SLIDE_MS);
 }
 
+// v1.389.0 (Dean, "a phone is a phone"): the side menu has two independent states. The DESKTOP
+// collapse is `.hidden` on the sidebar + `.expanded` on the content (the menu button, and the
+// theatre guide in watch.js); the PHONE drawer is `.mobile-open` alone (the sidebar is off-canvas
+// by default under style.css's phone rules). The layout test is the one the CSS uses: a phone
+// (html.is-phone, music-skins.js markPhoneClass, set once at load) in either orientation, or any
+// window at the 768px mobile width.
+function sidebarPhoneLayout(win) {
+  try {
+    if (win.document.documentElement.classList.contains('is-phone')) return true;
+    return !!(win.matchMedia && win.matchMedia('(max-width: 768px)').matches);
+  } catch (_) { return false; }
+}
+function toggleSidebarMenu(sidebar, main, phoneLayout) {
+  if (phoneLayout) {
+    sidebar.classList.toggle('mobile-open');
+    return;
+  }
+  sidebar.classList.toggle('hidden');
+  main.classList.toggle('expanded');
+}
+// Close the phone drawer; true when it was open. Never touches the desktop collapse.
+function closeSidebarDrawer(sidebar) {
+  if (!sidebar || !sidebar.classList || !sidebar.classList.contains('mobile-open')) return false;
+  armSidebarSlide(sidebar);
+  sidebar.classList.remove('mobile-open');
+  return true;
+}
+// The drawer closes on: a tap on a link inside it (the SPA navigates), a tap anywhere outside it
+// (pointerdown, so it works on touch where a click on a bare page never fires), Escape, and a
+// rotation or a crossing of the 768px width (so no turn of the phone leaves it open). All of it
+// is a no-op unless `.mobile-open` is set, which only the phone layout ever sets.
+function wireSidebarDrawerCloses(doc, win, sidebar, menuToggle) {
+  sidebar.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t && typeof t.closest === 'function' && t.closest('a')) closeSidebarDrawer(sidebar);
+  });
+  doc.addEventListener('pointerdown', (e) => {
+    if (!sidebar.classList.contains('mobile-open')) return;
+    const t = e.target;
+    if (t && typeof t.closest === 'function' && (t.closest('#sidebar') || t.closest('#menu-toggle') || t === menuToggle)) return;
+    closeSidebarDrawer(sidebar);
+  }, true);
+  doc.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSidebarDrawer(sidebar);
+  });
+  for (const q of ['(orientation: landscape)', '(max-width: 768px)']) {
+    let mq = null;
+    try { mq = typeof win.matchMedia === 'function' ? win.matchMedia(q) : null; } catch (_) { mq = null; }
+    if (mq && typeof mq.addEventListener === 'function') mq.addEventListener('change', () => closeSidebarDrawer(sidebar));
+  }
+}
+
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
 // (for unit tests) never touches `document`.
 if (typeof document !== 'undefined') {
@@ -17954,9 +18006,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // `.is-animating` gates the sidebar's transition (style.css), so a theatre collapse,
       // a resize or a rotation moves it without a slide.
       armSidebarSlide(sidebar);
-      sidebar.classList.toggle('hidden');
-      sidebar.classList.toggle('mobile-open');
-      mainContent.classList.toggle('expanded');
+      // v1.389.0 (D2): the phone drawer and the desktop collapse are TWO states, decided at
+      // click time by the layout in force (sidebarPhoneLayout) - one toggle used to write
+      // both, so a close in landscape left `hidden mobile-open` behind and the next rotation
+      // to portrait showed the drawer open with no button to close it.
+      toggleSidebarMenu(sidebar, mainContent, sidebarPhoneLayout(window));
       // v1.191 (Dean, desktop): collapsing/expanding the left bar widens the
       // content column - every critter anchor moves, but nothing re-places them
       // (a window resize is NOT fired, so the resize re-scatter never runs). Mirror
@@ -17964,6 +18018,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // (no-op when critters are off; debounced past the sidebar's transition).
       if (typeof scheduleCritterScatter === 'function') scheduleCritterScatter();
     });
+    wireSidebarDrawerCloses(document, window, sidebar, menuToggle);
   }
 
   // v1.82: the header #theme-toggle-btn was removed - light/dark now lives in the
@@ -18165,7 +18220,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // registry icon and source-locks the shells' static markup against chromeIconMarkup.
     CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl,
     uiIconMarkup, uiIconEl, chromeButtonEl, bottomNavItemEl, setBottomNavItemFilled, chromeAvatarEl, syncThemeColorMeta,
-    armSidebarSlide, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
+    armSidebarSlide, sidebarPhoneLayout, toggleSidebarMenu, closeSidebarDrawer, wireSidebarDrawerCloses, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).

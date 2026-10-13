@@ -1046,7 +1046,7 @@ function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false,
   };
   const setWidth = (w) => { media.width = w; media.lists.forEach((l) => { if (l.fn) l.fn({ matches: l.matches }); }); };
   const mq = { get lists() { return media.lists; }, get listener() { return media.lists.find((l) => l.fn); } };
-  const flipByHand = () => { sidebar.classList.toggle('hidden'); sidebar.classList.toggle('mobile-open'); main.classList.toggle('expanded'); }; // = common.js #menu-toggle
+  const flipByHand = () => { sidebar.classList.toggle('hidden'); main.classList.toggle('expanded'); }; // = common.js #menu-toggle on the desktop layout (v1.389.0: `.mobile-open` is the separate phone drawer)
   if (userCollapsed) flipByHand();
   if (theatre) global.sessionStorage.setItem('ft-theater', '1');
   const mkRoot = (wc) => {
@@ -1065,7 +1065,7 @@ function makeGuideRealm({ theatre = true, desktop = true, userCollapsed = false,
   return { realm, mq, setWidth, flipByHand, mkRoot, wc1, wc2, state, storageSnapshot, sidebar, main };
 }
 const GUIDE_OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
-const GUIDE_THEATRE = { hidden: true, mobileOpen: true, expanded: true, owner: 'OWNED' };
+const GUIDE_THEATRE = { hidden: true, mobileOpen: false, expanded: true, owner: 'OWNED' };
 const norm = (s) => Object.assign({}, s, { owner: s.owner ? 'OWNED' : null });
 async function hydrateTheatre(g) {
   for (let i = 0; i < 40 && !(g.realm.els.get('#theater-btn') && g.realm.els.get('#theater-btn')._l && g.realm.els.get('#theater-btn')._l.click); i++) await settle();

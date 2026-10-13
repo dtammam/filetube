@@ -3833,6 +3833,16 @@ select {
      tracks the capped element height -- nothing extra needed for audio. */
 }
 
+/* v1.389.0: the hamburger is the only way to the side menu on a sideways phone (the portrait
+   bottom nav and its Playlists sheet are not there). The 768px block hides the hamburger for
+   the portrait shell; a phone held sideways at any width shows it (a 667px phone included -
+   it had neither the bottom nav nor the menu button). (0,3,1) beats the (0,2,0) hide. */
+@media (orientation: landscape) {
+  html.is-phone .header-left > .menu-toggle {
+    display: inline-flex;
+  }
+}
+
 /* v1.13.0 item 2: cap the player on a PHONE IN PORTRAIT so it no longer
    dominates the screen. Before this change, .player-container (line ~614)
    had NO mobile-specific height cap at all -- only width:100%/aspect-ratio:
@@ -6382,6 +6392,32 @@ html:has(> body.ft-audio-expanded),
   }
   .md-detail-title { text-align: left; font-size: var(--fs-4xl); max-width: none; white-space: normal; }
 }
+
+/* v1.389.0 (Dean: "a phone is a phone" in both orientations): a phone held sideways is 844px
+   wide and used to get the DESKTOP shell - the 230px side menu pinned open beside the page. The
+   side menu is the one shell rule that follows the DEVICE (html.is-phone, music-skins.js
+   markPhoneClass: coarse pointer and a short screen side of 500 or less, set once at load) rather
+   than the width: off-canvas by default, a drawer over the page while `.mobile-open` (the
+   hamburger, common.js toggleSidebarMenu). The 768px block above already does this at its own
+   widths; this is the same two rules for the phone widths past it, so a narrow desktop window
+   and a sideways phone read one drawer. Left width-only ON PURPOSE: the header (the desktop
+   header keeps the hamburger, which is what opens the drawer), the bottom nav, the content
+   padding and every grid. `.hidden` is the DESKTOP collapse (common.js), unused here.
+   Placed after the master-detail desktop block (md-nav-desktop-gap.test.js anchors on the FIRST
+   `@media (min-width: 769px)` in the file).
+   (0,2,1) beats `.sidebar.hidden` (0,2,0); the open rule (0,3,1) beats both. */
+@media (min-width: 769px) {
+  html.is-phone .sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-w)));
+  }
+  html.is-phone .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  html.is-phone .main-content {
+    margin-left: 0;
+  }
+}
+
 
 /* --- phone: a section marked data-md-hide-mobile stays off the menu AND
    cannot open (Stats' keyboard shortcuts - Dean: not on mobile viewport) --- */

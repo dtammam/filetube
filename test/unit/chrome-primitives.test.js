@@ -294,8 +294,8 @@ test('D7: the sidebar slides only while armed by the menu toggle; the arm clears
   await tick(300);
   assert.ok(!sb.classList.contains('is-animating'), 'the fallback clears it when no transition runs');
   const src = stripJs(fs.readFileSync(COMMON, 'utf8'));
-  assert.match(src, /menuToggle\.addEventListener\('click', \(\) => \{\s*armSidebarSlide\(sidebar\);\s*sidebar\.classList\.toggle\('hidden'\);/, 'ONLY the menu toggle arms the slide, before it toggles');
-  assert.strictEqual((src.match(/armSidebarSlide\(/g) || []).length, 2, 'one definition, one caller');
+  assert.match(src, /menuToggle\.addEventListener\('click', \(\) => \{\s*armSidebarSlide\(sidebar\);\s*toggleSidebarMenu\(/, 'the menu toggle arms the slide, before it toggles');
+  assert.strictEqual((src.match(/armSidebarSlide\(/g) || []).length, 3, 'one definition, the menu toggle, and the drawer close (closeSidebarDrawer, v1.389.0)');
 });
 
 // Gate r1 (qa 1): two writers of html.no-motion once coexisted - S1's width-filtered one and
