@@ -5,6 +5,15 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Phone sideways (v1.389.0)
+
+- [ ] v1.389.0 - Safari, phone held sideways, any page: no side menu on the left; the menu button (top left) shows. Tap it: the menu slides in over the page; tap the page, a link in it, or turn the phone: it closes.
+- [ ] v1.389.0 - Open the menu upright (via Playlists) or sideways, close it, turn the phone back and forth a few times: the menu is never left open and nothing sits stuck on the left.
+- [ ] v1.389.0 - Sideways, tap a video from Home: the watch page opens fullscreen (Safari and the FileTube app). If it does not start playing on its own it is still fullscreen with the play bar showing; say if it is not.
+- [ ] v1.389.0 - Sideways fullscreen: tap the exit button; it shows the normal watch page and STAYS out. Open the next video: it is fullscreen again. Turn upright: it leaves fullscreen; turn sideways again while playing: it enters.
+- [ ] v1.389.0 - Upright: open a video (not fullscreen), then turn sideways while it plays: fullscreen as before (unchanged). A video in the Feed does not go fullscreen sideways.
+- [ ] v1.389.0 - Computer: the menu button still collapses and restores the left menu; Theatre mode still hides it and brings it back. Tablet unchanged.
+
 ## Whole app, layout and dialogs
 
 ## Speed pass (v1.386.0)

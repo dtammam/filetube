@@ -3694,5 +3694,11 @@
     "date": "2026-10-12",
     "title": "On a computer, the Account, Notifications and Queue panels open right under their button and stay put",
     "intent": "On a computer, the Account, Notifications, Queue and Sort panels now open directly under their button with their right edges lined up, and the Notifications panel no longer jumps up over the bell while its rows load. The download box's first field is no longer cut off at the top. Phones and the iPhone app look the same as before."
+  },
+  {
+    "version": "1.389.0",
+    "date": "2026-10-13",
+    "title": "A phone held sideways keeps its phone layout, and videos open fullscreen",
+    "intent": "On a phone held sideways, the side menu now stays out of the way and opens from the menu button like it does upright, and a video you open sideways starts fullscreen. Closing the menu and turning the phone no longer leaves it stuck open. Computers and tablets look and work the same as before."
   }
 ]

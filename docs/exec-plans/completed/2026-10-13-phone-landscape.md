@@ -3,11 +3,11 @@ plan: phone-landscape
 harness: v2 · full
 branch: fix/v1.389.0-phone-landscape
 anchor: spec
-status: Planned
-next: builder - Step 0, then reproduce both quirks at 844x390 with touch emulation before any edit
+status: Shipped v1.389.0
+next: release v1.389.0 (merge origin/main after v1.388.0, full suite, PR)
 design: Dean's phone report 2026-10-13 + the Root's seam research the same day (FileTube Root). Base = main d49a0100 (v1.387.3 + baselines). Runs in parallel with v1.388.0 (sticker sheet, feat/v1.388.0-sticker-sheet).
 builder: standard (two contained fixes with every seam named: a layout-state split and one entry trigger for an existing fullscreen mode)
-gate: -
+gate: APPROVED r2 @49d1f8b3 (adversary + qa)
 ---
 
 # v1.389.0: a sideways phone stays a phone (side menu as a drawer; videos open fullscreen)
@@ -115,12 +115,14 @@ fullscreen sideways stays out; desktop hamburger unchanged.
 Native-controls fullscreen from a non-gesture path; iPad / tablet layouts; Pocket; content grid density in landscape.
 
 ## Evidence (builder fills)
-- M0: 
-- D1 rules extended / left width-only: 
-- Rotation permutations: 
-- Desktop/tablet identical: 
-- Fullscreen cases: 
-- Mutations: 
-- Full suite runs (counts, verbatim): 
-- Gate verdicts: 
-- Device checks Dean owes: 
+- M0 (main d49a0100, probe at 844x390 / 390x844 with touch emulation + screen size): landscape load: sidebar visible (sbLeft 0, 230px). Click the menu button (close): `sidebar hidden mobile-open`; rotate to portrait: sbLeft 0, sbVisible true, hamburger display none, bottom nav flex = an open drawer with no button. A video opened with `FileTube.navigate('/watch.html?v=v1')` at 844x390: `ft-css-fullscreen` false whether autoplay worked (paused false) or was refused (paused true); rotating a playing one to landscape: true. Portrait: sidebar hidden, hamburger hidden (so no portrait close path existed: the plan's "closes as in portrait today" premise was false, disclosed).
+- D1 rules extended / left width-only: extended under `html.is-phone` for widths > 768 only: `.sidebar` off-canvas, `.sidebar.mobile-open`, `.main-content{margin-left:0}` (one block, after the md-nav desktop block). Hamburger shown on a landscape phone at every width (+ a negative block margin at <= 768 so the 56px header does not grow to 61px). Left width-only on purpose: the header restructure, bottom nav, content padding, every grid and the 768px landscape player cap (the desktop-style header with its hamburger is what opens the drawer).
+- Rotation permutations: test "rotation permutations (real page)" boots the real index.html + common.js: start landscape/portrait x open-first/closed, rotate away and back: CLOSED each time, 4/4; probe m0.js agrees (no `hidden`/`mobile-open` residue after any rotate).
+- Desktop/tablet identical: m4.js geometry (sidebar rect + transform, main rect + margin, hamburger, header, theatre on/off with data-theatre-guide) on a `git archive` of origin/main vs the branch: desktop 1280x800, 1025x700, 800x600 and tablet 820x1180, 1180x820 (coarse pointer, screen short side > 500): diff empty. The adversary's differential probe (700/768/769/900/1280, a 1366x768 touch laptop, theatre/hamburger orderings): byte-identical except resize-after-collapse sequences at <= 768, where the branch is the correct one.
+- Fullscreen cases: probe m0b/m3/m3b at 844x390 (real navigate(), real touch tap on #fs-btn): warm nav enters; cold load enters; autoplay refused: enters, paused, bar up; exit then 3 s: stays out; next video: re-enters; rotate portrait leaves / landscape playing enters; auto-advance (autoplayNext, seek to end) stays fullscreen; portrait load: not entered. Unit (real load() in watch.html): 10 tests in player-sideways-fullscreen.test.js (+ desktop window, warm page, TV source, cold verdict, native-controls, Feed slot, dock, audio, decision table). The skin's Tap to play cue is a Music-panel surface: on the watch page the paused bar is the cue. Native-controls mode keeps today's behavior (no webkitEnterFullscreen from a non-gesture path). Same-video adopt and offline local playback do not auto-enter (disclosed).
+- Mutations: sidebar/D1-D2 (phone-landscape.test.js): 16 mutants all killed (toggle writes the trio, close wiring removed, orientation / 768 listener dropped, Escape, link, outside press, toggle press, is-phone test, theatre mobile-open, CSS margin, hamburger rule, header margin, capture flag, popstate). D3/D4 (player-sideways-fullscreen.test.js): trigger removed at load end, in both settings branches, entry removed, spend removed, each decision conjunct, landscape test, desktop mobile guard: all killed after two survivors were bound with new tests (warm page, TV branch). The adversary ran 44 mutants (41 killed; the survivors became the r1 fixes) and re-ran W1/S3/S5 at r2: all die.
+- Full suite runs (counts, verbatim): `npm test` (Node 22.23.1) at 1cf98514: `# tests 12450 # pass 12437 # fail 0 # cancelled 0 # skipped 13`, exit 0. The commit hook's unit run at 5c945a02: 5222 pass, 0 fail. Final full run after the merge of origin/main: see the release commit.
+- Gate verdicts: Gate: CHANGES r1 @1cf98514 - qa (stale comment in watch.js; no CRITICAL). Gate: CHANGES r1 @1cf98514 - adversary (W1 unbound mobile guard; S5 back/forward; S3 capture; S4 comment). Fixed at 49d1f8b3. Gate: APPROVED r2 @49d1f8b3 - qa. Gate: APPROVED r2 @49d1f8b3 - adversary (fresh delta seat; the first instance never returned its r2 line).
+- Device checks Dean owes: docs/DEVICE-CHECKS.md "Phone sideways (v1.389.0)", six lines (Safari and the app): menu hidden + drawer works; rotate with it open/closed; tap a video sideways; exit stays out, next video re-enters; upright rotate unchanged and Feed unchanged; desktop hamburger + theatre unchanged.
+
+Gate: APPROVED r2 @49d1f8b3 — adversary, qa
