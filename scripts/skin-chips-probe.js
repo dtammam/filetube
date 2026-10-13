@@ -3,7 +3,7 @@
 // skin-chips-probe - the button-measurement instrument for the SKIN PICKERS (the action-row norm:
 // rows wrap, buttons never shrink - docs/CONTRIBUTING.md). v1.332 took the registry from 5 skins
 // to 12; this measures every surface that lists them, BEFORE (FT_ROOT=<a worktree>) and after:
-//   - Settings > Music player skin: every .theme-card (x/y/w/h), the rows, the container;
+//   - Settings > Music player skin: every .skin-tile (x/y/w/h), the rows, the container;
 //   - the sticker menu's Skin chips on the phone skin: every .mms-sm-chip, the rows, and the menu's
 //     own fit (its height against the viewport and its scroll height - a menu that must scroll);
 //   - the desktop pop-out's Nano tray Color chips (the plain-window fallback, a real CDP click).
@@ -25,6 +25,7 @@ const { spawn } = require('node:child_process');
 const ROOT = process.env.FT_ROOT ? path.resolve(process.env.FT_ROOT) : path.join(__dirname, '..');
 const VPS = (process.argv.slice(2).length ? process.argv.slice(2) : ['390x844', '375x667', '380x700', '1280x800']).map((s) => { const [w, h] = s.split('x').map(Number); return { w, h }; });
 const DEBUG_PORT = 9333 + Math.floor(Math.random() * 400);
+const MODE = process.env.PROBE_MODE === 'dark' ? 'dark' : 'light'; // the app's light / dark axis (localStorage ft-mode); the crops of v1.388.0 shoot both
 
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -54,6 +55,20 @@ const GEOM = (sel, menuSel) => `(function () {
     vw: innerWidth, vh: innerHeight, docOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
 })()`;
 
+  // the sheet's geometry (v1.388.0): ui.sheet lives on <body>, its scroller is .ui-sheet__body
+const SHEET_GEOM = (sel) => `(function () {
+    var sh = document.querySelector('.mms-ss-root'); if (!sh) return null;
+    var body = sh.querySelector('.ui-sheet__body'); var sb = sh.getBoundingClientRect();
+    var r = function (el) { var b = el.getBoundingClientRect(); return [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, Math.round(b.width * 10) / 10, Math.round(b.height * 10) / 10]; };
+    var els = Array.prototype.slice.call(sh.querySelectorAll(${JSON.stringify(sel)}));
+    var like = sh.querySelector('[data-skin-like]'); var lr = like ? like.getBoundingClientRect() : null;
+    var tops = {}; els.forEach(function (e) { tops[Math.round(e.getBoundingClientRect().y)] = 1; });
+    return { sheet: { xywh: r(sh), bodyScrollH: body.scrollHeight, bodyClientH: body.clientHeight, scrolls: body.scrollHeight > body.clientHeight + 1, top: Math.round(sb.top * 10) / 10, bottom: Math.round(sb.bottom * 10) / 10 },
+      n: els.length, rows: Object.keys(tops).length, items: els.map(function (e) { return { id: e.getAttribute('data-skin-pick') || e.getAttribute('data-skin-x') || (e.textContent || '').trim().slice(0, 12), xywh: r(e) }; }),
+      likeInView: !!(lr && lr.height > 0 && lr.top >= sb.top - 0.5 && lr.bottom <= sb.bottom + 0.5 && lr.top >= 0 && lr.bottom <= innerHeight),
+      vw: innerWidth, vh: innerHeight };
+  })()`;
+
 async function main() {
   const chromeBin = findChrome();
   if (!chromeBin) throw new Error('no Chromium found');
@@ -61,7 +76,9 @@ async function main() {
   const { app, updateDatabase, __mintTestSession } = require(path.join(ROOT, 'server'));
   const lib = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-chips-probe-lib-'));
   const fp = path.join(lib, 'tonzak', 'nd1.wav'); fs.mkdirSync(path.dirname(fp), { recursive: true }); fs.writeFileSync(fp, wav(30));
-  await updateDatabase((db) => { db.metadata = { nd1: { id: 'nd1', type: 'audio', title: 'Neon Arrival', name: 'nd1.wav', filePath: fp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000000000, tags: { artist: 'Tonzak', title: 'Neon Arrival', album: 'Night Drive' } } }; return true; });
+  const cp = path.join(lib, 'tonzak', 'mix1.wav'); fs.writeFileSync(cp, wav(30));
+  await updateDatabase((db) => { db.metadata = { mix1: { id: 'mix1', type: 'video', title: 'Night Mix', name: 'mix1.wav', filePath: cp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000001000,
+    chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 10, title: 'Second Song' }, { startTime: 20, title: 'Closer' }] }, nd1: { id: 'nd1', type: 'audio', title: 'Neon Arrival', name: 'nd1.wav', filePath: fp, rootFolder: lib, folderName: 'tonzak', channelName: 'Tonzak', duration: 30, hasThumbnail: false, ext: '.wav', addedAt: 1788000000000, tags: { artist: 'Tonzak', title: 'Neon Arrival', album: 'Night Drive' } } }; return true; });
   const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const { cookie } = __mintTestSession();
@@ -76,47 +93,98 @@ async function main() {
   const connect = async (url) => {
     const ws = new WebSocket(url); await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
     let mid = 0; const pending = new Map();
-    ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); }
+      // a page error is evidence, not noise: it goes to stderr (v1.388.0: a More page that threw drew an empty sheet)
+      else if (m.method === 'Runtime.exceptionThrown') console.error('PAGE ERROR', JSON.stringify((m.params.exceptionDetails.exception && m.params.exceptionDetails.exception.description) || m.params.exceptionDetails.text).slice(0, 600));
+    };
     const send = (method, params) => new Promise((resolve, reject) => { const i = ++mid; pending.set(i, (m) => (m.error ? reject(new Error(method + ': ' + m.error.message)) : resolve(m.result))); ws.send(JSON.stringify({ id: i, method, params: params || {} })); });
     const ev = async (expr) => { const r = await send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }); return r.result.value; };
     return { ws, send, ev };
   };
   const { ws, send, ev } = await connect(list.find((t) => t.type === 'page').webSocketDebuggerUrl);
-  await send('Network.enable'); await send('Page.enable');
+  await send('Network.enable'); await send('Page.enable'); await send('Runtime.enable');
   await send('Network.setCookie', { name: cname, value: cvalue, url: base });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const waitFor = async (expr, ms) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } return false; };
+  // v1.388.0 (W0): a wait that times out THROWS with what it waited for (it used to return false and the next
+  // line died on a null: the probe "ran" and measured nothing)
+  const waitFor = async (expr, ms, what) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } throw new Error('timed out waiting for ' + (what || expr)); };
   const out = (o) => console.log(JSON.stringify(o));
+  // PROBE_SHOTS=<dir>: a PNG of each sheet page (v1.388.0: the light / dark crops the PR carries)
+  const shot = async (name) => { if (!process.env.PROBE_SHOTS) return; fs.mkdirSync(process.env.PROBE_SHOTS, { recursive: true }); const r = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(process.env.PROBE_SHOTS, name + '.png'), Buffer.from(r.data, 'base64')); };
   for (const vp of VPS) {
     const mobile = vp.w <= 768;
-    await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile });
+    // v1.388.0 (W0): html.is-phone needs a COARSE primary pointer and a screen short side <= 500, which a bare
+    // metrics override does not give (the pocket never mounted, so the sticker block measured nothing)
+    await send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 2, mobile, screenWidth: vp.w, screenHeight: vp.h });
+    await send('Emulation.setTouchEmulationEnabled', { enabled: mobile, maxTouchPoints: mobile ? 5 : 0 });
     await send('Page.navigate', { url: base + '/setup.html' });
-    await waitFor(`document.querySelectorAll('#music-skin-picker .theme-card').length > 0`, 15000);
+    await waitFor(`document.querySelectorAll('#music-skin-picker .skin-tile').length > 0`, 15000);
     // on a phone the sections are a menu: open Appearance (the picker's section) before measuring
     await ev(`(function(){ var d = document.querySelector('details[data-collapse-key="appearance"]'); if (!d) return false;
       var row = Array.prototype.slice.call(document.querySelectorAll('button, a, [role="button"]')).find(function (x) { return (x.textContent || '').trim().indexOf('Appearance') === 0 || x.getAttribute('data-md-key') === 'appearance'; });
       if (row && !d.getBoundingClientRect().height) row.click(); d.open = true; return true; })()`);
     await sleep(900);
-    out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .theme-card'))));
+    out(Object.assign({ surface: 'settings-picker', vp: vp.w + 'x' + vp.h }, await ev(GEOM('#music-skin-picker .skin-tile'))));
     if (!mobile) continue;
+    // before v1.388.0 the menu lived in the panel; the sheet lives on <body> (ui.sheet), its scroller is .ui-sheet__body
+    const SHEET = '.mms-ss-root';
     const MENU = '#music-nowplaying-panel [data-skin-sticker-menu]';
-    for (const size of ['default', '2x', '3x']) {
+    // v1.388.0 (W0): two scenarios per size and inset set - (a) a plain song, (b) a CHAPTERED track played as a
+    // listen video (Watch + Chapters offered), the heavy page the sticker sheet must fit without scrolling.
+    const SCEN = [{ name: 'plain-song', url: '/music?play=nd1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` },
+      { name: 'chaptered-listen', url: '/music?play=mix1&listen=1', until: `!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')` }];
+    const SIZES = process.env.PROBE_SIZES ? process.env.PROBE_SIZES.split(',') : ['default', '2x', '3x'];
+    for (const scen of SCEN) {
+    for (const size of SIZES) {
       for (const insets of [{ top: 0, bottom: 0 }, { top: 47, bottom: 34 }]) {
         let insetOk = true;
         try { await send('Emulation.setSafeAreaInsetsOverride', { insets: Object.assign({ left: 0, right: 0 }, insets) }); } catch (_) { insetOk = !insets.top; }
         if (!insetOk) continue; // this Chromium has no inset override: the zero-inset run stands alone
-        await ev(`localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
-        await send('Page.navigate', { url: base + '/music?play=nd1' });
-        await waitFor(`!!document.querySelector('#music-nowplaying-panel.mms-full [data-skin-sticker]')`, 20000);
+        await ev(`localStorage.setItem('ft-mode', ${JSON.stringify(MODE)}); localStorage.setItem('ft-music-skin', 'ipod'); localStorage.removeItem('ft-tray-mode'); localStorage.setItem('ft-sticker', JSON.stringify({ kind: 'logo', size: ${JSON.stringify(size)}, tilt: 'left' })); true`);
+        await send('Page.navigate', { url: base + scen.url });
+        await waitFor(scen.until, 20000, scen.name + ' pocket (html.is-phone: ' + (await ev(`document.documentElement.classList.contains('is-phone')`)) + ')');
         await sleep(600);
         await ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
         await sleep(400);
-        const tag = { vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
+        const tag = { scenario: scen.name, vp: vp.w + 'x' + vp.h, sticker: size, insets: insets.top + '/' + insets.bottom };
+        if (await ev(`!!document.querySelector('.mms-ss-root')`)) { await waitFor(`(function(){ var r = document.querySelector('.mms-ss-root.is-open'); return !!r && r.getBoundingClientRect().bottom <= innerHeight + 0.5; })()`, 8000, 'the sheet settled on screen'); await sleep(150); } // the slide-in (--dur-sheet) finishes before anything is measured
+        const sheetNow = await ev(`!!document.querySelector(${JSON.stringify(SHEET)})`);
+        if (sheetNow) {
+          const gs = await ev(SHEET_GEOM('.mms-ss__tile'));
+          gs.sheet.fits = !gs.sheet.scrolls; gs.sheet.topInReach = gs.sheet.top >= insets.top - 0.5;
+          gs.sections = await ev(`Array.prototype.map.call(document.querySelectorAll('.mms-ss-root .ui-sheet__body > [data-skin-sticker-menu] > *'), function (x) { return [(x.className || '').slice(0, 20), Math.round(x.getBoundingClientRect().height)]; })`);
+          out(Object.assign({ surface: 'sheet-main' }, tag, gs));
+          await shot(MODE + '-main-' + scen.name + '-' + size + '-' + insets.top);
+          if (process.env.PROBE_EVAL) out({ surface: 'eval', scenario: scen.name, value: await ev(process.env.PROBE_EVAL) }); // a one-off DOM question, asked of the open sheet
+          if (scen.name === 'plain-song') {
+            await ev(`document.querySelector('.mms-ss-root [data-skin-skins]').click(); true`);
+            await sleep(500);
+            const sk = await ev(SHEET_GEOM('.mms-ss-root [data-skin-pick].ui-row'));
+            sk.sheet.fits = !sk.sheet.scrolls;
+            out(Object.assign({ surface: 'sheet-skin' }, tag, sk));
+            await shot(MODE + '-skin-' + size + '-' + insets.top);
+            await ev(`document.querySelector('.mms-ss-root [data-skin-extras-back]').click(); true`);
+            await sleep(300);
+            await ev(`document.querySelector('.mms-ss-root [data-skin-more]').click(); true`);
+            await sleep(600);
+            const mo = await ev(SHEET_GEOM('.mms-ss-root .ui-row'));
+            mo.sheet.fits = !mo.sheet.scrolls;
+            out(Object.assign({ surface: 'sheet-more' }, tag, mo));
+            await shot(MODE + '-more-' + size + '-' + insets.top);
+          }
+          await ev(`var c = document.querySelector('.mms-ss-root .ui-sheet__close'); if (c) c.click(); true`);
+          await sleep(500);
+          continue;
+        }
         const g1 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' .mms-sm-opt', MENU));
         g1.menu.top = g1.menu.xywh[1];
         g1.menu.topInReach = g1.menu.top >= insets.top - 0.5;   // the first row is on screen, below the notch
         g1.menu.fits = !g1.menu.scrolls;
         g1.sections = await ev(`Array.prototype.map.call(document.querySelectorAll(${JSON.stringify(MENU + ' > .mms-sm-sec')}), function (x) { return [(x.textContent || '').trim().slice(0, 14), Math.round(x.getBoundingClientRect().height)]; })`);
+        // the sheet's own verdict: is the Like control on screen (inside the menu's visible box and the viewport) without scrolling?
+        g1.likeInView = await ev(`(function(){ var l = document.querySelector(${JSON.stringify(MENU + ' [data-skin-like], ' + MENU + ' [data-skin-x="like"]')}); if (!l) return false; var r = l.getBoundingClientRect(), m = document.querySelector(${JSON.stringify(MENU)}).getBoundingClientRect(); return r.height > 0 && r.top >= m.top - 0.5 && r.bottom <= m.bottom + 0.5 && r.top >= 0 && r.bottom <= innerHeight; })()`);
         if (g1.menu.scrolls) {
           // a REAL finger pan up inside the menu (the lower third to the upper third): the menu must scroll
           const b = g1.menu.xywh; const x = b[0] + b[2] / 2; const y0 = b[1] + b[3] * 0.75; const y1 = b[1] + b[3] * 0.25;
@@ -128,14 +196,15 @@ async function main() {
           g1.menu.maxScrollTop = g1.menu.scrollH - g1.menu.clientH;
         }
         out(Object.assign({ surface: 'sticker-page1' }, tag, g1));
-        if (await ev(`!!document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')})`)) {
+        if (scen.name === 'plain-song' && await ev(`!!document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')})`)) {
           await ev(`document.querySelector(${JSON.stringify(MENU + ' [data-skin-skins]')}).click(); true`);
           await sleep(300);
-          const g2 = await ev(GEOM(MENU + ' .mms-sm-chip', MENU));
+          const g2 = await ev(GEOM(MENU + ' .mms-sm-chip, ' + MENU + ' [data-skin-pick]', MENU));
           g2.menu.top = g2.menu.xywh[1]; g2.menu.topInReach = g2.menu.top >= insets.top - 0.5; g2.menu.fits = !g2.menu.scrolls;
           out(Object.assign({ surface: 'sticker-skin-page' }, tag, g2));
         }
       }
+    }
     }
     try { await send('Emulation.setSafeAreaInsetsOverride', { insets: { top: 0, bottom: 0, left: 0, right: 0 } }); } catch (_) { /* none to clear */ }
   }
@@ -155,8 +224,12 @@ async function main() {
   if (pop) {
     const P = await connect(pop.webSocketDebuggerUrl);
     await P.ev(`document.querySelector('#music-nowplaying-panel [data-skin-sticker]').click(); true`);
-    await sleep(500);
-    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('#music-nowplaying-panel .mms-sm-chip', '#music-nowplaying-panel [data-skin-sticker-menu]'))));
+    await sleep(700);
+    // v1.388.0: the pop-out's sheet (the plain-window fallback has no Tray row; the tray body keeps its inline Color chips)
+    const sheetInPop = await P.ev(`!!document.querySelector('.mms-ss-root')`);
+    out(Object.assign({ surface: 'popout-sheet', vp: await P.ev('innerWidth + "x" + innerHeight'), sheetInPop }, sheetInPop ? await P.ev(SHEET_GEOM('.mms-ss__tile')) : {}));
+    out(Object.assign({ surface: 'tray-chips', vp: await P.ev('innerWidth + "x" + innerHeight') }, await P.ev(GEOM('.mms-ss-root [data-skin-pick]', '.mms-ss-root [data-skin-sticker-menu]'))));
+    if (process.env.PROBE_SHOTS) { const r = await P.send('Page.captureScreenshot', { format: 'png' }); fs.mkdirSync(process.env.PROBE_SHOTS, { recursive: true }); fs.writeFileSync(path.join(process.env.PROBE_SHOTS, MODE + '-popout.png'), Buffer.from(r.data, 'base64')); }
     P.ws.close();
   } else out({ surface: 'tray-chips', error: 'no pop-out opened' });
   ws.close();

@@ -21,7 +21,9 @@ const SKIN = fs.readFileSync(path.join(ROOT, 'public', 'js', 'skin-surface.js'),
 test('createExtrasMenu is exported so BOTH the skin engine and the desktop menu reuse ONE core (DRY, no second menu)', () => {
   assert.match(SKIN, /createExtrasMenu:\s*createExtrasMenu/, 'FileTubeSkinSurface exposes createExtrasMenu');
   assert.match(SKIN, /function createExtrasMenu\(cfg\)/, 'the factory exists');
-  assert.match(SKIN, /return \{ open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy \};/, 'the documented shape');
+  // v1.388.0: the sticker SHEET reads the same core through load() / getItem() / canModify() / has() / hasSource() (the desktop
+  // menu keeps open + handleAction exactly as they were)
+  assert.match(SKIN, /return \{ open: open, handleAction: handleAction, cancelPending: cancelPending, destroy: destroy,\s*load: load, getItem: [^}]*\}, canModify: [^}]*\}, has: extrasCap,\s*hasSource: [^}]*\} \};/, 'the documented shape: the desktop pair plus the sheet\'s readers');
 });
 
 // ---- Task 3: the CSS lift - the .mms-sm-* item styling is UNCONDITIONAL so the desktop
@@ -30,9 +32,9 @@ test('createExtrasMenu is exported so BOTH the skin engine and the desktop menu 
 
 test('the sticker/actions item styling is lifted OUT of the mobile media query (else the desktop menu ships unstyled)', () => {
   const actIdx = CSS.indexOf('.mms-sticker-menu .mms-sm-act{');
-  const mobileStickerIdx = CSS.indexOf('body.mms-tray .mms-sticker-menu{ position:fixed');
+  const mobileStickerIdx = CSS.indexOf('.mms-sticker-wrap{ position:absolute;');
   assert.ok(actIdx > 0, 'the .mms-sm-act item rule exists');
-  assert.ok(mobileStickerIdx > 0, 'the mobile-only tray positioning still exists (inside @media)');
+  assert.ok(mobileStickerIdx > 0, 'the corner sticker\'s mobile positioning still exists (inside the pocket scope)');
   assert.ok(actIdx < mobileStickerIdx,
     'the .mms-sm-act item rule sits ABOVE the mobile sticker @media block - i.e. it is unconditional, so the desktop actions menu is styled');
 });

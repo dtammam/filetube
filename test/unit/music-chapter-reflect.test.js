@@ -12,6 +12,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
+const SS = require('../helpers/sticker-sheet.js'); // v1.388.0: the sticker is a ui.sheet on <body>
 
 const musicPath = require.resolve('../../public/js/music.js');
 require('../../public/js/common.js');
@@ -74,6 +75,7 @@ async function boot(url, run, opts) {
   const playerState = { state: 'docked', currentId: null, meta: null };
   global.window = dom.window; global.document = dom.window.document;
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+  SS.installUi(dom); // the sticker sheet is built with the real ui.js
   let registered = null;
   let lastNav = null; // v1.311: the most recent setTrackNav({onPrev,onNext}) - so a test can bind the ended-advance target
   dom.window.FileTube = {
@@ -623,23 +625,30 @@ test('v1.279 (gate lock): a normal-speed forward SCRUB crossing a boundary SURVI
   }, { mobile: true });
 });
 
-test('v1.279 (Dean A): the sticker Loop row reads "Loop chapter" while a chaptered ::c track plays', async () => {
+test('v1.279 (Dean A) -> v1.388.0: the sheet\'s Loop tile says Chapter while a chaptered ::c track loops, and On for a plain song', async () => {
   await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom) => {
+    let loopOn = true;
+    dom.window.FileTube.player.isLoopEnabled = () => loopOn;
     const panel = dom.window.document.getElementById('music-nowplaying-panel');
     const stickerBtn = panel.querySelector('[data-skin-sticker]');
     assert.ok(stickerBtn, 'the sticker button rendered (mobile skin)');
     stickerBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     await settle();
-    const loop = panel.querySelector('.mms-sm-loop .mms-sm-lbl');
-    assert.ok(loop, 'the Loop row rendered');
-    assert.match(loop.textContent, /Loop chapter/, 'a chaptered track: the label makes clear it loops the CHAPTER');
-    assert.doesNotMatch(loop.textContent, /Loop chapter chapter/, 'not doubled');
+    const loop = SS.inSheet(dom, '[data-skin-loop]');
+    assert.ok(loop, 'the Loop tile rendered');
+    assert.strictEqual(loop.querySelector('.ui-btn__label').textContent, 'Loop', 'the tile\'s label stays Loop');
+    assert.strictEqual(loop.querySelector('.mms-ss__cap').textContent, 'Chapter', 'a chaptered track: the caption makes clear it loops the CHAPTER');
+    assert.strictEqual(loop.getAttribute('aria-pressed'), 'true', 'and the tile is in its selected state (R3)');
+    loopOn = false;
+    SS.sheetOf(dom).querySelector('[data-skin-loop]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // redraws from the live state
+    await settle();
+    assert.strictEqual(SS.inSheet(dom, '[data-skin-loop] .mms-ss__cap').textContent, 'Off', 'off reads Off');
   }, { mobile: true });
 });
 
-test('v1.279 (Dean A): the Loop label is chapter-CONDITIONAL (plain "Loop" for a normal song)', () => {
+test('v1.279 (Dean A) -> v1.388.0: the Loop caption is chapter-CONDITIONAL (On for a normal song)', () => {
   const skin = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
-  assert.match(skin, /loopIsChapter \? 'Loop chapter' : 'Loop'/, 'the label is a ternary on the chapter test - never unconditional');
+  assert.match(skin, /cap: loopOn \? \(chapterNow \? 'Chapter' : 'On'\) : 'Off'/, 'the caption is a ternary on the chapter test - never unconditional');
   assert.match(skin, /stickerCfg\.isChapterTrack\(\)/, 'derived from the view-supplied chapter test');
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   assert.match(js, /isChapterTrack: function \(\) \{ var id = effectiveCurrentId\(\);[^}]*::c/, 'music.js reports a ::c track as a chapter');

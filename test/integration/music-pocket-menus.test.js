@@ -391,9 +391,10 @@ test('the menus drop their library cache on a rescan AND after a delete/move (a 
       tapRow(h, 'Neon Arrival'); await settleNet(); // Now Playing on nd1, played FROM the menu
       assert.strictEqual(h.log.filter(songsUrl).length, 1);
       click(h.dom, h.panel.querySelector('[data-skin-sticker]'));
-      click(h.dom, h.panel.querySelector('[data-skin-extras]'));
+      await settleNet(); // the sheet loads the item once, at open
+      click(h.dom, h.D.querySelector('.mms-ss-root [data-skin-more]'));
       await settleNet();
-      const del = h.panel.querySelector('[data-skin-x="delete"]');
+      const del = h.D.querySelector('.mms-ss-root [data-skin-x="delete"]');
       assert.ok(del, 'the Extras page offers Delete (admin)');
       click(h.dom, del);
       await settleNet();

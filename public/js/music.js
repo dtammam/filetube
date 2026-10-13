@@ -2049,6 +2049,7 @@ if (typeof module !== 'undefined' && module.exports) {
           chapters: { visible: chaptersEditable, label: chaptersRowLabel, onTap: openChaptersEditorForPlaying }, // v1.363.1: the pop-out's Add / Edit chapters (no Extras page there)
           channel: { visible: channelVisible, onTap: channelTap }, // v1.317 (M1): "Go to channel" beside Watch (shared with the desktop actions menu)
           extras: {
+            offlineKind: 'track', // the iOS app's Download tile saves this view's item as a `track` (podcasts name no kind: they keep the browser download)
             getBaseId: extrasBaseId,
             isEligible: extrasEligibleView,
             onMutated: afterExtrasMutation,
