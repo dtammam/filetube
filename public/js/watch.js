@@ -105,8 +105,9 @@ function theatreWidthAspect(rawMediaAspect) {
 // v1.319 (Architect ruling D2 on Dean's "match YouTube's theatre geometry"): YouTube
 // hides its guide in theatre, so on desktop the left sidebar collapses while theatre is
 // ON and comes back when theatre goes OFF or the watch view is left. It reuses the ONE
-// existing mechanism, the header #menu-toggle's class trio (common.js: `.sidebar.hidden`
-// + `.sidebar.mobile-open` + `.main-content.expanded` flip together), so a hand toggle
+// existing mechanism, the header #menu-toggle's desktop collapse pair (common.js:
+// `.sidebar.hidden` + `.main-content.expanded`; the phone drawer `.mobile-open` is a
+// separate state since v1.389.0), so a hand toggle
 // in theatre simply works (reopening PUSHES the content back, the collapsed-state
 // behaviour; it never overlays). The sidebar state has NO persisted preference (no
 // storage key anywhere), and theatre never writes one: the only theatre state is the
@@ -125,8 +126,9 @@ function theatreGuideEls(doc) {
   return e.body && e.sidebar && e.main ? e : null;
 }
 function setGuideCollapsed(e, collapsed) {
+  // v1.389.0 (D2): the DESKTOP collapse only (theatre runs at 1025px+, where `.mobile-open`, the
+  // phone drawer, is never set); it used to flip `.mobile-open` with the other two.
   e.sidebar.classList.toggle('hidden', collapsed);
-  e.sidebar.classList.toggle('mobile-open', collapsed);
   e.main.classList.toggle('expanded', collapsed);
 }
 function theatreGuideCollapse(doc, owner) {

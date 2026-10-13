@@ -2414,9 +2414,10 @@ test('v1.191 (Dean): toggling the left sidebar (hamburger) re-scatters critters 
   // toggle uses (guarded so it is a no-op when critters are off / the fn absent).
   const start = COMMON.indexOf("const menuToggle = document.getElementById('menu-toggle')");
   assert.ok(start > 0, 'the menu-toggle wiring was located');
-  const body = COMMON.slice(start, start + 1400);
+  const body = COMMON.slice(start, start + 2400);
   assert.match(body, /menuToggle\.addEventListener\('click'/, 'the hamburger click handler exists');
-  assert.match(body, /mainContent\.classList\.toggle\('expanded'\)/, 'it toggles the collapse (the width change)');
+  assert.match(body, /toggleSidebarMenu\(sidebar, mainContent, sidebarPhoneLayout\(window\)\)/, 'it toggles the collapse (the width change) through the one toggle (v1.389.0)');
+  assert.match(COMMON, /function toggleSidebarMenu\([\s\S]*?main\.classList\.toggle\('expanded'\)/, 'whose desktop arm writes the content column\'s collapse');
   assert.match(body, /scheduleCritterScatter\(\)/, 'and re-scatters critters against the new layout width');
 });
 

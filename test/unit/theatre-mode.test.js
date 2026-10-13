@@ -141,9 +141,8 @@ const { theatreGuideCollapse, theatreGuideRestore, theatreGuideRelease, THEATRE_
 function shellDoc({ collapsed = false } = {}) {
   const { JSDOM } = require('jsdom');
   const d = new JSDOM('<body><aside class="sidebar" id="sidebar"></aside><main class="main-content" id="main-content"></main></body>').window.document;
-  if (collapsed) { // exactly what common.js's #menu-toggle click does
+  if (collapsed) { // exactly what common.js's #menu-toggle click does on the desktop layout (v1.389.0: the phone drawer `.mobile-open` is a separate state)
     d.getElementById('sidebar').classList.toggle('hidden');
-    d.getElementById('sidebar').classList.toggle('mobile-open');
     d.getElementById('main-content').classList.toggle('expanded');
   }
   const state = () => ({
@@ -156,13 +155,13 @@ function shellDoc({ collapsed = false } = {}) {
 }
 const OPEN = { hidden: false, mobileOpen: false, expanded: false, owner: null };
 
-test('v1.319 D2 theatreGuide: an OPEN sidebar collapses through the menu toggle\'s own class trio and theatre owns it; the owner\'s restore brings it back', () => {
+test('v1.319 D2 theatreGuide: an OPEN sidebar collapses through the desktop collapse pair (hidden + expanded, never the phone drawer\'s mobile-open) and theatre owns it; the owner\'s restore brings it back', () => {
   const { d, state } = shellDoc();
   assert.deepStrictEqual(state(), OPEN, 'precondition: populated, open');
   assert.strictEqual(theatreGuideCollapse(d, 'w1'), true);
-  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: false, expanded: true, owner: 'w1' });
   assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'a view that does not own it restores nothing');
-  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: true, expanded: true, owner: 'w1' });
+  assert.deepStrictEqual(state(), { hidden: true, mobileOpen: false, expanded: true, owner: 'w1' });
   assert.strictEqual(theatreGuideRestore(d, 'w1'), true);
   assert.deepStrictEqual(state(), OPEN, 'the owner\'s restore reopens it and drops the marker');
   assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'idempotent');
@@ -185,10 +184,10 @@ test('v1.319 D2 theatreGuide: a second watch view RE-CLAIMS an owned collapse (a
   assert.strictEqual(theatreGuideRestore(d, 'w1'), false, 'the old view\'s deferred restore is a no-op');
   assert.strictEqual(state().hidden, true);
   // the user reopens by hand (the toggle flips the trio), then closes it again by hand
-  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  for (const el of [['sidebar', 'hidden'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
   theatreGuideRelease(d);
   assert.deepStrictEqual(state(), OPEN, 'open by hand, released');
-  for (const el of [['sidebar', 'hidden'], ['sidebar', 'mobile-open'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
+  for (const el of [['sidebar', 'hidden'], ['main-content', 'expanded']]) d.getElementById(el[0]).classList.toggle(el[1]);
   assert.strictEqual(theatreGuideRestore(d, 'w2'), false, 'released: theatre off leaves the user\'s choice');
   assert.strictEqual(state().hidden, true, 'the hand-closed bar stays closed');
 });

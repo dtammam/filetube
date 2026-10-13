@@ -3700,5 +3700,11 @@
     "date": "2026-10-13",
     "title": "The player's sticker menu is now a sheet with your daily controls up top",
     "intent": "Tapping the sticker on the phone player now opens a clean sheet: like the chapter, chapters, loop, shuffle, speed, share and download are one tap each, with no scrolling. The skin picker is grouped and searchable, and autoplay, lighting and radio moved to More (Lighting's third choice is now called Bold)."
+  },
+  {
+    "version": "1.389.0",
+    "date": "2026-10-13",
+    "title": "A phone held sideways keeps its phone layout, and videos open fullscreen",
+    "intent": "On a phone held sideways, the side menu now stays out of the way and opens from the menu button like it does upright, and a video you open sideways starts fullscreen. Closing the menu and turning the phone no longer leaves it stuck open. Computers and tablets look and work the same as before."
   }
 ]

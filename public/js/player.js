@@ -814,6 +814,22 @@ function shouldExitFauxOnRotate(ctx) {
   return !!(!opts.landscape && opts.fauxOn);
 }
 
+// v1.389.0 (Dean, 2026-10-13: tapping a video while the phone is ALREADY sideways must open it fullscreen, as
+// rotating a playing one does): the pure decision for a LOAD's one-shot entry, driven by trySidewaysFullscreen.
+//   'enter' - a custom-player mobile video in the FULL state, sideways, not already faux, not in a Feed card;
+//   'wait'  - everything but the custom-vs-native verdict says enter: the mobileCustomPlayer setting is read
+//             asynchronously (a cold page), so keep the one shot until the settings fetch re-runs us;
+//   'skip'  - anything else: the one shot is spent (a portrait load, an audio item, a Feed card, a docked mount,
+//             a faux already on - an auto-advanced next video that carried its fullscreen).
+// It does NOT look at whether playback started: an autoplay a browser refused (the iOS "Tap to play" case) still
+// enters, with the paused control bar up. Native-controls mode never enters from here: iOS only honors
+// webkitEnterFullscreen inside a user gesture, so a load-time call would silently no-op there.
+function sidewaysFullscreenDecision(ctx) {
+  var o = ctx || {};
+  if (!(o.pending && o.full && o.video && o.mobile && o.landscape) || o.fauxOn || o.feedHost) return 'skip';
+  return o.custom ? 'enter' : 'wait';
+}
+
 // v1.381.0 (Dean, 2026-10-09: "It should not rotate when going sideways"): a FULL player hosted in a Feed card
 // (its slot) ignores rotation - no faux fullscreen for a video, no expanded now-playing for audio, and iOS's own
 // rotate-into-native-fullscreen is bounced back to the card without arming faux. The card is the surface there.
@@ -2137,6 +2153,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldAutoFullscreenOnRotate,
     // v1.118: the custom-video faux-fullscreen rotate decisions.
     shouldEnterFauxOnRotate,
+    sidewaysFullscreenDecision,
     shouldExitFauxOnRotate,
     // v1.277: the iOS music stuck-state reconcile gate + its audio-expand clear decision.
     shouldForceInlineAudioOnReconcile,
@@ -2545,6 +2562,12 @@ if (typeof module !== 'undefined' && module.exports) {
   // `loadImmersiveCarry` holds 'video' | 'audio' | null for THIS load.
   var immersiveCarryPending = false;
   var loadImmersiveCarry = null;
+  // v1.389.0 (D3/D4): the ONE shot per video at which a phone already sideways enters the faux fullscreen
+  // (see sidewaysFullscreenDecision). Armed by every real load, spent by the first decision that is not 'wait'.
+  // Spending it IS the "respect an exit" rule: leaving fullscreen while sideways can never re-arm it, and only
+  // the next load (a new video, an auto-advance included) or a real rotation (onOrientationChange's own
+  // enter-while-playing path, untouched) brings the fullscreen back.
+  var sidewaysFsPending = false;
 
   // v1.138 desktop fullscreen stage: the never-moving shell container the
   // host reparents INTO for native fullscreen (see the exec plan). The flag
@@ -9855,6 +9878,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (gen !== loadGeneration) return; // a newer load has since started
           mobileCustomPlayerCached = !!(settings && settings.mobileCustomPlayer);
           applyControlsMode();
+          trySidewaysFullscreen(); // v1.389.0 (D3): the custom-vs-native verdict just landed
         })
         .catch(function () { /* leave the native default (fail-safe) */ });
     }
@@ -9903,6 +9927,7 @@ if (typeof module !== 'undefined' && module.exports) {
           preExtractAudioCached = !!(settings && settings.preExtractAudio); // v1.35 gate fix: the eager-buffer lever
           bgAudioSyncPositionCached = !!(settings && settings.bgAudioSyncPosition); // v1.121: the position pre-sync lever
           applyControlsMode();
+          trySidewaysFullscreen(); // v1.389.0 (D3): the custom-vs-native verdict just landed
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY
             // mobile video load, both ways -- Dean's first overlay reading
@@ -10500,6 +10525,28 @@ if (typeof module !== 'undefined' && module.exports) {
     liveMode = false;
   }
 
+  // v1.389.0 (D3): enter the faux fullscreen for a video loaded while the phone is already sideways - the same
+  // CSS-only surface the rotate path enters (setCssFullscreen, no user gesture needed). Called at the end of
+  // every real load and again when the mobileCustomPlayer setting resolves (the custom-vs-native verdict is not
+  // known on a cold page until then).
+  function trySidewaysFullscreen() {
+    if (!sidewaysFsPending) return;
+    var isVideo = !!(currentData && currentData.type !== 'audio');
+    var verdict = sidewaysFullscreenDecision({
+      pending: sidewaysFsPending,
+      full: state === STATE_FULL && !!host,
+      video: isVideo,
+      mobile: isMobileFormFactor(),
+      custom: !inNativeControlsMode(),
+      landscape: matchMediaBool('(orientation: landscape)') === true,
+      fauxOn: !!(host && host.classList.contains('css-fullscreen')),
+      feedHost: rotateIgnoredForHost(host && host.parentElement && host.parentElement.classList),
+    });
+    if (verdict === 'wait') return;
+    sidewaysFsPending = false;
+    if (verdict === 'enter') setCssFullscreen(true);
+  }
+
   // The main entry point watch.js calls on every view init(). See the
   // top-of-file API doc for the adopt/no-restart contract.
   // v1.130 immersive carry-on-advance: after `setupForMedia` (the new item's
@@ -10634,8 +10681,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (mountTarget === 'stage') mountInSlot(fsStageEl);
     else if (mountTarget === 'dock') mountInDock();
     else mountInSlot(options.slot);
+    sidewaysFsPending = true; // v1.389.0 (D3/D4): this video's one shot at the sideways fullscreen (a docked mount is 'skip': not FULL)
     setupForMedia(id, currentData);
     applyCarriedImmersive();
+    trySidewaysFullscreen();
     return true;
   }
 

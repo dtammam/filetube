@@ -671,6 +671,8 @@
 
 ### Chores
 
+- [ ] **The side menu button has no aria-expanded and the closed drawer stays in the tab order (v1.389.0, disclosed)** - a sideways phone's keyboard or screen-reader user cannot tell the drawer's state; sync `aria-expanded` in toggleSidebarMenu / closeSidebarDrawer and make the closed drawer inert. Same-video adopt (dock or Feed to the watch page) does not enter fullscreen while sideways; decide if it should.
+
 - [ ] **Tidy the Cleanup page (Dean, 2026-10-10: "a little messy"; better section headers)** - /cleanup (lib/cleanup/shell.js, the
   cleanup view): measure first (each section, its header, what it lists, at phone and desktop widths), then clearer headers and
   grouping.
@@ -888,6 +890,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - **Fix**: v1.387.0's offline rows named two icons the registry never had (`download_for_offline`, `offline_pin`); `ui.icon` throws on an unknown name by design, so inside the iOS app (the only place those rows exist, from app v0.9.0) the You menu and every More menu aborted before opening. They now use the registered `arrow_downward` (add) and `close` (remove / cancel). Reproduced and verified in WebKit with an injected host.
 - **Guard**: test/unit/icon-names-registered.test.js: every icon name spelled in public/js (an `icon:` property incl. toggle objects and both ternary arms, any icon call incl. `u.icon`, `songIconHtml` and ui.js's own `icon()`) must be in the registry; nine mutations each turn it red. Gate: adversary, CHANGES r1 (five missed call shapes) -> APPROVED r2 @16c5c92a. Plan: `docs/exec-plans/completed/2026-10-12-offline-icons.md`.
+
+### v1.389.0 - A sideways phone stays a phone: the side menu is a drawer, a video opened sideways is fullscreen (2026-10-13)
+
+- **Side menu**: on a phone (html.is-phone: touch, short screen side 500 or less) held sideways at any width past 768, the side menu is off-canvas and the hamburger opens it as a drawer over the page. The menu button now writes ONE state per layout (a phone: only `.mobile-open`; desktop: only `.hidden` + `.expanded`); it used to write all three, so a close in landscape left `hidden mobile-open` behind and rotating to portrait showed the drawer open with its button hidden (measured on main). The theatre guide writes only the desktop pair. A phone held sideways shows the hamburger at every width (a 667px phone had neither the bottom nav nor the button), keeping the 56px header.
+- **Drawer close paths (premise corrected)**: the plan said the drawer closes "as in portrait today"; measured, portrait had NO close path (the hamburger is hidden there). Added: a tap on a link in it, a press outside it (capture), Escape, back/forward, and a rotation or a 768px crossing. No scrim (it would need new markup on all 13 shells).
+- **Fullscreen when already sideways**: a video loaded while the phone is landscape (custom-player mobile video, FULL, not a Feed card) enters the CSS-only fullscreen once, also when autoplay is refused (the paused bar is the way to play; the skin's Tap to play cue is a Music-panel surface). A cold page waits for the custom-player setting. One shot per load: leaving fullscreen while sideways stays left until the next video (an auto-advance included) or a real rotation; an auto-advance already fullscreen stays in it. Native-controls mode is unchanged (iOS honors webkitEnterFullscreen only inside a gesture).
+- **Proof**: desktop 1280/1025/800 (hamburger twice, theatre on/off) and tablet 820x1180 / 1180x820 geometry identical to a `git archive` of origin/main; real-route unit tests for every fullscreen case, each guard mutated red; the gate (adversary + qa) found one unbound guard and one open-on-back, both fixed.
+- Disclosed: re-opening the SAME video that is already loaded (a dock or Feed adopt) does not enter fullscreen (the adopt path is untouched); an offline local playback never auto-enters; the closed drawer's links stay in the tab order and the button has no aria-expanded (pre-existing, Planned).
 
 ### v1.387.3 - Desktop header panels open under their button (2026-10-12)
 
