@@ -163,11 +163,17 @@
       try { if (typeof cfg.downloadUrl === 'function') return cfg.downloadUrl(item); } catch (_) { /* fall through */ }
       return '/video/' + encodeURIComponent(item.id) + '?download=1';
     }
+    // v1.391.0 (R2): Reheat and the source-site link are downloader controls - they follow the host's mediaFetch capability (common.js's one predicate;
+    // true when common.js is not loaded, so a bare surface keeps its historic set).
+    function extrasMediaFetchOk() {
+      try { return typeof globalThis.mediaFetchAllowed !== 'function' || globalThis.mediaFetchAllowed(); } catch (_) { return true; }
+    }
     // v1.287: the shareable SOURCE link (default = item.watchUrl). Its presence decides the
     // "both when a source exists" Share fork below; a file-only type (podcasts) returns ''.
     // v1.338 (Dean: "anything that can and is grabbed should be kind of treated and formed the same
     // way"): a download from another site shares its saved page link (`sourceShareUrl`, server-checked).
     function extrasShareLink(item) {
+      if (!extrasMediaFetchOk()) return ''; // the source-site link is part of the downloader UI; the file share remains
       try { if (typeof cfg.shareLinkUrl === 'function') return cfg.shareLinkUrl(item) || ''; } catch (_) { /* fall through */ }
       if (typeof item.watchUrl === 'string' && item.watchUrl !== '') return item.watchUrl;
       return (typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') ? item.sourceShareUrl : '';
@@ -216,7 +222,7 @@
       if (extrasCap('queue')) acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue"><i class="icon-queue"></i>Add to queue</button>');
       if (extrasCap('queue-next')) acts.push('<button type="button" class="mms-sm-act" data-skin-x="queue-next"><i class="icon-play"></i>Play next</button>');
       if (extrasCap('transcript') && item.hasSubtitles === true) acts.push('<button type="button" class="mms-sm-act" data-skin-x="transcript"><i class="icon-transcript"></i>Transcript</button>');
-      if (extrasCap('reheat') && hasWatchUrl) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
+      if (extrasCap('reheat') && hasWatchUrl && extrasMediaFetchOk()) acts.push('<button type="button" class="mms-sm-act" data-skin-x="reheat"><i class="icon-flame"></i>Reheat</button>');
       // move stays library-modify-gated (video only). delete is capability-gated; whether it
       // ALSO needs canModify to RENDER is cfg-driven (video/music: yes; podcasts:
       // deleteNeedsModify:false shows it to all like the list-row delete - the SERVER still

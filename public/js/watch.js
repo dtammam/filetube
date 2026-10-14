@@ -991,7 +991,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function probeReheatModule() {
     if (reheatModuleEnabled !== null) return Promise.resolve(reheatModuleEnabled);
     if (reheatHealthProbe) return reheatHealthProbe;
-    reheatHealthProbe = fetch('/api/subscriptions/health')
+    reheatHealthProbe = probeSubscriptionsHealth()
       .then((res) => {
         reheatModuleEnabled = res.ok;
         // v1.53: the fresh answer refreshes the capability cache.
@@ -3349,7 +3349,7 @@ if (typeof module !== 'undefined' && module.exports) {
       let subs = [];
       let channelPins = [];
       try {
-        const healthRes = await fetch('/api/subscriptions/health');
+        const healthRes = await probeSubscriptionsHealth();
         moduleEnabled = healthRes.ok;
         if (moduleEnabled) {
           // Subs and pins in PARALLEL -- the pin's serial fetch was the
@@ -3757,6 +3757,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the server read from a non-YouTube download's own file tags (Facebook, Reddit, ...). '' = none.
     function shareLinkOf(data) {
       if (!data) return '';
+      if (!mediaFetchAllowed()) return ''; // v1.391.0 (R2): the source-site link is downloader UI - no button when the host lacks mediaFetch
       if (typeof data.watchUrl === 'string' && data.watchUrl !== '') return data.watchUrl;
       if (typeof data.sourceShareUrl === 'string' && data.sourceShareUrl !== '') return data.sourceShareUrl;
       return '';

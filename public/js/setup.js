@@ -4966,7 +4966,7 @@ function dropDownloadsReserve() {
 
 async function loadEngineSection(signal) {
   const box = document.getElementById('downloads-box');
-  if (!box) return;
+  if (!box) return; // v1.391.0: also the mediaFetch gate - applyMediaFetchGate removed the box, so no engine request is made
   let r;
   try {
     r = await fetch('/api/ytdlp/engine');
@@ -5497,6 +5497,15 @@ function wireWheelCalControl(signal) {
   btn.addEventListener('click', () => openWheelCal(signal), { signal });
 }
 
+// v1.391.0 (R2): the downloader-only blocks of this page (the Downloads box, the Notifications page, the Imported videos
+// note) carry `data-media-fetch`. A host that did not announce `mediaFetch` (the App Store build) removes them before the menu
+// is built; nothing else reveals them back, because they are gone. A plain browser keeps every one.
+function applyMediaFetchGate(scope) {
+  if (typeof mediaFetchAllowed !== 'function' || mediaFetchAllowed()) return;
+  const host = scope && typeof scope.querySelectorAll === 'function' ? scope : document;
+  host.querySelectorAll('[data-media-fetch]').forEach((el) => el.remove());
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -5514,6 +5523,7 @@ function init(root) {
   // Downloads) are revealed asynchronously below via box.hidden=false; the
   // component's MutationObserver adds their rows then (and never before - a
   // restricted user never sees them).
+  applyMediaFetchGate(root || document); // v1.391.0 (R2): before the menu is built, so a dropped section never gets a row
   wireMasterDetail('setup', root || document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
@@ -5613,7 +5623,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     formatBootErrorLogForExport, bootErrorExportFilename, wireBootErrorLogControls, // v1.364.0 (W1): the boot error log
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
-    loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
+    loadEngineSection, applyMediaFetchGate, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace; v1.391.0: the mediaFetch gate on the page
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     wireServerAddressRow, // v1.384.0: the iOS app's Server address row
     loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep Pocket upright

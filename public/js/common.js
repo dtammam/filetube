@@ -3636,7 +3636,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
     if (r) { r.remove(); applyBottomNavCustomization(); }
   };
 
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       writeCapabilityCache({ moduleEnabled: res.ok === true });
       if (!shouldInjectSubscriptionsNav(res)) {
@@ -3844,6 +3844,44 @@ function isFullWatchSeedItem(item) {
 // policy). Every read crosses `sanitizeCapabilityCache` -- an untrusted
 // string with an allowlisting scrub (own-key, primitive-only), a TTL, and a
 // future-ts rejection. Every access is try/catch (private mode).
+// ---- v1.391.0 (R1/R2): the mediaFetch gate --------------------------------------------------
+// The downloader UI (Subscriptions, the header / bottom-nav Download, Subscribe / Pin / Re-pull, the Settings Downloads
+// section) shows only when there is no native host, or the host announced `mediaFetch` (host-adapter's
+// `allowsMediaFetch`; no User-Agent or platform sniffing). ONE predicate, and EVERY source of `moduleEnabled` goes through
+// it: the health probe (below) never touches the network when the gate is shut, and the capability cache, the remembered
+// chrome flag and the cache write all read `false`. Absent host / absent adapter (Node tests, plain browsers) = allowed.
+function mediaFetchAllowed() {
+  try {
+    const host = typeof window !== 'undefined' && window.FileTube && window.FileTube.host;
+    if (!host) return true;
+    if (typeof host.allowsMediaFetch === 'function') return host.allowsMediaFetch() !== false;
+    return !host.present || (typeof host.has === 'function' && host.has('mediaFetch') === true);
+  } catch (_) { return true; }
+}
+// The one `GET /api/subscriptions/health` call site. A shut gate answers a synthetic 404 (what a server without the module
+// answers), so every consumer takes its existing "module off" path with no request made.
+function probeSubscriptionsHealth() {
+  if (!mediaFetchAllowed()) return Promise.resolve({ ok: false, status: 404 });
+  return fetch('/api/subscriptions/health');
+}
+// The routes that are downloader-only. A direct visit (a typed or old link) to one with the gate shut renders a plain
+// "Not available in this app" state in place of the view; the view's init() never runs.
+function viewBlockedByMediaFetch(view) {
+  return view === 'subscriptions' && !mediaFetchAllowed();
+}
+function renderNotAvailableInApp(root) {
+  if (!root || typeof document === 'undefined') return;
+  const box = document.createElement('div');
+  box.className = 'not-available-state';
+  box.setAttribute('role', 'status');
+  const h = document.createElement('h2');
+  h.textContent = 'Not available in this app';
+  const p = document.createElement('p');
+  p.textContent = 'This part of FileTube is not part of the app. Open it in a web browser instead.';
+  box.appendChild(h);
+  box.appendChild(p);
+  root.replaceChildren(box);
+}
 const CAP_CACHE_KEY = 'ft-cap-cache-v1';
 const CAP_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -3863,7 +3901,7 @@ function sanitizeCapabilityCache(parsed, nowMs) {
     return r;
   };
   const out = { ts: parsed.ts };
-  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled;
+  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled && mediaFetchAllowed(); // v1.391.0: a cached true reads false when the gate is shut
   if (Array.isArray(parsed.subs)) {
     out.subs = parsed.subs
       .filter((s) => s && typeof s === 'object' && !Array.isArray(s) && typeof s.channelUrl === 'string' && s.channelUrl !== '')
@@ -3891,12 +3929,13 @@ function writeCapabilityCache(patch) {
     const now = Date.now();
     const existing = readCapabilityCache(now) || {};
     const merged = { ...existing, ...patch, ts: now };
+    if (typeof merged.moduleEnabled === 'boolean') merged.moduleEnabled = merged.moduleEnabled && mediaFetchAllowed(); // v1.391.0
     sessionStorage.setItem(CAP_CACHE_KEY, JSON.stringify(merged));
   } catch (_) { /* storage disabled -- the probes still work uncached */ }
   // v1.339 (L2): every confirmed module answer also lands in the per-device flag the
   // pre-paint chrome reserve reads (the capability cache above is sessionStorage with a
   // 5-minute TTL, so a cold PWA launch never has it).
-  if (patch && typeof patch.moduleEnabled === 'boolean') rememberModuleEnabled(patch.moduleEnabled);
+  if (patch && typeof patch.moduleEnabled === 'boolean') rememberModuleEnabled(patch.moduleEnabled && mediaFetchAllowed());
 }
 
 // ---- v1.339 (L2, plan D5): remembered chrome flags -------------------------
@@ -3916,7 +3955,7 @@ const CHROME_FLAG_KEYS = {
   bottomNavLast: 'ft-bottomnav-last', // JSON array - the bottom bar's last resolved visible ids, in order
 };
 function rememberModuleEnabled(enabled) {
-  try { localStorage.setItem(CHROME_FLAG_KEYS.ytdlpModule, enabled ? '1' : '0'); } catch (_) { /* private mode */ }
+  try { localStorage.setItem(CHROME_FLAG_KEYS.ytdlpModule, enabled && mediaFetchAllowed() ? '1' : '0'); } catch (_) { /* private mode */ }
 }
 function rememberQueueShown(shown) {
   try { localStorage.setItem(CHROME_FLAG_KEYS.queueShown, shown ? '1' : '0'); } catch (_) { /* private mode */ }
@@ -4237,6 +4276,15 @@ function injectNotificationBellIfEnabled() {
   if (notificationBellAlreadyInjected()) return;
   const headerRight = document.querySelector('.header-right');
   if (!headerRight) return; // shell without a header (login/welcome)
+
+  // v1.391.0 (R2): the bell counts finished downloads, so it follows the mediaFetch gate. Shut = no badge request, no bell, and
+  // the pre-paint placeholder a shell may have painted goes (the remembered flag reads off for the next launch).
+  if (!mediaFetchAllowed()) {
+    const ph = document.getElementById('notif-bell-placeholder');
+    if (ph) ph.remove();
+    try { localStorage.setItem('ft-notif-bell-enabled', '0'); } catch (_) { /* private mode */ }
+    return;
+  }
 
   // v1.101 shimmer sweep: RESERVE the bell slot with a shimmer placeholder if the
   // bell was enabled on the last load (persist-last-known, the v1.99 avatar-bar
@@ -5335,7 +5383,8 @@ function injectDownloadsNavLinkIfEnabled() {
   fetch('/api/config')
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
-      const roots = payload && Array.isArray(payload.syntheticFolders)
+      // v1.391.0 (R2): the Downloads folder entry is the downloader's output root - it follows the mediaFetch gate.
+      const roots = payload && Array.isArray(payload.syntheticFolders) && mediaFetchAllowed()
         ? payload.syntheticFolders.filter((p) => typeof p === 'string' && p !== '')
         : [];
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
@@ -8085,7 +8134,7 @@ function injectOneOffDownloadButtonIfEnabled() {
     const n = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
     if (n) { n.remove(); applyBottomNavCustomization(); }
   };
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       rememberModuleEnabled(res.ok === true); // v1.339 (L2): the next launch's reserve flag
       if (!shouldInjectOneOffButton(res)) { dropReserves(); return; } // disabled (404) -- inject nothing
@@ -11988,7 +12037,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     updateActiveNavHighlight();
     placePageScroll(typeof scrollY === 'number' ? scrollY : 0);
     const incoming = viewRegistry[view];
-    if (incoming && typeof incoming.init === 'function') {
+    if (viewBlockedByMediaFetch(view)) {
+      renderNotAvailableInApp(root); // v1.391.0: /subscriptions without the mediaFetch capability
+    } else if (incoming && typeof incoming.init === 'function') {
       try { incoming.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
@@ -12503,7 +12554,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     currentViewUrl = window.location.pathname + window.location.search; // FR-4 (T4): keep in lockstep with currentViewName
     updateActiveNavHighlight();
     const handlers = viewRegistry[view];
-    if (handlers && typeof handlers.init === 'function') {
+    if (viewBlockedByMediaFetch(view)) {
+      renderNotAvailableInApp(root); // v1.391.0: /subscriptions without the mediaFetch capability
+    } else if (handlers && typeof handlers.init === 'function') {
       try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
@@ -12749,7 +12802,8 @@ function fetchAllPins() {
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
   // v1.72: podcast show pins join as the third source (intake ruling 5).
-  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
+  // v1.391.0: channel pins belong to the downloader module; with the mediaFetch gate shut they are not even asked for.
+  return Promise.all([mediaFetchAllowed() ? safeJson('/api/subscriptions/pins') : Promise.resolve([]), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
     .then(([channelPins, bookPins, podcastPins]) => {
       const pins = [
         ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
@@ -13342,7 +13396,7 @@ function openPlaylistsSheet() {
   // is that they no longer wait for each other.
   Promise.all([
     fetch('/api/config').then((r) => r.json()).catch(() => null),
-    fetch('/api/subscriptions/pins')
+    (mediaFetchAllowed() ? fetch('/api/subscriptions/pins') : Promise.reject(new Error('mediaFetch off')))
       .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
       .catch(() => [false, []]),
   ]).then(([config, [moduleEnabled, pins]]) => {
@@ -15706,7 +15760,7 @@ function snapshotHasActiveDownload(snapshot, nowMs) {
 // SYNCHRONOUS in-flight/injected guard for `injectDownloadStatusChip`
 // below. The function's OLD guard (`document.getElementById('dl-status-chip')`)
 // only helps once the chip node exists -- but that node is only created
-// inside the function's `fetch('/api/subscriptions/health').then(...)`
+// inside the function's `probeSubscriptionsHealth().then(...)`
 // callback, i.e. AFTER an async round-trip. Two calls to
 // `injectDownloadStatusChip()` issued before that fetch resolves (e.g. two
 // shell-init code paths both calling it during the same page load) would
@@ -16698,7 +16752,7 @@ function injectDownloadStatusChip() {
   if (dlStatusChipInjectStarted) return;
   dlStatusChipInjectStarted = true;
 
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       if (!(res && res.ok === true)) {
         // disabled (404) -- inject nothing, latched for the tab. v1.365.0 (W3): any OTHER failure (a 5xx, a
@@ -17256,7 +17310,7 @@ function probeAndReconcileRepullButton() {
       repullModuleEnabled = true;
       reconcileRepullButton();
     }
-    fetch('/api/subscriptions/health')
+    probeSubscriptionsHealth()
       .then((res) => {
         repullHealthChecked = true;
         repullModuleEnabled = res.ok;
@@ -18541,5 +18595,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showAttributionPicker,
     // v1.53: the capability cache's pure gate + accessors.
     sanitizeCapabilityCache, readCapabilityCache, writeCapabilityCache, scrubSubsForCache,
+    // v1.391.0: the mediaFetch gate.
+    mediaFetchAllowed, probeSubscriptionsHealth, viewBlockedByMediaFetch, renderNotAvailableInApp,
   };
 }

@@ -297,7 +297,7 @@
         </div>
       </details>
       <!-- v1.146 (downloader-engine): admin-only AND yt-dlp-module-only; hidden until /api/ytdlp/engine answers 200. Fed by that FOREIGN fetch, so no control carries the /api/settings reveal barrier; the box reveals whole, already populated. -->
-      <details class="setup-box setup-sec sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
+      <details class="setup-box setup-sec sub-collapsible" id="downloads-box" data-media-fetch hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
         <summary>Downloads</summary>
         <h3 class="setup-heading">Downloader engine</h3>
         <p class="setup-intro">FileTube downloads videos with the yt-dlp engine. The bundled engine ships inside the app image and always remains as the fallback. The stable and nightly channels install the newest yt-dlp release at runtime - nightly tracks YouTube's changes closest. Every installed engine must pass a health check before it is used, and an engine that breaks later automatically reverts to bundled - the bell reports it either way.</p>
@@ -323,7 +323,7 @@
         </div>
       </details>
       <!-- v1.367.0: Notifications. The bell is server-wide (admins); push is per user, shown to anyone once the push probe says it is on. -->
-      <details class="setup-box setup-sec sub-collapsible" id="notifications-box" hidden data-collapse-key="notifications" data-md-icon="bell" data-md-group="System" data-md-reserve open>
+      <details class="setup-box setup-sec sub-collapsible" id="notifications-box" data-media-fetch hidden data-collapse-key="notifications" data-md-icon="bell" data-md-group="System" data-md-reserve open>
         <summary>Notifications</summary>
         <p class="setup-intro">Alerts for new downloads.</p>
         <div data-admin-only hidden>
@@ -908,9 +908,9 @@
             <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-config-btn"><span class="ui-btn__label">Save &amp; Scan Library</span></button>
           </div>
         </div>
-        <h3 class="setup-heading">Imported videos</h3>
+        <h3 class="setup-heading" data-media-fetch>Imported videos</h3>
         <!-- v1.41.6 (Dean): relocate hydrated imports into their channel folder. -->
-        <div class="setup-group">
+        <div class="setup-group" data-media-fetch>
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="relocate-hydrated-check">File imported videos under their channel</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="relocate-hydrated-check" /></span></div>
           </div>

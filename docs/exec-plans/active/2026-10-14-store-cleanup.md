@@ -313,7 +313,25 @@ Add DEVICE-CHECKS lines:
 
 ## Evidence (builder fills)
 
-- W1 entry-point table (entry point -> gate -> test):
+- W1 entry-point table (entry point -> gate -> test). Every row's test is in `test/unit/media-fetch-gate.test.js` (MFG):
+  | Entry point | How it is gated | Test |
+  |---|---|---|
+  | Every `/api/subscriptions/health` consumer (nav inject, header Download, status chip, Re-pull probe in common.js; the card-menu caps probe in main.js; the Reheat probe and Subscribe probe in watch.js: 8 sites) | one helper `probeSubscriptionsHealth()` answers a synthetic 404 with no request when `mediaFetchAllowed()` is false | MFG "probeSubscriptionsHealth()", "A1 injectors" |
+  | Capability cache read (`sanitizeCapabilityCache`), cache write (`writeCapabilityCache`), remembered flag `ft-ytdlp-module` (`rememberModuleEnabled`) | each coerces `moduleEnabled` with `&& mediaFetchAllowed()`; the pre-paint inline reserve blocks are untouched (W1.5) | MFG "the capability cache and the remembered chrome flag" |
+  | Subscriptions sidebar link, bottom-nav Subs tab, account-menu Subscriptions row | downstream of the routed nav injector (the optimistic cache inject also reads the coerced cache) | MFG "A1 injectors", "the cached module on answer cannot inject" |
+  | Header Download button + dialog, bottom-nav Download tab | downstream of the routed `injectOneOffDownloadButtonIfEnabled` health probe (the modal is only ever built in that `.then`) | MFG "A1 injectors" |
+  | Status chip (`dl-status-chip`) and its `/api/subscriptions/status` poll | downstream of the routed `injectDownloadStatusChip` probe | MFG "A1 injectors" (no `/api/subscriptions` request) |
+  | Notification bell (`/api/notifications/badge`) and its pre-paint placeholder | NOT behind the health probe: `injectNotificationBellIfEnabled` returns early (placeholder removed, flag `'0'`) when shut | MFG "A1 injectors", "the pre-paint bell placeholder" |
+  | Downloads folder entry (sidebar / bottom-nav, the downloader's output root) | NOT behind the health probe: `injectDownloadsNavLinkIfEnabled` reads no synthetic roots when shut | MFG "the Downloads folder entry" |
+  | Watch page Subscribe, bell, Pin, Re-pull, Reheat (More menu) | downstream of the routed probes + coerced cache (`applySubscribeAndPinState`, `reheatAvailable`) | MFG "watch page, host without mediaFetch" x2 |
+  | Watch page Share the original link (source-site link) | NOT behind the probe: `shareLinkOf` returns `''` when shut, so no Share button | MFG "watch page, host without mediaFetch" |
+  | Sticker / desktop music-and-podcast actions menu: Reheat tile and the source-link Share | NOT behind the probe: `extrasMediaFetchOk()` gates the tile and `extrasShareLink`; the file Share stays | MFG "the music / podcast actions menu" |
+  | Folder-view / card-menu Reheat (main.js) | downstream of the routed caps probe (`reheatEnabled`) + coerced cache | MFG "A1 injectors" (probe silent) + watch More-menu row |
+  | Playlist picker pinned channels (`/api/subscriptions/pins`, two call sites) | `fetchAllPins` and `openPlaylistsSheet` skip the channel-pins request when shut (books and podcast pins unaffected) | MFG "the pinned channels and the playlists sheet" |
+  | Direct navigation to `/subscriptions` (first load and in-app swap) | `viewBlockedByMediaFetch` renders "Not available in this app" in both `bootRouter` and `swapToView`; the view's `init()` never runs | MFG "a direct visit to /subscriptions" |
+  | Settings: Downloads (engine), Notifications page (the bell copy + push), Imported videos (relocate note) | `data-media-fetch` markers removed by `applyMediaFetchGate` before the menu is built; `loadEngineSection` finds no box so asks nothing | MFG "Settings: a shut gate removes", "loadEngineSection makes no request" |
+  | Offline `downloads` control (public/js/offline.js, account-menu Offline row) | NOT touched (the `downloads` capability) | MFG "the native offline downloads control still works" |
+  Not downloader entry points, left as they are: PWA share target (none exists: `grep -rn share_target public server.js lib` is empty), search paste-a-URL (none: the only paste-to-download path is the header Download dialog), Settings extension pairing (none in the web UI), Transcript sharing (reads local subtitles, not the downloader), Assign channel (a library tool on `/api/videos`, not the module), the extension and the Roku channel (desktop / TV clients, R14).
 - Mutation proofs (W1 gate, both brand regexes):
 - Suite counts (Node 22.23.1), CI run ids:
 - Transparent art: candidates sent, Dean's pick:

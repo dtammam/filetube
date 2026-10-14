@@ -1575,7 +1575,7 @@ const PreviewCards = (function () {
       // The late answer mutates the SAME object loadLibrary latches into cardCaps,
       // so it lands whichever of the two settles first.
       const caps = { canModifyLibrary, reheatEnabled: false };
-      fetch('/api/subscriptions/health')
+      probeSubscriptionsHealth()
         .then((res) => {
           writeCapabilityCache({ moduleEnabled: res.ok === true });
           caps.reheatEnabled = res.ok === true;
