@@ -1,12 +1,12 @@
 'use strict';
-// v1.270 - BRICK. The iPod's hidden game, as an easter egg on the Click
+// v1.270 - BRICK. The Click player's hidden game, as an easter egg on the Click
 // skins (Dean: "keep extremely small and modular... almost a little easter egg").
 //
 // DELIBERATELY SELF-CONTAINED. Nothing else in the app imports this; the skin
 // engine hands it wheel rotation through one generic subscriber and otherwise
 // does not know it exists. Written rather than vendored: every Breakout clone
 // takes mouse/keyboard input and paints a full-page canvas, so the two things
-// that make this one ours - wheel-driven paddle, sized into the iPod LCD - would
+// that make this one ours - wheel-driven paddle, sized into the Click player LCD - would
 // have been rewritten anyway, and vendoring adds a licence for code we'd replace.
 //
 // HAPTICS, honestly: iOS ticks come from the OS tracking a finger on a hidden
@@ -61,7 +61,7 @@
     // the BACKING STORE is sized here, to the box times the device pixel ratio. UI pass D7
     // (F59): measured once now and again after every settled change of the box (a rotate
     // into the landscape layout, the iOS toolbar), never mid-layout - see observeSettled.
-    // The iPod portrait lock: with the Upright setting the player is drawn TURNED in landscape, and a turned box's
+    // The Pocket portrait lock: with the Upright setting the player is drawn TURNED in landscape, and a turned box's
     // getBoundingClientRect is its screen footprint (width and height swapped); the layout box (offsetWidth/Height) is
     // the board's own size then. Unturned the two agree, and the rect is read exactly as before.
     function resize() {
@@ -350,7 +350,7 @@
         eng.setWheelTakeover({
           onRotate: game.onRotate,
           onSelect: game.select,   // launch the ball / restart after GAME OVER
-          onExit: stop,            // MENU backs out, the iPod rule
+          onExit: stop,            // MENU backs out, the Click player rule
         });
       }
       // Escape belongs to the host's OWN document. music.js bound it to the main

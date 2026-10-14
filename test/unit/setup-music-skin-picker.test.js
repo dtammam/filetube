@@ -133,13 +133,12 @@ test('v1.345: the rendered grid has 24 groups (Original, 22 line generations, Ci
   vm.runInContext(src + '\nrenderMusicSkinPicker();', ctx);
   const doc = dom.window.document;
   const heads = [...doc.querySelectorAll('.skin-family')].map((g) => g.querySelector('.skin-family-name').textContent);
-  assert.deepStrictEqual(heads, ['Original', 'Classic 4G (2004)', 'Classic 5G (2005)', 'Classic 6G (2007)', 'Mini 1G (2004)', 'Mini 2G (2005)',
-  'Nano 1G (2005)', 'Nano 2G (2006)', 'Nano 3G (2007)', 'Nano 4G (2008)', 'Nano 5G (2009)', 'Nano 6G (2010)', 'Nano 7G (2012)',
-  'Shuffle 1G (2005)', 'Shuffle 2G (2006)', 'Shuffle 3G (2009)', 'Shuffle 4G (2010)',
-  'Touch 1G-3G (2007)', 'Touch 4G (2010)', 'Touch 5G (2012)', 'Touch 6G-7G (2015)', 'Custom 5G (2005)', 'Cider', 'Nordic']);
+  assert.deepStrictEqual(heads, ['Original', 'Classic 1', 'Classic 2', 'Classic 3', 'Mini 1', 'Mini 2',
+  'Slim 1', 'Slim 2', 'Slim 3', 'Slim 4', 'Slim 5', 'Slim 6', 'Slim 7', 'Clip 1', 'Clip 2', 'Clip 3', 'Clip 4',
+  'Touch 1', 'Touch 2', 'Touch 3', 'Touch 4', 'Custom', 'Cider', 'Nordic']);
   const tile = (id) => doc.querySelector(`[data-skin-pref="${id}"] .skin-tile-name`).textContent;
-  assert.strictEqual(tile('ipod-charcoal'), 'Black (2007)');
-  assert.strictEqual(tile('ipod-matte'), 'Black (2008)');
+  assert.strictEqual(tile('ipod-charcoal'), 'Black');
+  assert.strictEqual(tile('ipod-matte'), 'Black 2');
   assert.strictEqual(tile('ipod-red'), 'Red');
   assert.strictEqual(tile('apple'), 'Cider');
   assert.strictEqual(tile('ipod-original'), 'Original');

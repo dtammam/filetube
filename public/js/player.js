@@ -144,7 +144,7 @@ function resolveBaseHandoff(prevId, nextId, t, paused, live) {
 // re-opens on a different surface - a Listen play stamps readerHref
 // '/music?nowplaying=1' + resumeMode 'music'; tapping "Watch" then ADOPTS
 // (same id), the stale readerHref survived, and the mini-bar tap returned to
-// the iPod view (the return target always belonged to whichever surface last
+// the Click player view (the return target always belonged to whichever surface last
 // did a GENUINE load - Dean's "not fully mapped" device repro). Same
 // carried-field contract as the adopt branch's browseCtx refresh: a caller
 // that DECLARES a field owns it (music/podcasts/tv/read data carry real
@@ -238,7 +238,7 @@ function applyAdoptFlavor(currentData, data) {
 
 // v1.304 handoff modality: which SURFACE flavor a progress ping should stamp,
 // derived from the loaded item's resumeMode. 'music'/'podcast' are the
-// audio/listening surfaces (the iPod/music and podcasts skins, and a VIDEO
+// audio/listening surfaces (the Click/music and podcasts skins, and a VIDEO
 // played via Listen - which stamps resumeMode 'music'); 'tv', plain video
 // (null/absent), and anything else are watched. The presence store defaults a
 // missing value to 'watch', so only 'listen' is load-bearing - but returning

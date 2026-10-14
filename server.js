@@ -5455,7 +5455,7 @@ function resolveHandoffTarget(db, seen) {
     : null;
   if (!item) return null;
   // v1.304 handoff modality: a media item is the ONLY kind that can be either
-  // watched (the video player) or listened to (the iPod/music "Listen" surface,
+  // watched (the video player) or listened to (the Click/music "Listen" surface,
   // resumeMode 'music' on the source device). Two ways it resumes as LISTEN:
   //   1. the playing device stamped surface 'listen' - a VIDEO played via
   //      Listen keeps its video extension, so only the device knows this; and

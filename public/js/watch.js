@@ -1567,7 +1567,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.253: the null stamps CLAIM the plain-video flavor on this adopt - a
       // same-id arrival from a Listen play carries a stale readerHref
       // '/music?nowplaying=1' + resumeMode 'music' the adopt would otherwise
-      // keep (the mini-bar then returned to the iPod view - Dean's repro).
+      // keep (the mini-bar then returned to the Click player view - Dean's repro).
       // Stamped HERE too (not just the full call below) so the flavor is right
       // even if the metadata fetch below fails or is slow under a dock-tap.
       // Gate r1 (music follow-ups, qa W2 = adversary W3): autoAdvanceViaTrackNav false is part of

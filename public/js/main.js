@@ -961,7 +961,7 @@ function homeRowEnabled(key) {
 // regular videos are untouched (type !== 'audio'); a non-media kind (podcast / track / book /
 // tv) keeps its own destination. `musicHrefForItem` returns the /music href or null (caller
 // keeps its /watch href). Chaptered audio routes to the album's FIRST chapter track (`::c0`) so
-// it opens IN ITS ALBUM and the iPod MENU/list browses the chapters. Client-only: an id the
+// it opens IN ITS ALBUM and the Click player MENU/list browses the chapters. Client-only: an id the
 // music API can't resolve (a non-projected download) bounces to /watch (music.js's miss path).
 function musicHrefForItem(item) {
   // v1.251: THE rule moved VERBATIM to common.js's audioOpenHref - ONE authority for every

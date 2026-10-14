@@ -1627,7 +1627,7 @@ function rotateDebugApi() {
 }
 // v1.355: Settings > Mobile player > "Keyboard search (experimental)". The key and its reader are music-skins.js's
 // (KB_SEARCH_KEY, keyboardSearchOn), never re-typed here; '1' = on, removed = off (the default). Nothing else to
-// apply: the iPod reads the flag live each time Music > Search opens, so a change needs no reload.
+// apply: the Click player reads the flag live each time Music > Search opens, so a change needs no reload.
 function pocketKbKey(w) {
   const MS = w && w.FileTubeMusicSkins;
   return MS && typeof MS.KB_SEARCH_KEY === 'string' ? MS.KB_SEARCH_KEY : null;
@@ -1654,7 +1654,7 @@ function wirePocketKbSearchControl(win, signal) {
     } catch (_) { /* storage disabled/full -- best-effort only */ }
   }, signal ? { signal } : undefined);
 }
-// The iPod portrait lock (Dean, 2026-10-07): Mobile player > Keep Pocket upright. Checked = upright (no key, the
+// The Pocket portrait lock (Dean, 2026-10-07): Mobile player > Keep Pocket upright. Checked = upright (no key, the
 // default); unchecked stores ft-pocket-sideways = '1'. Through FileTubeMusicSkins.setPocketSideways, which also re-marks
 // html.pk-upright at once (the SPA keeps one window, so the player opened next is already right).
 function loadPocketUprightControl(win) {
@@ -3546,7 +3546,7 @@ function wireStaticControls(signal) {
   wireNoTapGlyphControl(window, signal); // v1.362.3 (E3): the black-picture glyph A/B
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
-  wirePocketUprightControl(window, signal); // the iPod portrait lock: Mobile player > Keep Pocket upright
+  wirePocketUprightControl(window, signal); // the Pocket portrait lock: Mobile player > Keep Pocket upright
 
   // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
   // debug-lifecycle overlay above. Prefill from + persist via the common.js
@@ -5005,7 +5005,7 @@ async function loadEngineSection(signal) {
 }
 
 // ===== Click wheel test — the diagnostic's pure metering core =====
-// A device-local tool (Settings › Experimental) that reproduces the iPod
+// A device-local tool (Settings › Experimental) that reproduces the Click player
 // wheel's native "ghost switch" haptic so the tick behaviour can be felt AND
 // measured on a real phone. (An off-origin sandbox — e.g. a hosted artifact —
 // blocks the native switch, so this has to live in the app itself.)
@@ -5545,7 +5545,7 @@ function init(root) {
   loadNoTapGlyphControl(window); // v1.362.3 (E3)
   loadDebugRotateControl(window); // v1.355
   loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
-  loadPocketUprightControl(window); // the iPod portrait lock: Mobile player > Keep Pocket upright
+  loadPocketUprightControl(window); // the Pocket portrait lock: Mobile player > Keep Pocket upright
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
@@ -5626,7 +5626,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadEngineSection, applyMediaFetchGate, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace; v1.391.0: the mediaFetch gate on the page
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     wireServerAddressRow, // v1.384.0: the iOS app's Server address row
-    loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep Pocket upright
+    loadPocketUprightControl, wirePocketUprightControl, // the Pocket portrait lock: Mobile player > Keep Pocket upright
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch

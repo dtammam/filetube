@@ -533,41 +533,6 @@
    "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
   },
   {
-   "file": "README.md",
-   "text": "A lightweight, self-hosted media server with a nostalgic, classic-YouTube interface.",
-   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "looks and feels like the YouTube you remember - pick your era (2005, 2009,",
-   "reason": "names the external source site as the origin of the behaviour described (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "- **Classic YouTube experience** - grid home, uploader channels, star ratings, mock comments, and four era themes (2005 / 2009 / 2014 / 2021) with matching icon sets, plus light/dark mode.",
-   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "- **Downloaded music channels in the Music library** (optional, off by default) - if you download MP3s from music channels (game-music remixes, album mixes, and the like), turn this on to have them appear in the Music library too - grouped by channel, played through the music mini-player - without duplicating anything or removing them from your feed. Channels whose uploads are tagged \"Music\" appear automatically; a per-channel \"♪\" toggle includes the ones YouTube tags differently. Turn it on in Settings; it's per-account.",
-   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "- **Optional YouTube subscriptions (yt-dlp)** - off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)",
-   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "recognizes well-known yt-dlp sites (YouTube, Vimeo, SoundCloud, Twitch, TikTok,",
-   "reason": "names the external source site as the origin of the behaviour described (R5)"
-  },
-  {
-   "file": "README.md",
-   "text": "migration notes, YouTube subscriptions, cookies for members-only content,",
-   "reason": "names the external source site as the origin of the behaviour described (R5)"
-  },
-  {
    "file": "docs/CONFIGURATION.md",
    "text": "| `FILETUBE_YTDLP_PLAYER_CLIENT` | unset | Advanced: forces a specific YouTube player client (`--extractor-args youtube:player_client=<value>`), e.g. `web` or `android,web`. Unset by default - yt-dlp picks its own client(s). Only lowercase letters, digits, `_`, `,`, and `-` are accepted; anything else (or unset) means no flag is emitted. |",
    "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"

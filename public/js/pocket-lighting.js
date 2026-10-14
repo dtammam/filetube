@@ -521,7 +521,7 @@
       return turnVal;
     }
     function onOrient(e) {
-      // the Upright iPod (style.css POCKET STAYS UPRIGHT) is drawn turned back to the phone's own frame: the tilt maps by
+      // the Upright Click player (style.css POCKET STAYS UPRIGHT) is drawn turned back to the phone's own frame: the tilt maps by
       // the screen's angle PLUS the drawn turn (-90 at 90 = 0, the portrait mapping), never by the screen's angle alone
       var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win) + drawnTurn());
       if (!m) return;

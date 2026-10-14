@@ -795,7 +795,7 @@ function syntheticLibrary(seed) {
 // (v1.375.0: the series-first ladder for a seed with no real genre or a game genre, else v1.368.0's
 // genre tiers), the series words it found (each word's title count, channels and weight, and the
 // candidates it REJECTED), the game-music family's size, the nearest genres, the size of every tier per
-// entry point (the album page Radio / the iPod album row, a song's Start radio, Autoplay after the album,
+// entry point (the album page Radio / the Click player album row, a song's Start radio, Autoplay after the album,
 // and - from the play history - the album page Radio after the session that came before it), the first
 // batch's tiers over 50 draws, and a 10-batch session's tier path. `--why "<artist words>"` counts that
 // artist's picks (default: prince). On production: `node tools/radio-sim/bundle.js > radio-sim-bundle.js`,
@@ -846,7 +846,7 @@ function traceAlbum(list, args, radio, lib) {
     L.push('', `#${n} ${cut(key.replace('␟', ' / '), 90)}`);
     L.push(`   ${members.length} tracks, source ${[...new Set(members.map((t) => t.source))].join('/')}, folder ${JSON.stringify(cut([...new Set(members.map((t) => t.folderName))].join(','), 50))}, genres ${JSON.stringify([...new Set(members.map((t) => t.genre || ''))].slice(0, 4))}`);
     const entries = [
-      ['album page Radio / iPod album row', { kind: 'album', value: key }, { exclude: [], queued: ids }],
+      ['album page Radio / Click player album row', { kind: 'album', value: key }, { exclude: [], queued: ids }],
       ['song Start radio (1st song)', { kind: 'track', value: first.id }, { exclude: [], queued: ids }],
       ['Autoplay after the album', { kind: 'track', value: last.id }, { exclude: ids, queued: [] }],
     ];

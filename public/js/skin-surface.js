@@ -1,7 +1,7 @@
 'use strict';
 
 // Shared mobile-skin ENGINE (v1.246, Dean's podcasts-on-skin wave). The music view (music.js)
-// grew a battle-won iPod/Apple/Spotify skin surface over v1.227-246 - render + reflect + the
+// grew a battle-won Click/Cider/Nordic skin surface over v1.227-246 - render + reflect + the
 // click-wheel gesture (list cursor + timeline scrub) + transport proxying to the player's
 // hidden controls. Podcasts want the SAME surface, but music.js and podcasts.js are separate
 // page-scoped scripts, so the reusable engine lives HERE (loaded globally like music-skins.js)
@@ -802,7 +802,7 @@
     var getSkinId = o.getSkinId;
     var games = o.games || null; // the view's Brick hook {visible, onTap} - main document only (the engine decides)
     var lighting = o.lighting || null; // the engine's pocket-lighting driver (Settings > Lighting; null = no row)
-    // Settings > Stay Upright (the iPod portrait lock, R7): a phone only; the flag is music-skins.js's ft-pocket-sideways
+    // Settings > Stay Upright (the Pocket portrait lock, R7): a phone only; the flag is music-skins.js's ft-pocket-sideways
     function uprightAvailable() {
       try { return typeof SK.setPocketSideways === 'function' && doc.documentElement.classList.contains('is-phone'); } catch (_) { return false; }
     }
@@ -1475,7 +1475,7 @@
     }
 
     // ---- Addendum E: the cover DRIFT on the menu levels (Click) -----------------------------
-    // Dean: "on real iPods the art gently moves from right to left ... in some of the views, like
+    // Dean, paraphrased: on the real players the art gently moves from right to left ... in some of the views, like
     // the main views that are not the album that you picked". The 6G/7G main menus ran a slow
     // slideshow of random covers in the right pane: each cover pans gently (a CSS transform
     // transition on the image layer), then crossfades (opacity) to the next. Cheap by rule (the
@@ -1704,7 +1704,7 @@
         showNowPlaying();
         return;
       }
-      if (it.action === 'upright') { // Settings > Stay Upright (the iPod portrait lock, R7): flip it, re-list the level
+      if (it.action === 'upright') { // Settings > Stay Upright (the Pocket portrait lock, R7): flip it, re-list the level
         try { SK.setPocketSideways(uprightOn(), win); } catch (_) { /* storage best-effort */ }
         var up = curPane();
         if (up) up.state = 'idle';
@@ -2156,7 +2156,7 @@
     // --ip-turn on the WHEEL element only while the skin has a LOOK (gate r1 qa S3: on the wheel, not the
     // panel, so a turn restyles the wheel, not a 200-row queue). Every paint renders a fresh wheel, so no
     // other skin can ever carry it (qa S1); paint re-applies it to the Original's new wheel.
-    // v1.340: the disc it turns is now PLAIN, as on the real first iPod (Dean), so the turn draws
+    // v1.340: the disc it turns is now PLAIN, as on the real first Click player (Dean), so the turn draws
     // nothing visible; the write stays so a future look on the disc (a sheen, a mark) follows the thumb.
     var wheelTurn = 0;
     function skinLook() {
@@ -2168,7 +2168,7 @@
     // ---- v1.353 VOLUME (Speakers): while this device controls a speaker, a tap on the Now Playing time
     // labels (or the Speakers menu's Volume row) swaps the scrubber for the volume bar, and the wheel
     // turns the SPEAKER's player volume, 5% a detent, while it shows. ~2 s with no turn, MENU or Select
-    // puts the scrubbing wheel back (the iPod's own way back). The view supplies config.volume, an
+    // puts the scrubbing wheel back (the Click player's own way back). The view supplies config.volume, an
     // {available, level, set} hook; without it (local play, podcasts) nothing here ever shows and the Now
     // Playing wheel scrubs, as Dean ruled on 2026-09-02.
     var volumeCfg = (config.volume && typeof config.volume.available === 'function') ? config.volume : null;
@@ -2295,7 +2295,7 @@
       var next = Math.round(Math.min(1, Math.max(0, cur + sign * VOLUME_STEP)) * 100) / 100;
       if (next !== cur) setVolumeLevel(next);
     }
-    // Paint the level into every volume control on the panel: the iPod bar's fill, the Cider/Nordic row's. A level the speaker has not reported leaves them as rendered.
+    // Paint the level into every volume control on the panel: the Click player bar's fill, the Cider/Nordic row's. A level the speaker has not reported leaves them as rendered.
     function reflectVolume() {
       var v = volumeLevel();
       if (v === null || !panel) return;
@@ -2332,7 +2332,7 @@
       var frac = dur > 0 ? Math.min(100, Math.max(0, pos / dur * 100)) : 0;
       // reset to 0 while a track is LOADING (dur==0) instead of leaving the old fill (music parity).
       var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
-      // the iPod status-bar play indicator (music parity).
+      // the Click player status-bar play indicator (music parity).
       var pind = panel.querySelector('.mms-playind'); if (pind) pind.classList.toggle('is-paused', !!mp.paused); // UI pass S7 (F60): both drawn marks sit in one cell; the class picks which shows
       var posEl = panel.querySelector('.mms-pos'); if (posEl) posEl.textContent = fmtTime(pos);
       var remEl = panel.querySelector('.mms-rem'); if (remEl) remEl.textContent = dur > 0 ? ('-' + fmtTime(Math.max(0, dur - pos))) : '';
@@ -2701,8 +2701,8 @@
       list.unshift(id);
       try { window.localStorage.setItem(STICKER_RECENT_KEY, JSON.stringify(list.slice(0, 8))); } catch (_) { /* private mode: no history */ }
     }
-    function skinRowLabel(s) { // the group header names the line and generation: "5G White · 2005"
-      return s.line ? (s.gen + 'G ' + s.color + ' · ' + s.year) : s.label;
+    function skinRowLabel(s) { // the group header names the line; the row carries the generation and colour: "Slim 4 Red" (v1.391.0: no G, no year)
+      return s.label;
     }
     function renderSkins() {
       var body = sheetBody;
@@ -3193,7 +3193,7 @@
       }
     }
 
-    // ---- v1.232 marquee: overflowing title/artist/album lines scroll like a real iPod ----
+    // ---- v1.232 marquee: overflowing title/artist/album lines scroll like a real click-wheel player ----
     // Only when motion is allowed (else the line keeps its ellipsis). Wraps the text in a
     // .mms-mq span + sets the shift distance + a constant-speed duration as CSS vars; the
     // .mms-marquee keyframe animates it. textContent both ways -> no injection.
@@ -3249,7 +3249,7 @@
       for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
     }
 
-    // ---- move the list cursor to position `pos` (clamped); edge-follow scroll like an iPod ----
+    // ---- move the list cursor to position `pos` (clamped); edge-follow scroll like a Click player ----
     function setWheelCursor(pos, center) {
       var lv = panel && panel.querySelector('.ip-listview'); if (!lv) return;
       var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
@@ -3443,8 +3443,8 @@
       if (e.target.closest('[data-skin-voltap]')) { openVolume(); return; }
       var volEl = e.target.closest('[data-skin-vol]');
       if (volEl) {
-        // the level maps across the GROOVE (the iPod bar's .ip-vol-track; the Cider/Nordic bar is its own
-        // groove); a tap on the iPod bar's speaker icons only keeps the bar up (gate r1 adversary S1)
+        // the level maps across the GROOVE (the Click player bar's .ip-vol-track; the Cider/Nordic bar is its own
+        // groove); a tap on the Click player bar's speaker icons only keeps the bar up (gate r1 adversary S1)
         var groove = volEl.querySelector('.ip-vol-track') || volEl;
         if (groove !== volEl && !groove.contains(e.target)) { if (volOpen) armVolumeIdle(); return; }
         if (volumeLevel() !== null) {
@@ -3462,7 +3462,7 @@
       // v1.317 (M1): the artist line -> the view's artist drill. Both surfaces (the pop-out's
       // engine runs this too; the drill opens in the MAIN document, nothing window-bound).
       if (e.target.closest('[data-skin-artist]')) { if (onArtist) onArtist(); return; }
-      // v1.270: while a takeover holds the wheel, MENU is its way OUT (the iPod rule
+      // v1.270: while a takeover holds the wheel, MENU is its way OUT (the Click player rule
       // that MENU always backs out of wherever you are) and Select is its action
       // button. Both are folded INSIDE the existing single handler for their control
       // rather than added as earlier branches - a second handler silently stole the
@@ -3486,7 +3486,7 @@
           if (typeof wheelTakeover.onSelect === 'function') { try { wheelTakeover.onSelect(); } catch (_) { /* best effort */ } }
           return;
         }
-        if (volOpen) { closeVolume(); return; } // v1.353: the center goes back to the scrubber, as on the iPod
+        if (volOpen) { closeVolume(); return; } // v1.353: the center goes back to the scrubber, as on the Click player
         if (panel.classList.contains('mms-listmode')) {
           var cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
           var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
@@ -3522,7 +3522,7 @@
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: 2026-09-03-wheel-haptics.md.
     var WHEEL_CFG = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null; // v1.303: the wheel's source of truth (the Click wheel test writes it; read fresh per gesture below)
-    var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the iPod Classic"): 96 detents/rev, the Classic's own number
+    var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the Classic"): 96 detents/rev, the Classic's own number
     // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
     // should feel like the real thing"). Was 30, which pegged delivery at a FLAT ~30
     // ticks/second no matter how fast the wheel turned - 69% of the ticks a 1 rev/s
@@ -3596,7 +3596,7 @@
     // so covered taps sought 0:00.
     //
     // v1.267 (Dean, device-confirmed): the 7.5 CAP is gone. The 52x32 ghost scaled
-    // by 7.5 is 240px tall, but the iPod wheel is ~273px on a 390px phone - so a
+    // by 7.5 is 240px tall, but the Click player wheel is ~273px on a 390px phone - so a
     // ~16px strip along the TOP and BOTTOM of the wheel never armed the haptics.
     // The v1.256 adversarial seat RECORDED this exact residual (see
     // docs/exec-plans/active/2026-09-03-wheel-haptics.md) and left it for Dean; he
@@ -3739,7 +3739,7 @@
     // deepest element over a zone is its <svg> glyph, and WebKit's SVGElement has no
     // .click() (a tap would have been silently swallowed).
     var ghostDownPoint = null; // {x, y} of the last pointerdown that targeted the ghost
-    // The iPod portrait lock: with the Upright setting the full player is drawn turned back by the screen's angle, so a
+    // The Pocket portrait lock: with the Upright setting the full player is drawn turned back by the screen's angle, so a
     // finger's screen x/y must be turned into the player's own frame before it means "along the bar" or "where the
     // switch sits" (SKINS.turnOf reads the drawn turn; 0 = the unturned path, exactly as before).
     function panelTurn() { return (SKINS && typeof SKINS.turnOf === 'function') ? SKINS.turnOf(panel, win) : 0; }
@@ -4264,7 +4264,7 @@
   function createPopoutShell(cfg) {
     var W = 380, H = 700; // ~phone size; mount() marks the window html.mms-popout, which the skin takeover CSS keys on (D7)
     // v1.257 TRAY PLAYER (Dean, screenshot-validated): an optional Nano presentation
-    // parked above the taskbar. Tray = the IPOD skin's LCD sans wheel, reshaped by CSS
+    // parked above the taskbar. Tray = the CLICK skin's LCD sans wheel, reshaped by CSS
     // (the engine is untouched); the marker class lives on the PIP BODY because engine.paint()
     // rebuilds the panel's className every render. Position/z-order are the OS's: the
     // pip window is always-on-top over apps, the taskbar outranks it, and Chrome
@@ -4321,7 +4321,7 @@
       var tray = trayOn();
       if (tray) { try { doc.body.classList.add('mms-tray'); } catch (_) { /* best-effort */ } }
       var ec = cfg.engineConfigFor(panel, win);
-      // v1.257: tray borrows the IPOD skin's DOM (Dean's Nano-5g reference: the tray IS
+      // v1.257: tray borrows the CLICK skin's DOM (Dean's Nano-5g reference: the tray IS
       // a Classic LCD without the wheel). v1.258 (his feel round, "a few colorways -
       // black/white"): an ipod-FAMILY pick keeps its VARIANT - the family's silver and
       // black body palettes ARE the colorways - and anything else falls to base silver.

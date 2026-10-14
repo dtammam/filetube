@@ -1,6 +1,6 @@
 // FileTube wheel config - the SINGLE source of truth for the click-wheel haptic
 // behaviour, shared by the "Click wheel test" diagnostic (setup.js, which WRITES it)
-// and the real mobile iPod wheel (skin-surface.js, which READS it on every skin
+// and the real mobile Click player wheel (skin-surface.js, which READS it on every skin
 // mount). Before v1.303 the two carried DUPLICATE constants kept in sync by hand
 // (setup.js WHEEL_CAL "== skin-surface.js ..."), the exact drift scar this module
 // kills: both now source their constants + live config from here, so they cannot

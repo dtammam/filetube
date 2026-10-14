@@ -6,6 +6,9 @@
 //      its {file, text} is listed in docs/brand-references.json (shrink-only, each with a reason), or the file is under a
 //      listed glob (lib/ytdlp/**, the downloader module that names its source by design). A stale entry fails too, so the
 //      list can only shrink. Identifiers (isYouTube, youtubeId, YOUTUBE_ITEM_RE, youtube.com) never match the word regex.
+//   2. The Apple music player's name has NO allowlist: zero hits in the scanned set (the Pocket comments live in tools/ and
+//      scripts/ too). Identifiers (the lowercase hyphenated ipod-brick, ipod-red: class names, ids, filenames, string
+//      literals, R4) are excluded by the lookarounds of the regex; prose in any capitalisation is not.
 // The regex is proven to bind by mutation (plan Evidence): put "YouTube-style" back into setup.html and this file goes red.
 
 const { test } = require('node:test');
@@ -31,6 +34,7 @@ function walk(rel, out) {
 }
 
 // What the brand guard scans (plan W2.3).
+const POCKET_EXTRA = ['tools', 'scripts', 'docs/CONTRIBUTING.md'];
 const BRAND_ROOTS = ['public', 'lib', 'server.js', 'roku', 'README.md', 'FEATURES.md', '.env.example', 'docker-compose.yml',
   'Dockerfile', 'package.json', 'docs/CONFIGURATION.md', 'docs/ARCHITECTURE.md'];
 
@@ -41,6 +45,8 @@ function scanSet(roots) {
 }
 
 const YT = /\bYouTube\b/;
+// Narrowed from the plan's /iPod|IPOD|\bipods?\b(?![-_])/ (it misfired on real identifiers: `.mms-ipod`, 'ipod', `ipod:`).
+const IPOD = /(?<![\w.#'"`/=[$@^-])ipods?(?![\w'"`$:-])/i;
 
 function globToRe(g) {
   return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '@@ANY@@').replace(/\*/g, '[^/]*').replace(/@@ANY@@/g, '.*') + '$');
@@ -90,4 +96,14 @@ test('the allowlist only shrinks: an entry whose line is gone (or reworded) must
 test('the YouTube regex lets identifiers through and catches prose (so the zero above cannot pass by never matching)', () => {
   for (const bad of ['YouTube-style rows', 'the YouTube convention', 'Modern YouTube Mode']) assert.ok(YT.test(bad), bad);
   for (const ok of ['isYouTube', 'youtubeId', 'YOUTUBE_ITEM_RE', 'https://www.youtube.com/watch']) assert.ok(!YT.test(ok), ok);
+});
+
+test('the Apple music player\'s name appears nowhere (no allowlist)', () => {
+  const bad = hits(scanSet(BRAND_ROOTS.concat(POCKET_EXTRA)), IPOD);
+  assert.deepStrictEqual(bad.map((h) => `${h.file}:${h.line}  ${h.text.slice(0, 110)}`), []);
+});
+
+test('the iPod regex lets identifiers through and catches prose (so the zero above cannot pass by never matching)', () => {
+  for (const ok of ['.ipod-red { }', "'ipod-brick.js'", 'data-ipod_skin', 'ipod-nano-1', ".mms-ipod .mms-pos", "base: 'ipod',", 'ipod: \'Retro\'', 'renderIpod(ctx)', '/^ipod/.test(x)', 'a.replace(/^ipod$/, 1)', '`ipod`']) assert.ok(!IPOD.test(ok), ok);
+  for (const bad of ['the iPod look', 'IPOD', 'IPod 1Gen.jpg', 'an ipod skin', 'the ipod.', '/* iPod true-up */', 'iPods never']) assert.ok(IPOD.test(bad), bad);
 });

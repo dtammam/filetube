@@ -54,7 +54,7 @@
   function prevGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>'; }
   function nextGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>'; }
   function shuffleGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 4l4 4-4 4V9h-2.2l-2.3 2.9-1.3-1.6L14.4 7H18V4zM2 7h4.2l8.6 10H18v-3l4 4-4 4v-3h-4.4L5 9H2V7zm0 10h4.2l1.9-2.3 1.3 1.6L7.1 19H2v-2z"/></svg>'; }
-  // iPod click-wheel glyphs (clean gray line-icons, NOT unicode - which iOS renders as
+  // Click player click-wheel glyphs (clean gray line-icons, NOT unicode - which iOS renders as
   // blue emoji): |<< rewind, >>| fast-forward, and the classic >|| play/pause.
   function ipRwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h1.8v12H4zM13 6v12l-6-6zM21 6v12l-6-6z"/></svg>'; }
   function ipFfwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6v12l6-6zM11 6v12l6-6zM18.2 6H20v12h-1.8z"/></svg>'; }
@@ -101,12 +101,12 @@
       '<path class="ip-vol-w ip-vol-w2" d="M34 13.5a14 14 0 0 1 0 21"/>' +
       '<path class="ip-vol-w ip-vol-w3" d="M38 8.5a20.5 20.5 0 0 1 0 31"/></svg>';
   }
-  // v1.353: the remote volume, shared by the iPod volume bar and the Cider/Nordic row. A level the PC has not
+  // v1.353: the remote volume, shared by the Click player volume bar and the Cider/Nordic row. A level the PC has not
   // reported (null) shows nothing to drive: the renderers draw no volume control at all.
   function volLevel(ctx) { var v = ctx && ctx.volume; return (typeof v === 'number' && isFinite(v)) ? Math.min(1, Math.max(0, v)) : null; }
   function volAria(v) { return 'role="slider" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(v * 100) + '" tabindex="0"'; }
-  // The real iPod's volume bar: it takes the scrubber's place on Now Playing (a quiet speaker, the
-  // same glassy groove and blue fill as the scrubber, a loud speaker). No box: the iPods never drew one.
+  // The real click-wheel player's volume bar: it takes the scrubber's place on Now Playing (a quiet speaker, the
+  // same glassy groove and blue fill as the scrubber, a loud speaker). No box: those players never drew one.
   function ipVolBar(ctx) {
     var v = volLevel(ctx);
     if (v === null) return '';
@@ -165,7 +165,7 @@
   // unreliable on-device, and a v1.229 account-menu picker often never appeared
   // because the menu builds once and not every shell loaded this module - now it's
   // loaded on every app shell). This module owns the registry + the per-device setting.
-  // withThumb=Spotify (album-art thumb + stacked title/artist); else=iPod (track
+  // withThumb=Spotify (album-art thumb + stacked title/artist); else=Click player (track
   // number + title + duration + a chevron, the classic list row).
   function goRows(ctx, withThumb, list) {
     var u = artUrl(ctx);
@@ -240,7 +240,7 @@
       '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
-  // IPOD - the real Classic. A black-bezelled LCD with the authentic Now Playing
+  // CLICK - the real Classic. A black-bezelled LCD with the authentic Now Playing
   // screen (cover left, title/artist/album/stars/N-of-M right, Aqua scrubber) OR the
   // song list (Select flips to it, tap a row to play); below, the gray click wheel.
   // The wheel has TAP zones AND a real rotary SCROLL (v1.233, music.js): MENU=back/exit,
@@ -250,7 +250,7 @@
   // SCRUBS (Dean 2026-09-02, every surface); v1.353: while this phone controls a speaker, a tap
   // on the time labels brings up the volume bar and the wheel turns the SPEAKER's volume
   // until it goes (skin-surface.js). Play STATE shows in the status bar.
-  // The shared iPod SCREEN (LCD + list) - every Click colorway renders it, so the list-view
+  // The shared Click player SCREEN (LCD + list) - every Click colorway renders it, so the list-view
   // flip, scrub, reflect and marquee machinery is identical.
   function ipScreen(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
@@ -292,9 +292,11 @@
       '</div></div>';
   }
 
-  // Labels: the iPod colorways use real model names ("Nano 4G Orange (2008)", Dean 2026-09-29);
-  // Cider (Apple Music - apple->cider) and Nordic (Spotify - its Swedish roots) stay CHEEKY riffs,
-  // deliberately NOT the real product/company names. The ids stay literal for CSS/storage.
+  // Labels: every Click colorway reads "<line> <generation> <colour>" in our own words ("Slim 4 Orange"; v1.391.0, R7-R9:
+  // the lines are Classic, Mini, Slim, Clip, Touch, Custom, the generations are plain numbers in order inside each line, a
+  // colour shared inside one line and generation takes an ordinal, "Blue", "Blue 2"). `year` stays as data; nothing renders it.
+  // Cider and Nordic are cheeky riffs, deliberately NOT real product or company names. The ids stay literal for CSS/storage
+  // (a saved skin choice keeps resolving), and so do the `line` keys ('nano', 'shuffle').
   // Pocket menus (2026-09-24): `menus` names the POCKET MENU style a skin carries ('click' =
   // the 6G split screen). It lives ON the registry entry - the
   // one list a new skin is added to - so a new Click colorway that copies an entry carries its
@@ -303,134 +305,134 @@
   var SKINS = [
     { id: 'apple', label: 'Cider', renderFull: renderApple },
     { id: 'spotify', label: 'Nordic', renderFull: renderSpotify },
-    { id: 'ipod-2004', label: 'Classic 4G White (2004)', line: 'classic', gen: 4, year: '2004', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-encore', label: 'Classic 4G Special Edition (2004)', line: 'classic', gen: 4, year: '2004', color: 'Special Edition', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod', label: 'Classic 5G White (2005)', line: 'classic', gen: 5, year: '2005', color: 'White', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-black', label: 'Classic 5G Black (2005)', line: 'classic', gen: 5, year: '2005', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-silver', label: 'Classic 6G Silver (2007)', line: 'classic', gen: 6, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-charcoal', label: 'Classic 6G Black (2007)', line: 'classic', gen: 6, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-matte', label: 'Classic 6G Black (2008)', line: 'classic', gen: 6, year: '2008', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-frost', label: 'Mini 1G Silver (2004)', line: 'mini', gen: 1, year: '2004', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-gold', label: 'Mini 1G Gold (2004)', line: 'mini', gen: 1, year: '2004', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-sky', label: 'Mini 1G Blue (2004)', line: 'mini', gen: 1, year: '2004', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-blush', label: 'Mini 1G Pink (2004)', line: 'mini', gen: 1, year: '2004', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-olive', label: 'Mini 1G Green (2004)', line: 'mini', gen: 1, year: '2004', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-blue', label: 'Mini 2G Blue (2005)', line: 'mini', gen: 2, year: '2005', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-green', label: 'Mini 2G Green (2005)', line: 'mini', gen: 2, year: '2005', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-pink', label: 'Mini 2G Pink (2005)', line: 'mini', gen: 2, year: '2005', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-mini2-silver', label: 'Mini 2G Silver (2005)', line: 'mini', gen: 2, year: '2005', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-lime', label: 'Nano 2G Green (2006)', line: 'nano', gen: 2, year: '2006', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-cobalt', label: 'Nano 2G Blue (2006)', line: 'nano', gen: 2, year: '2006', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-magenta', label: 'Nano 2G Pink (2006)', line: 'nano', gen: 2, year: '2006', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-red', label: 'Nano 2G Red (2006)', line: 'nano', gen: 2, year: '2006', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano2-silver', label: 'Nano 2G Silver (2006)', line: 'nano', gen: 2, year: '2006', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano2-black', label: 'Nano 2G Black (2006)', line: 'nano', gen: 2, year: '2006', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano3-silver', label: 'Nano 3G Silver (2007)', line: 'nano', gen: 3, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano3-blue', label: 'Nano 3G Blue (2007)', line: 'nano', gen: 3, year: '2007', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano3-green', label: 'Nano 3G Green (2007)', line: 'nano', gen: 3, year: '2007', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano3-red', label: 'Nano 3G Red (2007)', line: 'nano', gen: 3, year: '2007', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-raspberry', label: 'Nano 3G Pink (2008)', line: 'nano', gen: 3, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano3-black', label: 'Nano 3G Black (2007)', line: 'nano', gen: 3, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-blue', label: 'Nano 4G Blue (2008)', line: 'nano', gen: 4, year: '2008', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-violet', label: 'Nano 4G Purple (2008)', line: 'nano', gen: 4, year: '2008', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-orange', label: 'Nano 4G Orange (2008)', line: 'nano', gen: 4, year: '2008', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-yellow', label: 'Nano 4G Yellow (2008)', line: 'nano', gen: 4, year: '2008', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-silver', label: 'Nano 4G Silver (2008)', line: 'nano', gen: 4, year: '2008', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-green', label: 'Nano 4G Green (2008)', line: 'nano', gen: 4, year: '2008', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-pink', label: 'Nano 4G Pink (2008)', line: 'nano', gen: 4, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-black', label: 'Nano 4G Black (2008)', line: 'nano', gen: 4, year: '2008', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano4-red', label: 'Nano 4G Red (2008)', line: 'nano', gen: 4, year: '2008', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-green', label: 'Nano 5G Green (2009)', line: 'nano', gen: 5, year: '2009', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-orange', label: 'Nano 5G Orange (2009)', line: 'nano', gen: 5, year: '2009', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-pink', label: 'Nano 5G Pink (2009)', line: 'nano', gen: 5, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-silver', label: 'Nano 5G Silver (2009)', line: 'nano', gen: 5, year: '2009', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-blue', label: 'Nano 5G Blue (2009)', line: 'nano', gen: 5, year: '2009', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-purple', label: 'Nano 5G Purple (2009)', line: 'nano', gen: 5, year: '2009', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-yellow', label: 'Nano 5G Yellow (2009)', line: 'nano', gen: 5, year: '2009', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-black', label: 'Nano 5G Black (2009)', line: 'nano', gen: 5, year: '2009', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano5-red', label: 'Nano 5G Red (2009)', line: 'nano', gen: 5, year: '2009', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-green', label: 'Nano 6G Green (2010)', line: 'nano', gen: 6, year: '2010', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-orange', label: 'Nano 6G Orange (2010)', line: 'nano', gen: 6, year: '2010', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-pink', label: 'Nano 6G Pink (2010)', line: 'nano', gen: 6, year: '2010', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-silver', label: 'Nano 6G Silver (2010)', line: 'nano', gen: 6, year: '2010', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-graphite', label: 'Nano 6G Graphite (2010)', line: 'nano', gen: 6, year: '2010', color: 'Graphite', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-blue', label: 'Nano 6G Blue (2010)', line: 'nano', gen: 6, year: '2010', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano6-red', label: 'Nano 6G Red (2010)', line: 'nano', gen: 6, year: '2010', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-pink', label: 'Nano 7G Pink (2012)', line: 'nano', gen: 7, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-yellow', label: 'Nano 7G Yellow (2012)', line: 'nano', gen: 7, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-blue', label: 'Nano 7G Blue (2015)', line: 'nano', gen: 7, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-green', label: 'Nano 7G Green (2012)', line: 'nano', gen: 7, year: '2012', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-purple', label: 'Nano 7G Purple (2012)', line: 'nano', gen: 7, year: '2012', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-slate', label: 'Nano 7G Slate (2012)', line: 'nano', gen: 7, year: '2012', color: 'Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-red', label: 'Nano 7G Red (2012)', line: 'nano', gen: 7, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-spacegray', label: 'Nano 7G Space Gray (2013)', line: 'nano', gen: 7, year: '2013', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-gold', label: 'Nano 7G Gold (2015)', line: 'nano', gen: 7, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-blue-2012', label: 'Nano 7G Blue (2012)', line: 'nano', gen: 7, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-silver', label: 'Nano 7G Silver (2012)', line: 'nano', gen: 7, year: '2012', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-spacegray-2015', label: 'Nano 7G Space Gray (2015)', line: 'nano', gen: 7, year: '2015', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-pink-2015', label: 'Nano 7G Pink (2015)', line: 'nano', gen: 7, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano7-red-2015', label: 'Nano 7G Red (2015)', line: 'nano', gen: 7, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-purple', label: 'Shuffle 2G Purple (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-green', label: 'Shuffle 2G Green (2008)', line: 'shuffle', gen: 2, year: '2008', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-gold', label: 'Shuffle 2G Gold (2009)', line: 'shuffle', gen: 2, year: '2009', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-silver', label: 'Shuffle 2G Silver (2005)', line: 'shuffle', gen: 2, year: '2005', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-pink', label: 'Shuffle 2G Pink (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-green-2007', label: 'Shuffle 2G Green (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-blue', label: 'Shuffle 2G Blue (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-orange', label: 'Shuffle 2G Orange (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-teal', label: 'Shuffle 2G Teal (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Teal', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-red', label: 'Shuffle 2G Red (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-lightgreen', label: 'Shuffle 2G Light Green (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Light Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-blue-2008', label: 'Shuffle 2G Blue (2008)', line: 'shuffle', gen: 2, year: '2008', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-red-2008', label: 'Shuffle 2G Red (2008)', line: 'shuffle', gen: 2, year: '2008', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle2-pink-2008', label: 'Shuffle 2G Pink (2008)', line: 'shuffle', gen: 2, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-pink', label: 'Shuffle 3G Pink (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-blue', label: 'Shuffle 3G Blue (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-silver', label: 'Shuffle 3G Silver (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-black', label: 'Shuffle 3G Black (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-green', label: 'Shuffle 3G Green (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle3-stainlesssteel', label: 'Shuffle 3G Stainless Steel (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Stainless Steel', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-blue', label: 'Shuffle 4G Blue (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-silver', label: 'Shuffle 4G Silver (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-green', label: 'Shuffle 4G Green (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-orange', label: 'Shuffle 4G Orange (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-pink', label: 'Shuffle 4G Pink (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-pink-2012', label: 'Shuffle 4G Pink (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-yellow', label: 'Shuffle 4G Yellow (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-blue-2012', label: 'Shuffle 4G Blue (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-green-2012', label: 'Shuffle 4G Green (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-purple', label: 'Shuffle 4G Purple (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-silver-2012', label: 'Shuffle 4G Silver (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-slate', label: 'Shuffle 4G Slate (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-red', label: 'Shuffle 4G Red (2012)', line: 'shuffle', gen: 4, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-spacegray', label: 'Shuffle 4G Space Gray (2013)', line: 'shuffle', gen: 4, year: '2013', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-gold', label: 'Shuffle 4G Gold (2015)', line: 'shuffle', gen: 4, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-spacegray-2015', label: 'Shuffle 4G Space Gray (2015)', line: 'shuffle', gen: 4, year: '2015', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-blue-2015', label: 'Shuffle 4G Blue (2015)', line: 'shuffle', gen: 4, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-pink-2015', label: 'Shuffle 4G Pink (2015)', line: 'shuffle', gen: 4, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle4-red-2015', label: 'Shuffle 4G Red (2015)', line: 'shuffle', gen: 4, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-shuffle1-white', label: 'Shuffle 1G White (2005)', line: 'shuffle', gen: 1, year: '2005', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano1-black', label: 'Nano 1G Black (2005)', line: 'nano', gen: 1, year: '2005', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-nano1-white', label: 'Nano 1G White (2005)', line: 'nano', gen: 1, year: '2005', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch1-black', label: 'Touch 1G-3G Black (2007)', line: 'touch', gen: 1, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch4-black', label: 'Touch 4G Black (2010)', line: 'touch', gen: 4, year: '2010', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch4-white', label: 'Touch 4G White (2011)', line: 'touch', gen: 4, year: '2011', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-blackandslate', label: 'Touch 5G Black and Slate (2012)', line: 'touch', gen: 5, year: '2012', color: 'Black and Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-whiteandsilver', label: 'Touch 5G White and Silver (2012)', line: 'touch', gen: 5, year: '2012', color: 'White and Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-pink', label: 'Touch 5G Pink (2012)', line: 'touch', gen: 5, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-yellow', label: 'Touch 5G Yellow (2012)', line: 'touch', gen: 5, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-blue', label: 'Touch 5G Blue (2012)', line: 'touch', gen: 5, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-red', label: 'Touch 5G Red (2012)', line: 'touch', gen: 5, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch5-spacegray', label: 'Touch 5G Space Gray (2013)', line: 'touch', gen: 5, year: '2013', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-blue', label: 'Touch 6G-7G Blue (2015)', line: 'touch', gen: 6, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-silver', label: 'Touch 6G-7G Silver (2015)', line: 'touch', gen: 6, year: '2015', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-gold', label: 'Touch 6G-7G Gold (2015)', line: 'touch', gen: 6, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-spacegray', label: 'Touch 6G-7G Space Gray (2015)', line: 'touch', gen: 6, year: '2015', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-pink', label: 'Touch 6G-7G Pink (2015)', line: 'touch', gen: 6, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-touch6-red', label: 'Touch 6G-7G Red (2015)', line: 'touch', gen: 6, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-custom5-transparent', label: 'Custom 5G Transparent (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-custom5-transparent-black', label: 'Custom 5G Transparent Black (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-custom5-transparent-coil', label: 'Custom 5G Transparent Coil (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent Coil', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-2004', label: 'Classic 1 White', line: 'classic', gen: 4, year: '2004', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-encore', label: 'Classic 1 Special Edition', line: 'classic', gen: 4, year: '2004', color: 'Special Edition', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod', label: 'Classic 2 White', line: 'classic', gen: 5, year: '2005', color: 'White', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-black', label: 'Classic 2 Black', line: 'classic', gen: 5, year: '2005', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-silver', label: 'Classic 3 Silver', line: 'classic', gen: 6, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-charcoal', label: 'Classic 3 Black', line: 'classic', gen: 6, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-matte', label: 'Classic 3 Black 2', line: 'classic', gen: 6, year: '2008', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-frost', label: 'Mini 1 Silver', line: 'mini', gen: 1, year: '2004', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-gold', label: 'Mini 1 Gold', line: 'mini', gen: 1, year: '2004', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-sky', label: 'Mini 1 Blue', line: 'mini', gen: 1, year: '2004', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blush', label: 'Mini 1 Pink', line: 'mini', gen: 1, year: '2004', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-olive', label: 'Mini 1 Green', line: 'mini', gen: 1, year: '2004', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blue', label: 'Mini 2 Blue', line: 'mini', gen: 2, year: '2005', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-green', label: 'Mini 2 Green', line: 'mini', gen: 2, year: '2005', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-pink', label: 'Mini 2 Pink', line: 'mini', gen: 2, year: '2005', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-mini2-silver', label: 'Mini 2 Silver', line: 'mini', gen: 2, year: '2005', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-lime', label: 'Slim 2 Green', line: 'nano', gen: 2, year: '2006', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-cobalt', label: 'Slim 2 Blue', line: 'nano', gen: 2, year: '2006', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-magenta', label: 'Slim 2 Pink', line: 'nano', gen: 2, year: '2006', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-red', label: 'Slim 2 Red', line: 'nano', gen: 2, year: '2006', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano2-silver', label: 'Slim 2 Silver', line: 'nano', gen: 2, year: '2006', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano2-black', label: 'Slim 2 Black', line: 'nano', gen: 2, year: '2006', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-silver', label: 'Slim 3 Silver', line: 'nano', gen: 3, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-blue', label: 'Slim 3 Blue', line: 'nano', gen: 3, year: '2007', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-green', label: 'Slim 3 Green', line: 'nano', gen: 3, year: '2007', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-red', label: 'Slim 3 Red', line: 'nano', gen: 3, year: '2007', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-raspberry', label: 'Slim 3 Pink', line: 'nano', gen: 3, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-black', label: 'Slim 3 Black', line: 'nano', gen: 3, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-blue', label: 'Slim 4 Blue', line: 'nano', gen: 4, year: '2008', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-violet', label: 'Slim 4 Purple', line: 'nano', gen: 4, year: '2008', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-orange', label: 'Slim 4 Orange', line: 'nano', gen: 4, year: '2008', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-yellow', label: 'Slim 4 Yellow', line: 'nano', gen: 4, year: '2008', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-silver', label: 'Slim 4 Silver', line: 'nano', gen: 4, year: '2008', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-green', label: 'Slim 4 Green', line: 'nano', gen: 4, year: '2008', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-pink', label: 'Slim 4 Pink', line: 'nano', gen: 4, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-black', label: 'Slim 4 Black', line: 'nano', gen: 4, year: '2008', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-red', label: 'Slim 4 Red', line: 'nano', gen: 4, year: '2008', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-green', label: 'Slim 5 Green', line: 'nano', gen: 5, year: '2009', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-orange', label: 'Slim 5 Orange', line: 'nano', gen: 5, year: '2009', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-pink', label: 'Slim 5 Pink', line: 'nano', gen: 5, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-silver', label: 'Slim 5 Silver', line: 'nano', gen: 5, year: '2009', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-blue', label: 'Slim 5 Blue', line: 'nano', gen: 5, year: '2009', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-purple', label: 'Slim 5 Purple', line: 'nano', gen: 5, year: '2009', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-yellow', label: 'Slim 5 Yellow', line: 'nano', gen: 5, year: '2009', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-black', label: 'Slim 5 Black', line: 'nano', gen: 5, year: '2009', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-red', label: 'Slim 5 Red', line: 'nano', gen: 5, year: '2009', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-green', label: 'Slim 6 Green', line: 'nano', gen: 6, year: '2010', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-orange', label: 'Slim 6 Orange', line: 'nano', gen: 6, year: '2010', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-pink', label: 'Slim 6 Pink', line: 'nano', gen: 6, year: '2010', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-silver', label: 'Slim 6 Silver', line: 'nano', gen: 6, year: '2010', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-graphite', label: 'Slim 6 Graphite', line: 'nano', gen: 6, year: '2010', color: 'Graphite', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-blue', label: 'Slim 6 Blue', line: 'nano', gen: 6, year: '2010', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-red', label: 'Slim 6 Red', line: 'nano', gen: 6, year: '2010', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-pink', label: 'Slim 7 Pink', line: 'nano', gen: 7, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-yellow', label: 'Slim 7 Yellow', line: 'nano', gen: 7, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-blue', label: 'Slim 7 Blue', line: 'nano', gen: 7, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-green', label: 'Slim 7 Green', line: 'nano', gen: 7, year: '2012', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-purple', label: 'Slim 7 Purple', line: 'nano', gen: 7, year: '2012', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-slate', label: 'Slim 7 Slate', line: 'nano', gen: 7, year: '2012', color: 'Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-red', label: 'Slim 7 Red', line: 'nano', gen: 7, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-spacegray', label: 'Slim 7 Dark Gray', line: 'nano', gen: 7, year: '2013', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-gold', label: 'Slim 7 Gold', line: 'nano', gen: 7, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-blue-2012', label: 'Slim 7 Blue 2', line: 'nano', gen: 7, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-silver', label: 'Slim 7 Silver', line: 'nano', gen: 7, year: '2012', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-spacegray-2015', label: 'Slim 7 Dark Gray 2', line: 'nano', gen: 7, year: '2015', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-pink-2015', label: 'Slim 7 Pink 2', line: 'nano', gen: 7, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-red-2015', label: 'Slim 7 Red 2', line: 'nano', gen: 7, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-purple', label: 'Clip 2 Purple', line: 'shuffle', gen: 2, year: '2007', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-green', label: 'Clip 2 Green', line: 'shuffle', gen: 2, year: '2008', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-gold', label: 'Clip 2 Gold', line: 'shuffle', gen: 2, year: '2009', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-silver', label: 'Clip 2 Silver', line: 'shuffle', gen: 2, year: '2005', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-pink', label: 'Clip 2 Pink', line: 'shuffle', gen: 2, year: '2007', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-green-2007', label: 'Clip 2 Green 2', line: 'shuffle', gen: 2, year: '2007', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-blue', label: 'Clip 2 Blue', line: 'shuffle', gen: 2, year: '2007', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-orange', label: 'Clip 2 Orange', line: 'shuffle', gen: 2, year: '2007', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-teal', label: 'Clip 2 Teal', line: 'shuffle', gen: 2, year: '2007', color: 'Teal', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-red', label: 'Clip 2 Red', line: 'shuffle', gen: 2, year: '2007', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-lightgreen', label: 'Clip 2 Light Green', line: 'shuffle', gen: 2, year: '2007', color: 'Light Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-blue-2008', label: 'Clip 2 Blue 2', line: 'shuffle', gen: 2, year: '2008', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-red-2008', label: 'Clip 2 Red 2', line: 'shuffle', gen: 2, year: '2008', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-pink-2008', label: 'Clip 2 Pink 2', line: 'shuffle', gen: 2, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-pink', label: 'Clip 3 Pink', line: 'shuffle', gen: 3, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-blue', label: 'Clip 3 Blue', line: 'shuffle', gen: 3, year: '2009', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-silver', label: 'Clip 3 Silver', line: 'shuffle', gen: 3, year: '2009', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-black', label: 'Clip 3 Black', line: 'shuffle', gen: 3, year: '2009', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-green', label: 'Clip 3 Green', line: 'shuffle', gen: 3, year: '2009', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-stainlesssteel', label: 'Clip 3 Stainless Steel', line: 'shuffle', gen: 3, year: '2009', color: 'Stainless Steel', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-blue', label: 'Clip 4 Blue', line: 'shuffle', gen: 4, year: '2010', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-silver', label: 'Clip 4 Silver', line: 'shuffle', gen: 4, year: '2010', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-green', label: 'Clip 4 Green', line: 'shuffle', gen: 4, year: '2010', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-orange', label: 'Clip 4 Orange', line: 'shuffle', gen: 4, year: '2010', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-pink', label: 'Clip 4 Pink', line: 'shuffle', gen: 4, year: '2010', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-pink-2012', label: 'Clip 4 Pink 2', line: 'shuffle', gen: 4, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-yellow', label: 'Clip 4 Yellow', line: 'shuffle', gen: 4, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-blue-2012', label: 'Clip 4 Blue 2', line: 'shuffle', gen: 4, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-green-2012', label: 'Clip 4 Green 2', line: 'shuffle', gen: 4, year: '2012', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-purple', label: 'Clip 4 Purple', line: 'shuffle', gen: 4, year: '2012', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-silver-2012', label: 'Clip 4 Silver 2', line: 'shuffle', gen: 4, year: '2012', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-slate', label: 'Clip 4 Slate', line: 'shuffle', gen: 4, year: '2012', color: 'Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-red', label: 'Clip 4 Red', line: 'shuffle', gen: 4, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-spacegray', label: 'Clip 4 Dark Gray', line: 'shuffle', gen: 4, year: '2013', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-gold', label: 'Clip 4 Gold', line: 'shuffle', gen: 4, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-spacegray-2015', label: 'Clip 4 Dark Gray 2', line: 'shuffle', gen: 4, year: '2015', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-blue-2015', label: 'Clip 4 Blue 3', line: 'shuffle', gen: 4, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-pink-2015', label: 'Clip 4 Pink 3', line: 'shuffle', gen: 4, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-red-2015', label: 'Clip 4 Red 2', line: 'shuffle', gen: 4, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle1-white', label: 'Clip 1 White', line: 'shuffle', gen: 1, year: '2005', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano1-black', label: 'Slim 1 Black', line: 'nano', gen: 1, year: '2005', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano1-white', label: 'Slim 1 White', line: 'nano', gen: 1, year: '2005', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch1-black', label: 'Touch 1 Black', line: 'touch', gen: 1, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch4-black', label: 'Touch 2 Black', line: 'touch', gen: 4, year: '2010', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch4-white', label: 'Touch 2 White', line: 'touch', gen: 4, year: '2011', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-blackandslate', label: 'Touch 3 Black and Slate', line: 'touch', gen: 5, year: '2012', color: 'Black and Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-whiteandsilver', label: 'Touch 3 White and Silver', line: 'touch', gen: 5, year: '2012', color: 'White and Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-pink', label: 'Touch 3 Pink', line: 'touch', gen: 5, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-yellow', label: 'Touch 3 Yellow', line: 'touch', gen: 5, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-blue', label: 'Touch 3 Blue', line: 'touch', gen: 5, year: '2012', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-red', label: 'Touch 3 Red', line: 'touch', gen: 5, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch5-spacegray', label: 'Touch 3 Dark Gray', line: 'touch', gen: 5, year: '2013', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-blue', label: 'Touch 4 Blue', line: 'touch', gen: 6, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-silver', label: 'Touch 4 Silver', line: 'touch', gen: 6, year: '2015', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-gold', label: 'Touch 4 Gold', line: 'touch', gen: 6, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-spacegray', label: 'Touch 4 Dark Gray', line: 'touch', gen: 6, year: '2015', color: 'Dark Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-pink', label: 'Touch 4 Pink', line: 'touch', gen: 6, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-touch6-red', label: 'Touch 4 Red', line: 'touch', gen: 6, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-custom5-transparent', label: 'Custom Transparent', line: 'custom', gen: 5, year: '2005', color: 'Transparent', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-custom5-transparent-black', label: 'Custom Transparent Black', line: 'custom', gen: 5, year: '2005', color: 'Transparent Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-custom5-transparent-coil', label: 'Custom Transparent Coil', line: 'custom', gen: 5, year: '2005', color: 'Transparent Coil', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-original', label: 'Click (Original)', base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
@@ -442,15 +444,20 @@
   function clickColorways() { return SKINS.filter(function (s) { return s.menus === 'click'; }).map(function (s) { return s.id; }); }
   function isClickColorway(id) { return typeof id === 'string' && !!BY_ID[id] && BY_ID[id].menus === 'click'; }
   // v1.345 (Dean): the skin GROUPS, DERIVED from the registry (never a second list), in the Settings
-  // grid's order: the Original, then one group per iPod line and generation ("Nano 4G (2008)"), then
+  // grid's order: the Original, then one group per line and generation ("Slim 4"), then
   // Cider and Nordic. A skin with a `line` belongs to its line-generation group.
-  var SKIN_LINES = [{ key: 'classic', label: 'Classic' }, { key: 'mini', label: 'Mini' }, { key: 'nano', label: 'Nano' }, { key: 'shuffle', label: 'Shuffle' }, { key: 'touch', label: 'Touch' }, { key: 'custom', label: 'Custom' }];
-  var GEN_YEAR = { classic: { 4: '2004', 5: '2005', 6: '2007' }, mini: { 1: '2004', 2: '2005' },
-    nano: { 1: '2005', 2: '2006', 3: '2007', 4: '2008', 5: '2009', 6: '2010', 7: '2012' },
-    shuffle: { 1: '2005', 2: '2006', 3: '2009', 4: '2010' }, touch: { 1: '2007', 4: '2010', 5: '2012', 6: '2015' }, custom: { 5: '2005' } };
-  // The Touch's first and last groups span two or three generations sharing one look.
-  var GEN_SPAN = { touch: { 1: '1G-3G', 6: '6G-7G' } };
-  function genName(line, g) { return (GEN_SPAN[line] && GEN_SPAN[line][g]) || g + 'G'; }
+  var SKIN_LINES = [{ key: 'classic', label: 'Classic' }, { key: 'mini', label: 'Mini' }, { key: 'nano', label: 'Slim' }, { key: 'shuffle', label: 'Clip' }, { key: 'touch', label: 'Touch' }, { key: 'custom', label: 'Custom' }];
+  // A generation's name is its plain number in our own order inside its line (Touch has generations 1, 4, 5, 6 in the
+  // registry: they read Touch 1 to Touch 4). A line with one generation (Custom) has no number.
+  function lineGens(line) {
+    var gens = [];
+    SKINS.forEach(function (s) { if (s.line === line && gens.indexOf(s.gen) < 0) gens.push(s.gen); });
+    return gens.sort(function (x, y) { return x - y; });
+  }
+  function genName(line, g) {
+    var gens = lineGens(line);
+    return gens.length > 1 ? String(gens.indexOf(g) + 1) : '';
+  }
   function skinFamilies() {
     var out = [{ key: 'original', label: 'Original', ids: ['ipod-original'] }];
     SKIN_LINES.forEach(function (ln) {
@@ -459,7 +466,7 @@
       gens.sort(function (x, y) { return x - y; });
       gens.forEach(function (g) {
         out.push({
-          key: ln.key + '-' + g, label: ln.label + ' ' + genName(ln.key, g) + ' (' + GEN_YEAR[ln.key][g] + ')', line: ln.key, gen: g,
+          key: ln.key + '-' + g, label: (ln.label + ' ' + genName(ln.key, g)).trim(), line: ln.key, gen: g,
           ids: SKINS.filter(function (s) { return s.line === ln.key && s.gen === g; }).map(function (s) { return s.id; })
         });
       });
@@ -468,20 +475,24 @@
     out.push({ key: 'spotify', label: 'Nordic', ids: ['spotify'] });
     return out;
   }
-  // The Extras > Skins lines (Classic, Mini, Nano, Shuffle, Touch, Custom), each with its generations' group keys.
+  // The Extras > Skins lines (Classic, Mini, Slim, Clip, Touch, Custom), each with its generations' group keys.
   function skinLines() {
     var fams = skinFamilies();
     return SKIN_LINES.map(function (ln) {
       return { key: ln.key, label: ln.label, gens: fams.filter(function (f) { return f.line === ln.key; }).map(function (f) { return f.key; }) };
     }).filter(function (ln) { return ln.gens.length; });
   }
-  // A line colorway's row is its color ("Red"); the year joins it ("Black (2007)") only when another
-  // colorway of the SAME line and generation shares the color. The Original reads its parenthesized name; Cider and Nordic their labels.
+  // A line colorway's row is its colour ("Red"); a colour shared by an earlier colorway of the SAME line and generation takes an
+  // ordinal in registry order ("Blue", "Blue 2"). The Original reads its parenthesized name; Cider and Nordic their labels.
   function colorwayLabel(id) {
     var s = BY_ID[id];
     if (s && s.line) {
-      var twin = SKINS.some(function (o) { return o !== s && o.line === s.line && o.gen === s.gen && o.color === s.color; });
-      return twin ? s.color + ' (' + s.year + ')' : s.color;
+      var n = 1;
+      for (var k = 0; k < SKINS.length; k++) {
+        if (SKINS[k] === s) break;
+        if (SKINS[k].line === s.line && SKINS[k].gen === s.gen && SKINS[k].color === s.color) n++;
+      }
+      return n > 1 ? s.color + ' ' + n : s.color;
     }
     var m = s && /\(([^)]*)\)\s*$/.exec(s.label);
     return m ? m[1] : (s ? s.label : id);
@@ -586,11 +597,11 @@
   function skinActiveFor(meta, phone) {
     return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isPhone(phone);
   }
-  // v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view"): the iPod can open with no song
-  // (the Music tab tapped again, the /music toolbar's iPod button, /music?pocket=1) on a phone whose chosen
+  // v1.364.0 (W2b, Dean, paraphrased: get to the Click player view within 1 to 2 taps): the Click player can open with no song
+  // (the Music tab tapped again, the /music toolbar's Click player button, /music?pocket=1) on a phone whose chosen
   // skin carries the Pocket menus - a skin without menus has nothing to show without a track.
   function pocketEntryAvailable(phone, store) { return isPhone(phone) && !!menuStyle(activeSkinId(store)); }
-  // The iPod portrait lock (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it"; R7: "You can
+  // The Pocket portrait lock (Dean, 2026-10-07: (paraphrased) turning the phone sideways should not change it; R7: "You can
   // make it a setting to enable sideways"). html.pk-upright (a phone, and the Sideways setting off - the default) makes
   // style.css draw the full player upright when the phone turns (the POCKET STAYS UPRIGHT block); without it the UI pass
   // D7 sideways layout runs, unchanged. The setting is PER DEVICE (localStorage ft-pocket-sideways, '1' = sideways; it is
@@ -705,7 +716,7 @@
   //   { label, sub?, art?, node?: {type, key?, label?, artist?} (drills in, shows a chevron),
   //     action?: 'shuffle' | 'nowplaying', song?: true, id?, trackIndex? (into the level's tracks) }
   function menuStyle(id) { var s = BY_ID[normalizeSkinId(id)]; return (s && s.menus) || ''; }
-  // Click's Music menu (the iPod order, Dean's tree). The controller reads it, never a copy.
+  // Click's Music menu (the Click player order, Dean's tree). The controller reads it, never a copy.
   // Quick scroll (Dean 2026-09-24): Recent Artists leads it.
   var MUSIC_MENU = [
     { type: 'recentArtists', label: 'Recent Artists' },
@@ -730,7 +741,7 @@
     return (typeof n.label === 'string' && n.label) ? n.label : 'Songs';
   }
   // The STATIC levels (null for a level whose rows come from the library).
-  // The Main Menu is the device's own order (the iPod classic: Music, Extras, Settings, Shuffle
+  // The Main Menu is the device's own order (the Classic: Music, Extras, Settings, Shuffle
   // Songs, Now Playing). Extras exists only while the
   // game can run here (opts.hasGames = the Brick hook's own availability rule, read by the
   // controller) - never an entry that leads to nothing. Settings holds About only (Dean's scope:
@@ -763,13 +774,13 @@
     // a row that leads to nothing.
     if (t === 'settings') {
       return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : [])
-        // the iPod portrait lock (R7): on a phone, a check row; checked = the player stays upright when the phone turns
+        // the Pocket portrait lock (R7): on a phone, a check row; checked = the player stays upright when the phone turns
         .concat(o.hasUpright ? [{ label: 'Stay Upright', action: 'upright', check: !!o.upright }] : [])
         .concat([{ label: 'About', node: { type: 'about' } }]);
     }
     return null;
   }
-  // Extras > Skins (v1.345): Original, then a row per iPod line (Classic, Mini, Nano, Shuffle, Touch, Custom), then Cider and
+  // Extras > Skins (v1.345): Original, then a row per line (Classic, Mini, Slim, Clip, Touch, Custom), then Cider and
   // Nordic. A line opens its generations ("4G (2004)"); a generation opens its colors. A row carries `skinId`;
   // `preview` says the wheel may re-skin the LCD live as the highlight lands on it (only skins that keep these
   // menus: a Cider/Nordic preview would end the menu under the user's finger, so those apply on Select only).
@@ -785,7 +796,7 @@
     }
     if (node && node.type === 'skinLine') {
       return fams.filter(function (f) { return f.line === node.key; }).map(function (f) {
-        return { label: genName(f.line, f.gen) + ' (' + GEN_YEAR[f.line][f.gen] + ')', node: { type: 'skinGen', key: f.key, label: SKIN_LINES.filter(function (l) { return l.key === f.line; })[0].label + ' ' + genName(f.line, f.gen) }, check: holdsActive(f) };
+        return { label: f.label, node: { type: 'skinGen', key: f.key, label: f.label }, check: holdsActive(f) };
       });
     }
     var rows = [row('ipod-original', 'Original')];
@@ -799,7 +810,7 @@
     return rows;
   }
   // ==== SEARCH (v1.354 W4) ======================================================================
-  // The iPod's own search: a strip of letters along the bottom of the LCD, the wheel moves along it,
+  // The Click player's own search: a strip of letters along the bottom of the LCD, the wheel moves along it,
   // the center adds the letter under the marker, MENU deletes one. The strip is letters, digits, a space,
   // a delete glyph and a "go" cell (the wheel's way down into the results). Pure parts only; the controller
   // (skin-surface.js) owns the query, the debounce and the stale guard.
@@ -1113,7 +1124,7 @@
   }
 
   // ---- QUICK SCROLL (Dean 2026-09-24: "there's a lot of scrolling ... I don't want to go crazy")
-  // The iPod classic 5G+ jumped a long list by LETTER. A row's letter comes from its
+  // The Classic 5G+ jumped a long list by LETTER. A row's letter comes from its
   // label - the value the level is sorted by (the server's cmpStr: trimmed, localeCompare at base
   // sensitivity; no "The " rule, so none here either). Digits and symbols are '#', which that sort
   // places first; accents fold to their base letter (É under E) and the few Latin letters the
@@ -1240,7 +1251,7 @@
   // controller so a fast wheel does not thrash the image).
   // Quick scroll's three layers over the menu screen (all inside .ip-menuview, drawn from the
   // controller's state so a repaint keeps them): the big LETTER overlay (the wheel's letter mode:
-  // the iPod's translucent dark square), the small
+  // the Click player's translucent dark square), the small
   // edge BADGE (a touch scroll's letter), and the A-Z PICKER (opened by tapping either). Both the
   // overlay and the badge are 44 px+ buttons, faded by a class so a hidden one never takes a tap.
   // jump = { letter, overlay, badge, grid: [{letter, index}] | null }

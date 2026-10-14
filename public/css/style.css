@@ -24,7 +24,7 @@
   font-display: swap;
   src: url('/fonts/roboto.woff2') format('woff2');
 }
-/* v1.335: the Click (Original) skin's screen face (the first iPod's bitmap look; OFL, public/fonts/README.md).
+/* v1.335: the Click (Original) skin's screen face (the first click-wheel player's bitmap look; OFL, public/fonts/README.md).
    Only .mms-look-original names it, so no other skin or page downloads it. */
 @font-face {
   font-family: 'Jersey 10';
@@ -8561,7 +8561,7 @@ a.tv-continue-card { text-decoration: none; }
   --mms-sp-track:rgba(255,255,255,.24);
   --mms-sp-queue-bg:rgba(0,0,0,.26); --mms-sp-qline:rgba(255,255,255,.08);
   --mms-sp-play-shadow:0 10px 26px -6px rgba(30,215,96,.55);
-  /* iPod (v1.231, Dean's reference): the real Classic - warm-white glossy body,
+  /* Click player (v1.231, Dean's reference): the real Classic - warm-white glossy body,
      black-bezelled LCD Now-Playing screen, flat gray click wheel, Aqua scrubber +
      blue list selection. */
   --mms-ipod-body1:#fdfdfb; --mms-ipod-body2:#efeee9; --mms-ipod-edge:#c9c8c2;
@@ -8573,11 +8573,11 @@ a.tv-continue-card { text-decoration: none; }
   /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
-  /* quick scroll (2026-09-24): the letter overlay's glass - the iPod classic's translucent dark
+  /* quick scroll (2026-09-24): the letter overlay's glass - the Classic's translucent dark
      square. */
   --mms-ipod-jump-bg:rgba(20,22,26,.72); --mms-ipod-jump-line:rgba(0,0,0,.12);
   /* v1.269: the scrubber fill, sampled from the REFERENCE IMAGE Dean picked - a
-     product MOCKUP, not a photo of a real iPod (the gate proved it: no sensor
+     product MOCKUP, not a photo of a real click-wheel player (the gate proved it: no sensor
      noise anywhere, a blue Classic body Apple never shipped, a modern typeface,
      and a screen whose times say 73% elapsed over a 66%-filled bar). The texture
      is nonetheless genuinely IN that artwork: 7.12px period, sigma 4.88 against
@@ -8730,7 +8730,7 @@ a.tv-continue-card { text-decoration: none; }
   /* touch-action:none locks the page behind the full-screen skin (Dean: dragging the
      body still scrolled the page - body{overflow:hidden} does NOT stop iOS touch-scroll;
      touches starting on this fixed panel now pan nothing). Scrollable regions inside
-     (the iPod list, the Spotify queue) re-enable vertical panning via touch-action:pan-y. */
+     (the Click player list, the Spotify queue) re-enable vertical panning via touch-action:pan-y. */
   /* v1.243 (Dean): a HOLD (fast-scan / spin) must never select the skin's glyph/label text -
      the blue highlight looked derpy. Since the UI pass (plan D6) the native-interaction
      base in ui.css no-selects the whole app (+ iOS touch-callout), this shell included. */
@@ -8742,7 +8742,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-full.mms-haptic{ touch-action:auto; }
   /* ===================== v1.257: the TRAY PLAYER (Nano) =====================
      The pop-out reshaped to a Nano-5g screen parked above the taskbar (Dean's
-     reference images): the IPOD donor's LCD without the wheel - its status bar,
+     reference images): the CLICK donor's LCD without the wheel - its status bar,
      art, title/artist and the Aqua scrubber ARE the Nano language already. The
      marker rides the PIP BODY (paint() rebuilds the panel's className). */
   /* selectors deliberately OMIT the skin-base class: the v1.232 source-locks regex the
@@ -8763,7 +8763,7 @@ a.tv-continue-card { text-decoration: none; }
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }
   /* v1.232 (Dean): no mobile tap-highlight flash on skin buttons (the grey "area showing"
-     on tap broke the iPod immersion) and no text-selection on the wheel: both come from
+     on tap broke the Click player immersion) and no text-selection on the wheel: both come from
      the native-interaction base in ui.css since the UI pass (plan D6;
      -webkit-tap-highlight-color is inherited from body). */
   /* shared control primitives - identical hooks + reflect targets across skins */
@@ -8910,7 +8910,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row.is-played .mms-rt{ color:var(--mms-sp-dim); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); font-weight:var(--fw-bold); }
 
-  /* =============================== iPod ===============================
+  /* =============================== Click ===============================
      The real Classic. A warm-white glossy body; a black-bezelled LCD showing the
      authentic Now Playing screen (cover left, title/artist/album/stars/N-of-M
      right, Aqua scrubber) OR the song list (Select flips, tap a row to play);
@@ -8987,7 +8987,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-artist, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-album, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-nof,
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rt, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd,
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-detail, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-q{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
+  /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real click-wheel player proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
      grow "out of bounds"). Three guarantees, belt-and-suspenders:
@@ -9003,7 +9003,7 @@ a.tv-continue-card { text-decoration: none; }
     background:linear-gradient(var(--pk-s-bar1), var(--pk-s-bar2)); border-bottom:1px solid var(--pk-s-hair); }
   /* The status bar is ONE line, whatever the title (Dean 2026-09-24: a long album or song
      name grew the bar by a row). The title is the flex child that gives: it may shrink below
-     its text (min-width:0), never wraps, and truncates with an ellipsis the way a real iPod
+     its text (min-width:0), never wraps, and truncates with an ellipsis the way a real click-wheel player
      Classic's status title does. The play mark + battery cluster never shrinks or moves.
      Covers every screen that draws this bar: every Click colorway, the desktop pop-out
      and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
@@ -9041,7 +9041,7 @@ a.tv-continue-card { text-decoration: none; }
      (7px period) over the glass-tube ramp. Replaced v1.260's 135deg candy stripe -
      which was Aqua's INDETERMINATE barber pole, the wrong control's costume. */
   :where(html.is-phone, html.mms-popout) .mms-ipod :is(.mms-fill, .ip-vol-fill){ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
-  /* v1.353 the VOLUME BAR, as the real iPod drew it (Dean: "fit the iPod aesthetic"; the iPods never
+  /* v1.353 the VOLUME BAR, as the real click-wheel player drew it (Dean, paraphrased: fit the Click player look; those players never
      showed a box): while .mms-voladj is up (a phone controlling a speaker; the engine owns the class)
      it takes the scrubber's row - a quiet speaker, the scrubber's own Aqua groove and fill, a loud
      speaker. The groove and fill ride the scrubber's rules (.ip-track / .mms-fill selector lists). */
@@ -9080,7 +9080,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd{ font-size:var(--pk-fs-row-meta); color:var(--pk-s-sub); flex:none; font-variant-numeric:tabular-nums; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-chev-r{ --mms-g-size:var(--pk-fs-row); color:var(--pk-s-sub); flex:none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-played{ opacity:.55; }
-  /* v1.233: authentic iPod - the blue selection BAR follows the wheel CURSOR (the row
+  /* v1.233: authentic Click player - the blue selection BAR follows the wheel CURSOR (the row
      you're scrolling to), not the playing track. The playing track keeps only its ▶
      marker (a blue mms-rn glyph) so you can still see what's playing while the cursor
      roams. On list-open the cursor starts on the current, so they coincide (blue bar +
@@ -9173,7 +9173,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel.mms-menumode .ip-npview{ display:flex; }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
-  /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body
+  /* v1.239 (Dean): sized proportional to the REAL Classic wheel (~70% of the body
      width) instead of a fixed 224px, capped so the desktop pop-out (~380px) stays sane.
      The zone buttons are all %-based so they scale with this automatically. */
   /* pocket lighting (2026-09-24): the sheen and the base ramp sit where the LIGHT is - `--lx` /
@@ -9219,7 +9219,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lits-band:rgba(255,255,255,.14); --pk-c-lits-band2:rgba(255,255,255,.08); --pk-c-lits-core:rgba(255,255,255,.22);
     --pk-c-lita-glow:130,133,140; --pk-c-lita-core:165,168,176; }
   /* Click (Red) (v1.332, Dean D2: red body, white wheel - the charity-red nano): satin anodized red,
-     sampled from Wikimedia Commons "Product Red iPod nano.jpg" (CC BY 2.0). The photo's top is near
+     sampled from a Wikimedia Commons product photo of the red nano (CC BY 2.0; the file title is left out of this repo). The photo's top is near
      clipped, so the ramp is its MID and LOW body values (#ea293a .. #c51323), the left edge darker and
      a soft band right of centre where the photo's sheen sits; a cool white wheel with its light grey
      labels (#c4cfcf, the glyphs' darkest tenth); the center is the body red, domed (#fc4d64 .. #fd3c56). */
@@ -9234,8 +9234,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.2); --pk-c-lit-band2:rgba(255,255,255,.12);
     --pk-c-lits-band:rgba(255,255,255,.3); --pk-c-lits-band2:rgba(255,255,255,.17); --pk-c-lits-core:rgba(255,255,255,.45);
     --pk-c-lita-glow:255,96,110; --pk-c-lita-core:255,200,204; }
-  /* Click (Silver) (D8): the 2007 aluminum classic - Commons "IPod Classic 6th Generation 120 GB -
-     front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
+  /* Click (Silver) (D8): the 2007 aluminum classic - a Wikimedia Commons photo (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
      Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
      bottom; the light grey wheel, dark grey labels (#7b7f82); an aluminum center, not the wheel's grey. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-silver{
@@ -9248,7 +9247,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.26); --pk-c-lit-band2:rgba(255,255,255,.15);
     --pk-c-lits-band:rgba(255,255,255,.36); --pk-c-lits-band2:rgba(255,255,255,.2); --pk-c-lits-core:rgba(255,255,255,.5);
     --pk-c-lita-glow:250,250,252; --pk-c-lita-core:255,255,255; }
-  /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): Commons "IPod U2.jpeg"
+  /* Click (Encore) (D8, the black-and-red special edition, under a cheeky name): a Wikimedia Commons photo
      (CC BY 3.0; small and soft - hue only). Click (Black)'s body; the red wheel from the photo scaled
      so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
      it for the wheel's top light); near-white labels;
@@ -9263,7 +9262,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.26); --pk-c-lits-band2:rgba(255,255,255,.14); --pk-c-lits-core:rgba(255,255,255,.4);
     --pk-c-lita-glow:165,170,182; --pk-c-lita-core:226,230,237; }
-  /* Click (Blue) (D8, the second mini): Commons "IPod mini blue front 2G.jpg" (CC BY-SA 3.0), white-
+  /* Click (Blue) (D8, the second mini): a Wikimedia Commons photo (CC BY-SA 3.0), white-
      balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
      (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
      wheel's grey. */
@@ -9293,7 +9292,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.14); --pk-c-lit-band2:rgba(255,255,255,.08);
     --pk-c-lits-band:rgba(255,255,255,.22); --pk-c-lits-band2:rgba(255,255,255,.12); --pk-c-lits-core:rgba(255,255,255,.34);
     --pk-c-lita-glow:140,190,120; --pk-c-lita-core:190,225,176; }
-  /* Click (Pink) (D8, the second mini): the pink mini in Commons "Apple iPod 5G-nano 2G-mini 2G.jpg"
+  /* Click (Pink) (D8, the second mini): the pink mini in a Wikimedia Commons product photo
      (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
      (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
      under that light); the center is the wheel's grey. */
@@ -9308,7 +9307,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:220,138,168; --pk-c-lita-core:240,190,210; }
-  /* Mini 1G Gold (2004) (iPod true-up, 2026-09-29, Dean: retuned from the antique-gold photo to the real Mini 1G):
+  /* Mini 1G Gold (2004) (Click true-up, 2026-09-29, Dean: retuned from the antique-gold photo to the real Mini 1G):
      nanochromatic.com reference #e2d6a3; the Mini 1G wheel exactly as Click (Sky)'s (grey wheel, grey labels, grey center). */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-gold{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9321,7 +9320,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,228,194; --pk-c-lita-core:247,244,231; }
-  /* Click (Frost) (v1.335): the silver mini - Commons "Ipodminicroppedpng.png" (CC BY-SA 4.0), balanced on its
+  /* Click (Frost) (v1.335): the silver mini - a Wikimedia Commons photo (CC BY-SA 4.0), balanced on its
      grey wheel. Brushed aluminum (p95 #c7c8cc .. p05 #828387), cooler and flatter than Click (Silver); the mini grey
      wheel, grey labels (#9b9ba2) and a grey center. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-frost{
@@ -9335,7 +9334,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.24); --pk-c-lit-band2:rgba(255,255,255,.14);
     --pk-c-lits-band:rgba(255,255,255,.34); --pk-c-lits-band2:rgba(255,255,255,.19); --pk-c-lits-core:rgba(255,255,255,.48);
     --pk-c-lita-glow:240,242,246; --pk-c-lita-core:255,255,255; }
-  /* Click (Sky) (v1.335): the first mini in blue - Commons "Apple iPod mini blue-2005-03-07.jpg" (CC BY 2.0; angled
+  /* Click (Sky) (v1.335): the first mini in blue - a Wikimedia Commons product photo (CC BY 2.0; angled
      and its body clips, so white-balanced on the wheel only - the weakest reference). Pale anodized blue (p90
      #9fd5e5 .. p10 #80b3c2), paler than the second mini (Click (Blue)); grey labels (#82888a), the wheel grey center. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-sky{
@@ -9377,7 +9376,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,170,185; --pk-c-lita-core:248,210,220; }
-  /* Click (2004) (v1.335): the fourth-generation white - Commons "Japanese Apple iPod 4G 20GB.jpg" (CC BY-SA 3.0),
+  /* Click (2004) (v1.335): the fourth-generation white - a Wikimedia Commons product photo (CC BY-SA 3.0),
      balanced on its white body (#fefeff). A cooler white than Click (White), a cool grey wheel (#c5c6cc) with LIGHT
      labels (#efeeee), a white center. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-2004{
@@ -9392,7 +9391,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:var(--mms-lit-band); --pk-c-lit-band2:var(--mms-lit-band2);
     --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Click (Charcoal) (v1.335): the 2007 classic in black - Commons "IPod Classic 6th Generation Black.jpg" (CC BY-SA
+  /* Click (Charcoal) (v1.335): the 2007 classic in black - a Wikimedia Commons photo (CC BY-SA
      3.0), balanced on its wheel. Charcoal anodized metal, top-lit (p95 #666668 .. p05 #2e2e2f), a near-black wheel
      (#2c2c2c), a charcoal center (#49494b); the glyphs clip to white in the photo, so the labels are a near-white. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-charcoal{
@@ -9406,7 +9405,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.1); --pk-c-lit-band2:rgba(255,255,255,.06);
     --pk-c-lits-band:rgba(255,255,255,.16); --pk-c-lits-band2:rgba(255,255,255,.09); --pk-c-lits-core:rgba(255,255,255,.24);
     --pk-c-lita-glow:140,142,148; --pk-c-lita-core:180,182,188; }
-  /* Click (Violet) (v1.335, D4 re-decided): the fourth nano in purple - Commons "Ipod rainbow (3178103957).jpg" (CC
+  /* Click (Violet) (v1.335, D4 re-decided): the fourth nano in purple - a Wikimedia Commons photo (CC
      BY 2.0, an Apple Store wall), balanced on its white wheel: p50 #765edc (p90 #a879fb, p10 #5237a2); a blister
      shot reads bluer (#4453c2). A white wheel, grey labels, the center the body violet. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-violet{
@@ -9447,7 +9446,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:190,230,110; --pk-c-lita-core:225,245,185; }
-  /* Click (Cobalt) (v1.335, D4): the second nano in blue - Commons "IPod Nano (2259010671).jpg" (CC BY 2.0, a light
+  /* Click (Cobalt) (v1.335, D4): the second nano in blue - a Wikimedia Commons photo (CC BY 2.0, a light
      tent), balanced on its white wheel: p95 #0097fb, p50 #015eb1; the center #004fa5; grey labels (#929797). */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-cobalt{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9460,7 +9459,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:60,150,240; --pk-c-lita-core:170,210,250; }
-  /* Click (Magenta) (v1.335, D4): the second nano in pink - Commons "Ipod-nano-2g-rosa.jpg" (CC BY 2.5, flash),
+  /* Click (Magenta) (v1.335, D4): the second nano in pink - a Wikimedia Commons photo (CC BY 2.5, flash),
      balanced on its white wheel: p85 #cd1e8c, p50 #c51682; the center #bc157f; grey labels. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-magenta{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9473,7 +9472,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,90,175; --pk-c-lita-core:250,185,225; }
-  /* Click (Raspberry) (v1.335, D4): the third nano in pink - Commons "Ipod nano red.JPG" (CC BY-SA 3.0; the uploader
+  /* Click (Raspberry) (v1.335, D4): the third nano in pink - a Wikimedia Commons photo (CC BY-SA 3.0; the uploader
      says red, it reads raspberry beside a 2007 red), balanced on its white wheel: p85 #e3437b, p50 #b82a52; the
      center #d23870; grey labels (#b6b5b7). */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-raspberry{
@@ -9487,7 +9486,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,90,130; --pk-c-lita-core:250,180,200; }
-  /* Nano 3G Silver (2007) (iPod true-up, 2026-09-29): nanochromatic.com reference #b6babd; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 3G Silver (2007) (Click true-up, 2026-09-29): nanochromatic.com reference #b6babd; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano3-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9500,7 +9499,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,216,218; --pk-c-lita-core:239,239,240; }
-  /* Nano 3G Blue (2007) (iPod true-up, 2026-09-29): nanochromatic.com reference #78b0b4; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 3G Blue (2007) (Click true-up, 2026-09-29): nanochromatic.com reference #78b0b4; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano3-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9513,7 +9512,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:159,199,202; --pk-c-lita-core:217,233,234; }
-  /* Nano 3G Green (2007) (iPod true-up, 2026-09-29): nanochromatic.com reference #80b28a; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 3G Green (2007) (Click true-up, 2026-09-29): nanochromatic.com reference #80b28a; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano3-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9526,7 +9525,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:166,201,173; --pk-c-lita-core:219,233,222; }
-  /* Nano 3G Red (2007) (iPod true-up, 2026-09-29): nanochromatic.com reference #86273c; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 3G Red (2007) (Click true-up, 2026-09-29): nanochromatic.com reference #86273c; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano3-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9539,7 +9538,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:181,53,81; --pk-c-lita-core:225,174,185; }
-  /* Nano 4G Blue (2008) (iPod true-up, 2026-09-29): nanochromatic.com reference #3a83b8; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 4G Blue (2008) (Click true-up, 2026-09-29): nanochromatic.com reference #3a83b8; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9552,7 +9551,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:98,160,205; --pk-c-lita-core:192,217,235; }
-  /* Nano 4G Orange (2008) (iPod true-up, 2026-09-29): nanochromatic.com reference #e7a452; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 4G Orange (2008) (Click true-up, 2026-09-29): nanochromatic.com reference #e7a452; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-orange{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9565,7 +9564,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:238,192,136; --pk-c-lita-core:248,230,207; }
-  /* Nano 5G Green (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #408e52; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 5G Green (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #408e52; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9578,7 +9577,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:88,180,109; --pk-c-lita-core:188,225,197; }
-  /* Nano 5G Orange (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #e58d3e; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 5G Orange (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #e58d3e; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-orange{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9591,7 +9590,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,173,116; --pk-c-lita-core:247,222,199; }
-  /* Nano 5G Pink (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #d54487; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 5G Pink (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #d54487; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9604,7 +9603,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:224,118,167; --pk-c-lita-core:243,200,220; }
-  /* Nano 6G Green (2010) (iPod true-up, 2026-09-29): nanochromatic.com reference #c7db6d; a dark wheel, light labels, the center the body color (a black front).
+  /* Nano 6G Green (2010) (Click true-up, 2026-09-29): nanochromatic.com reference #c7db6d; a dark wheel, light labels, the center the body color (a black front).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9617,7 +9616,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:218,231,158; --pk-c-lita-core:240,245,216; }
-  /* Nano 6G Orange (2010) (iPod true-up, 2026-09-29): nanochromatic.com reference #e3b44e; a dark wheel, light labels, the center the body color (a black front).
+  /* Nano 6G Orange (2010) (Click true-up, 2026-09-29): nanochromatic.com reference #e3b44e; a dark wheel, light labels, the center the body color (a black front).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-orange{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9630,7 +9629,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,202,131; --pk-c-lita-core:247,234,205; }
-  /* Nano 6G Pink (2010) (iPod true-up, 2026-09-29): nanochromatic.com reference #e581c3; a dark wheel, light labels, the center the body color (a black front).
+  /* Nano 6G Pink (2010) (Click true-up, 2026-09-29): nanochromatic.com reference #e581c3; a dark wheel, light labels, the center the body color (a black front).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9643,7 +9642,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:239,180,219; --pk-c-lita-core:249,225,241; }
-  /* Nano 7G Pink (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #e9807f; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Pink (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #e9807f; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9656,7 +9655,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:242,180,179; --pk-c-lita-core:250,225,225; }
-  /* Nano 7G Yellow (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #e3e064; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Yellow (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #e3e064; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9669,7 +9668,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,234,152; --pk-c-lita-core:247,247,214; }
-  /* Nano 7G Green (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #88cda1; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Green (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #88cda1; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9682,7 +9681,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:179,223,195; --pk-c-lita-core:225,242,231; }
-  /* Nano 7G Purple (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #d196ca; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Purple (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #d196ca; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-purple{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9695,7 +9694,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:228,193,223; --pk-c-lita-core:244,230,242; }
-  /* Nano 7G Slate (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #4e535d; a dark wheel, light labels, the center the body color (a black front).
+  /* Nano 7G Slate (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #4e535d; a dark wheel, light labels, the center the body color (a black front).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-slate{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9708,7 +9707,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:106,113,126; --pk-c-lita-core:195,198,203; }
-  /* Nano 7G Red (2012) (iPod true-up, 2026-09-29): nanochromatic.com reference #e95555; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Red (2012) (Click true-up, 2026-09-29): nanochromatic.com reference #e95555; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9721,7 +9720,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:240,139,139; --pk-c-lita-core:249,209,209; }
-  /* Nano 7G Space Gray (2013) (iPod true-up, 2026-09-29): nanochromatic.com reference #9a999c; a dark wheel, light labels, the center the body color (a black front).
+  /* Nano 7G Space Gray (2013) (Click true-up, 2026-09-29): nanochromatic.com reference #9a999c; a dark wheel, light labels, the center the body color (a black front).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-spacegray{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9734,7 +9733,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:185,184,186; --pk-c-lita-core:227,227,227; }
-  /* Nano 7G Blue (2015) (iPod true-up, 2026-09-29): nanochromatic.com reference #3c67aa; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Blue (2015) (Click true-up, 2026-09-29): nanochromatic.com reference #3c67aa; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9747,7 +9746,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:93,134,198; --pk-c-lita-core:190,207,232; }
-  /* Nano 7G Gold (2015) (iPod true-up, 2026-09-29): nanochromatic.com reference #eee2cb; the white wheel, grey labels, the center the body color (the nano face).
+  /* Nano 7G Gold (2015) (Click true-up, 2026-09-29): nanochromatic.com reference #eee2cb; the white wheel, grey labels, the center the body color (the nano face).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-gold{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9760,7 +9759,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:253,252,249; --pk-c-lita-core:254,254,253; }
-  /* Shuffle 2G Purple (2007) (iPod true-up, 2026-09-29): nanochromatic.com reference #7978a8; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 2G Purple (2007) (Click true-up, 2026-09-29): nanochromatic.com reference #7978a8; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-purple{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9773,7 +9772,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:158,157,192; --pk-c-lita-core:216,216,230; }
-  /* Shuffle 2G Green (2008) (iPod true-up, 2026-09-29): nanochromatic.com reference #7db048; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 2G Green (2008) (Click true-up, 2026-09-29): nanochromatic.com reference #7db048; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9786,7 +9785,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:155,197,112; --pk-c-lita-core:215,232,198; }
-  /* Shuffle 2G Gold (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #e1c581; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 2G Gold (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #e1c581; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-gold{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9799,7 +9798,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:237,220,178; --pk-c-lita-core:248,241,224; }
-  /* Shuffle 3G Pink (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #d25b86; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 3G Pink (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #d25b86; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9812,7 +9811,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:223,139,169; --pk-c-lita-core:242,209,221; }
-  /* Shuffle 3G Blue (2009) (iPod true-up, 2026-09-29): nanochromatic.com reference #48a0b7; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 3G Blue (2009) (Click true-up, 2026-09-29): nanochromatic.com reference #48a0b7; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9825,7 +9824,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:116,183,200; --pk-c-lita-core:199,226,233; }
-  /* Shuffle 4G Blue (2010) (iPod true-up, 2026-09-29): nanochromatic.com reference #8fb4dc; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
+  /* Shuffle 4G Blue (2010) (Click true-up, 2026-09-29): nanochromatic.com reference #8fb4dc; a tonal wheel a shade lighter than the body, pale labels, a darker center (the shuffle control ring).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9838,7 +9837,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:190,211,235; --pk-c-lita-core:229,237,247; }
-  /* Mini 2G Silver (2005) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #ccd0d1; the Mini 1G wheel exactly as Click (Sky)'s (grey wheel, grey labels, grey center).
+  /* Mini 2G Silver (2005) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #ccd0d1; the Mini 1G wheel exactly as Click (Sky)'s (grey wheel, grey labels, grey center).
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-mini2-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9851,7 +9850,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,238,238; --pk-c-lita-core:247,248,248; }
-  /* Shuffle 1G White (2005) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #f4f1f2; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 1G White (2005) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #f4f1f2; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle1-white{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9864,7 +9863,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Shuffle 2G Silver (2005) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #cbd0ce; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Silver (2005) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #cbd0ce; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9877,7 +9876,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,237,236; --pk-c-lita-core:247,248,247; }
-  /* Shuffle 2G Pink (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c33a83; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Pink (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c33a83; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9890,7 +9889,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:210,104,161; --pk-c-lita-core:237,195,217; }
-  /* Shuffle 2G Green (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #7eb14a; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Green (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #7eb14a; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-green-2007{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9903,7 +9902,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:156,197,116; --pk-c-lita-core:215,232,199; }
-  /* Shuffle 2G Blue (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #3f8cb9; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Blue (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #3f8cb9; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9916,7 +9915,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:105,168,204; --pk-c-lita-core:195,220,235; }
-  /* Shuffle 2G Orange (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d08330; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Orange (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d08330; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-orange{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9929,7 +9928,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:219,161,98; --pk-c-lita-core:241,217,192; }
-  /* Shuffle 2G Teal (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #75b7b7; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Teal (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #75b7b7; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-teal{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9942,7 +9941,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:157,204,204; --pk-c-lita-core:216,235,235; }
-  /* Shuffle 2G Red (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #932d3b; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Red (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #932d3b; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9955,7 +9954,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:194,59,78; --pk-c-lita-core:231,177,184; }
-  /* Shuffle 2G Light Green (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #89bb93; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Light Green (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #89bb93; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-lightgreen{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9968,7 +9967,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:176,209,183; --pk-c-lita-core:223,237,226; }
-  /* Shuffle 2G Blue (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #377db9; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Blue (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #377db9; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-blue-2008{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9981,7 +9980,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:94,155,207; --pk-c-lita-core:191,215,236; }
-  /* Shuffle 2G Red (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #b63628; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Red (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #b63628; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-red-2008{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9994,7 +9993,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,83,69; --pk-c-lita-core:239,186,181; }
-  /* Shuffle 2G Pink (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #af437e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 2G Pink (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #af437e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle2-pink-2008{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10007,7 +10006,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:198,105,156; --pk-c-lita-core:232,195,215; }
-  /* Shuffle 3G Silver (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c4c2c0; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 3G Silver (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c4c2c0; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10020,7 +10019,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:226,225,224; --pk-c-lita-core:243,243,243; }
-  /* Shuffle 3G Black (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #5f5c5d; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 3G Black (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #5f5c5d; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10033,7 +10032,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:126,122,123; --pk-c-lita-core:203,202,202; }
-  /* Shuffle 3G Green (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #9ebd51; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 3G Green (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #9ebd51; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10046,7 +10045,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:183,206,125; --pk-c-lita-core:226,235,203; }
-  /* Shuffle 3G Stainless Steel (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #9d9ea2; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 3G Stainless Steel (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #9d9ea2; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle3-stainlesssteel{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10059,7 +10058,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:188,189,192; --pk-c-lita-core:228,229,230; }
-  /* Shuffle 4G Silver (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #babcbd; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Silver (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #babcbd; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10072,7 +10071,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:217,218,219; --pk-c-lita-core:240,240,241; }
-  /* Shuffle 4G Green (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #b6cf6e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Green (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #b6cf6e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10085,7 +10084,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:205,222,156; --pk-c-lita-core:235,242,215; }
-  /* Shuffle 4G Orange (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e9b74f; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Orange (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e9b74f; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-orange{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10098,7 +10097,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:240,205,133; --pk-c-lita-core:249,235,206; }
-  /* Shuffle 4G Pink (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e286b5; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Pink (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e286b5; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10111,7 +10110,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:238,183,211; --pk-c-lita-core:248,226,237; }
-  /* Shuffle 4G Pink (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e9807f; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Pink (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e9807f; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-pink-2012{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10124,7 +10123,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:242,180,179; --pk-c-lita-core:250,225,225; }
-  /* Shuffle 4G Yellow (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e3e064; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Yellow (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e3e064; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10137,7 +10136,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,234,152; --pk-c-lita-core:247,247,214; }
-  /* Shuffle 4G Blue (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Blue (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-blue-2012{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10150,7 +10149,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:157,218,237; --pk-c-lita-core:216,240,248; }
-  /* Shuffle 4G Green (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #88cda1; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Green (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #88cda1; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-green-2012{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10163,7 +10162,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:179,223,195; --pk-c-lita-core:225,242,231; }
-  /* Shuffle 4G Purple (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d196ca; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Purple (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d196ca; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-purple{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10176,7 +10175,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:228,193,223; --pk-c-lita-core:244,230,242; }
-  /* Shuffle 4G Silver (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Silver (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-silver-2012{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10189,7 +10188,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:248,248,248; --pk-c-lita-core:252,252,252; }
-  /* Shuffle 4G Slate (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #4e535d; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Slate (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #4e535d; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-slate{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10202,7 +10201,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:106,113,126; --pk-c-lita-core:195,198,203; }
-  /* Shuffle 4G Red (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e95555; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Red (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e95555; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10215,7 +10214,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:240,139,139; --pk-c-lita-core:249,209,209; }
-  /* Shuffle 4G Space Gray (2013) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #9a999c; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Space Gray (2013) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #9a999c; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-spacegray{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10228,7 +10227,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:185,184,186; --pk-c-lita-core:227,227,227; }
-  /* Shuffle 4G Gold (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #eee2cb; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Gold (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #eee2cb; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-gold{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10241,7 +10240,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:253,252,249; --pk-c-lita-core:254,254,253; }
-  /* Shuffle 4G Space Gray (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Space Gray (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-spacegray-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10254,7 +10253,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:110,110,115; --pk-c-lita-core:197,197,199; }
-  /* Shuffle 4G Blue (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #3c67aa; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Blue (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #3c67aa; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-blue-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10267,7 +10266,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:93,134,198; --pk-c-lita-core:190,207,232; }
-  /* Shuffle 4G Pink (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Pink (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-pink-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10280,7 +10279,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:227,132,170; --pk-c-lita-core:244,206,221; }
-  /* Shuffle 4G Red (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
+  /* Shuffle 4G Red (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; a tonal wheel a shade lighter than the body, pale labels, a darker center.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-shuffle4-red-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10293,7 +10292,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,113,110; --pk-c-lita-core:239,198,197; }
-  /* Nano 1G Black (2005) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #121617; a dark wheel, light labels, the center the body color.
+  /* Nano 1G Black (2005) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #121617; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano1-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10306,7 +10305,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:45,55,57; --pk-c-lita-core:171,175,176; }
-  /* Nano 1G White (2005) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #fefefe; the white wheel, grey labels, the center the body color.
+  /* Nano 1G White (2005) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #fefefe; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano1-white{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10319,7 +10318,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Nano 2G Silver (2006) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e3e5e4; the white wheel, grey labels, the center the body color.
+  /* Nano 2G Silver (2006) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e3e5e4; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano2-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10332,7 +10331,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Nano 2G Black (2006) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #1c212b; a dark wheel, light labels, the center the body color.
+  /* Nano 2G Black (2006) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #1c212b; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano2-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10345,7 +10344,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:52,61,80; --pk-c-lita-core:174,177,185; }
-  /* Nano 3G Black (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #2d3134; a dark wheel, light labels, the center the body color.
+  /* Nano 3G Black (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #2d3134; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano3-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10358,7 +10357,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:73,80,85; --pk-c-lita-core:182,185,187; }
-  /* Nano 4G Silver (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e1e1e1; the white wheel, grey labels, the center the body color.
+  /* Nano 4G Silver (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e1e1e1; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10371,7 +10370,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Nano 4G Green (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #a0c15a; the white wheel, grey labels, the center the body color.
+  /* Nano 4G Green (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #a0c15a; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10384,7 +10383,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:186,210,134; --pk-c-lita-core:227,237,207; }
-  /* Nano 4G Pink (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c85796; the white wheel, grey labels, the center the body color.
+  /* Nano 4G Pink (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c85796; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10397,7 +10396,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:215,133,179; --pk-c-lita-core:239,206,225; }
-  /* Nano 4G Black (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #666668; the white wheel, grey labels, the center the body color.
+  /* Nano 4G Black (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #666668; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10410,7 +10409,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:132,132,135; --pk-c-lita-core:206,206,207; }
-  /* Nano 4G Red (2008) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d6534d; the white wheel, grey labels, the center the body color.
+  /* Nano 4G Red (2008) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d6534d; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano4-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10423,7 +10422,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:225,131,127; --pk-c-lita-core:243,205,204; }
-  /* Nano 5G Silver (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #cfcfcf; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Silver (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #cfcfcf; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10436,7 +10435,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:238,238,238; --pk-c-lita-core:248,248,248; }
-  /* Nano 5G Blue (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #3e8bc5; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Blue (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #3e8bc5; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10449,7 +10448,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:109,167,211; --pk-c-lita-core:197,220,237; }
-  /* Nano 5G Purple (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #69579b; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Purple (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #69579b; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-purple{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10462,7 +10461,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:138,123,181; --pk-c-lita-core:208,202,225; }
-  /* Nano 5G Yellow (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #f6d452; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Yellow (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #f6d452; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10475,7 +10474,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:249,226,140; --pk-c-lita-core:253,243,209; }
-  /* Nano 5G Black (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #7e7b7f; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Black (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #7e7b7f; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10488,7 +10487,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:156,154,157; --pk-c-lita-core:215,215,216; }
-  /* Nano 5G Red (2009) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c93d3c; the white wheel, grey labels, the center the body color.
+  /* Nano 5G Red (2009) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c93d3c; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano5-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10501,7 +10500,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,109,108; --pk-c-lita-core:239,197,196; }
-  /* Nano 6G Silver (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #9ea0a4; a dark wheel, light labels, the center the body color.
+  /* Nano 6G Silver (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #9ea0a4; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10514,7 +10513,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:190,191,194; --pk-c-lita-core:229,229,231; }
-  /* Nano 6G Graphite (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #464646; a dark wheel, light labels, the center the body color.
+  /* Nano 6G Graphite (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #464646; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-graphite{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10527,7 +10526,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:101,101,101; --pk-c-lita-core:193,193,193; }
-  /* Nano 6G Blue (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #5d86bd; a dark wheel, light labels, the center the body color.
+  /* Nano 6G Blue (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #5d86bd; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10540,7 +10539,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:136,166,207; --pk-c-lita-core:207,219,236; }
-  /* Nano 6G Red (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #df4744; a dark wheel, light labels, the center the body color.
+  /* Nano 6G Red (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #df4744; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano6-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10553,7 +10552,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:232,122,120; --pk-c-lita-core:246,202,201; }
-  /* Nano 7G Blue (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; the white wheel, grey labels, the center the body color.
+  /* Nano 7G Blue (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-blue-2012{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10566,7 +10565,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:157,218,237; --pk-c-lita-core:216,240,248; }
-  /* Nano 7G Silver (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
+  /* Nano 7G Silver (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10579,7 +10578,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:248,248,248; --pk-c-lita-core:252,252,252; }
-  /* Nano 7G Space Gray (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a dark wheel, light labels, the center the body color.
+  /* Nano 7G Space Gray (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-spacegray-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10592,7 +10591,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:110,110,115; --pk-c-lita-core:197,197,199; }
-  /* Nano 7G Pink (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; the white wheel, grey labels, the center the body color.
+  /* Nano 7G Pink (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-pink-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10605,7 +10604,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:227,132,170; --pk-c-lita-core:244,206,221; }
-  /* Nano 7G Red (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; the white wheel, grey labels, the center the body color.
+  /* Nano 7G Red (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-nano7-red-2015{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10618,7 +10617,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,113,110; --pk-c-lita-core:239,198,197; }
-  /* Touch 1G-3G Black (2007) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #000000; a dark wheel, light labels, the center the body color.
+  /* Touch 1G-3G Black (2007) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #000000; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch1-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10631,7 +10630,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:31,31,31; --pk-c-lita-core:165,165,165; }
-  /* Touch 4G Black (2010) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #000000; a dark wheel, light labels, the center the body color.
+  /* Touch 4G Black (2010) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #000000; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch4-black{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10644,7 +10643,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:31,31,31; --pk-c-lita-core:165,165,165; }
-  /* Touch 4G White (2011) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #f8f6f5; the white wheel, grey labels, the center the body color.
+  /* Touch 4G White (2011) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #f8f6f5; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch4-white{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10657,7 +10656,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
-  /* Touch 5G Black and Slate (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #4e535d; a dark wheel, light labels, the center the body color.
+  /* Touch 5G Black and Slate (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #4e535d; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-blackandslate{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10670,7 +10669,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:106,113,126; --pk-c-lita-core:195,198,203; }
-  /* Touch 5G White and Silver (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
+  /* Touch 5G White and Silver (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-whiteandsilver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10683,7 +10682,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:248,248,248; --pk-c-lita-core:252,252,252; }
-  /* Touch 5G Pink (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e9807f; the white wheel, grey labels, the center the body color.
+  /* Touch 5G Pink (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e9807f; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10696,7 +10695,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:242,180,179; --pk-c-lita-core:250,225,225; }
-  /* Touch 5G Yellow (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e3e064; the white wheel, grey labels, the center the body color.
+  /* Touch 5G Yellow (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e3e064; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10709,7 +10708,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:236,234,152; --pk-c-lita-core:247,247,214; }
-  /* Touch 5G Blue (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; the white wheel, grey labels, the center the body color.
+  /* Touch 5G Blue (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #69c6e4; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10722,7 +10721,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:157,218,237; --pk-c-lita-core:216,240,248; }
-  /* Touch 5G Red (2012) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #e95555; the white wheel, grey labels, the center the body color.
+  /* Touch 5G Red (2012) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #e95555; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10735,7 +10734,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:240,139,139; --pk-c-lita-core:249,209,209; }
-  /* Touch 5G Space Gray (2013) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #9a999c; the white wheel, grey labels, the center the body color.
+  /* Touch 5G Space Gray (2013) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #9a999c; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch5-spacegray{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10748,7 +10747,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:185,184,186; --pk-c-lita-core:227,227,227; }
-  /* Touch 6G-7G Blue (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #3c67aa; the white wheel, grey labels, the center the body color.
+  /* Touch 6G-7G Blue (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #3c67aa; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10761,7 +10760,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:93,134,198; --pk-c-lita-core:190,207,232; }
-  /* Touch 6G-7G Silver (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
+  /* Touch 6G-7G Silver (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d8dbda; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-silver{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10774,7 +10773,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:248,248,248; --pk-c-lita-core:252,252,252; }
-  /* Touch 6G-7G Gold (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #eee2cb; the white wheel, grey labels, the center the body color.
+  /* Touch 6G-7G Gold (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #eee2cb; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-gold{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10787,7 +10786,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:253,252,249; --pk-c-lita-core:254,254,253; }
-  /* Touch 6G-7G Space Gray (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a dark wheel, light labels, the center the body color.
+  /* Touch 6G-7G Space Gray (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #505054; a dark wheel, light labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-spacegray{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10800,7 +10799,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:110,110,115; --pk-c-lita-core:197,197,199; }
-  /* Touch 6G-7G Pink (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; the white wheel, grey labels, the center the body color.
+  /* Touch 6G-7G Pink (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #d85288; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10813,7 +10812,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:227,132,170; --pk-c-lita-core:244,206,221; }
-  /* Touch 6G-7G Red (2015) (iPod colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; the white wheel, grey labels, the center the body color.
+  /* Touch 6G-7G Red (2015) (Click colors batch 2, 2026-09-29): nanochromatic.com reference #c8433e; the white wheel, grey labels, the center the body color.
      Generated by the plan's formula, not photo-sampled. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-touch6-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10826,9 +10825,9 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,113,110; --pk-c-lita-core:239,198,197; }
-  /* Custom 5G Transparent (2005) (v1.347, Dean: the v1.346 one "is completely silver"): a clear-shell modded iPod
-     Video. The board is a real photo (Wikimedia Commons "IPod classic 80 GB (A1238, YMV) - board-0020.jpg", CC BY-SA
-     4.0, cropped and faded at the top: assets/skins/transparent-board.webp) under a clear frame; the wheel is a
+  /* Custom 5G Transparent (2005) (v1.347, Dean: the v1.346 one "is completely silver"): a clear-shell modded click-wheel
+     player. The board is an original circuit-board image supplied by the project owner (MIT), faded at the top:
+     assets/skins/transparent-board.webp (see assets/skins/README.md), under a clear frame; the wheel is a
      white click wheel drawn in CSS. The Black variant below is identical with a black wheel. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-custom5-transparent{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10888,8 +10887,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,241,239; --pk-c-lita-core:250,252,251; }
   /* Custom 5G Transparent Coil (2005) (v1.347, Dean: "I actually really, really, really like it"): the same clear shell
-     with the click wheel taken OFF, so the wheel's flex ring shows - the black ring with gold pads, cut out of Commons
-     "IPod classic 80 GB (A1238, YMV) - board with keypad-0019.jpg" (CC BY-SA 4.0), turned 3.4 degrees to sit square: assets/skins/transparent-ring.webp.
+     with the click wheel taken OFF, so the wheel's flex ring shows - the black ring with gold pads, cut out of a Wikimedia Commons photo (CC BY-SA 4.0), turned 3.4 degrees to sit square: assets/skins/transparent-ring.webp.
      The ring's light and shadow follow the light like every wheel; the tap zones stay live but draw nothing; the center is a clear glass dome. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-custom5-transparent-coil{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -10937,9 +10935,9 @@ a.tv-continue-card { text-decoration: none; }
     html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
   }
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
-     first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA
+     first") - its COLORS, one role block like every colorway. a Wikimedia Commons photo (CC BY-SA
      4.0), balanced on its white body: a cool white (#f7f7f7 .. #cdcdcd), a near-white ring (#e0e0e0 on
-     that photo; #feffff on the lit "IPod 1Gen.jpg", CC BY 4.0), pale labels (#adadad), a white center.
+     that photo; #feffff on the lit photo, CC BY 4.0), pale labels (#adadad), a white center.
      Its STRUCTURE (the ring, the screen, the face, the turn) is the look section below. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-original{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
@@ -10954,10 +10952,10 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
   /* ---------------- THE ORIGINAL LOOK (v1.335, D9-D12) ----------------
-     The first iPod's structure, keyed ONLY on the look class the engine adds for a registry entry with
+     The first Click player's structure, keyed ONLY on the look class the engine adds for a registry entry with
      `look: 'original'` (never on a colorway class - the one-block census stands). The markup is the
      Click wheel's; everything here is CSS on it.
-     1. The look's own tokens: the LCD measured on Commons "IPod 1Gen.jpg" (CC BY 4.0, a lit screen,
+     1. The look's own tokens: the LCD measured on a Wikimedia Commons photo (CC BY 4.0, a lit screen,
         balanced on the white body): the glass #c2c5b1 .. #cfd1b9, the selection a dark taupe bar with
         light text, the ink a near-black (the photo reads it soft, #716c61). */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-look-original{
@@ -10982,7 +10980,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-s-hair:var(--pk-o-ink); --pk-s-line:var(--pk-o-clear); --pk-s-groove:var(--pk-o-lcd); --pk-s-art-shadow:none;
     --pk-s-batt1:var(--pk-o-ink); --pk-s-batt2:var(--pk-o-ink); --pk-s-batt-line:var(--pk-o-ink); --pk-s-jump-bg:var(--pk-o-ink);
     color:var(--pk-s-ink); font-family:'Jersey 10', var(--font-ui); font-size-adjust:var(--pk-o-xh); }
-  /* no album art on the first iPod: the cover and the menus' art pane go, the list takes the glass */
+  /* no album art on the first click-wheel player: the cover and the menus' art pane go, the list takes the glass */
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-cover, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-stars, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-art{ display:none; }
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-meta{ text-align:center; }
   /* the screen's buttons: a button's UA font shorthand resets the family AND the size adjust - inherit both */
@@ -10990,7 +10988,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-click .ipm-lpane{ flex:1 1 auto; max-width:none; }
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-np, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-row, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-row, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-nof,
     :where(html.is-phone, html.mms-popout) .mms-look-original .mms-pos, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rem{ font-weight:var(--fw-normal); }
-  /* the first iPod's screen was 1-bit: an emoji in a title or a row draws in black and white. The filter names
+  /* the first click-wheel player's screen was 1-bit: an emoji in a title or a row draws in black and white. The filter names
      TEXT surfaces only - never the glass, the panel or a media element (a filter beside a playing video blacks it
      out on iPhone, LESSONS 7); the art is already display:none here. */
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-np, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-artist, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-album, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-nof, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-pos, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rem, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rt, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-ra, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-val, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-gl, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-letter{ filter:grayscale(1); }
@@ -11006,7 +11004,7 @@ a.tv-continue-card { text-decoration: none; }
     background:linear-gradient(45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)),
       linear-gradient(-45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)); }
   /* 4. The scroll wheel: a PLAIN disc, as on the real one (v1.340, Dean: "it's a plain disc in the real one";
-        Commons "IPod 1Gen.jpg" shows smooth white plastic, no marks - v1.335's faint rim ticks are gone). The
+        a Wikimedia Commons photo shows smooth white plastic, no marks - v1.335's faint rim ticks are gone). The
         engine still writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied to the fresh
         wheel on a repaint; gate r1 qa S3) and this layer still turns with it (a transform - no filter, blur or
         mask); on a plain radial disc the turn draws nothing, which is the real wheel's look. */
@@ -11112,7 +11110,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-shade{ position:absolute; inset:var(--pk-stk-shade-inset); width:var(--pk-stk-shade-size); height:var(--pk-stk-shade-size); z-index:-1; /* token-exempt: local stacking - under the sticker image */ pointer-events:none;
     transform:translate3d(var(--mms-stk-dx), var(--mms-stk-dy), 0); }
   :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-gloss{ position:absolute; inset:0; width:100%; height:100%; border-radius:inherit; pointer-events:none; opacity:calc(1 - var(--lm,0) * .3); }
-  /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
+  /* Settings > Lighting: the Click player's check on the chosen strength; a wrapping note row (motion denied) */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-check{ --mms-g-size:var(--pk-fs-check); flex:none; font-size:var(--pk-fs-check); color:var(--pk-s-sel1); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--pk-s-paper); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:var(--pk-row-h); padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--pk-fs-note); font-weight:var(--fw-normal); color:var(--pk-s-sub); }
@@ -11120,14 +11118,14 @@ a.tv-continue-card { text-decoration: none; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
   @media (max-width: 340px){ :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
-  /* v1.232 (Dean): iPod MARQUEE - long names slowly scroll to reveal the full text, like a
-     real iPod. skin-surface.js (marqueeEl) wraps an overflowing line in .mms-mq and sets
+  /* v1.232 (Dean): Click MARQUEE - long names slowly scroll to reveal the full text, like a
+     real click-wheel player. skin-surface.js (marqueeEl) wraps an overflowing line in .mms-mq and sets
      --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only does so
      when motion is allowed (else the line keeps its ellipsis). The lines: the Now Playing
      title/artist/album, the Apple/Spotify title/sub/context, the "On <device>" label
      (.mms-remote, v1.351), and the highlighted menu row's name + detail and the highlighted
      song-list row (v1.351). */
-  /* marquee for a long title/artist/album on ANY skin (v1.232.1: was iPod-only). */
+  /* marquee for a long title/artist/album on ANY skin (v1.232.1: was Click-only). */
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on{ text-overflow:clip; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
 
@@ -11189,7 +11187,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6)); }
 }
 
-/* ===================== POCKET STAYS UPRIGHT (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it") =====
+/* ===================== POCKET STAYS UPRIGHT (Dean, 2026-10-07: (paraphrased) turning the phone sideways should not change it) =====
    iOS lets no web page lock its orientation (MDN browser-compat-data 8.1.4: screen.orientation.lock() and the manifest's
    `orientation` are both unsupported on iOS Safari), so the page DOES turn; with the Upright setting (html.pk-upright, the
    default - music-skins.js) the full player is drawn as the phone's PORTRAIT box (the landscape viewport's height wide, its

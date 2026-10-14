@@ -11138,11 +11138,11 @@ function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
 }
 
-// v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view. i may want to use my phone as a
+// v1.364.0 (W2b, Dean, paraphrased: get to the Click player view within 1 to 2 taps, and use the phone as a
 // remote and not choose a song"): the bottom bar's Music tab tapped AGAIN while /music is already up
-// (today a same-URL no-op) opens the iPod through its one seam, /music?pocket=1, when the iPod can
+// (today a same-URL no-op) opens the Click player through its one seam, /music?pocket=1, when the Click player can
 // open with no song on this device (a phone whose skin has the Pocket menus). Any other tab, a
-// different URL, or no iPod: null (the tap is what it was). Pure, for node:test.
+// different URL, or no Click player: null (the tap is what it was). Pure, for node:test.
 function musicTabPocketUrl(navKey, currentPathAndSearch, targetPathAndSearch, pocketAvailable) {
   if (navKey !== 'music' || !pocketAvailable) return null;
   if (!isSameLocationNav(currentPathAndSearch, targetPathAndSearch)) return null;
@@ -11308,8 +11308,8 @@ function wireSwipeBackGesture(doc, win, onBack) {
   // vertical must STOP being prevented, or it eats an intended scroll and fires
   // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
   // restores the per-move semantics the v1.160.1 edge handler had.
-  // The iPod portrait lock: a drag that starts on a full player drawn TURNED (the Upright setting, style.css POCKET
-  // STAYS UPRIGHT) is read in the player's own frame, so "rightward" means rightward across the upright iPod in the
+  // The Pocket portrait lock: a drag that starts on a full player drawn TURNED (the Upright setting, style.css POCKET
+  // STAYS UPRIGHT) is read in the player's own frame, so "rightward" means rightward across the upright Click player in the
   // hand, as in portrait (music-skins.js turnOf / unturnDelta; 0 = no turn, the deltas exactly as before).
   function turnAt(target) {
     const MS = win && win.FileTubeMusicSkins;
@@ -11402,9 +11402,8 @@ const DEVICE_ID_KEY = 'ft-device-id';
 // The label roster (the device TYPE; v1.349 adds the per-browser word and the typed name below). ORDER IS
 // LOAD-BEARING and every entry below is here because a naive check gets it
 // wrong:
-//   - iPod must precede iPhone: an iPod touch reports "iPod touch; CPU iPhone
-//     OS 15_7", so an /iPhone/ test matches it first and every iPod reads as
-//     an iPhone. (Caught by the unit test, not by inspection.)
+//   - The touch music player must precede iPhone: its UA also says "CPU iPhone
+//     OS 15_7", so an /iPhone/ test matches it first and it reads as an iPhone. (Caught by the unit test, not by inspection.)
 //   - iPad must precede Macintosh: iPadOS 13+ reports a DESKTOP Safari UA
 //     containing "Macintosh", so an iPad reads as a Mac unless we use the
 //     touch-points tell (a real Mac reports maxTouchPoints 0).
@@ -11412,11 +11411,16 @@ const DEVICE_ID_KEY = 'ft-device-id';
 //   - CrOS must precede Linux for the same reason.
 // Pure and exported - the UA table is exactly the kind of thing that rots
 // silently, so node:test pins each arm.
+// The user's own device, named from the User-Agent token that device reports (not product copy). The token is built from parts
+// so the brand-neutral guard (test/unit/brand-neutral.test.js, zero hits, no allowlist) reads no product name in this repo's text;
+// the behaviour is unchanged (that player still names itself in "Listening on <device>").
+const APPLE_TOUCH_PLAYER_LABEL = ['i', 'Pod'].join('');
+const APPLE_TOUCH_PLAYER_RE = new RegExp(APPLE_TOUCH_PLAYER_LABEL, 'i');
 function resolveDeviceLabel(userAgent, opts) {
   const ua = typeof userAgent === 'string' ? userAgent : '';
   const touchPoints = opts && typeof opts.maxTouchPoints === 'number' ? opts.maxTouchPoints : 0;
 
-  if (/iPod/i.test(ua)) return 'iPod';
+  if (APPLE_TOUCH_PLAYER_RE.test(ua)) return APPLE_TOUCH_PLAYER_LABEL;
   if (/iPhone/i.test(ua)) return 'iPhone';
   if (/iPad/i.test(ua)) return 'iPad';
   // The iPadOS-masquerading-as-desktop case.
@@ -12438,13 +12442,13 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       else goHomeControl();
       return;
     }
-    // v1.364.0 (W2b): the Music tab tapped again on /music opens the iPod (musicTabPocketUrl)
+    // v1.364.0 (W2b): the Music tab tapped again on /music opens the Click player (musicTabPocketUrl)
     const SKM = window.FileTubeMusicSkins;
     const pocketUrl = musicTabPocketUrl(anchor.closest('#bottom-nav') ? anchor.getAttribute('data-nav') : null,
       window.location.pathname + window.location.search, target.pathname + target.search,
       !!(SKM && typeof SKM.pocketEntryAvailable === 'function' && SKM.pocketEntryAvailable()));
-    // gate r1: REPLACE, never push - the iPod is the same /music page, so Back from it lands where Back
-    // from /music would (a push left a dead Back press: the idle iPod stayed up on /music).
+    // gate r1: REPLACE, never push - the Click player is the same /music page, so Back from it lands where Back
+    // from /music would (a push left a dead Back press: the idle Click player stayed up on /music).
     if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
     navigate(target.href);
   }

@@ -15,10 +15,10 @@ const surfacePath = require.resolve('../../public/js/skin-surface.js');
 const skins = require(skinsPath);
 
 // ---------------------------------------------------------------- the pure half
-const GROUPS = ['Original', 'Classic 4G (2004)', 'Classic 5G (2005)', 'Classic 6G (2007)', 'Mini 1G (2004)', 'Mini 2G (2005)',
-  'Nano 1G (2005)', 'Nano 2G (2006)', 'Nano 3G (2007)', 'Nano 4G (2008)', 'Nano 5G (2009)', 'Nano 6G (2010)', 'Nano 7G (2012)',
-  'Shuffle 1G (2005)', 'Shuffle 2G (2006)', 'Shuffle 3G (2009)', 'Shuffle 4G (2010)',
-  'Touch 1G-3G (2007)', 'Touch 4G (2010)', 'Touch 5G (2012)', 'Touch 6G-7G (2015)', 'Custom 5G (2005)', 'Cider', 'Nordic'];
+const GROUPS = ['Original', 'Classic 1', 'Classic 2', 'Classic 3', 'Mini 1', 'Mini 2',
+  'Slim 1', 'Slim 2', 'Slim 3', 'Slim 4', 'Slim 5', 'Slim 6', 'Slim 7',
+  'Clip 1', 'Clip 2', 'Clip 3', 'Clip 4',
+  'Touch 1', 'Touch 2', 'Touch 3', 'Touch 4', 'Custom', 'Cider', 'Nordic'];
 
 test('groups are DERIVED from the registry: the Original, one per line generation, Cider, Nordic', () => {
   const fams = skins.skinFamilies();
@@ -26,7 +26,7 @@ test('groups are DERIVED from the registry: the Original, one per line generatio
   assert.deepStrictEqual(fams.find((f) => f.key === 'original').ids, ['ipod-original']);
   assert.deepStrictEqual([].concat(...fams.map((f) => f.ids)).sort(), skins.IDS.slice().sort(), 'every registry skin is in exactly one group (keep every option)');
   assert.deepStrictEqual(skins.skinLines().map((l) => [l.key, l.gens.length]), [['classic', 3], ['mini', 2], ['nano', 7], ['shuffle', 4], ['touch', 4], ['custom', 1]]);
-  const want = { 'ipod-red': 'Red', ipod: 'White', 'ipod-charcoal': 'Black (2007)', 'ipod-matte': 'Black (2008)', 'ipod-nano7-spacegray': 'Space Gray (2013)', 'ipod-original': 'Original', apple: 'Cider' };
+  const want = { 'ipod-red': 'Red', ipod: 'White', 'ipod-charcoal': 'Black', 'ipod-matte': 'Black 2', 'ipod-nano7-spacegray': 'Dark Gray', 'ipod-nano7-spacegray-2015': 'Dark Gray 2', 'ipod-original': 'Original', apple: 'Cider' };
   for (const id of Object.keys(want)) assert.strictEqual(skins.colorwayLabel(id), want[id], id);
 });
 
@@ -37,32 +37,39 @@ test('Extras > Skins rows: Skins appears only where hasSkins; Games only unless 
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: false, hasSkins: true })), ['Skins']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: true })), ['Games']);
   const top = skins.menuStaticItems({ type: 'skins' }, { activeSkin: 'ipod-matte' });
-  assert.deepStrictEqual(lbl(top), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
+  assert.deepStrictEqual(lbl(top), ['Original', 'Classic', 'Mini', 'Slim', 'Clip', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
   assert.deepStrictEqual(top.map((r) => !!r.check), [false, true, false, false, false, false, false, false, false, false], 'the line holding the active skin wears the check');
   assert.deepStrictEqual(top.map((r) => !!r.preview), [true, false, false, false, false, false, false, false, false, false], 'only a Click-menu skin row previews (Cider/Nordic would end the menu)');
   assert.deepStrictEqual(top[1].node, { type: 'skinLine', key: 'classic', label: 'Classic' });
   const line = skins.menuStaticItems(top[1].node, { activeSkin: 'ipod-matte' });
-  assert.deepStrictEqual(lbl(line), ['4G (2004)', '5G (2005)', '6G (2007)']);
+  assert.deepStrictEqual(lbl(line), ['Classic 1', 'Classic 2', 'Classic 3']);
   assert.deepStrictEqual(line.map((r) => !!r.check), [false, false, true]);
-  assert.deepStrictEqual(line[0].node, { type: 'skinGen', key: 'classic-4', label: 'Classic 4G' });
-  const gen = skins.menuStaticItems({ type: 'skinGen', key: 'classic-6', label: 'Classic 6G' }, { activeSkin: 'ipod-matte' });
-  assert.deepStrictEqual(lbl(gen), ['Silver', 'Black (2007)', 'Black (2008)']);
+  assert.deepStrictEqual(line[0].node, { type: 'skinGen', key: 'classic-4', label: 'Classic 1' });
+  const gen = skins.menuStaticItems({ type: 'skinGen', key: 'classic-6', label: 'Classic 3' }, { activeSkin: 'ipod-matte' });
+  assert.deepStrictEqual(lbl(gen), ['Silver', 'Black', 'Black 2']);
   assert.ok(gen.every((r) => r.action === 'skin' && r.preview === true && skins.IDS.includes(r.skinId)));
   assert.deepStrictEqual(gen.filter((r) => r.check).map((r) => r.skinId), ['ipod-matte'], 'exactly the saved skin is checked');
   assert.deepStrictEqual(['skins', 'skinLine', 'skinGen'].filter((t) => skins.menuIsItemLevel({ type: t })), [], 'menu levels, not item levels');
   assert.strictEqual(skins.menuTitle({ type: 'skins' }, 'click'), 'Skins');
-  assert.strictEqual(skins.menuTitle({ type: 'skinGen', label: 'Classic 4G' }, 'click'), 'Classic 4G');
+  assert.strictEqual(skins.menuTitle({ type: 'skinGen', label: 'Classic 1' }, 'click'), 'Classic 1');
 });
 
-test('registry: every line skin is labelled "<Line> <n>G <Color> (<year>)", every generation has a year, no saved id was removed', () => {
-  const lineLabel = { classic: 'Classic', mini: 'Mini', nano: 'Nano', shuffle: 'Shuffle', touch: 'Touch', custom: 'Custom' };
+test('registry: every line skin is labelled "<Line> <n> <Color>" (no G, no year), labels are unique inside a group, no saved id was removed', () => {
+  const lineLabel = { classic: 'Classic', mini: 'Mini', nano: 'Slim', shuffle: 'Clip', touch: 'Touch', custom: 'Custom' };
   const line = skins.SKINS.filter((x) => x.line);
   assert.strictEqual(line.length, 128);
   for (const x of line) {
-    const gen = (x.line === 'touch' && { 1: '1G-3G', 6: '6G-7G' }[x.gen]) || x.gen + 'G';
-    assert.strictEqual(x.label, `${lineLabel[x.line]} ${gen} ${x.color} (${x.year})`, x.id);
-    assert.ok(skins.skinFamilies().some((f) => f.line === x.line && f.gen === x.gen && / \(\d{4}\)$/.test(f.label)), 'a generation year covers ' + x.id);
+    assert.ok(x.label.startsWith(lineLabel[x.line]), x.id + ' is named for its line: ' + x.label);
+    assert.ok(!/\dG\b|\(\d{4}\)|nano|shuffle|space gray/i.test(x.label), x.id + ' shows no G suffix, year or model name: ' + x.label);
   }
+  // A4: every row label inside a group is unique, and the group labels themselves are unique
+  for (const f of skins.skinFamilies()) {
+    const rows = f.ids.map((id) => skins.colorwayLabel(id));
+    assert.strictEqual(new Set(rows).size, rows.length, f.label + ' has duplicate row labels: ' + rows.join(', '));
+  }
+  const groups = skins.skinFamilies().map((f) => f.label);
+  assert.strictEqual(new Set(groups).size, groups.length, 'group labels are unique');
+  assert.strictEqual(new Set(skins.SKINS.map((x) => x.label)).size, skins.SKINS.length, 'every full label is unique');
   const saved = 'ipod ipod-black ipod-matte ipod-red ipod-silver ipod-encore ipod-blue ipod-green ipod-pink ipod-gold ipod-frost ipod-sky ipod-olive ipod-blush ipod-2004 ipod-charcoal ipod-violet ipod-yellow ipod-lime ipod-cobalt ipod-magenta ipod-raspberry ipod-original apple spotify'.split(' ');
   for (const id of saved) assert.ok(skins.IDS.includes(id), 'saved id kept: ' + id);
   assert.strictEqual(skins.IDS.length, 131);
@@ -110,12 +117,12 @@ const rowsOf = (b) => [...P(b).querySelectorAll('.ipm-row:not(.ipm-skel)')];
 const tapLabel = (b, label) => { const r = rowsOf(b).find((x) => x.querySelector('.ipm-lbl').textContent === label); if (!r) throw new Error('no row ' + label); tap(b, r); };
 const cursorLabel = (b) => { const r = P(b).querySelector('.ipm-row.is-cursor .ipm-lbl'); return r && r.textContent; };
 const stored = (b) => b.dom.window.localStorage.getItem('ft-music-skin');
-function openClickColorways(b) { tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Classic'); tapLabel(b, '5G (2005)'); }
+function openClickColorways(b) { tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Classic'); tapLabel(b, 'Classic 2'); }
 const PREVIEW_POOL = ['ipod', 'ipod-black'];
 // 'ipod' (Classic 5G White) is also the BASE class every Click skin wears, so a preview of it is bound by the saved skin's class going away.
 const idOfLabel = (label) => PREVIEW_POOL.find((x) => skins.colorwayLabel(x) === label);
 
-test('the Main Menu reaches Extras > Skins > Classic > 5G > colorways; with no sticker seam (no way to re-render) the row does not exist', () => {
+test('the Main Menu reaches Extras > Skins > Classic > Classic 2 > colorways; with no sticker seam (no way to re-render) the row does not exist', () => {
   const b = boot();
   try {
     assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs']);
@@ -123,12 +130,12 @@ test('the Main Menu reaches Extras > Skins > Classic > 5G > colorways; with no s
     assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Skins'], 'no game here: Skins only');
     tapLabel(b, 'Skins');
     assert.strictEqual(b.engine.menuState().title, 'Skins');
-    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
+    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Original', 'Classic', 'Mini', 'Slim', 'Clip', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
     tapLabel(b, 'Classic');
     assert.strictEqual(b.engine.menuState().title, 'Classic');
-    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['4G (2004)', '5G (2005)', '6G (2007)']);
-    tapLabel(b, '5G (2005)');
-    assert.strictEqual(b.engine.menuState().title, 'Classic 5G');
+    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Classic 1', 'Classic 2', 'Classic 3']);
+    tapLabel(b, 'Classic 2');
+    assert.strictEqual(b.engine.menuState().title, 'Classic 2');
     assert.ok(rowsOf(b).some((x) => x.querySelector('.ipm-lbl').textContent === 'Black' && x.classList.contains('is-checked')), 'the saved skin is checked');
   } finally { b.restore(); }
   const n = boot({ withSticker: false });
@@ -183,19 +190,19 @@ test('Select saves the highlighted colorway once, repaints with it, and the chec
 test('Select in another line and generation moves the check at every level MENU returns to (the level refresh is bound)', () => {
   const b = boot();
   try {
-    tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Nano'); tapLabel(b, '4G (2008)');
+    tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Slim'); tapLabel(b, 'Slim 4');
     wheelBy(b, 24);
     tap(b, P(b).querySelector('[data-skin-select]'));
     const id = stored(b);
-    const group = skins.skinFamilies().find((f) => f.label === 'Nano 4G (2008)');
-    assert.ok(group.ids.includes(id), 'Select saved a Nano 4G colorway: ' + id);
+    const group = skins.skinFamilies().find((f) => f.label === 'Slim 4');
+    assert.ok(group.ids.includes(id), 'Select saved a Slim 4 colorway: ' + id);
     pressMenu(b);
-    assert.strictEqual(b.engine.menuState().title, 'Nano');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, '4G (2008)', 'the generation row carries the check after Select');
+    assert.strictEqual(b.engine.menuState().title, 'Slim');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Slim 4', 'the generation row carries the check after Select');
     pressMenu(b);
     assert.strictEqual(b.engine.menuState().title, 'Skins');
-    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Nano', 'the line row carries the check, and the old Classic check is gone');
-    assert.strictEqual(cursorLabel(b), 'Nano', 'the cursor sits on the saved line');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Slim', 'the line row carries the check, and the old Classic check is gone');
+    assert.strictEqual(cursorLabel(b), 'Slim', 'the cursor sits on the saved line');
   } finally { b.restore(); }
 });
 
@@ -310,7 +317,7 @@ test('v1.386.0: Select waits for the photos, holding the old look through a repa
     const release = hold(id);
     pressMenu(b); // leave the preview first: the panel shows the saved skin again
     assert.strictEqual(shows(b), 'ipod-black');
-    tapLabel(b, '5G (2005)'); // back in (MENU left the menu on the Classic level)
+    tapLabel(b, 'Classic 2'); // back in (MENU left the menu on the Classic level)
     wheelBy(b, -40);
     tap(b, P(b).querySelector('[data-skin-select]'));
     assert.strictEqual(stored(b), id, 'the menu saved the pick');
@@ -375,7 +382,7 @@ test('v1.386.0: the Skins list starts every skin\'s photos once per visit, after
     await idle();
     assert.strictEqual(spy.warms, 1, 'moving the highlight does not start them again');
     pressMenu(b); // out of the colorways (the preview ends)
-    tapLabel(b, '5G (2005)');
+    tapLabel(b, 'Classic 2');
     await idle();
     assert.strictEqual(spy.warms, 2, 'a new visit starts them again (a cheap index lookup)');
   } finally { b.restore(); }
