@@ -25,13 +25,20 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
 
 The web reads it once, through `public/js/host-adapter.js`. No `window.FileTubeHost` (every browser, the PWA) = no host: the
 adapter's calls are silent no-ops and nothing changes.
+
+**`mediaFetch` (v1.391.0, add-only).** A pure declaration: it has no messages and no events. It means "this host build may show
+the web's server-side downloader UI" (the Subscriptions page, the header and bottom-nav Download entries, the watch page's
+Subscribe, Pin and Re-pull controls, and the Settings Downloads section). The web shows that UI when there is no host, or when
+the host announced `mediaFetch` (`host.allowsMediaFetch()`); with a host that did not announce it, none of it renders and the
+web never asks the server's downloader health route. The App Store build leaves it out. It is separate from `downloads`
+(native offline copies), which is untouched.
 
 ## 2. Web to native messages
 

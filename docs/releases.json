@@ -3712,5 +3712,11 @@
     "date": "2026-10-13",
     "title": "Scroll the page on a sideways phone, even by dragging on the video",
     "intent": "On a phone held sideways, the video on the watch page is now a little shorter so the title shows right below it, and you can scroll the page by dragging on the video itself. A quick flick keeps gliding for a moment, and pulling down at the top still shrinks it to the mini player. Upright phones, tablets and computers work as before."
+  },
+  {
+    "version": "1.391.0",
+    "date": "2026-10-14",
+    "title": "Clearer names in Settings and Pocket, a shorter README, and a privacy page for the iPhone app",
+    "intent": "Pocket's skins now have plain names (Classic, Mini, Slim, Clip, Touch, Custom, with simple numbers) and the Settings wording is neutral. The README is shorter, with a new features guide, and there is a privacy page for the iPhone app. The iPhone app can now hide the downloader screens. Everything else works as before."
   }
 ]

@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -224,6 +224,10 @@
       return false;
     }
     function appLike() { return present || standalone(); }
+    // v1.391.0 (R1/R2): `mediaFetch` is a pure declaration (no messages, no events): "this host build may show the web's
+    // server-side downloader UI". No host (every browser, the PWA) shows it as ever; a host shows it only when it announced
+    // the capability. The App Store build leaves it out. Deliberately NOT the `downloads` capability (native offline copies).
+    function allowsMediaFetch() { return !present || has('mediaFetch'); }
 
     // The app's identity from the injected host (schema `host.app`): name + version strings, build optional; null when no
     // host or malformed. v1.387.0 (Dean): the avatar menu shows "iOS app <version> (<build>)" inside the app.
@@ -242,6 +246,7 @@
       post: post,
       on: on,
       appLike: appLike,
+      allowsMediaFetch: allowsMediaFetch,
     };
 
     if (present) {

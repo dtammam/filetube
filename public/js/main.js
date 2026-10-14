@@ -697,7 +697,7 @@ function cardUi() {
 }
 
 // Pure: the item's shareable original link (the SERVER-resolved field, never
-// re-approximated from a raw youtubeId - the v1.52 lesson). YouTube's watchUrl
+// re-approximated from a raw youtubeId - the v1.52 lesson). The reference site's watchUrl
 // wins; a download from another site shares its saved page link (v1.338).
 function cardShareUrl(item) {
   // v1.376.0 W2: a podcast episode shares its place in this app (common.js podcastShareUrl).
@@ -961,7 +961,7 @@ function homeRowEnabled(key) {
 // regular videos are untouched (type !== 'audio'); a non-media kind (podcast / track / book /
 // tv) keeps its own destination. `musicHrefForItem` returns the /music href or null (caller
 // keeps its /watch href). Chaptered audio routes to the album's FIRST chapter track (`::c0`) so
-// it opens IN ITS ALBUM and the iPod MENU/list browses the chapters. Client-only: an id the
+// it opens IN ITS ALBUM and the Click player MENU/list browses the chapters. Client-only: an id the
 // music API can't resolve (a non-projected download) bounces to /watch (music.js's miss path).
 function musicHrefForItem(item) {
   // v1.251: THE rule moved VERBATIM to common.js's audioOpenHref - ONE authority for every
@@ -1323,7 +1323,7 @@ const PreviewCards = (function () {
     // Sort preference persists across visits. v1.34 (Dean): precedence is
     // explicit per-browser dropdown pick (localStorage `filetube_sort`) >
     // the server-side `defaultSort` setting (Settings page, out-of-the-box
-    // 'release-date' -- the real-YouTube-feed flip) > 'release-date'
+    // 'release-date' -- the real video-site feed flip) > 'release-date'
     // (matches the server default when the settings fetch fails). The
     // provisional value below is refined from /api/settings in init()
     // BEFORE the first page fetch whenever no explicit pick exists.
@@ -1387,7 +1387,7 @@ const PreviewCards = (function () {
     // v1.149 (Dean): the search-scope filter (All | Titles | Channels).
     // Deep-linkable via ?searchIn= (whitelisted; junk -> 'all'), otherwise
     // every new search starts on 'all' - DELIBERATELY unpersisted (the
-    // YouTube posture; the v1.143 chip persistence was the fiddly half of
+    // familiar video-site posture; the v1.143 chip persistence was the fiddly half of
     // that wave and a search filter should not follow you between
     // searches). State lives here in the view closure; the toggle below
     // and buildVideosApiUrl both read/write it.
@@ -1575,7 +1575,7 @@ const PreviewCards = (function () {
       // The late answer mutates the SAME object loadLibrary latches into cardCaps,
       // so it lands whichever of the two settles first.
       const caps = { canModifyLibrary, reheatEnabled: false };
-      fetch('/api/subscriptions/health')
+      probeSubscriptionsHealth()
         .then((res) => {
           writeCapabilityCache({ moduleEnabled: res.ok === true });
           caps.reheatEnabled = res.ok === true;

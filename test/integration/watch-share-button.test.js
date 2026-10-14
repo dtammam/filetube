@@ -280,14 +280,14 @@ test('v1.337 watch page: a non-YouTube download with a sourceShareUrl gets Share
   }
 });
 
-test('v1.337 watch page: the YouTube item keeps its "Share the original YouTube link" name', async () => {
+test('v1.337 watch page: the YouTube item is named "Share the original link" too (v1.391.0: one neutral name)', async () => {
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
   try {
     await settle();
     const shareBtn = dom.window.document.getElementById('share-media-btn');
-    assert.strictEqual(shareBtn.title, 'Share the original YouTube link');
-    assert.strictEqual(shareBtn.getAttribute('aria-label'), 'Share the original YouTube link');
+    assert.strictEqual(shareBtn.title, 'Share the original link');
+    assert.strictEqual(shareBtn.getAttribute('aria-label'), 'Share the original link');
   } finally {
     dom.window.close();
   }
@@ -343,7 +343,7 @@ test('v1.337 watch page: a watchUrl WINS over a sourceShareUrl (a proxy-host You
   try {
     await settle();
     const shareBtn = dom.window.document.getElementById('share-media-btn');
-    assert.strictEqual(shareBtn.title, 'Share the original YouTube link');
+    assert.strictEqual(shareBtn.title, 'Share the original link');
     shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
     assert.strictEqual(calls[0].url, WATCH_URL);

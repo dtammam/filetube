@@ -1,7 +1,7 @@
 {
   "name": "FileTube",
   "short_name": "FileTube",
-  "description": "Self-hosted, nostalgic-YouTube media server.",
+  "description": "Self-hosted media server with a nostalgic look.",
   "id": "/",
   "scope": "/",
   "start_url": "/",

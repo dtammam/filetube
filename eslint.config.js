@@ -186,6 +186,8 @@ module.exports = [
         // v1.53: the capability cache (common.js).
         readCapabilityCache: 'readonly',
         writeCapabilityCache: 'readonly',
+        mediaFetchAllowed: 'readonly', // v1.391.0: common.js's mediaFetch gate predicate + the one health probe
+        probeSubscriptionsHealth: 'readonly',
         scrubSubsForCache: 'readonly',
         // v1.339 (L2): the decidable-cache Subscribe gate (common.js), read by watch.js.
         cachedSubscribeState: 'readonly',

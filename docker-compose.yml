@@ -11,7 +11,7 @@ services:
       DATA_DIR: /app/data
       PORT: 3000
       NODE_ENV: production
-      # Optional: YouTube subscriptions (yt-dlp) -- off by default, additive.
+      # Optional: subscriptions and downloads (yt-dlp) -- off by default, additive.
       # Uncomment to enable; see .env.example / README.md for all vars.
       # FILETUBE_YTDLP_ENABLED: "true"
       # FILETUBE_YTDLP_COOKIES_FILE: /app/data/cookies.txt

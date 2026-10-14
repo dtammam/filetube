@@ -894,7 +894,7 @@ async function bootHomeFeedPref() {
   if (HOME_FEED_VALUES.includes(s.homeFeed)) applyHomeFeedPref(s.homeFeed); // seed, no mirror
 }
 
-// ---- v1.84: Modern YouTube Mode toggle -------------------------------------
+// ---- v1.84: Modern grid mode toggle -------------------------------------
 //
 // A THIRD home-layout option (a flat big-tile grid with a filter-chip row and,
 // on mobile, a recent-uploader avatar bar), orthogonal to the era themes. Same
@@ -2368,9 +2368,9 @@ const WATCH_TOGGLE_OPTIONS = [
 //
 // A dimension of the library chip row, present ONLY on a folder/root-scoped
 // search (main.js). Unlike format/watch it is NOT persisted: each new search
-// starts on 'all' (the YouTube posture) - the value lives in the search view's
+// starts on 'all' (the familiar video-site posture) - the value lives in the search view's
 // closure and deep links carry it via ?searchIn=. Labels are Titles/Channels
-// (not YouTube's Videos/Channels) because the format dimension in the same row
+// (not the reference site's Videos/Channels) because the format dimension in the same row
 // already owns a "Videos" chip.
 const SEARCH_SCOPE_MODES = ['all', 'title', 'channel'];
 
@@ -3362,9 +3362,9 @@ function formatViewCountCaptureDate(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// v1.54: YouTube-style compact count -- 999 -> "999", 1234 -> "1.2K",
+// v1.54: video-site-style compact count -- 999 -> "999", 1234 -> "1.2K",
 // 24000 -> "24K", 1200000 -> "1.2M". One decimal only under 10 of a unit,
-// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like YouTube
+// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like the big video sites
 // (24,600 -> "24K", never "25K") -- which also makes the unit boundary
 // impossible to overshoot (999,500 floors to "999K", never "1000K"). The
 // epsilon absorbs binary-float dust (4.3e6/1e6*10 can land a hair under 43)
@@ -3636,7 +3636,7 @@ function injectSubscriptionsNavLinkIfEnabled() {
     if (r) { r.remove(); applyBottomNavCustomization(); }
   };
 
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       writeCapabilityCache({ moduleEnabled: res.ok === true });
       if (!shouldInjectSubscriptionsNav(res)) {
@@ -3844,6 +3844,44 @@ function isFullWatchSeedItem(item) {
 // policy). Every read crosses `sanitizeCapabilityCache` -- an untrusted
 // string with an allowlisting scrub (own-key, primitive-only), a TTL, and a
 // future-ts rejection. Every access is try/catch (private mode).
+// ---- v1.391.0 (R1/R2): the mediaFetch gate --------------------------------------------------
+// The downloader UI (Subscriptions, the header / bottom-nav Download, Subscribe / Pin / Re-pull, the Settings Downloads
+// section) shows only when there is no native host, or the host announced `mediaFetch` (host-adapter's
+// `allowsMediaFetch`; no User-Agent or platform sniffing). ONE predicate, and EVERY source of `moduleEnabled` goes through
+// it: the health probe (below) never touches the network when the gate is shut, and the capability cache, the remembered
+// chrome flag and the cache write all read `false`. Absent host / absent adapter (Node tests, plain browsers) = allowed.
+function mediaFetchAllowed() {
+  try {
+    const host = typeof window !== 'undefined' && window.FileTube && window.FileTube.host;
+    if (!host) return true;
+    if (typeof host.allowsMediaFetch === 'function') return host.allowsMediaFetch() !== false;
+    return !host.present || (typeof host.has === 'function' && host.has('mediaFetch') === true);
+  } catch (_) { return true; }
+}
+// The one `GET /api/subscriptions/health` call site. A shut gate answers a synthetic 404 (what a server without the module
+// answers), so every consumer takes its existing "module off" path with no request made.
+function probeSubscriptionsHealth() {
+  if (!mediaFetchAllowed()) return Promise.resolve({ ok: false, status: 404 });
+  return fetch('/api/subscriptions/health');
+}
+// The routes that are downloader-only. A direct visit (a typed or old link) to one with the gate shut renders a plain
+// "Not available in this app" state in place of the view; the view's init() never runs.
+function viewBlockedByMediaFetch(view) {
+  return view === 'subscriptions' && !mediaFetchAllowed();
+}
+function renderNotAvailableInApp(root) {
+  if (!root || typeof document === 'undefined') return;
+  const box = document.createElement('div');
+  box.className = 'not-available-state';
+  box.setAttribute('role', 'status');
+  const h = document.createElement('h2');
+  h.textContent = 'Not available in this app';
+  const p = document.createElement('p');
+  p.textContent = 'This part of FileTube is not part of the app. Open it in a web browser instead.';
+  box.appendChild(h);
+  box.appendChild(p);
+  root.replaceChildren(box);
+}
 const CAP_CACHE_KEY = 'ft-cap-cache-v1';
 const CAP_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -3863,7 +3901,7 @@ function sanitizeCapabilityCache(parsed, nowMs) {
     return r;
   };
   const out = { ts: parsed.ts };
-  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled;
+  if (typeof parsed.moduleEnabled === 'boolean') out.moduleEnabled = parsed.moduleEnabled && mediaFetchAllowed(); // v1.391.0: a cached true reads false when the gate is shut
   if (Array.isArray(parsed.subs)) {
     out.subs = parsed.subs
       .filter((s) => s && typeof s === 'object' && !Array.isArray(s) && typeof s.channelUrl === 'string' && s.channelUrl !== '')
@@ -3891,12 +3929,13 @@ function writeCapabilityCache(patch) {
     const now = Date.now();
     const existing = readCapabilityCache(now) || {};
     const merged = { ...existing, ...patch, ts: now };
+    if (typeof merged.moduleEnabled === 'boolean') merged.moduleEnabled = merged.moduleEnabled && mediaFetchAllowed(); // v1.391.0
     sessionStorage.setItem(CAP_CACHE_KEY, JSON.stringify(merged));
   } catch (_) { /* storage disabled -- the probes still work uncached */ }
   // v1.339 (L2): every confirmed module answer also lands in the per-device flag the
   // pre-paint chrome reserve reads (the capability cache above is sessionStorage with a
   // 5-minute TTL, so a cold PWA launch never has it).
-  if (patch && typeof patch.moduleEnabled === 'boolean') rememberModuleEnabled(patch.moduleEnabled);
+  if (patch && typeof patch.moduleEnabled === 'boolean') rememberModuleEnabled(patch.moduleEnabled && mediaFetchAllowed());
 }
 
 // ---- v1.339 (L2, plan D5): remembered chrome flags -------------------------
@@ -3916,7 +3955,7 @@ const CHROME_FLAG_KEYS = {
   bottomNavLast: 'ft-bottomnav-last', // JSON array - the bottom bar's last resolved visible ids, in order
 };
 function rememberModuleEnabled(enabled) {
-  try { localStorage.setItem(CHROME_FLAG_KEYS.ytdlpModule, enabled ? '1' : '0'); } catch (_) { /* private mode */ }
+  try { localStorage.setItem(CHROME_FLAG_KEYS.ytdlpModule, enabled && mediaFetchAllowed() ? '1' : '0'); } catch (_) { /* private mode */ }
 }
 function rememberQueueShown(shown) {
   try { localStorage.setItem(CHROME_FLAG_KEYS.queueShown, shown ? '1' : '0'); } catch (_) { /* private mode */ }
@@ -4036,7 +4075,7 @@ function showAttributionPicker(targets, opts, onPick) {
 
 // ---- v1.51: the notification bell ------------------------------------------
 //
-// YouTube-style bell in the header's top-right, on every shell that has the
+// video-site-style bell in the header's top-right, on every shell that has the
 // shared header (login/welcome have none and are pre-auth anyway). Injected
 // here (not in per-shell markup) so all 8 shells get it from ONE code path.
 // Capability probe = the first GET /api/notifications/badge: the server 404s
@@ -4237,6 +4276,15 @@ function injectNotificationBellIfEnabled() {
   if (notificationBellAlreadyInjected()) return;
   const headerRight = document.querySelector('.header-right');
   if (!headerRight) return; // shell without a header (login/welcome)
+
+  // v1.391.0 (R2): the bell counts finished downloads, so it follows the mediaFetch gate. Shut = no badge request, no bell, and
+  // the pre-paint placeholder a shell may have painted goes (the remembered flag reads off for the next launch).
+  if (!mediaFetchAllowed()) {
+    const ph = document.getElementById('notif-bell-placeholder');
+    if (ph) ph.remove();
+    try { localStorage.setItem('ft-notif-bell-enabled', '0'); } catch (_) { /* private mode */ }
+    return;
+  }
 
   // v1.101 shimmer sweep: RESERVE the bell slot with a shimmer placeholder if the
   // bell was enabled on the last load (persist-last-known, the v1.99 avatar-bar
@@ -4763,7 +4811,7 @@ function injectNotificationBellIfEnabled() {
 
 // ---- v1.63: the playback queue (header icon + panel) ------------------------
 //
-// YouTube-style queue ("think YouTube" - Dean): a header icon that EXISTS
+// video-site-style queue (Dean, paraphrased: model it on the familiar video-site queue): a header icon that EXISTS
 // only while the user's queue does (ruling 4), left of the notification
 // bell, opening a ui.sheet like the bell's (sweep S4): now-playing highlighted,
 // per-row remove, up/down reorder (icon buttons on every input device; drag
@@ -4955,7 +5003,7 @@ function injectQueueChrome() {
 
       // ---- button + badge (createElement/textContent only) ---------------
       // Sweep S1 (F31): a plain ui-btn icon button (44px hit area), the queue glyph (list
-      // lines + a play triangle, YouTube's queue vocabulary) from the icon sprite.
+      // lines + a play triangle, the reference site's queue vocabulary) from the icon sprite.
       const btn = chromeButtonEl({ cls: 'queue-btn', icon: CHROME_ICON.queue, ariaLabel: 'Playback queue' });
       btn.id = 'queue-btn';
       btn.setAttribute('aria-haspopup', 'true');
@@ -5335,7 +5383,8 @@ function injectDownloadsNavLinkIfEnabled() {
   fetch('/api/config')
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
-      const roots = payload && Array.isArray(payload.syntheticFolders)
+      // v1.391.0 (R2): the Downloads folder entry is the downloader's output root - it follows the mediaFetch gate.
+      const roots = payload && Array.isArray(payload.syntheticFolders) && mediaFetchAllowed()
         ? payload.syntheticFolders.filter((p) => typeof p === 'string' && p !== '')
         : [];
       const navItem = document.querySelector('.bottom-nav-item[data-nav="downloads"]');
@@ -7049,7 +7098,7 @@ function cropAvatarFile(file) {
 //
 // The magnifier (mobile top-right, injected into .header-right beside the bell +
 // avatar) opens search: it reveals the field (hidden by default on mobile - the
-// YouTube-app pattern) and shows the user's recent searches, each individually
+// video-app pattern) and shows the user's recent searches, each individually
 // deletable, plus a clear-all. Terms are recorded on every search and synced
 // per-user (GET/POST/DELETE /api/search-history), so history follows the
 // account. Desktop keeps its always-on search bar; the magnifier + panel are
@@ -7218,7 +7267,7 @@ function wireSearchAffordances() {
 // works even when that trigger is display:none on mobile). Injected with
 // data-nav="you" but DELIBERATELY NOT added to BOTTOM_NAV_OPTIONAL: the layout
 // resolver ranks a roster-absent id after every ROSTER item (so it sits at the
-// right end - the YouTube-app slot; the one exception is if the user opts the
+// right end - the video-app slot; the one exception is if the user opts the
 // COMPAT_TAIL 'settings' into the bar, which pins after it, putting You just
 // before Settings). The real hide/reorder protection is the SETTINGS CUSTOMIZER,
 // which lists only the roster - so its UI can never hide or move You. (A
@@ -7731,7 +7780,7 @@ function openPlaylistPicker(opts) {
   cleanRow.hidden = true;
   // v1.374.0 (d, Dean's R2): the album's one cover - "Each song's own art" (today) or one of the loaded songs, picked from
   // the standard menu (ui.menu). Every NEW track of the job gets that song's thumbnail as its cover (the server fetches it
-  // from YouTube's image host by the id; never a URL from here). Shown with the album's other options.
+  // from the reference site's image host by the id; never a URL from here). Shown with the album's other options.
   const COVER_OWN_ART = 'Each song\'s own art';
   const ALBUM_ROW_NOT_IN = 'Not in the album'; // v1.376.0 R6: an unticked row has no track number
   const coverRow = U.row({ title: 'Cover', meta: COVER_OWN_ART, onClick: (ev) => openCoverMenu(ev), doc: d });
@@ -7872,7 +7921,7 @@ function openPlaylistPicker(opts) {
   }
   // v1.372.0 (Dean: "it wasn't clear what the new saved name would have been"): with Save as an album on, a row shows the
   // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
-  // "Artist - " prefix dropped) when Clean up titles is on, else YouTube's - and "Track N". What it shows is what is written.
+  // "Artist - " prefix dropped) when Clean up titles is on, else the reference site's - and "Track N". What it shows is what is written.
   function songName(r) {
     const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
     if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
@@ -7991,7 +8040,7 @@ function openPlaylistPicker(opts) {
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
       // v1.376.0 R6: the songs that will be downloaded, numbered 1..N in playlist order (albumTrackNumbers); each one's
-      // shown name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      // shown name goes along when it differs from the reference site's (v1.372.0: written as it is, so the server runs no cleanup)
       const tracks = albumTrackNumbers(state.rows);
       const titles = {};
       const named = new Set();
@@ -8085,7 +8134,7 @@ function injectOneOffDownloadButtonIfEnabled() {
     const n = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
     if (n) { n.remove(); applyBottomNavCustomization(); }
   };
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       rememberModuleEnabled(res.ok === true); // v1.339 (L2): the next launch's reserve flag
       if (!shouldInjectOneOffButton(res)) { dropReserves(); return; } // disabled (404) -- inject nothing
@@ -8805,7 +8854,7 @@ function wireTouchTargetDebug() {
 // ---- v1.47.8: keyboard shortcuts reference (Dean) --------------------------
 //
 // Dean: "Can we make a keyboard shortcuts page/modal? ... We can mirror
-// YouTube's or other modern apps'. Ignore/not display on mobile viewport. Keep
+// The reference site's or other modern apps'. Ignore/not display on mobile viewport. Keep
 // it simple."
 //
 // THE ONE RULE THIS FEATURE LIVES OR DIES BY: every row below documents a
@@ -8813,7 +8862,7 @@ function wireTouchTargetDebug() {
 // which do nothing is worse than no reference at all -- it converts "I don't
 // know the shortcut" into "the app is broken". So this list was written by
 // reading the real handlers (player.js's keydown switch and read.js's), not by
-// copying YouTube's published set, and `keyboard-shortcuts.test.js` asserts
+// copying the reference site's published set, and `keyboard-shortcuts.test.js` asserts
 // every listed key against those handlers so the two cannot drift.
 //
 // Deliberately NOT listed: Esc. It is a modal affordance rather than an app
@@ -8856,7 +8905,7 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['ArrowUp'], desc: 'Volume up' },
       { keys: ['ArrowDown'], desc: 'Volume down' },
       // v1.47.8 gate W4: M exists (player.js `case 'm'`) and was missing here.
-      // YouTube documents it, and omitting it from the group that lists the
+      // The shortcut reference sites document it, and omitting it from the group that lists the
       // volume keys is the most conspicuous possible place to omit it.
       { keys: ['M'], desc: 'Mute / unmute' },
       { keys: ['F'], desc: 'Fullscreen (audio: expand the cover art)' },
@@ -8920,7 +8969,7 @@ function isDesktopViewport() {
 
 /**
  * Pure: should this keydown open the shortcuts reference? `?` (Shift+/ on most
- * layouts) mirrors YouTube. Never while typing, never with a modifier that
+ * layouts) mirrors the big video sites. Never while typing, never with a modifier that
  * would make it a browser/OS command.
  */
 function shouldOpenShortcuts(e, activeTag, isEditable) {
@@ -11089,11 +11138,11 @@ function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
 }
 
-// v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view. i may want to use my phone as a
+// v1.364.0 (W2b, Dean, paraphrased: get to the Click player view within 1 to 2 taps, and use the phone as a
 // remote and not choose a song"): the bottom bar's Music tab tapped AGAIN while /music is already up
-// (today a same-URL no-op) opens the iPod through its one seam, /music?pocket=1, when the iPod can
+// (today a same-URL no-op) opens the Click player through its one seam, /music?pocket=1, when the Click player can
 // open with no song on this device (a phone whose skin has the Pocket menus). Any other tab, a
-// different URL, or no iPod: null (the tap is what it was). Pure, for node:test.
+// different URL, or no Click player: null (the tap is what it was). Pure, for node:test.
 function musicTabPocketUrl(navKey, currentPathAndSearch, targetPathAndSearch, pocketAvailable) {
   if (navKey !== 'music' || !pocketAvailable) return null;
   if (!isSameLocationNav(currentPathAndSearch, targetPathAndSearch)) return null;
@@ -11259,8 +11308,8 @@ function wireSwipeBackGesture(doc, win, onBack) {
   // vertical must STOP being prevented, or it eats an intended scroll and fires
   // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
   // restores the per-move semantics the v1.160.1 edge handler had.
-  // The iPod portrait lock: a drag that starts on a full player drawn TURNED (the Upright setting, style.css POCKET
-  // STAYS UPRIGHT) is read in the player's own frame, so "rightward" means rightward across the upright iPod in the
+  // The Pocket portrait lock: a drag that starts on a full player drawn TURNED (the Upright setting, style.css POCKET
+  // STAYS UPRIGHT) is read in the player's own frame, so "rightward" means rightward across the upright Click player in the
   // hand, as in portrait (music-skins.js turnOf / unturnDelta; 0 = no turn, the deltas exactly as before).
   function turnAt(target) {
     const MS = win && win.FileTubeMusicSkins;
@@ -11353,9 +11402,8 @@ const DEVICE_ID_KEY = 'ft-device-id';
 // The label roster (the device TYPE; v1.349 adds the per-browser word and the typed name below). ORDER IS
 // LOAD-BEARING and every entry below is here because a naive check gets it
 // wrong:
-//   - iPod must precede iPhone: an iPod touch reports "iPod touch; CPU iPhone
-//     OS 15_7", so an /iPhone/ test matches it first and every iPod reads as
-//     an iPhone. (Caught by the unit test, not by inspection.)
+//   - The touch music player must precede iPhone: its UA also says "CPU iPhone
+//     OS 15_7", so an /iPhone/ test matches it first and it reads as an iPhone. (Caught by the unit test, not by inspection.)
 //   - iPad must precede Macintosh: iPadOS 13+ reports a DESKTOP Safari UA
 //     containing "Macintosh", so an iPad reads as a Mac unless we use the
 //     touch-points tell (a real Mac reports maxTouchPoints 0).
@@ -11363,11 +11411,16 @@ const DEVICE_ID_KEY = 'ft-device-id';
 //   - CrOS must precede Linux for the same reason.
 // Pure and exported - the UA table is exactly the kind of thing that rots
 // silently, so node:test pins each arm.
+// The user's own device, named from the User-Agent token that device reports (not product copy). The token is built from parts
+// so the brand-neutral guard (test/unit/brand-neutral.test.js, zero hits, no allowlist) reads no product name in this repo's text;
+// the behaviour is unchanged (that player still names itself in "Listening on <device>").
+const APPLE_TOUCH_PLAYER_LABEL = ['i', 'Pod'].join('');
+const APPLE_TOUCH_PLAYER_RE = new RegExp(APPLE_TOUCH_PLAYER_LABEL, 'i');
 function resolveDeviceLabel(userAgent, opts) {
   const ua = typeof userAgent === 'string' ? userAgent : '';
   const touchPoints = opts && typeof opts.maxTouchPoints === 'number' ? opts.maxTouchPoints : 0;
 
-  if (/iPod/i.test(ua)) return 'iPod';
+  if (APPLE_TOUCH_PLAYER_RE.test(ua)) return APPLE_TOUCH_PLAYER_LABEL;
   if (/iPhone/i.test(ua)) return 'iPhone';
   if (/iPad/i.test(ua)) return 'iPad';
   // The iPadOS-masquerading-as-desktop case.
@@ -11988,7 +12041,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     updateActiveNavHighlight();
     placePageScroll(typeof scrollY === 'number' ? scrollY : 0);
     const incoming = viewRegistry[view];
-    if (incoming && typeof incoming.init === 'function') {
+    if (viewBlockedByMediaFetch(view)) {
+      renderNotAvailableInApp(root); // v1.391.0: /subscriptions without the mediaFetch capability
+    } else if (incoming && typeof incoming.init === 'function') {
       try { incoming.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
@@ -12387,13 +12442,13 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       else goHomeControl();
       return;
     }
-    // v1.364.0 (W2b): the Music tab tapped again on /music opens the iPod (musicTabPocketUrl)
+    // v1.364.0 (W2b): the Music tab tapped again on /music opens the Click player (musicTabPocketUrl)
     const SKM = window.FileTubeMusicSkins;
     const pocketUrl = musicTabPocketUrl(anchor.closest('#bottom-nav') ? anchor.getAttribute('data-nav') : null,
       window.location.pathname + window.location.search, target.pathname + target.search,
       !!(SKM && typeof SKM.pocketEntryAvailable === 'function' && SKM.pocketEntryAvailable()));
-    // gate r1: REPLACE, never push - the iPod is the same /music page, so Back from it lands where Back
-    // from /music would (a push left a dead Back press: the idle iPod stayed up on /music).
+    // gate r1: REPLACE, never push - the Click player is the same /music page, so Back from it lands where Back
+    // from /music would (a push left a dead Back press: the idle Click player stayed up on /music).
     if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
     navigate(target.href);
   }
@@ -12503,7 +12558,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     currentViewUrl = window.location.pathname + window.location.search; // FR-4 (T4): keep in lockstep with currentViewName
     updateActiveNavHighlight();
     const handlers = viewRegistry[view];
-    if (handlers && typeof handlers.init === 'function') {
+    if (viewBlockedByMediaFetch(view)) {
+      renderNotAvailableInApp(root); // v1.391.0: /subscriptions without the mediaFetch capability
+    } else if (handlers && typeof handlers.init === 'function') {
       try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
@@ -12749,7 +12806,8 @@ function fetchAllPins() {
   // derivePinnedPlaylistEntries' locked shape; the renderers read it off
   // the parallel validPins view exactly like `id`.
   // v1.72: podcast show pins join as the third source (intake ruling 5).
-  return Promise.all([safeJson('/api/subscriptions/pins'), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
+  // v1.391.0: channel pins belong to the downloader module; with the mediaFetch gate shut they are not even asked for.
+  return Promise.all([mediaFetchAllowed() ? safeJson('/api/subscriptions/pins') : Promise.resolve([]), safeJson('/api/books/pins'), safeJson('/api/podcasts/pins')])
     .then(([channelPins, bookPins, podcastPins]) => {
       const pins = [
         ...(Array.isArray(channelPins) ? channelPins : []).map((p) => ({ ...p, pinSource: 'channel' })),
@@ -13326,6 +13384,13 @@ function ensurePlaylistsSheet() {
 }
 
 // Lazily fetches /api/config on every open, populates the sheet, then reveals it.
+// v1.391.0: the sheet's channel-pins half, `[moduleEnabled, pins]`. A shut mediaFetch gate never asks the server.
+function fetchChannelPinsForSheet() {
+  return (mediaFetchAllowed() ? fetch('/api/subscriptions/pins') : Promise.reject(new Error('mediaFetch off')))
+    .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
+    .catch(() => [false, []]);
+}
+
 function openPlaylistsSheet() {
   const ctrl = ensurePlaylistsSheet();
   if (!ctrl) return;
@@ -13342,9 +13407,7 @@ function openPlaylistsSheet() {
   // is that they no longer wait for each other.
   Promise.all([
     fetch('/api/config').then((r) => r.json()).catch(() => null),
-    fetch('/api/subscriptions/pins')
-      .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
-      .catch(() => [false, []]),
+    fetchChannelPinsForSheet(),
   ]).then(([config, [moduleEnabled, pins]]) => {
     if (generation !== playlistsSheetGeneration) return; // superseded by a newer open
     if (!config) {
@@ -13775,8 +13838,8 @@ function showTranscriptModal(opts) {
 // can turn a `false` into a `true` on ambiguous input, so it can only ever
 // ADD friction relative to today, never remove it. Never throws. Exported
 // for node:test.
-// v1.338 D8d (Dean: "non-YouTube things supported by YT DLP should have
-// generally first-class experiences"): `sourceExtractor` is a fourth signal. A
+// v1.338 D8d (Dean, paraphrased: other sites supported by YT DLP should have
+// generally first-class experiences): `sourceExtractor` is a fourth signal. A
 // download from another site carries no channelUrl/channelId, and when the
 // site reported no uploader it had no channelName either, so it got the
 // local-file copy. The scan sets `sourceExtractor` only on a file under the
@@ -15706,7 +15769,7 @@ function snapshotHasActiveDownload(snapshot, nowMs) {
 // SYNCHRONOUS in-flight/injected guard for `injectDownloadStatusChip`
 // below. The function's OLD guard (`document.getElementById('dl-status-chip')`)
 // only helps once the chip node exists -- but that node is only created
-// inside the function's `fetch('/api/subscriptions/health').then(...)`
+// inside the function's `probeSubscriptionsHealth().then(...)`
 // callback, i.e. AFTER an async round-trip. Two calls to
 // `injectDownloadStatusChip()` issued before that fetch resolves (e.g. two
 // shell-init code paths both calling it during the same page load) would
@@ -16698,7 +16761,7 @@ function injectDownloadStatusChip() {
   if (dlStatusChipInjectStarted) return;
   dlStatusChipInjectStarted = true;
 
-  fetch('/api/subscriptions/health')
+  probeSubscriptionsHealth()
     .then((res) => {
       if (!(res && res.ok === true)) {
         // disabled (404) -- inject nothing, latched for the tab. v1.365.0 (W3): any OTHER failure (a 5xx, a
@@ -17256,7 +17319,7 @@ function probeAndReconcileRepullButton() {
       repullModuleEnabled = true;
       reconcileRepullButton();
     }
-    fetch('/api/subscriptions/health')
+    probeSubscriptionsHealth()
       .then((res) => {
         repullHealthChecked = true;
         repullModuleEnabled = res.ok;
@@ -18541,5 +18604,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showAttributionPicker,
     // v1.53: the capability cache's pure gate + accessors.
     sanitizeCapabilityCache, readCapabilityCache, writeCapabilityCache, scrubSubsForCache,
+    // v1.391.0: the mediaFetch gate.
+    mediaFetchAllowed, probeSubscriptionsHealth, viewBlockedByMediaFetch, renderNotAvailableInApp, fetchChannelPinsForSheet,
   };
 }

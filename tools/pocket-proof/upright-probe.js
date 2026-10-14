@@ -1,9 +1,9 @@
 'use strict';
 /* global window, document, getComputedStyle */
-// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W0/W1).
+// REAL-BROWSER PROBE (the Pocket portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W0/W1).
 // Not a CI gate.
 //   node tools/pocket-proof/upright-probe.js [repoRoot] [outDir] [skin] [setting]
-// A fresh seeded fixture server (test/visual/server.js), Chromium with an iPhone UA at 390x844, the iPod opened with a
+// A fresh seeded fixture server (test/visual/server.js), Chromium with an iPhone UA at 390x844, the Click player opened with a
 // song playing (Now Playing), then the SCREEN turned through CDP Emulation.setDeviceMetricsOverride (portrait angle 0,
 // landscape angle 90, landscape angle 270) - the same angle the device reports through screen.orientation. For each state
 // it prints the stamped html[data-ft-rot], the full player's own box and transform, and the screen boxes of the LCD, the
@@ -40,7 +40,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForURL((u) => !String(u).includes('login'), { timeout: 10000 });
     const pocketStyle = /^ipod/.test(SKIN);
     if (!pocketStyle) {
-      // Cider / Nordic: no iPod menus; /music?play=<id> opens the full player on a song (scripts/pocket-render-probe.js's way)
+      // Cider / Nordic: no Click player menus; /music?play=<id> opens the full player on a song (scripts/pocket-render-probe.js's way)
       await page.goto(base + '/music', { waitUntil: 'networkidle' });
       const id = await page.evaluate(async () => { const r = await fetch('/api/music'); const j = await r.json(); const a = Array.isArray(j) ? j : (j.items || j.tracks || []); return a[0] && a[0].id; });
       await page.goto(base + '/music?play=' + encodeURIComponent(id), { waitUntil: 'networkidle' });

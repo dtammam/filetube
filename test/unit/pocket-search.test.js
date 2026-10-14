@@ -100,7 +100,7 @@ test('next stop: headings are never wheel stops; the ends stay put', () => {
 test('skins filter: every word must be in the name, case-blind; the check follows the saved skin', () => {
   const all = skins.skinSearchItems('', 'ipod-matte');
   assert.strictEqual(all.length, skins.IDS.length, 'an empty query lists every skin');
-  const hit = skins.skinSearchItems('classic 6g black', 'ipod-matte');
+  const hit = skins.skinSearchItems('classic 3 black', 'ipod-matte');
   assert.deepStrictEqual(hit.map((r) => r.skinId).sort(), ['ipod-charcoal', 'ipod-matte']);
   assert.deepStrictEqual(hit.filter((r) => r.check).map((r) => r.skinId), ['ipod-matte']);
   assert.ok(hit.every((r) => r.action === 'skin' && r.preview === true));

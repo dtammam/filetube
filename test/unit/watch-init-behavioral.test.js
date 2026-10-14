@@ -284,6 +284,9 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
   // Non-exported browser globals common.js defines page-side; not under test.
   sandbox.primePinnedSidebarFromCache = () => {};
   sandbox.fetchAllPins = () => Promise.resolve([]);
+  // v1.391.0: common.js's health probe closes over ITS realm's fetch; this realm's shim fetch is the one under observation
+  // (the mediaFetch gate itself is driven through the real watch view in media-fetch-gate.test.js).
+  sandbox.probeSubscriptionsHealth = () => sandbox.fetch('/api/subscriptions/health');
   sandbox.renderPinnedSidebar = () => {};
   sandbox.FileTube = windowShim.FileTube;
   vm.createContext(sandbox);

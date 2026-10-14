@@ -40,8 +40,8 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
 - **Spin one keeps the web player.** The app turns on background audio for the existing web player (iOS keeps a web view
   alive while it plays media). A native audio engine is a later, separate step, taken only if the in-app web player still
   has gaps that matter.
-- **If a native audio engine comes, native owns playback while hosted.** The custom web controls stay exactly as they are (as
-  in YouTube's app: custom UI, native engine underneath). The web sends intents (play this queue from this index, seek, next);
+- **If a native audio engine comes, native owns playback while hosted.** The custom web controls stay exactly as they are (custom
+  UI, native engine underneath, as the big video apps do it). The web sends intents (play this queue from this index, seek, next);
   native holds the queue, fetches the next radio pick itself (iOS suspends a web view's JavaScript in the background) and sends
   back full state snapshots; the web's own media element is silenced so two audio stacks never fight over the lock screen.
 - **Offline is native-only.** Service workers are effectively unavailable in a `WKWebView` whose server address the user types
@@ -49,9 +49,13 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
   player, never "the web UI, offline".
 - **Native media requests use a media token**, not the web view's cookies (AVPlayer snapshots cookies once), when they come.
 - **For Dean first, public-ready later.** Distribution starts as free Xcode installs, then internal TestFlight (no App Review).
-  An App Store build is its own decision later and would need: capability flags that hide the YouTube downloader and tone
-  down Pocket's click-wheel look in that build (App Review 5.2.3, 5.2), a demo server for reviewers (2.1), and a push relay
-  for other people's servers (they will not hold Dean's APNs key).
+  An App Store build is its own decision later and would need: the `mediaFetch` capability gate (v1.391.0: the web shows its
+  server-side downloader UI only when there is no host or the host announces `mediaFetch`, so the store build leaves it out;
+  App Review 5.2.3), plain names for Pocket's skins (done in v1.391.0, 5.2), a demo server for reviewers (2.1, see
+  [app-review-demo-server.md](app-review-demo-server.md)), and a push relay for other people's servers (they will not hold
+  Dean's APNs key).
+
+  The v0.12.0 share actions POST any shared URL to /api/ytdlp/download; the App Store build excludes them.
 
 ## Spin one (the proof of concept)
 

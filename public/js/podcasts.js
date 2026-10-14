@@ -215,7 +215,7 @@
     }
 
     // v1.246 (Dean): podcasts on the SKIN. On mobile, the now-playing panel becomes the same
-    // iPod/Apple/Spotify skin the music player uses, driven by the shared engine (skin-surface.js).
+    // Click/Cider/Nordic skin the music player uses, driven by the shared engine (skin-surface.js).
     // The gate (music-skins.js skinActiveFor) is true for a podcast episode via getCurrentMeta's
     // resumeMode==='podcast' (player.js unchanged). We feed the engine a PODCAST ctx (episode list
     // on the wheel, /podcastart show art, showName in the album slot) and its playAt as the select

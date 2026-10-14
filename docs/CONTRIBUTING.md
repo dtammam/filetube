@@ -154,7 +154,7 @@ control-size value ANYWHERE (a stylesheet, `<style>` blocks, `style=""`,
   nouns and acronyms ("Move to Trash", "Share with AI") go on the allowed list in
   `test/unit/button-label-rule.test.js`, which scans the static labels of every menu-item and
   action-button shape in `public/js` against `^[A-Z][a-z]*( [a-z0-9]+){0,2}$`. A label built at runtime
-  (a time, a count) follows the rule by hand. The Pocket iPod menus keep the device's own Title Case
+  (a time, a count) follows the rule by hand. The Pocket Click player menus keep the device's own Title Case
   names ("Shuffle Songs", "Now Playing"); they name places, and the Original is meant to look like the
   real one.
 - **Never define a new token casually:** a new name joins the contract doc,
@@ -285,7 +285,7 @@ and flex/grid that wraps. A new media query is allowed only where the LAYOUT cha
 sidebar, one column vs two) and is written against the content's need, never tuned to one device's width. No fixed
 pixel widths on containers; touch targets keep 44 px. Existing breakpoints stay as they are until an instrument
 shows one broken. The net is the geometry check `VPM` (`npm run test:geometry -- --only VPM`): seven sizes (five
-portrait phones from 320x568 to 430x932, two landscapes), on home, music browse, watch, the iPod skin (portrait
+portrait phones from 320x568 to 430x932, two landscapes), on home, music browse, watch, the Click player skin (portrait
 only) and Settings: 33 cells. Scripts are
 held to iOS 15 (Dean's iPhone SE): `test/unit/ios15-floor.test.js`.
 

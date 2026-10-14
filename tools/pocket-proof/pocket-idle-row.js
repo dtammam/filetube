@@ -1,11 +1,11 @@
 'use strict';
 /* global window, document, location, getComputedStyle */
-// REAL-BROWSER PROOF (v1.364.0 W2b): the iPod with no song, in two taps. Not a CI gate.
+// REAL-BROWSER PROOF (v1.364.0 W2b): the Click player with no song, in two taps. Not a CI gate.
 //   node tools/pocket-proof/pocket-idle-row.js [repoRoot] [screenshotDir]
 // A fresh seeded fixture server (test/visual/server.js), Chromium with an iPhone UA, at 390x844 and
-// 320x568: cold /, tap Music, tap Music -> the iPod on the Main menu (cursor on Music), no song loaded,
-// ?pocket=1 stripped; MENU closes it back to browse; the toolbar iPod button reopens it; a song picked
-// from Music > Songs plays in the iPod; then MENU climbs Now Playing > Songs > Music > Main and the
+// 320x568: cold /, tap Music, tap Music -> the Click player on the Main menu (cursor on Music), no song loaded,
+// ?pocket=1 stripped; MENU closes it back to browse; the toolbar Click player button reopens it; a song picked
+// from Music > Songs plays in the Click player; then MENU climbs Now Playing > Songs > Music > Main and the
 // 4th press docks the mini (a stale idle state costs a dead 5th press: that is what the count binds).
 const path = require('node:path'); const fs = require('node:fs'); const os = require('node:os');
 const REPO = process.argv[2] || path.join(__dirname, '..', '..');
@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const tab = page.locator('#bottom-nav [data-nav="music"]');
       ok(await tab.isVisible(), `${w}x${h} the Music tab shows (shown once in the bar)`);
       await tab.tap(); await page.waitForURL(/\/music$/, { timeout: 10000 }); await sleep(1200);
-      ok(!(await page.locator('#music-nowplaying-panel.mms-full').isVisible()), `${w}x${h} tap 1: the music browse view (no iPod yet)`);
+      ok(!(await page.locator('#music-nowplaying-panel.mms-full').isVisible()), `${w}x${h} tap 1: the music browse view (no Click player yet)`);
       await tab.tap(); await sleep(1800);
       const s = await page.evaluate(() => {
         const p = document.getElementById('music-nowplaying-panel');
@@ -54,17 +54,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const closed = await page.evaluate(() => { const p = document.getElementById('music-nowplaying-panel'); return !!p && p.hidden && !document.body.classList.contains('mms-on'); });
       ok(closed, `${w}x${h} MENU on the idle Main menu closes it back to browse`);
       const btn = page.locator('#music-pocket-btn');
-      ok(await btn.isVisible(), `${w}x${h} the toolbar iPod button shows`);
+      ok(await btn.isVisible(), `${w}x${h} the toolbar Click player button shows`);
       if (await btn.isVisible()) {
         await btn.tap(); await sleep(1000);
         const again = await page.evaluate(() => { const p = document.getElementById('music-nowplaying-panel'); const c = p.querySelector('.ipm-row.is-cursor .ipm-lbl'); return p.classList.contains('mms-full') && !p.hidden && c && c.textContent; });
         ok(again === 'Music', `${w}x${h} the toolbar button opens it on Main/Music (${again})`);
-        // pick a song from the idle iPod: Music > Songs > first song plays and Now Playing shows
+        // pick a song from the idle Click player: Music > Songs > first song plays and Now Playing shows
         const tapLbl = async (l) => { await page.locator('#music-nowplaying-panel .ipm-row', { has: page.locator('.ipm-lbl', { hasText: new RegExp('^' + l + '$') }) }).first().tap(); await sleep(900); };
         await tapLbl('Music'); await tapLbl('Songs');
         await page.locator('#music-nowplaying-panel .ipm-row:not(.ipm-skel)').first().tap(); await sleep(2500);
         const np = await page.evaluate(() => { const p = document.getElementById('music-nowplaying-panel'); const pl = window.FileTube.player; return { full: p.classList.contains('mms-full') && !p.hidden, cur: pl.currentId || null, menu: !!p.querySelector('.ip-lcd .ipm-row') && getComputedStyle(p.querySelector('.ip-npview')).display === 'none', ttl: (p.querySelector('.ip-ttl') || {}).textContent }; });
-        ok(np.full && !!np.cur, `${w}x${h} a song picked from the idle iPod plays in the iPod (current ${np.cur}, title ${np.ttl}, menu-up ${np.menu})`);
+        ok(np.full && !!np.cur, `${w}x${h} a song picked from the idle Click player plays in the Click player (current ${np.cur}, title ${np.ttl}, menu-up ${np.menu})`);
         await page.screenshot({ path: path.join(process.argv[3] || os.tmpdir(), `pocket-idle-${w}x${h}-after-pick.png`) });
         // the song hands over: MENU (Now Playing -> the menu it came from), MENU up to Main, MENU docks the mini (pl.dock)
         const titles = [];

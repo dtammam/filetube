@@ -297,21 +297,23 @@ test('D5: the Skin page - search filters as you type, Recent holds the active sk
     const all = [...m.querySelectorAll('.ui-row[data-skin-pick]')];
     assert.strictEqual(all.length, SKINS.SKINS.length, 'every registered skin is a row, once');
     const lbl = (id) => m.querySelector('.ui-row[data-skin-pick="' + id + '"] .ui-row__title').textContent;
-    assert.strictEqual(lbl('ipod'), '5G White · 2005', 'the line name is dropped (the group header says it)');
-    assert.strictEqual(lbl('ipod-2004'), '4G White · 2004');
+    assert.strictEqual(lbl('ipod'), 'Classic 2 White', 'the row names its generation and colour (v1.391.0: no G, no year; the group header says the line)');
+    assert.strictEqual(lbl('ipod-2004'), 'Classic 1 White');
     assert.strictEqual(m.querySelector('.ui-row[data-skin-pick="ipod"]').getAttribute('aria-current'), 'true', 'the active skin is marked');
     assert.ok(m.querySelector('.ui-row[data-skin-pick="ipod"] svg use[href="#i-check"]'), 'with a check');
     assert.strictEqual(m.querySelectorAll('.ui-row[aria-current="true"]').length, 1, 'only the active one');
-    // search: type "nano" - only nano rows stay, empty groups hide, Recent steps aside; "zzz" says nothing matches
+    // search: type "slim" (v1.391.0: the line was Nano; search matches the new names only, "nano" finds nothing) - only Slim rows stay, empty groups hide, Recent steps aside; "zzz" says nothing matches
     const input = m.querySelector('input[type="search"]');
-    input.value = 'nano';
+    input.value = 'slim';
     input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
     const shown = all.filter((r) => !r.hidden);
     assert.ok(shown.length > 5 && shown.length < all.length, 'a filtered subset (' + shown.length + ')');
-    assert.ok(shown.every((r) => /nano/.test(r.getAttribute('data-label'))), 'every shown row is a Nano');
-    assert.ok(groups.filter((g) => g.hidden).length > 0 && groups.filter((g) => !g.hidden).every((g) => /^nano/i.test(g.getAttribute('data-fam'))), 'non-matching groups hide');
+    assert.ok(shown.every((r) => /slim/.test(r.getAttribute('data-label'))), 'every shown row is a Slim');
+    assert.ok(groups.filter((g) => g.hidden).length > 0 && groups.filter((g) => !g.hidden).every((g) => /^slim/i.test(g.getAttribute('data-fam'))), 'non-matching groups hide');
     assert.ok(groups.filter((g) => !g.hidden).every((g) => !g.querySelector('.ui-list').hidden && g.querySelector('.mms-ss__gh').getAttribute('aria-disabled') === 'true'), 'search ignores collapse: matching groups are open and their headers are not toggles');
     assert.ok(m.querySelector('.mms-ss__recent').hidden, 'Recent steps aside while searching');
+    input.value = 'nano'; input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
+    assert.ok(all.every((r) => r.hidden), 'the old line name finds nothing (disclosed, v1.391.0)');
     input.value = 'zzzz'; input.dispatchEvent(new b.dom.window.Event('input', { bubbles: true }));
     assert.ok(all.every((r) => r.hidden));
     const none = [...m.querySelectorAll('.mms-ss__note')].find((n) => /No skins match/.test(n.textContent));

@@ -1,6 +1,6 @@
 'use strict';
 /* global document */
-// v1.354 W0 falsifier: the iPod menus cut a big library at 10,000 songs. Seeds 10,500 songs (the last
+// v1.354 W0 falsifier: the Click player menus cut a big library at 10,000 songs. Seeds 10,500 songs (the last
 // 500 are "Z Bulk" by "Zed Band" in the genre "Zydeco") and reads, in a real iPhone browser:
 //   Songs   - the last row after scrolling to the bottom
 //   Genres  - whether the Zydeco row exists

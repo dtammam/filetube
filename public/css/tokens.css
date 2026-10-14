@@ -196,7 +196,7 @@
   --fs-3xl: 20px;
   --fs-4xl: 22px;
   --fs-5xl: 32px;
-  --fs-jump: 64px; /* 2026-09-24 quick scroll: the iPod's letter-jump square (Click) */
+  --fs-jump: 64px; /* 2026-09-24 quick scroll: the Click player's letter-jump square (Click) */
 }
 
 /* Hairlines are a device pixel on a retina screen. */
