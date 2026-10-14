@@ -1,6 +1,6 @@
 'use strict';
 /* global window, document, getComputedStyle, MouseEvent, PointerEvent */
-// HEADLESS PROOF (v1.355 W2): keyboard search on the iPod. Real server (serve.js, seeded songs), headless Chromium
+// HEADLESS PROOF (v1.355 W2): keyboard search on the Click player. Real server (serve.js, seeded songs), headless Chromium
 // with touch emulation (isMobile, hasTouch, an iPhone UA) at 393x852 and 375x667, a Click skin (ipod-charcoal) and the
 // Original look (ipod-original). Flag ON: a REAL CDP touch tap on the center opens Search; the input is focused right
 // after that tap; Input.insertText types; the /api/music?search= request is seen and rows render; scrollY, the visual

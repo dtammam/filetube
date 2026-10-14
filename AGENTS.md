@@ -64,9 +64,9 @@ Read the one that fits the task; don't preload them all.
 <!-- harness:region:start id=project keep -->
 ## Project context
 
-FileTube is a self-hosted media server resembling old-school YouTube: a
+FileTube is a self-hosted media server with switchable retro looks: a
 Node.js/Express monolith that scans local media folders, extracts durations and
-thumbnails via FFmpeg, and streams video/audio to a retro YouTube-style web UI,
+thumbnails via FFmpeg, and streams video/audio to a retro web UI,
 with on-demand transcoding of browser-incompatible containers (e.g. AVI) to MP4.
 Architecture in `docs/ARCHITECTURE.md`; stack + commands in `docs/CONTRIBUTING.md`.
 

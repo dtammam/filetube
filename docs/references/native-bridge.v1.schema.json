@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch"] }
         }
       }
     },

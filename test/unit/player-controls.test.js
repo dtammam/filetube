@@ -331,9 +331,9 @@ test('stepPlaybackRateClamped: steps up (\'>\' key); a foreign rate degrades to 
   assert.strictEqual(stepPlaybackRateClamped(NaN, -1), 0.75);
 });
 
-test('v1.41.11 source-lock: the FULL-only keydown switch carries the YouTube set', () => {
+test('v1.41.11 source-lock: the FULL-only keydown switch carries the common shortcut set', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
-  const start = src.indexOf('the switch below mirrors YouTube');
+  const start = src.indexOf('the switch below mirrors the reference site');
   assert.ok(start >= 0, 'the v1.41.11 shortcut block exists');
   const block = src.slice(start, start + 5200); // wide enough to span the whole switch incl. the live-aware digit case
   assert.match(block, /case 'ArrowLeft': e\.preventDefault\(\); skip\(-5\);/, 'arrows are YouTube 5s now (J/L own the 10s step)');

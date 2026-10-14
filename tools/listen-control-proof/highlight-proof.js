@@ -1,8 +1,8 @@
 'use strict';
 /* global window, document, MouseEvent */
-// END-TO-END PROOF (v1.357 W0.3 / W2.4): the speaker's song is marked in the phone's iPod lists. Real server
+// END-TO-END PROOF (v1.357 W0.3 / W2.4): the speaker's song is marked in the phone's Click player lists. Real server
 // (serve.js, three seeded songs of Proof Album), two real browser contexts as one user: a speaker PC
-// (/music?remote=on) and an iPhone-class phone on the ipod skin. The phone picks Play on... the PC, plays the
+// (/music?remote=on) and an iPhone-class phone on the Click skin. The phone picks Play on... the PC, plays the
 // album there, opens Music > Albums > Proof Album, taps song 2, then MENU back to the album's list. Records, at
 // each step: the rows marked .is-current, the phone's own player currentId (what effectiveCurrentId reads
 // today), RC.state().track.id (the speaker's report). The PC then moves to song 3: the mark must follow.

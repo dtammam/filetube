@@ -26,9 +26,8 @@ const ROOT = path.join(__dirname, '..', '..');
 
 // file -> exact literal source (as tokenised) -> why it is not app wording
 const ALLOW = {
-  'public/js/common.js': {
-    "'iPod'": 'the device-name detector (deviceLabelFromUa): a real iPod touch names ITSELF "iPod" in "Listening on <device>", the user\'s own device, not the app',
-  },
+  // v1.391.0: the one entry that lived here (the device-name detector's literal) is gone from the source: the detector builds
+  // its token from parts (common.js APPLE_TOUCH_PLAYER_LABEL), and test/unit/brand-neutral.test.js now holds the zero-hit line.
 };
 
 const VISIBLE_ATTRS = ['title', 'aria-label', 'alt', 'placeholder', 'value', 'content', 'label', 'aria-description', 'aria-placeholder', 'aria-roledescription'];

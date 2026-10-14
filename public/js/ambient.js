@@ -48,7 +48,7 @@ function isDarkMode(doc) {
 // back to 1.311.1; OFF = picture). The old effect copied the live <video> into a
 // canvas every 500ms and composited a blurred + masked + scaled layer beside the
 // video - both known iOS video/canvas/GPU-process breakage shapes. Dean's ruling:
-// REBUILD as YouTube's subtle edge glow, and NEVER read the video element.
+// REBUILD as the reference site's subtle edge glow, and NEVER read the video element.
 //
 // The rebuilt pipeline is COLOUR-ONLY: sample a same-origin IMAGE (the storyboard
 // sprite tile at the current time, else the item's poster) on an OFF-DOM canvas
@@ -65,15 +65,15 @@ function isDarkMode(doc) {
 // whole glow box (player + reach), a rounded-rect VIGNETTE is written into its
 // alpha channel (opaque at the player's edge, transparent at the box edge), and
 // the PNG data URL becomes the layer's background-image at 100% 100%. The
-// browser's bilinear UPSCALE is the blur - YouTube's own mechanism (it upscales
+// browser's bilinear UPSCALE is the blur - the reference site's own mechanism (it upscales
 // two 110x75 canvases by scale(1.5, 2) with no CSS filter), minus the DOM canvas
 // and minus any transform. One continuous 2D alpha field: no band ends, no corner
 // seams, and the frame's own spatial variation survives.
 var AMBIENT_SAMPLE_W = 64;
 var AMBIENT_SAMPLE_H = 36;
 var AMBIENT_REACH_X = 0.12; // the glow reaches 12% of the player's WIDTH each side (style.css --ambient-reach-x, test-bound)
-var AMBIENT_REACH_Y = 0.22; // ...and 22% of its HEIGHT above/below (--ambient-reach-y) - YouTube's measured extent
-var AMBIENT_VIGNETTE_GAMMA = 1.5; // alpha = (1 - f)^gamma across the reach: YouTube's measured falloff (~half at 37%, ~15% at 73%)
+var AMBIENT_REACH_Y = 0.22; // ...and 22% of its HEIGHT above/below (--ambient-reach-y) - the reference site's measured extent
+var AMBIENT_VIGNETTE_GAMMA = 1.5; // alpha = (1 - f)^gamma across the reach: the reference site's measured falloff (~half at 37%, ~15% at 73%)
 var AMBIENT_CLOCK_MS = 1000; // the tile-change clock; NOT a paint rate (a paint happens only on a source change)
 // v1.314 PACE (Dean, iPhone: "ambient changes too much and is slow"). A storyboard
 // tile lands every 2-36s (lib/storyboard: d/40 clamped to [2,10]s, then the 100-frame
@@ -125,7 +125,7 @@ function ambientSourceFor(mediaData, mediaId, t, storyboard) {
 // pixel is lifted (below), then its alpha becomes `(1 - f)^gamma` where `f` is
 // how far OUTSIDE the inner rectangle it lies, as a fraction of the reach on
 // each axis combined by hypot (so the falloff is rounded at the corners and a
-// corner reads dimmer than an edge midpoint - YouTube measured [18,18,15] at the
+// corner reads dimmer than an edge midpoint - the reference site measured [18,18,15] at the
 // corner vs [31,40,28] at the edge). Alpha is 255 under the player (the rounded
 // corner gap shows a tint continuous with the band, not a notch) and 0 on the
 // outermost ring, so the box edge is never a hard line.
@@ -188,7 +188,7 @@ function ambientMeanDelta(a, b) {
 // the old 0.30 floor turned every dark scene into the same grey slab), a white
 // scene does not wash the page out. The glow's single opacity
 // (`--ambient-opacity` in style.css) does the rest, tuned so the edge peak lands
-// near YouTube's measured ~+25/255.
+// near the reference site's measured ~+25/255.
 function ambientLift(rgb) {
   var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
   var max = Math.max(r, g, b), min = Math.min(r, g, b);

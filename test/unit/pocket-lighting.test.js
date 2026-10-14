@@ -635,7 +635,7 @@ test('AC6 sticker: the four Lighting options (the stored one selected) ask iOS f
     assert.strictEqual(lightItems(b).length, 0, 'page 1 carries no Lighting control (Dean, 2026-10-12: it moved to More)');
     assert.ok(!m.querySelector('[data-skin-brick]') && !/Brick/.test(m.textContent), 'no Brick row, even with the view\'s hook saying yes (D4)');
     assert.strictEqual(m.querySelectorAll('[data-skin-pick]').length, 0, 'no skin chips on page 1 (D6)');
-    assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Classic 5G White \(2005\)/, 'the Skin row names the active skin');
+    assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Classic 2 White/, 'the Skin row names the active skin');
     m = toMore(b);
     assert.deepStrictEqual(lightItems(b).map((c) => [c.getAttribute('data-skin-lighting'), c.textContent]), [['off', 'Off'], ['subtle', 'Subtle'], ['pronounced', 'Bold'], ['ambient', 'Ambient']], 'the registry\'s four strengths, in order, the third SHOWN as Bold (the stored value stays pronounced)');
     assert.strictEqual(m.querySelectorAll('.ui-segmented').length, 1, 'ONE segmented control');

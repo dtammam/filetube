@@ -1,15 +1,15 @@
 'use strict';
 /* global window, document, getComputedStyle, location */
-// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W2). Not a CI gate.
+// REAL-BROWSER PROBE (the Pocket portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W2). Not a CI gate.
 //   node tools/pocket-proof/upright-input-probe.js [repoRoot] [setting]
-// Chromium (iPhone UA, touch) on a fresh seeded fixture server, the iPod (Classic 5G) with a song playing, the screen turned
+// Chromium (iPhone UA, touch) on a fresh seeded fixture server, the Click player (Classic 5G) with a song playing, the screen turned
 // through CDP (angle 0, 90, 270). Under each turn, REAL touches through CDP Input.dispatchTouchEvent at points given in the
-// iPod's OWN frame (mapped to the glass by the drawn turn), so the same physical gesture is driven in every orientation:
+// Click player's OWN frame (mapped to the glass by the drawn turn), so the same physical gesture is driven in every orientation:
 //   1. a clockwise three-quarter circle on the wheel ring, from the Main menu: how many rows the cursor moved (and which way);
 //   2. a tap on MENU's zone (the ring's top) from Music: did it go back to the Main menu;
 //   3. a tap 25% along the seek bar: the position it sought (as a fraction of the song);
-//   4. a drag "up" (in the iPod's frame) on the open up-next list: how far the list scrolled;
-//   5. a "down" then a "right" swipe (in the iPod's frame) across the LCD: which one the app's swipe-back took as a back.
+//   4. a drag "up" (in the Click player's frame) on the open up-next list: how far the list scrolled;
+//   5. a "down" then a "right" swipe (in the Click player's frame) across the LCD: which one the app's swipe-back took as a back.
 // `setting`: 'upright' (default) or 'sideways'.
 const path = require('node:path'); const fs = require('node:fs'); const os = require('node:os');
 const REPO = process.argv[2] || path.join(__dirname, '..', '..');
@@ -72,21 +72,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const rows = () => page.evaluate(() => [...document.querySelectorAll('#music-nowplaying-panel .ipm-row .ipm-lbl')].map((e) => e.textContent));
     for (const s of states) {
       await cdp.send('Emulation.setDeviceMetricsOverride', { width: s.w, height: s.h, deviceScaleFactor: 2, mobile: true, screenOrientation: { type: s.type, angle: s.angle } });
-      // a fresh open in this orientation (the iPod's Main menu, cursor on Music): the player opened while already sideways
+      // a fresh open in this orientation (the Click player's Main menu, cursor on Music): the player opened while already sideways
       await page.goto(base + '/music?pocket=1', { waitUntil: 'networkidle' });
       await sleep(1500);
       const r = { name: s.name, rot: await page.evaluate(() => document.documentElement.getAttribute('data-ft-rot')) };
       let f = await frame();
       const wheel = await local('.ip-wheel');
       r.mainRows = await rows();
-      // 1. a clockwise 3/4 circle on the ring (radius 0.38 of the wheel), from 12 o'clock, in the iPod's frame
+      // 1. a clockwise 3/4 circle on the ring (radius 0.38 of the wheel), from 12 o'clock, in the Click player's frame
       const c0 = await cursor();
       const ring = [];
       for (let k = 0; k <= 36; k++) { const t = -Math.PI / 2 + (k / 36) * 1.5 * Math.PI; ring.push(toGlass(f, wheel.x + Math.cos(t) * wheel.w * 0.38, wheel.y + Math.sin(t) * wheel.w * 0.38)); }
       await drag(ring);
       const c1 = await cursor();
       r.wheel = { from: c0, to: c1, moved: r.mainRows.indexOf(c1) - r.mainRows.indexOf(c0) };
-      // 2. MENU by its zone: drill into Music (a tap on its row), then tap the ring's top in the iPod's frame
+      // 2. MENU by its zone: drill into Music (a tap on its row), then tap the ring's top in the Click player's frame
       await page.locator('#music-nowplaying-panel .ipm-row', { has: page.locator('.ipm-lbl', { hasText: /^Music$/ }) }).first().click({ force: true }).catch(() => {});
       await sleep(600);
       f = await frame();
@@ -105,7 +105,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         await tapAt(toGlass(f, seek.x, seek.y));
         r.seek = await page.evaluate(() => { const v = document.querySelector('#media-player, audio, video'); return v && v.duration ? Math.round((v.currentTime / v.duration) * 100) / 100 : null; });
       }
-      // 4. the up-next list (Select on Now Playing), a drag UP in the iPod's frame
+      // 4. the up-next list (Select on Now Playing), a drag UP in the Click player's frame
       await page.locator('#music-nowplaying-panel [data-skin-select]').click({ force: true }).catch(() => {});
       await sleep(700);
       f = await frame();
@@ -117,7 +117,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         const st1 = await page.evaluate(() => { const l = document.querySelector('#music-nowplaying-panel .ip-listview'); return l ? l.scrollTop : null; });
         r.listScroll = { from: st0, to: st1, overflow: await page.evaluate(() => { const l = document.querySelector('#music-nowplaying-panel .ip-listview'); return l ? l.scrollHeight - l.clientHeight : null; }) };
       } else r.listScroll = { skipped: 'no list (' + JSON.stringify(list) + ')' };
-      // 5. a swipe RIGHT in the iPod's frame across the LCD, then a swipe DOWN: which one is a back
+      // 5. a swipe RIGHT in the Click player's frame across the LCD, then a swipe DOWN: which one is a back
       const lcd = await local('.ip-lcd');
       const url0 = await page.evaluate(() => location.pathname + location.search);
       const sw = (dx, dy) => { const pts = []; for (let k = 0; k <= 12; k++) pts.push(toGlass(f, lcd.x - dx * 0.5 + (k / 12) * dx, lcd.y - dy * 0.5 + (k / 12) * dy)); return pts; };

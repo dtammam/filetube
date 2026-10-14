@@ -1,6 +1,6 @@
 'use strict';
 /* global window, document, getComputedStyle, requestAnimationFrame */
-// v1.362.4 (plan 2026-10-04-minimize-crossfade): the page under the video fades like YouTube's. Real Chromium, iPhone 13,
+// v1.362.4 (plan 2026-10-04-minimize-crossfade): the page under the video fades like the source site's. Real Chromium, iPhone 13,
 // dark mode, raw CDP touch, the custom-controls setting forced on. Samples the computed opacity of the content under the
 // video (the title) and of the arriving page's #view-root through a slow pull, a commit and an expand, and the opacity of
 // EVERY ancestor of #player-wrapper at each sample (must stay 1: LESSONS 7). Not a CI gate.

@@ -1,7 +1,7 @@
 # Configuration reference
 
 The deep-dive companion to the README's Quick Start: accounts, automation,
-transcode caches, the database, YouTube subscriptions (yt-dlp), and
+transcode caches, the database, subscriptions and downloads (yt-dlp), and
 text-to-speech. Everything here is optional - FileTube works out of the box
 with none of it.
 
@@ -23,7 +23,7 @@ Useful environment variables (all optional):
   terminates HTTPS (e.g. Nginx Proxy Manager) so cookies are marked Secure.
   Your proxy must overwrite the `X-Forwarded-For` header (NPM does).
 - `FILETUBE_API_TOKEN` - a bearer token that lets an iOS Shortcut post
-  one-off downloads without a browser session. A YouTube playlist link (a
+  one-off downloads without a browser session. A playlist link (a
   playlist page, or a video opened from a playlist) posted this way is not
   downloaded: it waits in the app as "Playlist waiting: choose videos" (and a
   push goes out if notifications are on), and the reply is `202
@@ -174,9 +174,9 @@ at the `latest` tag. See [docs/RELEASING.md](docs/RELEASING.md) for the full tag
 
 ---
 
-## Optional: YouTube subscriptions (yt-dlp)
+## Optional: subscriptions and downloads (yt-dlp)
 
-FileTube can optionally subscribe to YouTube channels and periodically
+FileTube can optionally subscribe to channels on the sites yt-dlp supports and periodically
 download their new videos into a media folder that the normal library scanner
 already indexes - the downloaded videos then show up in the regular FileTube
 UI like any other file, with no separate player or catalog. Deleting one in
@@ -210,7 +210,7 @@ in the UI once enabled.
 | `FILETUBE_YTDLP_MAX_SLEEP_INTERVAL` | `5` | Maximum seconds to sleep before each download (`--max-sleep-interval`), randomized between `FILETUBE_YTDLP_SLEEP_INTERVAL` and this value. Must be an integer from `0` to `60`; anything else falls back to the default. Always clamped to be at least `FILETUBE_YTDLP_SLEEP_INTERVAL`. |
 | `FILETUBE_YTDLP_RETRIES` | `5` | Number of times yt-dlp retries a failed download/fragment (`--retries`) before giving up. Must be an integer from `0` to `20`; anything else falls back to the default. |
 | `FILETUBE_YTDLP_PLAYER_CLIENT` | unset | Advanced: forces a specific YouTube player client (`--extractor-args youtube:player_client=<value>`), e.g. `web` or `android,web`. Unset by default - yt-dlp picks its own client(s). Only lowercase letters, digits, `_`, `,`, and `-` are accepted; anything else (or unset) means no flag is emitted. |
-| `FILETUBE_YTDLP_SOCKET_TIMEOUT_SECONDS` | `15` | Per-request socket timeout passed to yt-dlp (`--socket-timeout`). Under bot-detection YouTube hangs connections rather than erroring; this converts dead sockets into fast, retryable failures. Integer from `5` to `120`; anything else falls back to the default. |
+| `FILETUBE_YTDLP_SOCKET_TIMEOUT_SECONDS` | `15` | Per-request socket timeout passed to yt-dlp (`--socket-timeout`). Under bot-detection some sites hang connections rather than erroring; this converts dead sockets into fast, retryable failures. Integer from `5` to `120`; anything else falls back to the default. |
 | `FILETUBE_YTDLP_LIST_TIMEOUT_MINUTES` | `5` | Base budget for a channel's metadata LIST pass. The effective budget additionally scales with `LIST_SCAN_CAP` × `SLEEP_REQUESTS` (the pacing a cap-bounded listing can legitimately need), capped at 60 minutes. Integer from `1` to `60`. |
 | `FILETUBE_YTDLP_LIST_SCAN_CAP` | `200` | Hard cap on how many playlist entries a LIST pass may enumerate (`--playlist-end`) - the wall-clock backstop behind the break-early filter that stops listing at the first pre-cutoff video. `0` disables the cap. Integer from `0` to `10000`. |
 | `FILETUBE_YTDLP_STALL_MINUTES` | `10` | Stall watchdog: a download producing NO output for this many minutes is killed with a specific "stalled" reason (instead of waiting out the full download timeout while blocking the queue). `0` disables the watchdog. Integer from `0` to `120`. |
@@ -261,8 +261,8 @@ and when a book is removed) - a known limitation for very large libraries.
 
 ## Members-only / age-gated content
 
-Members-only and age-gated videos require cookies from a logged-in YouTube
-session. To support these:
+Members-only and age-gated videos require cookies from a logged-in
+session on the source site. To support these:
 
 1. Export a `cookies.txt` from a signed-in browser session (e.g. with a
    cookies-export extension) and mount it into the container, read-only:
@@ -315,7 +315,7 @@ stable release, and the latest nightly - and lets you switch:
 - **Latest stable / Latest nightly**: FileTube installs that yt-dlp
   release from PyPI into a small private environment under your data
   directory (`ytdlp-engine/` - it survives container recreation). Nightly
-  tracks YouTube's changes closest.
+  tracks site changes closest.
 - Every installed engine must pass a health check before it is used, and
   an engine that stops working later **automatically reverts to bundled**;
   the notification bell reports the outcome either way (admins only).
@@ -329,7 +329,7 @@ stable release, and the latest nightly - and lets you switch:
 runs `pip install` at runtime and executes whatever the yt-dlp project
 published to PyPI - a wider supply-chain surface than the image's
 build-time pin. The bundled default preserves the old posture; the
-channels are a conscious opt-in for outage resilience (YouTube changes
+channels are a conscious opt-in for outage resilience (sites change
 faster than FileTube releases).
 
 Bare metal: the selector needs `python3` (with its `venv` module and a

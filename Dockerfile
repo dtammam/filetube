@@ -34,7 +34,7 @@ RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng
 # means, what every auto-revert lands on, and what an offline instance
 # runs forever. Still an EXACT version pin - reproducible builds are
 # preserved. The pin tracks yt-dlp's NIGHTLY channel since v1.145 (stable
-# lags YouTube's enforcement rollout by WEEKS - Dean's live 403 outage,
+# lags the source sites' enforcement rollout by WEEKS - Dean's live 403 outage,
 # 2026-08-17/18). Note (v1.145 gate S1): the binary SELF-REPORTS the
 # normalized spelling `2026.08.17.073947` (no `.dev0`) - same release,
 # different spelling; not a mismatch to "diagnose". Bump cadence: refresh

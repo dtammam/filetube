@@ -37,7 +37,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         ok(!!first, `${w}x${h} ${skin}: the fixture has a song`);
         await page.goto(base + '/music?play=' + encodeURIComponent(first), { waitUntil: 'networkidle' });
         await sleep(1500);
-        ok(await page.locator('#music-nowplaying-panel.mms-full').isVisible(), `${w}x${h} ${skin}: the iPod is up`);
+        ok(await page.locator('#music-nowplaying-panel.mms-full').isVisible(), `${w}x${h} ${skin}: the Click player is up`);
         // MENU -> the Main menu
         await page.locator('[data-skin-menu]').first().tap(); await sleep(500);
         const rows = await page.evaluate(() => Array.from(document.querySelectorAll('#music-nowplaying-panel .ipm-row')).map((r) => {

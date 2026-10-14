@@ -8,6 +8,8 @@
 //   me        the /api/auth/me user (default an admin: canModifyLibrary);
 //   route     (method, url, body) -> {status, body, delayMs?} | null, consulted first (delayMs: answer late);
 //   player    members merged into the stub player (v1.366.0: getState, currentId).
+//   hostCaps  v1.391.0: an array makes a native host present (window.FileTubeHost with those capabilities, the REAL
+//             host-adapter.js reading it); leave it out for no host (every browser).
 // Returns { w, doc, $, fetches, calls(method, prefix), settle(), init() , destroy() }.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -75,7 +77,8 @@ function watchViewRealm(o) {
   // primitives, the page scripts): classic scripts share one global lexical scope (common.js
   // reads glyph-pool.js's top-level consts), which separate evals would not. The stub player,
   // router hook and navigate go in right before watch.js registers.
-  const srcs = ['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/common.js', 'public/js/main.js'].map(read);
+  if (Array.isArray(opts.hostCaps)) w.FileTubeHost = { bridge: 1, platform: 'ios', capabilities: opts.hostCaps.slice(), post() {} };
+  const srcs = (Array.isArray(opts.hostCaps) ? ['public/js/host-adapter.js'] : []).concat(['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/common.js', 'public/js/main.js']).map(read);
   srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate;');
   srcs.push(read('public/js/watch.js'));
   w.eval(srcs.join('\n;\n'));

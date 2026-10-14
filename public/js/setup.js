@@ -1627,7 +1627,7 @@ function rotateDebugApi() {
 }
 // v1.355: Settings > Mobile player > "Keyboard search (experimental)". The key and its reader are music-skins.js's
 // (KB_SEARCH_KEY, keyboardSearchOn), never re-typed here; '1' = on, removed = off (the default). Nothing else to
-// apply: the iPod reads the flag live each time Music > Search opens, so a change needs no reload.
+// apply: the Click player reads the flag live each time Music > Search opens, so a change needs no reload.
 function pocketKbKey(w) {
   const MS = w && w.FileTubeMusicSkins;
   return MS && typeof MS.KB_SEARCH_KEY === 'string' ? MS.KB_SEARCH_KEY : null;
@@ -1654,7 +1654,7 @@ function wirePocketKbSearchControl(win, signal) {
     } catch (_) { /* storage disabled/full -- best-effort only */ }
   }, signal ? { signal } : undefined);
 }
-// The iPod portrait lock (Dean, 2026-10-07): Mobile player > Keep Pocket upright. Checked = upright (no key, the
+// The Pocket portrait lock (Dean, 2026-10-07): Mobile player > Keep Pocket upright. Checked = upright (no key, the
 // default); unchecked stores ft-pocket-sideways = '1'. Through FileTubeMusicSkins.setPocketSideways, which also re-marks
 // html.pk-upright at once (the SPA keeps one window, so the player opened next is already right).
 function loadPocketUprightControl(win) {
@@ -2245,7 +2245,10 @@ function renderBottomBarEditor(signal) {
   const host = document.getElementById('bottombar-editor');
   const FT = typeof window !== 'undefined' ? window.FileTube : null;
   if (!host || !FT || !FT.readBottomNavConfig) return;
-  const optional = FT.BOTTOM_NAV_OPTIONAL || [];
+  // v1.391.0 (R2): the downloader tabs are not offered in a build whose host did not announce `mediaFetch`.
+  const DOWNLOADER_TABS = ['oneoff-download', 'subscriptions', 'downloads'];
+  const gateShut = typeof mediaFetchAllowed === 'function' && !mediaFetchAllowed();
+  const optional = (FT.BOTTOM_NAV_OPTIONAL || []).filter((id) => !(gateShut && DOWNLOADER_TABS.indexOf(id) >= 0));
   const cfg = FT.readBottomNavConfig();
   // v1.75: the row order is the RESOLVER's resolved sequence, never a second
   // ordering walk of our own. The editor used to re-derive it (config order,
@@ -3546,7 +3549,7 @@ function wireStaticControls(signal) {
   wireNoTapGlyphControl(window, signal); // v1.362.3 (E3): the black-picture glyph A/B
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
-  wirePocketUprightControl(window, signal); // the iPod portrait lock: Mobile player > Keep Pocket upright
+  wirePocketUprightControl(window, signal); // the Pocket portrait lock: Mobile player > Keep Pocket upright
 
   // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
   // debug-lifecycle overlay above. Prefill from + persist via the common.js
@@ -3582,7 +3585,7 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
-  // v1.84: Modern YouTube Mode - same per-user server-synced posture as the
+  // v1.84: Modern grid mode - same per-user server-synced posture as the
   // home-feed toggle above (applyModernModePref writes localStorage, sets
   // data-modern on <html>, AND mirrors to the account). Prefill from the device
   // value; the async boot seed re-reflects if the server value lands later.
@@ -4966,7 +4969,7 @@ function dropDownloadsReserve() {
 
 async function loadEngineSection(signal) {
   const box = document.getElementById('downloads-box');
-  if (!box) return;
+  if (!box) return; // v1.391.0: also the mediaFetch gate - applyMediaFetchGate removed the box, so no engine request is made
   let r;
   try {
     r = await fetch('/api/ytdlp/engine');
@@ -5005,7 +5008,7 @@ async function loadEngineSection(signal) {
 }
 
 // ===== Click wheel test — the diagnostic's pure metering core =====
-// A device-local tool (Settings › Experimental) that reproduces the iPod
+// A device-local tool (Settings › Experimental) that reproduces the Click player
 // wheel's native "ghost switch" haptic so the tick behaviour can be felt AND
 // measured on a real phone. (An off-origin sandbox — e.g. a hosted artifact —
 // blocks the native switch, so this has to live in the app itself.)
@@ -5497,6 +5500,15 @@ function wireWheelCalControl(signal) {
   btn.addEventListener('click', () => openWheelCal(signal), { signal });
 }
 
+// v1.391.0 (R2): the downloader-only blocks of this page (the Downloads box, the Notifications page, the Imported videos
+// note) carry `data-media-fetch`. A host that did not announce `mediaFetch` (the App Store build) removes them before the menu
+// is built; nothing else reveals them back, because they are gone. A plain browser keeps every one.
+function applyMediaFetchGate(scope) {
+  if (typeof mediaFetchAllowed !== 'function' || mediaFetchAllowed()) return;
+  const host = scope && typeof scope.querySelectorAll === 'function' ? scope : document;
+  host.querySelectorAll('[data-media-fetch]').forEach((el) => el.remove());
+}
+
 function init(root) {
   controller = new AbortController();
   configuredFolders = [];
@@ -5514,6 +5526,7 @@ function init(root) {
   // Downloads) are revealed asynchronously below via box.hidden=false; the
   // component's MutationObserver adds their rows then (and never before - a
   // restricted user never sees them).
+  applyMediaFetchGate(root || document); // v1.391.0 (R2): before the menu is built, so a dropped section never gets a row
   wireMasterDetail('setup', root || document, controller.signal);
   wireStaticControls(controller.signal);
   wireBookFolderControls(controller.signal); // v1.38.0 Part A
@@ -5535,7 +5548,7 @@ function init(root) {
   loadNoTapGlyphControl(window); // v1.362.3 (E3)
   loadDebugRotateControl(window); // v1.355
   loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
-  loadPocketUprightControl(window); // the iPod portrait lock: Mobile player > Keep Pocket upright
+  loadPocketUprightControl(window); // the Pocket portrait lock: Mobile player > Keep Pocket upright
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
@@ -5613,10 +5626,10 @@ if (typeof module !== 'undefined' && module.exports) {
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     formatBootErrorLogForExport, bootErrorExportFilename, wireBootErrorLogControls, // v1.364.0 (W1): the boot error log
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
-    loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
+    init, loadEngineSection, applyMediaFetchGate, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace; v1.391.0: the mediaFetch gate on the page
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     wireServerAddressRow, // v1.384.0: the iOS app's Server address row
-    loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep Pocket upright
+    loadPocketUprightControl, wirePocketUprightControl, // the Pocket portrait lock: Mobile player > Keep Pocket upright
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch

@@ -289,7 +289,7 @@ function songTrackLabel(item) {
 }
 // The server's within-album order (lib/music/query.js albumSortValue, mirrored EXACTLY: any integer disc, a missing disc
 // is 1, a missing track 0; ties keep their order - Array.prototype.sort is stable), for an album level the client builds
-// from a list it already holds (the iPod's artist > album, off the artist's cached whole list - no second read).
+// from a list it already holds (the Click player's artist > album, off the artist's cached whole list - no second read).
 function albumOrderValue(t) {
   var disc = Number.isInteger(t && t.discNo) ? t.discNo : 1;
   var track = Number.isInteger(t && t.trackNo) ? t.trackNo : 0;
@@ -1169,7 +1169,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, musicLinkToastName, // v1.352 L3
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the iPod's album order
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the Click player's album order
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId, musicArtV,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, drillOfflinePillHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -1752,8 +1752,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // mode (RC off) returns the real elements, byte-for-byte.
     var RC = (window.FileTube && window.FileTube.remoteControl) || null;
     var remoteDocked = false;
-    // v1.364.0 (W2b, Dean: "i may want to use my phone as a remote and not choose a song"): the iPod asked for
-    // with NO song (openPocketSeam: /music?pocket=1, the Music tab tapped again, the toolbar's iPod button).
+    // v1.364.0 (W2b, Dean, paraphrased: use the phone as a remote without choosing a song): the Click player asked for
+    // with NO song (openPocketSeam: /music?pocket=1, the Music tab tapped again, the toolbar's Click player button).
     // updateNowPlayingPanel shows it on the Main menu instead of hiding the panel; MENU there closes it back
     // to the browse view (dockToOrigin), and a song that starts playing hands over to the normal arm.
     var pocketIdle = false;
@@ -1886,7 +1886,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function skinIsActive() {
       if (!SKINS) return false;
-      if (remoteOn() || pocketIdle) return SKINS.skinActiveFor({ isMusic: true }); // v1.364.0 (W2b): the idle iPod has no track meta
+      if (remoteOn() || pocketIdle) return SKINS.skinActiveFor({ isMusic: true }); // v1.364.0 (W2b): the idle Click player has no track meta
       var pl = window.FileTube && window.FileTube.player;
       var meta = (pl && typeof pl.getCurrentMeta === 'function') ? pl.getCurrentMeta() : null;
       return SKINS.skinActiveFor(meta);
@@ -1906,7 +1906,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var up = [];
       var start = Math.max(0, ci - 3);
       for (var j = start; j < queue.length && up.length < 200; j++) up.push(rowOf(j));
-      // fullList = the iPod's whole-album list (v1.232.5, Dean: you could only scroll up
+      // fullList = the Click player's whole-album list (v1.232.5, Dean: you could only scroll up
       // when the current was song 1, because upNext started near the current). From index
       // 0 for a normal album so EVERY earlier song is reachable; for a huge queue, a wide
       // window centered on the current (still lets you scroll far up). renderIpod opens it
@@ -1928,7 +1928,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // v1.339 L1: keyed on the album's shared art id, so the next track of the same
           // album re-uses the cover already loaded (full size: the skin's big art).
           // v1.376.0 W6 (c): versioned by the same item the id comes from
-          // v1.377.0 (W2): the IDLE iPod (no music track: nothing, or a podcast / video the player still
+          // v1.377.0 (W2): the IDLE Click player (no music track: nothing, or a podcast / video the player still
           // holds) has no song art - `/albumart/<that id>` is the server's "Music" disc placeholder, which
           // filled the menu's art pane (Dean's screenshot). The pane then shows the library cover drift.
           artUrl: (playingId && !pocketIdle) ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
@@ -1941,7 +1941,7 @@ if (typeof module !== 'undefined' && module.exports) {
         artistTitle: artistTapTitle(popout),
         upNext: up, fullList: full, playing: mp ? !mp.paused : false, posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
-        // iPod footer "N of M": the current track's 1-based place in the whole queue.
+        // Click player footer "N of M": the current track's 1-based place in the whole queue.
         curNum: ci + 1, total: queue.length,
         radio: stationRadioName() ? { name: stationRadioName() } : null, // v1.378.0 (D11): "Radio: <name>" on every skin
       };
@@ -1957,7 +1957,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
     var inTabEngine = null;  // created lazily at first skin render (mobile); the pop-out rides the shared shell below
     function dockToOrigin() {
-      // v1.364.0 (W2b): MENU on the idle iPod's Main menu (no song) closes it back to the browse view - never pl.dock(),
+      // v1.364.0 (W2b): MENU on the idle Click player's Main menu (no song) closes it back to the browse view - never pl.dock(),
       // which assumes a track. With a speaker it is today's step-aside below.
       var wasIdle = pocketIdle;
       pocketIdle = false;
@@ -2141,7 +2141,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chapterViewId && live && /::c\d+$/.test(String(live)) && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
       return live;
     }
-    // v1.357 (R5): the id the iPod's LISTS mark as playing (the engine's cfg.currentId, its `followCurrent`
+    // v1.357 (R5): the id the Click player's LISTS mark as playing (the engine's cfg.currentId, its `followCurrent`
     // and the open-on-the-playing-row follow). While this phone controls a speaker the song that plays is the
     // SPEAKER's (its report, chapter ids included), never the phone's own idle player; an idle speaker marks
     // nothing. Local play is effectiveCurrentId() exactly as before. Only the lists read this: the Extras /
@@ -2572,7 +2572,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Show the trigger only when a library-backed track is EXPANDED (FULL): Share/Reheat/
     // Transcript/etc are for a real library item; a native track or a docked player gets
     // nothing (extrasEligibleView is the same gate the sticker Extras entry uses).
-    // v1.364.0 (W2b): the /music toolbar's iPod button - a phone whose skin has the Pocket menus only; it opens
+    // v1.364.0 (W2b): the /music toolbar's Click player button - a phone whose skin has the Pocket menus only; it opens
     // the same seam as /music?pocket=1 (no navigation: this view is already up).
     var pocketBtn = root.querySelector('#music-pocket-btn');
     function updatePocketBtn() {
@@ -2580,8 +2580,8 @@ if (typeof module !== 'undefined' && module.exports) {
       pocketBtn.hidden = !(SKINS && typeof SKINS.pocketEntryAvailable === 'function' && SKINS.pocketEntryAvailable());
     }
     if (pocketBtn) pocketBtn.addEventListener('click', function () { openPocketSeam(); }, { signal: signal });
-    // The one seam into the iPod (v1.364.0 W2b): with a speaker attached, its iPod; with a music track, the player
-    // expanded (a docked mini comes up); with neither, the idle iPod. Every case lands on the Main menu with the
+    // The one seam into the Click player (v1.364.0 W2b): with a speaker attached, its Click player; with a music track, the player
+    // expanded (a docked mini comes up); with neither, the idle Click player. Every case lands on the Main menu with the
     // cursor on Music (the engine's landPlayOn(false), the v1.351 idle-speaker landing). False = not applicable.
     function openPocketSeam() {
       if (!SKINS || typeof SKINS.pocketEntryAvailable !== 'function' || !SKINS.pocketEntryAvailable()) return false;
@@ -3186,7 +3186,7 @@ if (typeof module !== 'undefined' && module.exports) {
       repaintPopout();
       updatePopoutBtn();
       updateActionsBtn(); // v1.278: show/hide the desktop actions trigger in lockstep with the panel
-      updatePocketBtn(); // v1.364.0 (W2b): the toolbar's iPod button (a skin picked in the sticker can change it)
+      updatePocketBtn(); // v1.364.0 (W2b): the toolbar's Click player button (a skin picked in the sticker can change it)
       reflectPlaybackModes(); // v1.284: keep the desktop Loop/Autoplay toggles + chapter label current
       ensureChapterReflect(); // arm the chapter-boundary watcher once the player element is live (idempotent)
       var p = window.FileTube && window.FileTube.player;
@@ -3202,7 +3202,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // bug Dean hit on v1.243/the first v1.244 attempt). Cleared when the skin paints or the
         // load misses, so this can never strand the cover.
         if (straightToPlayerPending) return;
-        // v1.364.0 (W2b): the iPod asked for with no song stays up (on the Main menu) - the local hide below waits
+        // v1.364.0 (W2b): the Click player asked for with no song stays up (on the Main menu) - the local hide below waits
         // until MENU closes it (dockToOrigin) or a song takes over. A skin that cannot show (not a phone, a skin
         // without menus) drops the request.
         if (pocketIdle) { if (renderNowPlayingSkin()) return; pocketIdle = false; }
@@ -3394,7 +3394,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.353: a speaker's first volume report repaints too (the bar / row render only with a level)
       var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|') + '|' + remoteQueueSig(st); };
       // v1.356 (W2): a phone that came back attached to its speaker (the controller's resume on launch) shows it
-      // as a pick of it shows it: the iPod up (never stepped aside), Now Playing for a track, the menu for an
+      // as a pick of it shows it: the Click player up (never stepped aside), Now Playing for a track, the menu for an
       // idle speaker. One-shot, so a resume that landed while another view was up lands when Music mounts.
       var landResume = function () {
         if (!remoteOn() || typeof RC.consumeResume !== 'function') return;
@@ -5310,7 +5310,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play, letters: SKINS.menuSortIsAlpha(sort) };
     }
     // Addendum E: one cover per album, only the ones the server says HAVE art, through the one art rule.
-    // v1.377.0 (W2, Dean: "when one opens the iPod view, it always shows some art"): the covers come
+    // v1.377.0 (W2, Dean, paraphrased: opening the Click player view should always show some art): the covers come
     // from ONE random sample of the library (the list route's seeded `random` sort, COVER_SAMPLE
     // rows), never the whole Songs list - on a ~24,000-song library that was five sequential
     // 5,000-row pages (~15 MB) before the first cover, and the disc placeholder showed the whole
@@ -5435,7 +5435,7 @@ if (typeof module !== 'undefined' && module.exports) {
         return built;
       });
     }
-    // The iPod menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
+    // The Click player menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
     function playlistSource(key) {
       return key === 'liked'
         ? { url: '/api/music?filter=liked&sort=title-asc', all: true, ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
@@ -5815,7 +5815,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // slab during the async load gap, and it hit EVERY skin (each flashed its own empty
         // background). renderFull with the no-current ctx (buildSkinCtx(-1)) is the SAME frame
         // the engine itself paints on an idle repaint - an already-exercised, safe pure call -
-        // so the iPod/player silhouette appears at once; the real engine repaints over it the
+        // so the Click/player silhouette appears at once; the real engine repaints over it the
         // instant the track loads (renderNowPlayingSkin -> inTabEngine.paint(), which also binds
         // the gestures this static frame deliberately omits). try/catch falls back to the old
         // blank cover so a skin render can never break the launch path.

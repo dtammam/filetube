@@ -50,7 +50,7 @@ async function phoneContext(browser, cookie, storageState) {
     if (u.includes('/api/auth/me')) net.me += 1;
   });
   await ctx.addInitScript(() => {
-    // a Click iPod (the skins with menus), so the Speakers landing is visible: Cider, the default, has no menus
+    // a Click player (the skins with menus), so the Speakers landing is visible: Cider, the default, has no menus
     try { if (!localStorage.getItem('ft-music-skin')) localStorage.setItem('ft-music-skin', 'ipod-2004'); } catch { /* ignore */ }
     window.__toasts = [];
     const seen = new WeakSet();

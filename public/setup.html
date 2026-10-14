@@ -297,10 +297,10 @@
         </div>
       </details>
       <!-- v1.146 (downloader-engine): admin-only AND yt-dlp-module-only; hidden until /api/ytdlp/engine answers 200. Fed by that FOREIGN fetch, so no control carries the /api/settings reveal barrier; the box reveals whole, already populated. -->
-      <details class="setup-box setup-sec sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
+      <details class="setup-box setup-sec sub-collapsible" id="downloads-box" data-media-fetch hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
         <summary>Downloads</summary>
         <h3 class="setup-heading">Downloader engine</h3>
-        <p class="setup-intro">FileTube downloads videos with the yt-dlp engine. The bundled engine ships inside the app image and always remains as the fallback. The stable and nightly channels install the newest yt-dlp release at runtime - nightly tracks YouTube's changes closest. Every installed engine must pass a health check before it is used, and an engine that breaks later automatically reverts to bundled - the bell reports it either way.</p>
+        <p class="setup-intro">FileTube downloads videos with the yt-dlp engine. The bundled engine ships inside the app image and always remains as the fallback. The stable and nightly channels install the newest yt-dlp release at runtime - nightly tracks site changes closest. Every installed engine must pass a health check before it is used, and an engine that breaks later automatically reverts to bundled - the bell reports it either way.</p>
         <div class="setup-group">
           <div id="engine-channels" class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="radiogroup" aria-label="Engine channel">
             <label class="ui-row ui-row--default"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><span class="ui-row__title">Bundled</span><span class="ui-row__meta" id="engine-version-bundled">&hellip;</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="radio" class="setup-radio" name="engine-channel" value="bundled" id="engine-channel-bundled" /></span></label>
@@ -323,7 +323,7 @@
         </div>
       </details>
       <!-- v1.367.0: Notifications. The bell is server-wide (admins); push is per user, shown to anyone once the push probe says it is on. -->
-      <details class="setup-box setup-sec sub-collapsible" id="notifications-box" hidden data-collapse-key="notifications" data-md-icon="bell" data-md-group="System" data-md-reserve open>
+      <details class="setup-box setup-sec sub-collapsible" id="notifications-box" data-media-fetch hidden data-collapse-key="notifications" data-md-icon="bell" data-md-group="System" data-md-reserve open>
         <summary>Notifications</summary>
         <p class="setup-intro">Alerts for new downloads.</p>
         <div data-admin-only hidden>
@@ -334,7 +334,7 @@
             <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
               <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="notifications-enabled-check">Show download notifications (bell)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="notifications-enabled-check" /></span></div>
             </div>
-            <p class="setup-note">Adds a notification bell to the top-right corner that counts new subscription and one-off downloads, YouTube-style — tap one to watch it. The bell appears once at least one subscription exists. Turning this off hides the bell for everyone on this server; downloads are still tracked in the background, so turning it back on shows the full history with no gap. On by default.</p>
+            <p class="setup-note">Adds a notification bell to the top-right corner that counts new subscription and one-off downloads — tap one to watch it. The bell appears once at least one subscription exists. Turning this off hides the bell for everyone on this server; downloads are still tracked in the background, so turning it back on shows the full history with no gap. On by default.</p>
             <p id="notifications-enabled-error" class="ui-field__error" hidden></p>
           </div>
         </div>
@@ -381,7 +381,7 @@
       <!-- v1.48 item 5 (Dean): Appearance sits FIRST; every control is wired by id from setup.js, never by document order. -->
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="appearance" data-md-icon="era" data-md-group="Personalize" open>
         <summary>Appearance</summary>
-        <p class="setup-intro">Pick the YouTube era FileTube dresses up as. Light / dark lives in the account menu (your avatar, top-right).</p>
+        <p class="setup-intro">Pick the era FileTube dresses up as. Light / dark lives in the account menu (your avatar, top-right).</p>
         <div class="ui-list ui-list--default ui-list--media-avatar ui-list--actions-1 ui-list--divider-inset ui-list--grouped setup-choice-list" id="theme-picker" role="radiogroup" aria-label="Era"><!-- rows rendered by setup.js --></div>
         <div class="setup-group">
           <h3 class="setup-heading">Icons</h3>
@@ -471,15 +471,15 @@
         <!-- v1.79 / v1.84: the home experience toggles - per-user, synced to your account. -->
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
-            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-feed-check">Use the personalized home feed (YouTube-style rows)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-feed-check" /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-feed-check">Use the personalized home feed (rows by topic)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-feed-check" /></span></div>
           </div>
           <p class="setup-note">Replaces the classic file grid on the home page with rows tailored to you - Continue watching, New from your subscriptions, Recently added, More from your channels, and more. Turn off for the classic sortable grid. Syncs to your account; takes effect on the next home load.</p>
         </div>
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
-            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="modern-mode-check">Modern YouTube Mode (big-tile grid + filter chips)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="modern-mode-check" /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="modern-mode-check">Modern grid (big tiles + filter chips)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="modern-mode-check" /></span></div>
           </div>
-          <p class="setup-note">A modern YouTube-style home: one grid of large tiles (three across on desktop, one big card on mobile), a one-line filter row (All, Videos, Audio, Podcasts, Continue watching, Unwatched), and - on mobile - a bar of your recently-active subscriptions up top. Takes precedence over the personalized feed above. Syncs to your account; takes effect on the next home load.</p>
+          <p class="setup-note">A modern home: one grid of large tiles (three across on desktop, one big card on mobile), a one-line filter row (All, Videos, Audio, Podcasts, Continue watching, Unwatched), and - on mobile - a bar of your recently-active subscriptions up top. Takes precedence over the personalized feed above. Syncs to your account; takes effect on the next home load.</p>
         </div>
         <!-- v1.44 / v1.73 / v1.198.2: the continue rows (device-local display prefs). -->
         <div class="setup-group">
@@ -554,14 +554,14 @@
           <div id="sticker-picker" class="sticker-picker"><!-- rendered by JS --></div>
           <input type="file" id="sticker-file-input" accept="image/png,image/jpeg,image/webp" hidden />
         </div>
-        <!-- v1.355 (Dean): experimental keyboard search on the iPod skins, per-device (localStorage ft-pocket-keyboard-search, off by default). Above the skin grid, which stays last (v1.350). -->
+        <!-- v1.355 (Dean): experimental keyboard search on the Click player skins, per-device (localStorage ft-pocket-keyboard-search, off by default). Above the skin grid, which stays last (v1.350). -->
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="pocket-kb-search-check">Keyboard search (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="pocket-kb-search-check" /></span></div>
           </div>
           <p class="setup-note">On a Pocket skin, Music &gt; Search uses your phone's keyboard instead of the wheel's letters. Off by default; remembered on this device only.</p>
         </div>
-        <!-- the iPod portrait lock (Dean, 2026-10-07): per-device (localStorage ft-pocket-sideways '1' = sideways; absent = upright, the default). -->
+        <!-- the Pocket portrait lock (Dean, 2026-10-07): per-device (localStorage ft-pocket-sideways '1' = sideways; absent = upright, the default). -->
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="pocket-upright-check">Keep Pocket upright</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="pocket-upright-check" /></span></div>
@@ -577,6 +577,7 @@
             <input type="search" id="music-skin-filter" class="ui-field__input" placeholder="Type a name, like Nordic or Red" autocomplete="off" />
           </div>
           <div class="skin-picker" id="music-skin-picker" role="radiogroup" aria-label="Music skin"><!-- rows rendered by setup.js --></div>
+          <p class="setup-note" id="pocket-disclaimer">Pocket is inspired by classic click-wheel players. FileTube is not affiliated with Apple or Google.</p>
         </div>
       </details>
       <!-- v1.380 (Dean): the customizable bottom bar is its OWN Settings page, right after Mobile player (it was a group buried inside it). -->
@@ -908,13 +909,13 @@
             <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-config-btn"><span class="ui-btn__label">Save &amp; Scan Library</span></button>
           </div>
         </div>
-        <h3 class="setup-heading">Imported videos</h3>
+        <h3 class="setup-heading" data-media-fetch>Imported videos</h3>
         <!-- v1.41.6 (Dean): relocate hydrated imports into their channel folder. -->
-        <div class="setup-group">
+        <div class="setup-group" data-media-fetch>
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="relocate-hydrated-check">File imported videos under their channel</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="relocate-hydrated-check" /></span></div>
           </div>
-          <p class="setup-note">When "Reheat metadata &amp; channels" (on the Subscriptions page) finds a video that was downloaded outside FileTube but still carries its YouTube link, it moves the file into that channel's folder in your downloads directory — so it appears under the channel, can be pinned, and behaves like anything FileTube downloaded itself. Only ever touches videos with a real YouTube identity; your own local media is never moved. On by default.</p>
+          <p class="setup-note">When "Reheat metadata &amp; channels" (on the Subscriptions page) finds a video that was downloaded outside FileTube but still carries its source link, it moves the file into that channel's folder in your downloads directory — so it appears under the channel, can be pinned, and behaves like anything FileTube downloaded itself. Only ever touches videos with a real source link from a supported site; your own local media is never moved. On by default.</p>
           <p id="relocate-hydrated-error" class="ui-field__error" hidden></p>
         </div>
       </details>
@@ -1238,7 +1239,7 @@
         </button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <!-- v1.112 (Dean): settings cog centralizes Speed + CC + PiP off the bar
-             (YouTube's gear). The three controls are RELOCATED here as menu rows
+             (the gear menu). The three controls are RELOCATED here as menu rows
              with their ids + wired handlers intact; cc-btn/pip-btn keep their own
              visibility gates, which now hide the ROW. -->
         <div id="settings-menu" class="chapters-menu settings-menu" hidden>
