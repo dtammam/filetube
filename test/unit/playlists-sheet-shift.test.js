@@ -40,7 +40,8 @@ function functionBody(source, name) {
   throw new Error(`unbalanced braces reading ${name}`);
 }
 
-const OPEN_SHEET = functionBody(COMMON, 'openPlaylistsSheet');
+// v1.391.0: the pins half moved into the gated helper fetchChannelPinsForSheet; the two bodies read as one sheet-open flow.
+const OPEN_SHEET = functionBody(COMMON, 'openPlaylistsSheet') + '\n' + functionBody(COMMON, 'fetchChannelPinsForSheet');
 
 test('THE FIX: the config and pins requests are CONCURRENT, not chained', () => {
   // The original code did `foldersRendered.then(() => fetch(pins))`, which cost

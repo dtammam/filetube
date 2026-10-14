@@ -46,7 +46,9 @@ function scanSet(roots) {
 
 const YT = /\bYouTube\b/;
 // Narrowed from the plan's /iPod|IPOD|\bipods?\b(?![-_])/ (it misfired on real identifiers: `.mms-ipod`, 'ipod', `ipod:`).
-const IPOD = /(?<![\w.#'"`/=[$@^-])ipods?(?![\w'"`$:-])/i;
+// The capitalised spellings are always prose (an identifier is lowercase); the lowercase word is prose unless it is part of a
+// hyphenated / dotted / quoted identifier. A quote or an apostrophe-s after the word does not excuse it ("iPod's", "iPod").
+const IPOD = /iPod|IPod|IPOD|(?<![\w.#'"`/=[$@^-])ipods?(?![\w"`$:-])|(?<=[\s"'(])ipod[a-z]+/;
 
 function globToRe(g) {
   return new RegExp('^' + g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '@@ANY@@').replace(/\*/g, '[^/]*').replace(/@@ANY@@/g, '.*') + '$');
@@ -105,5 +107,5 @@ test('the Apple music player\'s name appears nowhere (no allowlist)', () => {
 
 test('the iPod regex lets identifiers through and catches prose (so the zero above cannot pass by never matching)', () => {
   for (const ok of ['.ipod-red { }', "'ipod-brick.js'", 'data-ipod_skin', 'ipod-nano-1', ".mms-ipod .mms-pos", "base: 'ipod',", 'ipod: \'Retro\'', 'renderIpod(ctx)', '/^ipod/.test(x)', 'a.replace(/^ipod$/, 1)', '`ipod`']) assert.ok(!IPOD.test(ok), ok);
-  for (const bad of ['the iPod look', 'IPOD', 'IPod 1Gen.jpg', 'an ipod skin', 'the ipod.', '/* iPod true-up */', 'iPods never']) assert.ok(IPOD.test(bad), bad);
+  for (const bad of ['the iPod look', 'IPOD', 'IPod 1Gen.jpg', 'an ipod skin', 'the ipod.', '/* iPod true-up */', 'iPods never', "the iPod's art", 'the "iPod" skin', 'iPod: a player', 'Commons "Green ipodmini.jpg"', "say 'iPod' here"]) assert.ok(IPOD.test(bad), bad);
 });

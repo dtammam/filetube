@@ -378,3 +378,53 @@ test('the native offline downloads control still works under a host that lacks m
 test('(sanity) VIDEO fixture still carries a source link, so the Share assertions above bind', () => {
   assert.ok(VIDEO.watchUrl);
 });
+
+// ---- review r1: the three sites that were only bound by a direct call ----------------------------------------------------
+
+test('the playlists sheet asks for /api/subscriptions/pins only when the gate is open', async () => {
+  for (const [caps, want] of [[NO_HOST, 1], [WITH, 1], [WITHOUT, 0]]) {
+    const r = realm(caps);
+    try {
+      const [ok, pins] = await common.fetchChannelPinsForSheet();
+      assert.strictEqual(r.fetched.filter((u) => u === '/api/subscriptions/pins').length, want, JSON.stringify(caps));
+      if (!want) assert.deepStrictEqual([ok, pins], [false, []], 'reads as no module');
+    } finally { r.restore(); }
+  }
+  const src = fs.readFileSync(path.join(REPO, 'public/js/common.js'), 'utf8');
+  const open = src.slice(src.indexOf('function openPlaylistsSheet()'), src.indexOf('function closePlaylistsSheet()'));
+  assert.ok(open.includes('fetchChannelPinsForSheet()') && !open.includes("fetch('/api/subscriptions/pins')"), 'openPlaylistsSheet goes through the gated helper');
+});
+
+test('the Settings view init() applies the gate itself (the blocks are gone with no direct call)', () => {
+  for (const [caps, shut] of [[NO_HOST, false], [WITHOUT, true]]) {
+    const dom = new JSDOM(SETUP_HTML, { url: 'http://localhost/setup.html' });
+    const r = realm(caps);
+    try {
+      global.document = dom.window.document;
+      global.window = Object.assign(dom.window, { FileTube: r.w.FileTube });
+      try { setupJs.init(dom.window.document.getElementById('view-root') || dom.window.document); } catch (_) { /* the rest of the page needs a full realm: the gate runs first */ }
+      for (const id of ['downloads-box', 'notifications-box', 'relocate-hydrated-check']) {
+        assert.strictEqual(!!dom.window.document.getElementById(id), !shut, id + ' ' + JSON.stringify(caps));
+      }
+    } finally { try { setupJs.destroy(); } catch (_) { /* nothing started */ } r.restore(); dom.window.close(); }
+  }
+});
+
+test('the Bottom bar editor does not list the downloader tabs under a shut gate', () => {
+  const ids = ['oneoff-download', 'subscriptions', 'downloads'];
+  for (const [caps, shut] of [[NO_HOST, false], [WITHOUT, true]]) {
+    const r = realm(caps);
+    try {
+      const host = r.doc.createElement('div'); host.id = 'bottombar-editor'; r.doc.body.appendChild(host);
+      r.w.FileTube = Object.assign(r.w.FileTube || {}, {
+        BOTTOM_NAV_OPTIONAL: common.BOTTOM_NAV_OPTIONAL, readBottomNavConfig: () => ({}),
+        resolveBottomNavLayout: (opt) => ({ sequence: opt.slice(), flooredToDefault: false, visible: opt.slice() }),
+        writeBottomNavConfig() {}, applyBottomNavCustomization() {}, wireReorderable() {},
+      });
+      setupJs.renderBottomBarEditor(new r.w.AbortController().signal);
+      const rows = host.textContent;
+      assert.ok(rows.includes(setupJs.BOTTOMBAR_LABELS.home), 'the editor rendered: ' + rows.slice(0, 80));
+      for (const id of ids) assert.strictEqual(rows.includes(setupJs.BOTTOMBAR_LABELS[id]), !shut, id + ' ' + JSON.stringify(caps));
+    } finally { r.restore(); }
+  }
+});

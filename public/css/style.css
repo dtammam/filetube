@@ -9277,9 +9277,9 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:120,208,232; --pk-c-lita-core:200,238,248; }
-  /* Click (Green) (D8, the second mini): Commons "Green ipodmini 2ndgen.jpg" (CC BY-SA 2.0), white-
+  /* Click (Green) (D8, the second mini): a Wikimedia Commons photo (CC BY-SA 2.0), white-
      balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
-     (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
+     (#3e9557); the center is the wheel's grey. (The first mini's green, a second photo,
      reads yellower - #72872f - the second one's is the reference.) */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%),
@@ -9348,7 +9348,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:170,225,240; --pk-c-lita-core:215,242,250; }
-  /* Click (Olive) (v1.335): the first mini in green - Commons "Green ipodmini 1stgen.jpg" (public domain), balanced
+  /* Click (Olive) (v1.335): the first mini in green - a Wikimedia Commons photo (public domain), balanced
      on its wheel. Yellow-green (p95 #879c46, p50 #798b39, p05 #424e0a), yellower than Click (Green); grey labels
      (#8b938d), the wheel grey center. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-olive{

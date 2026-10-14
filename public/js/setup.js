@@ -2245,7 +2245,10 @@ function renderBottomBarEditor(signal) {
   const host = document.getElementById('bottombar-editor');
   const FT = typeof window !== 'undefined' ? window.FileTube : null;
   if (!host || !FT || !FT.readBottomNavConfig) return;
-  const optional = FT.BOTTOM_NAV_OPTIONAL || [];
+  // v1.391.0 (R2): the downloader tabs are not offered in a build whose host did not announce `mediaFetch`.
+  const DOWNLOADER_TABS = ['oneoff-download', 'subscriptions', 'downloads'];
+  const gateShut = typeof mediaFetchAllowed === 'function' && !mediaFetchAllowed();
+  const optional = (FT.BOTTOM_NAV_OPTIONAL || []).filter((id) => !(gateShut && DOWNLOADER_TABS.indexOf(id) >= 0));
   const cfg = FT.readBottomNavConfig();
   // v1.75: the row order is the RESOLVER's resolved sequence, never a second
   // ordering walk of our own. The editor used to re-derive it (config order,
@@ -5623,7 +5626,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     formatBootErrorLogForExport, bootErrorExportFilename, wireBootErrorLogControls, // v1.364.0 (W1): the boot error log
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
-    loadEngineSection, applyMediaFetchGate, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace; v1.391.0: the mediaFetch gate on the page
+    init, loadEngineSection, applyMediaFetchGate, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace; v1.391.0: the mediaFetch gate on the page
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     wireServerAddressRow, // v1.384.0: the iOS app's Server address row
     loadPocketUprightControl, wirePocketUprightControl, // the Pocket portrait lock: Mobile player > Keep Pocket upright

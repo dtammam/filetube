@@ -2740,7 +2740,7 @@
       body.appendChild(recentWrap);
       var groups = mk('div', 'mms-ss__groups');
       var fams = (typeof SKINS.skinFamilies === 'function') ? SKINS.skinFamilies() : [{ key: 'all', label: 'Skins', ids: all.map(function (s) { return s.id; }) }];
-      // v1.388.0 (Dean): the groups are the registry's LINES (Classic, Mini, Nano, ...), each COLLAPSED to one header row
+      // v1.388.0 (Dean): the groups are the registry's LINES (Classic, Mini, Slim, ...), each COLLAPSED to one header row
       // (name, count, chevron) except the one holding the active skin; a family with no line (Original, Cider, Nordic) is its own group
       var lineLabel = {};
       (typeof SKINS.skinLines === 'function' ? SKINS.skinLines() : []).forEach(function (ln) { lineLabel[ln.key] = ln.label; });
@@ -3522,7 +3522,7 @@
     // lock replace .mms-full's touch-action:none); never preventDefault its touches;
     // NEVER write .checked from JS (kills tracking). Exec plan: 2026-09-03-wheel-haptics.md.
     var WHEEL_CFG = (typeof window !== 'undefined' && window.FileTubeWheelConfig) || null; // v1.303: the wheel's source of truth (the Click wheel test writes it; read fresh per gesture below)
-    var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean: 3deg "a little too hot... parity with the Classic"): 96 detents/rev, the Classic's own number
+    var HAPTIC_STEP_DEG = (WHEEL_CFG && WHEEL_CFG.CONST.STEP_DEFAULT) || 3.75; // v1.256.2 (Dean, paraphrased: 3deg was a little too hot, match the Classic player): 96 detents/rev, the Classic's own number
     // v1.271 (Dean: "I want there to be more haptic feedback than not... it really
     // should feel like the real thing"). Was 30, which pegged delivery at a FLAT ~30
     // ticks/second no matter how fast the wheel turned - 69% of the ticks a 1 rev/s

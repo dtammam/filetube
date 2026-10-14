@@ -230,8 +230,11 @@ test('openPlaylistsSheet derives moduleEnabled from r.ok and threads it into ren
   // shared single-pass `renderPlaylistsSheetContent`. The INVARIANT this test
   // exists for is unchanged and still asserted end to end below: moduleEnabled
   // originates from the response's own r.ok and reaches renderPinnedPlaylists.
-  const openFn = /function openPlaylistsSheet\(\)[\s\S]*?\n\}\n/.exec(commonJsSrc);
-  assert.ok(openFn, 'expected to find openPlaylistsSheet');
+  // v1.391.0: the pins half is the gated helper fetchChannelPinsForSheet (same fetch, same r.ok derivation); read both bodies.
+  const openMatch = /function openPlaylistsSheet\(\)[\s\S]*?\n\}\n/.exec(commonJsSrc);
+  const helperMatch = /function fetchChannelPinsForSheet\(\)[\s\S]*?\n\}\n/.exec(commonJsSrc);
+  assert.ok(openMatch && helperMatch, 'expected to find openPlaylistsSheet and its pins helper');
+  const openFn = [openMatch[0] + helperMatch[0]];
 
   // 1. Derived from the response's OWN r.ok (a genuine 2xx) BEFORE the body is
   //    read -- never inferred from the resolved body, which a 404 and a real

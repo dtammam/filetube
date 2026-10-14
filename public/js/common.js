@@ -13384,6 +13384,13 @@ function ensurePlaylistsSheet() {
 }
 
 // Lazily fetches /api/config on every open, populates the sheet, then reveals it.
+// v1.391.0: the sheet's channel-pins half, `[moduleEnabled, pins]`. A shut mediaFetch gate never asks the server.
+function fetchChannelPinsForSheet() {
+  return (mediaFetchAllowed() ? fetch('/api/subscriptions/pins') : Promise.reject(new Error('mediaFetch off')))
+    .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
+    .catch(() => [false, []]);
+}
+
 function openPlaylistsSheet() {
   const ctrl = ensurePlaylistsSheet();
   if (!ctrl) return;
@@ -13400,9 +13407,7 @@ function openPlaylistsSheet() {
   // is that they no longer wait for each other.
   Promise.all([
     fetch('/api/config').then((r) => r.json()).catch(() => null),
-    (mediaFetchAllowed() ? fetch('/api/subscriptions/pins') : Promise.reject(new Error('mediaFetch off')))
-      .then((r) => Promise.all([r.ok, r.ok ? r.json() : []]))
-      .catch(() => [false, []]),
+    fetchChannelPinsForSheet(),
   ]).then(([config, [moduleEnabled, pins]]) => {
     if (generation !== playlistsSheetGeneration) return; // superseded by a newer open
     if (!config) {
@@ -18600,6 +18605,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.53: the capability cache's pure gate + accessors.
     sanitizeCapabilityCache, readCapabilityCache, writeCapabilityCache, scrubSubsForCache,
     // v1.391.0: the mediaFetch gate.
-    mediaFetchAllowed, probeSubscriptionsHealth, viewBlockedByMediaFetch, renderNotAvailableInApp,
+    mediaFetchAllowed, probeSubscriptionsHealth, viewBlockedByMediaFetch, renderNotAvailableInApp, fetchChannelPinsForSheet,
   };
 }

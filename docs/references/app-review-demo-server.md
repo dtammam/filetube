@@ -19,8 +19,9 @@ nothing in it needs a person to be around.
 ## The account
 
 Create it in Settings > Users as a plain member (not an admin) with a long random password, and write both down for the
-review notes. The account itself does not expire. Sign-ins do: a session lasts 180 days from when the password was last typed
-(longer only if it is used), so test a fresh sign-in shortly before you submit, and again if the review runs long. If you
+review notes. The account itself does not expire. Sign-ins do: a web session lasts 30 days and is renewed while it is used, up to 180 days
+after the password was last typed; the app's pairing token expires after 180 days unused. So test a fresh pairing shortly
+before you submit, and again if the review runs long. If you
 ever need to re-enable or reset the account, see "Forgot the admin password?" in the same accounts section.
 
 ## The media
