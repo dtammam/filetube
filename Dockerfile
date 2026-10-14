@@ -1,5 +1,5 @@
 # Use lightweight Node 22 (current LTS) Alpine as base image
-FROM node:22-alpine
+FROM node:26-alpine
 
 # Install FFmpeg/FFprobe (video metadata + thumbnails) plus python3/py3-pip,
 # which are only needed to install yt-dlp below (yt-dlp itself also shells
