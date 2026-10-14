@@ -17,7 +17,7 @@
    --swipe-x (swipe row offset). */
 
 /* ---- native-interaction policy (plan D6, AC7; Dean's ruling LOCKED 2026-09-27) ----- */
-/* FileTube is app-contained, like the YouTube and Spotify apps: no text selection, no
+/* FileTube is app-contained, like the big streaming apps: no text selection, no
    long-press callout or link preview, no image save sheet or drag, no grey tap flash, no
    double-tap zoom and no text inflation. The policy is the DEFAULT, so a new surface
    inherits it; the only opt-ins are editable fields and the listed `.ui-selectable`

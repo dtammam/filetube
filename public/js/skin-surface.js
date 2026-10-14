@@ -316,7 +316,7 @@
         var pl = extrasPlayer();
         var t = (pl && typeof pl.getCurrentTime === 'function') ? pl.getCurrentTime() : null;
         var opts = [{ label: 'Share file', onPick: shareFile }, { label: 'Share link', onPick: function () { shareLink(link); } }];
-        // v1.338 (plan first-class-any-site D6): a start time is YouTube's `?t=` - a download from another
+        // v1.338 (plan first-class-any-site D6): a start time is the reference site's `?t=` - a download from another
         // site shares its own page link as it is.
         var isYouTubeLink = link === item.watchUrl;
         if (isYouTubeLink && typeof t === 'number' && isFinite(t) && t >= 1 && typeof window.withShareStartTime === 'function') {

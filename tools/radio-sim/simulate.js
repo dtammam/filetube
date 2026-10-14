@@ -777,7 +777,7 @@ function syntheticLibrary(seed) {
   for (let f = 0; f < 4; f += 1) {
     const chapters = [];
     for (let c = 0; c < 15; c += 1) chapters.push({ startTime: c * 240, title: 'Ch' + c });
-    // yt-dlp writes YouTube's CATEGORY ("Music") as the genre tag
+    // yt-dlp writes the source site's CATEGORY ("Music") as the genre tag
     metadata['mix' + f] = { id: 'mix' + f, type: 'audio', title: 'DJ Set ' + f, folderName: 'djchannel', channelName: 'DJ Channel', duration: 3600, chapters, tags: { genre: 'Music', date: '2021' } };
   }
   // an UNTAGGED DJ channel (T0: 6013 of 11951 production chapter-tracks carry no genre): 6 sets of 15

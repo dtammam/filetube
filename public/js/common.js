@@ -894,7 +894,7 @@ async function bootHomeFeedPref() {
   if (HOME_FEED_VALUES.includes(s.homeFeed)) applyHomeFeedPref(s.homeFeed); // seed, no mirror
 }
 
-// ---- v1.84: Modern YouTube Mode toggle -------------------------------------
+// ---- v1.84: Modern grid mode toggle -------------------------------------
 //
 // A THIRD home-layout option (a flat big-tile grid with a filter-chip row and,
 // on mobile, a recent-uploader avatar bar), orthogonal to the era themes. Same
@@ -2368,9 +2368,9 @@ const WATCH_TOGGLE_OPTIONS = [
 //
 // A dimension of the library chip row, present ONLY on a folder/root-scoped
 // search (main.js). Unlike format/watch it is NOT persisted: each new search
-// starts on 'all' (the YouTube posture) - the value lives in the search view's
+// starts on 'all' (the familiar video-site posture) - the value lives in the search view's
 // closure and deep links carry it via ?searchIn=. Labels are Titles/Channels
-// (not YouTube's Videos/Channels) because the format dimension in the same row
+// (not the reference site's Videos/Channels) because the format dimension in the same row
 // already owns a "Videos" chip.
 const SEARCH_SCOPE_MODES = ['all', 'title', 'channel'];
 
@@ -3362,9 +3362,9 @@ function formatViewCountCaptureDate(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// v1.54: YouTube-style compact count -- 999 -> "999", 1234 -> "1.2K",
+// v1.54: video-site-style compact count -- 999 -> "999", 1234 -> "1.2K",
 // 24000 -> "24K", 1200000 -> "1.2M". One decimal only under 10 of a unit,
-// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like YouTube
+// trailing ".0" stripped. Gate round 1 (adversarial S2): FLOORS like the big video sites
 // (24,600 -> "24K", never "25K") -- which also makes the unit boundary
 // impossible to overshoot (999,500 floors to "999K", never "1000K"). The
 // epsilon absorbs binary-float dust (4.3e6/1e6*10 can land a hair under 43)
@@ -4075,7 +4075,7 @@ function showAttributionPicker(targets, opts, onPick) {
 
 // ---- v1.51: the notification bell ------------------------------------------
 //
-// YouTube-style bell in the header's top-right, on every shell that has the
+// video-site-style bell in the header's top-right, on every shell that has the
 // shared header (login/welcome have none and are pre-auth anyway). Injected
 // here (not in per-shell markup) so all 8 shells get it from ONE code path.
 // Capability probe = the first GET /api/notifications/badge: the server 404s
@@ -4811,7 +4811,7 @@ function injectNotificationBellIfEnabled() {
 
 // ---- v1.63: the playback queue (header icon + panel) ------------------------
 //
-// YouTube-style queue ("think YouTube" - Dean): a header icon that EXISTS
+// video-site-style queue (Dean, paraphrased: model it on the familiar video-site queue): a header icon that EXISTS
 // only while the user's queue does (ruling 4), left of the notification
 // bell, opening a ui.sheet like the bell's (sweep S4): now-playing highlighted,
 // per-row remove, up/down reorder (icon buttons on every input device; drag
@@ -5003,7 +5003,7 @@ function injectQueueChrome() {
 
       // ---- button + badge (createElement/textContent only) ---------------
       // Sweep S1 (F31): a plain ui-btn icon button (44px hit area), the queue glyph (list
-      // lines + a play triangle, YouTube's queue vocabulary) from the icon sprite.
+      // lines + a play triangle, the reference site's queue vocabulary) from the icon sprite.
       const btn = chromeButtonEl({ cls: 'queue-btn', icon: CHROME_ICON.queue, ariaLabel: 'Playback queue' });
       btn.id = 'queue-btn';
       btn.setAttribute('aria-haspopup', 'true');
@@ -7098,7 +7098,7 @@ function cropAvatarFile(file) {
 //
 // The magnifier (mobile top-right, injected into .header-right beside the bell +
 // avatar) opens search: it reveals the field (hidden by default on mobile - the
-// YouTube-app pattern) and shows the user's recent searches, each individually
+// video-app pattern) and shows the user's recent searches, each individually
 // deletable, plus a clear-all. Terms are recorded on every search and synced
 // per-user (GET/POST/DELETE /api/search-history), so history follows the
 // account. Desktop keeps its always-on search bar; the magnifier + panel are
@@ -7267,7 +7267,7 @@ function wireSearchAffordances() {
 // works even when that trigger is display:none on mobile). Injected with
 // data-nav="you" but DELIBERATELY NOT added to BOTTOM_NAV_OPTIONAL: the layout
 // resolver ranks a roster-absent id after every ROSTER item (so it sits at the
-// right end - the YouTube-app slot; the one exception is if the user opts the
+// right end - the video-app slot; the one exception is if the user opts the
 // COMPAT_TAIL 'settings' into the bar, which pins after it, putting You just
 // before Settings). The real hide/reorder protection is the SETTINGS CUSTOMIZER,
 // which lists only the roster - so its UI can never hide or move You. (A
@@ -7780,7 +7780,7 @@ function openPlaylistPicker(opts) {
   cleanRow.hidden = true;
   // v1.374.0 (d, Dean's R2): the album's one cover - "Each song's own art" (today) or one of the loaded songs, picked from
   // the standard menu (ui.menu). Every NEW track of the job gets that song's thumbnail as its cover (the server fetches it
-  // from YouTube's image host by the id; never a URL from here). Shown with the album's other options.
+  // from the reference site's image host by the id; never a URL from here). Shown with the album's other options.
   const COVER_OWN_ART = 'Each song\'s own art';
   const ALBUM_ROW_NOT_IN = 'Not in the album'; // v1.376.0 R6: an unticked row has no track number
   const coverRow = U.row({ title: 'Cover', meta: COVER_OWN_ART, onClick: (ev) => openCoverMenu(ev), doc: d });
@@ -7921,7 +7921,7 @@ function openPlaylistPicker(opts) {
   }
   // v1.372.0 (Dean: "it wasn't clear what the new saved name would have been"): with Save as an album on, a row shows the
   // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
-  // "Artist - " prefix dropped) when Clean up titles is on, else YouTube's - and "Track N". What it shows is what is written.
+  // "Artist - " prefix dropped) when Clean up titles is on, else the reference site's - and "Track N". What it shows is what is written.
   function songName(r) {
     const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
     if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
@@ -8040,7 +8040,7 @@ function openPlaylistPicker(opts) {
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
       // v1.376.0 R6: the songs that will be downloaded, numbered 1..N in playlist order (albumTrackNumbers); each one's
-      // shown name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      // shown name goes along when it differs from the reference site's (v1.372.0: written as it is, so the server runs no cleanup)
       const tracks = albumTrackNumbers(state.rows);
       const titles = {};
       const named = new Set();
@@ -8854,7 +8854,7 @@ function wireTouchTargetDebug() {
 // ---- v1.47.8: keyboard shortcuts reference (Dean) --------------------------
 //
 // Dean: "Can we make a keyboard shortcuts page/modal? ... We can mirror
-// YouTube's or other modern apps'. Ignore/not display on mobile viewport. Keep
+// The reference site's or other modern apps'. Ignore/not display on mobile viewport. Keep
 // it simple."
 //
 // THE ONE RULE THIS FEATURE LIVES OR DIES BY: every row below documents a
@@ -8862,7 +8862,7 @@ function wireTouchTargetDebug() {
 // which do nothing is worse than no reference at all -- it converts "I don't
 // know the shortcut" into "the app is broken". So this list was written by
 // reading the real handlers (player.js's keydown switch and read.js's), not by
-// copying YouTube's published set, and `keyboard-shortcuts.test.js` asserts
+// copying the reference site's published set, and `keyboard-shortcuts.test.js` asserts
 // every listed key against those handlers so the two cannot drift.
 //
 // Deliberately NOT listed: Esc. It is a modal affordance rather than an app
@@ -8905,7 +8905,7 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['ArrowUp'], desc: 'Volume up' },
       { keys: ['ArrowDown'], desc: 'Volume down' },
       // v1.47.8 gate W4: M exists (player.js `case 'm'`) and was missing here.
-      // YouTube documents it, and omitting it from the group that lists the
+      // The shortcut reference sites document it, and omitting it from the group that lists the
       // volume keys is the most conspicuous possible place to omit it.
       { keys: ['M'], desc: 'Mute / unmute' },
       { keys: ['F'], desc: 'Fullscreen (audio: expand the cover art)' },
@@ -8969,7 +8969,7 @@ function isDesktopViewport() {
 
 /**
  * Pure: should this keydown open the shortcuts reference? `?` (Shift+/ on most
- * layouts) mirrors YouTube. Never while typing, never with a modifier that
+ * layouts) mirrors the big video sites. Never while typing, never with a modifier that
  * would make it a browser/OS command.
  */
 function shouldOpenShortcuts(e, activeTag, isEditable) {
@@ -13829,8 +13829,8 @@ function showTranscriptModal(opts) {
 // can turn a `false` into a `true` on ambiguous input, so it can only ever
 // ADD friction relative to today, never remove it. Never throws. Exported
 // for node:test.
-// v1.338 D8d (Dean: "non-YouTube things supported by YT DLP should have
-// generally first-class experiences"): `sourceExtractor` is a fourth signal. A
+// v1.338 D8d (Dean, paraphrased: other sites supported by YT DLP should have
+// generally first-class experiences): `sourceExtractor` is a fourth signal. A
 // download from another site carries no channelUrl/channelId, and when the
 // site reported no uploader it had no channelName either, so it got the
 // local-file copy. The scan sets `sourceExtractor` only on a file under the

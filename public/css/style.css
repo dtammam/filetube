@@ -1,8 +1,8 @@
-/* FileTube Classic Design System - Old-School YouTube (2005-2010 Style) with Modern Responsiveness and Dark Mode */
+/* FileTube Classic Design System - Old-School Video Site (2005-2010 Style) with Modern Responsiveness and Dark Mode */
 
 /* (v1.23's per-control touch-action: manipulation list moved to ui.css's D6 base in step 7.) */
 
-/* Self-hosted Roboto (variable weight axis, latin subset) for YouTube-like
+/* Self-hosted Roboto (variable weight axis, latin subset) for video-site-like
    typography without a Google Fonts CDN call — fully offline. Apache-2.0;
    see public/fonts/README.md. */
 /* v1.107 (Dean): the MODERN theme's face is Geist (Vercel's product font -
@@ -121,14 +121,14 @@
    Base == 2021 Modern (the :root safe-default contract, same as the token
    layer): near-flush bar, floating pill thumb (--r-md = 12px clamps to
    a pill at this width), gutterless track in the page background - the
-   modern-YouTube look. The thumb's transparent border + padding-box clip is
+   modern video-site look. The thumb's transparent border + padding-box clip is
    what floats it off the track edges; retro eras override the clip back to
    border-box for a flush, hard-edged bar.
 
    iOS uses native overlay scrollbars and ignores all of this (harmless);
    on macOS, webkit-styled scrollbars render always-visible instead of
    overlay - accepted: persistent scrollbars ARE the era-appropriate look,
-   and modern YouTube custom-paints its scrollbars the same way. */
+   and the modern video site custom-paints its scrollbars the same way. */
 ::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -854,7 +854,7 @@ a.sidebar-item {
 }
 
 
-/* Video Card (YouTube Retro Style) */
+/* Video Card (Retro Style) */
 .video-card {
   display: flex;
   flex-direction: column;
@@ -864,7 +864,7 @@ a.sidebar-item {
   position: relative;
 }
 /* F53 (UI pass sweep S2): Modern has no card tile - the thumbnail and the text
-   sit on the page ground (C, the YouTube/Spotify card); the retro eras keep
+   sit on the page ground (C, the streaming-app card); the retro eras keep
    their tile (--surface-1). It PAINTS the ground (--surface-0, the page's own)
    rather than going transparent: the critter layer hides behind cards (the
    ground contract, critter-mode.test.js). */
@@ -1408,7 +1408,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 }
 
 /* v1.362.4 (plan 2026-10-04-minimize-crossfade, Dean's rulings F1-F3): the page under the video fades like
-   YouTube's when it minimizes and expands (measured on his recording: ~0.4 s through ~60 %). Opacity toward
+   the reference site's when it minimizes and expands (measured on his recording: ~0.4 s through ~60 %). Opacity toward
    the page's own background, floor 0.4. NEVER on an ancestor of the video (LESSONS 7, the v1.312 class): on
    the watch page only the children of .watch-main that do not hold #player-slot fade (the player stage's
    siblings, excluded by content, not by name: the v1.312 sweep in ambient-glow-engine.test.js keeps every
@@ -1817,7 +1817,7 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
    The autoplay/loop switches below MOVED into the player cog menu but keep these
    `.watch-autoplay-*` classes (+ the `.settings-menu-toggle` layout modifier). */
 
-/* Autoplay/Loop/Ambient toggle switch -- a YouTube-style switch. Since v1.186
+/* Autoplay/Loop/Ambient toggle switch -- a video-site-style switch. Since v1.186
    these live in the player's settings cog menu (see `.settings-menu-toggle`).
    Era-token colors only. */
 .watch-autoplay-label {
@@ -3660,7 +3660,7 @@ select {
     width: 100%;
     max-width: none;
     margin: 0;
-    /* v1.85 #1: hidden until the magnifier opens it (the YouTube-app pattern) */
+    /* v1.85 #1: hidden until the magnifier opens it (the common app pattern) */
     display: none;
   }
   .search-open .header-search { display: block; }
@@ -3794,7 +3794,7 @@ select {
 }
 
 /* In landscape on a phone, the 16:9 player can fill the viewport; hide the fixed
-   bottom nav so it never overlaps the video (matches the YouTube app going
+   bottom nav so it never overlaps the video (matches the big video apps going
    immersive on rotate). The mobile header/search still apply. */
 @media (max-width: 768px) and (orientation: landscape) {
   .bottom-nav { display: none; }
@@ -4204,13 +4204,13 @@ select {
 
 /* === v1.50 (Dean): era player skins ========================================
    The base rules above ARE the 2005 Original skin. Each era below re-skins
-   the SAME bar in that era's real YouTube-player visual language:
+   the SAME bar in that era's real video-player visual language:
      2009 Classic -- glossy gradient chrome (the era's glass-button look,
                      matching the site's own [data-theme="2009"] .btn gloss);
      2014 Flat    -- flat material: no bevels, no gradients, borderless
                      ghost buttons, the era's brighter red, red dot scrubber;
      2021 Modern  -- flat + round + crisp: circular hover on buttons, pill
-                     tracks, thin seek line, YouTube's round red scrubber.
+                     tracks, thin seek line, the reference site's round red scrubber.
    HARD RULES (locked by test/unit/era-player-skins.test.js):
    - visual-only: never height/padding/gap/order on .player-controls -- the
      bar's geometry (40px desktop / two-row 80px mobile / 26px docked, 44px docked on a phone since v1.362) is
@@ -4469,7 +4469,7 @@ select {
     flex-basis: 100%;
     height: 0;
   }
-  /* v1.50.5 / v1.112 (Dean): YouTube-ish row 2 -- transport on the LEFT
+  /* v1.50.5 / v1.112 (Dean): video-site-ish row 2 -- transport on the LEFT
      (play), then the persistent chapter-name label filling the middle, then
      the settings-ish cluster pushed to the RIGHT with fullscreen in the far
      corner. mute/volume are hidden on mobile (below), which is what frees the
@@ -4627,7 +4627,7 @@ select {
     bottom: 44px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
   /* v1.359 (Dean): on a phone the inline watch player touches both screen edges
-     like YouTube, so it drops the frame the shared .player-container paints
+     like the reference site, so it drops the frame the shared .player-container paints
      (1px outline plus the era radius): at the screen edge a frame reads as the very
      gap Dean reported. 1 ID + 3 classes beats .player-container (0,1,0) in every era
      whatever the order; faux full screen and the expanded audio view keep their own
@@ -4814,7 +4814,7 @@ select {
   bottom: 0;
 }
 /* v1.124 F2: hide the mouse cursor with the controls in faux fullscreen (the
-   YouTube/desktop convention). The next mousemove reveals both the cursor and
+   desktop convention). The next mousemove reveals both the cursor and
    the bar (host mousemove -> revealControlsAndReArm). Fullscreen only - the
    audio-expanded view keeps its cursor. */
 #player-wrapper.css-fullscreen.controls-autohidden,
@@ -5009,7 +5009,7 @@ html:has(> body.ft-audio-expanded),
 }
 /* The Ambient row hides in a light theme (ambient.js sets [hidden]; belt via the mode
    attribute so a mid-session light switch also hides it even before JS runs).
-   v1.312: the v1.187 amount row is gone (one YouTube-matched look, Dean). */
+   v1.312: the v1.187 amount row is gone (one reference-matched look, Dean). */
 :root:not([data-mode="dark"]) #ambient-toggle-row { display: none; }
 #ambient-toggle-row[hidden] { display: none !important; }
 
@@ -5686,7 +5686,7 @@ html:has(> body.ft-audio-expanded),
   border-radius: var(--radius);
   padding: 0 var(--space-2);
 }
-/* v1.109 (Dean): the hovered chapter's name in the scrub preview (YouTube's
+/* v1.109 (Dean): the hovered chapter's name in the scrub preview (the reference site's
    hover tooltip). Same chip styling as the timestamp; ellipsized to the sprite
    width so a long title never blows the preview box wide. */
 .seek-preview-chapter {
@@ -5712,7 +5712,7 @@ html:has(> body.ft-audio-expanded),
   }
 }
 
-/* v1.109 (Dean): the seek-bar chapter-segment overlay -- YouTube-style boundary
+/* v1.109 (Dean): the seek-bar chapter-segment overlay -- video-site-style boundary
    gaps that split the bar into chapters. Absolute + out of the flex flow (its
    left/top/width/height are set by player.js to overlay the seek bar box), so it
    never disturbs the battle-won two-row `order` layout. pointer-events:none so
@@ -6801,10 +6801,10 @@ html:has(> body.ft-audio-expanded),
 /* v1.190 (Dean): cap the player HEIGHT in theatre so it never runs past the
    viewport. Theatre widens the player to the full content column; with the left
    bar ALSO collapsed that column is nearly the whole viewport width, and the
-   height then exceeds the screen and clips the bottom of the page (real YouTube
+   height then exceeds the screen and clips the bottom of the page (the reference site
    caps this). Bound the width by the height the viewport can show, so once the
    player WOULD overflow it switches from width-driven to HEIGHT-driven and
-   centres (page bg to the sides), exactly YouTube's theatre behaviour.
+   centres (page bg to the sides), exactly the reference site's theatre behaviour.
    `min(100%, ...)` keeps normal (non-clipping) cases full-width.
    THE BUDGET (gate: this element is NOT ratio-constrained here): rule 6369
    `#player-wrapper:not(.audio-expanded)` overrides the base 16:9 to
@@ -6818,7 +6818,7 @@ html:has(> body.ft-audio-expanded),
    fold. The 40px mirrors 6369's own JS-coupled bar-reserve literal.
    Excludes the audio-expanded overlay and both fullscreen paths (their own rules
    own the sizing).
-   v1.319: on DESKTOP (1025px+) this rule is superseded by the YouTube-matched
+   v1.319: on DESKTOP (1025px+) this rule is superseded by the reference-matched
    theatre block right below (the wrapper fills a stage that carries the width).
    It still applies below 1025px, where the persisted `ft-theater` class can sit
    on the container (init() applies it at any width; only the button is hidden),
@@ -6829,10 +6829,10 @@ html:has(> body.ft-audio-expanded),
   margin-inline: auto;
 }
 
-/* v1.319 (Dean, with screenshots: "YouTube's theatre view sizes the video so the
-   title + channel + action row still show at the bottom of the first screen";
+/* v1.319 (Dean, with screenshots, paraphrased: the reference site theatre view sizes the video so the
+   title + channel + action row still show at the bottom of the first screen;
    FileTube's filled the height and pushed the title and every action below the
-   fold). YouTube's theatre, MEASURED in headless Chromium at 1280x720, 1366x768,
+   fold). The reference site's theatre, MEASURED in headless Chromium at 1280x720, 1366x768,
    1440x900, 1920x1080 and 1920x1200 (plan 2026-09-24-desktop-theatre): the video
    is 16:9 at a height of exactly 100vh - 169px (the 56px masthead + 113px kept
    for the title and the channel / action row), centred; the action row's bottom
@@ -6843,13 +6843,13 @@ html:has(> body.ft-audio-expanded),
    bar on a video - one line in the sidebar-collapsed theatre column, three at 1280
    with the sidebar hand-reopened - and the SHOW row on a TV episode, whose bar is
    hidden; the channel panel under a video's bar is NOT reserved, ruling D5; the
-   fallback is the measured one-line room, 98px) and YouTube's 23px fold margin.
+   fallback is the measured one-line room, 98px) and the reference site's 23px fold margin.
    `* var(--watch-theatre-aspect, 16 / 9)`: the budget height times the width
    aspect - 16:9, or the item's own aspect when it is WIDER (21:9 keeps its width,
-   as in YouTube's full-width band; watch.js theatreWidthAspect). `+ 2px`: the
+   as in the reference site's full-width band; watch.js theatreWidthAspect). `+ 2px`: the
    wrapper's width includes its 1px borders, so the video inside is exactly the
    budgeted height. `max(480px, ...)`: never narrower than 480px on a very short
-   window (YouTube's own 480px-tall floor would push the action row under the fold
+   window (the reference site's own 480px-tall floor would push the action row under the fold
    at 1280x720 and 1366x768 once the bar wraps - measured, plan, decision D4).
    The width sits on the STAGE (the wrapper fills it), so the stage IS the player
    box: `.ambient-glow`'s % insets are a % of the stage, and the glow's vignette
@@ -6870,7 +6870,7 @@ html:has(> body.ft-audio-expanded),
      aspect (4:3 TV, `--media-aspect` from player.js) would grow past the budget
      and push the row under the fold again, so the picture box is also capped at
      the SAME budgeted height and the global `object-fit: contain` pillarboxes it -
-     YouTube's own theatre shape (a fixed-height box, the picture letterboxed in
+     the reference site's own theatre shape (a fixed-height box, the picture letterboxed in
      it). A 16:9 item lands exactly on the cap (a no-op); portrait items are
      already pinned to 16:9 (v1.34). 270px = the 480px floor's 16:9 height. */
   .watch-container.theater-mode #player-slot #player-wrapper:not(.audio-expanded):not(.css-fullscreen):not(:fullscreen) #media-player {
@@ -6923,7 +6923,7 @@ html:has(> body.ft-audio-expanded),
 body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"]) #theater-btn { display: none; }
 
 /* v1.186 (Dean): AMBIENT MODE glow. Sits BEHIND #player-slot in a relative stage
-   and bleeds a soft colour glow outward (YouTube-style). Decorative,
+   and bleeds a soft colour glow outward (video-site-style). Decorative,
    non-interactive, and only shown when ambient.js's ambientShouldRun gate is true
    (dark theme + playing + visible + opted-in) - the `.is-on` class + `hidden`
    attr gate visibility.
@@ -6936,13 +6936,13 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
    bitmap standing for this whole box, vignettes its alpha (opaque at the
    player's edge, transparent at this box's edge, rounded at the corners) and
    sets the PNG data URL as the layer's background-image at 100% 100% - the
-   browser's bilinear upscale IS the blur (YouTube's own mechanism: two 110x75
+   browser's bilinear upscale IS the blur (the reference site's own mechanism: two 110x75
    canvases under scale(1.5, 2), no CSS filter). The two layers cross-fade on
    opacity when the source changes. v1.313 (Dean: "hard borders/edges, look at
    the player corners"): this replaced eight CSS gradients (one swatch per edge
    band / corner ellipse) whose band ENDS were hard lines and whose corner cells
    showed through the player's rounded corners as a notch. Numbers come from
-   YouTube's REAL glow measured side by side (plan: ambient-glow-rebuild): it
+   the reference site's REAL glow measured side by side (plan: ambient-glow-rebuild): it
    reaches ~11% of the player width sideways and ~20% of its height vertically,
    peaking at only ~+25/255 at the edge. */
 /* v1.186.1 (Dean, device): the STAGE owns the ambient stacking context (z-index
@@ -6979,8 +6979,8 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
    --space-8 token) and the clip edge becomes the VIEWPORT edge, so nothing can
    overflow the page. Margin and padding create no containing block (the fixed
    overlay still escapes; the phone probe checks it).
-   v1.359 (Dean: the phone player should span the screen side to side like
-   YouTube): the stage still grows to the viewport edge, but it no longer pads
+   v1.359 (Dean, paraphrased: the phone player should span the screen side to side like
+   the big video apps): the stage still grows to the viewport edge, but it no longer pads
    the player back in. The player now fills the stage minus the SAFE AREA (the
    notch side of a landscape phone; 0 in portrait), so the picture and its
    control strip touch the screen edges. The v1.314 side glow therefore falls
@@ -7012,7 +7012,7 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
   --ambient-reach-x: 12%;
   --ambient-reach-y: 22%;
   --ambient-fade: 2.4s; /* = ambient.js AMBIENT_FADE_MS (test-bound): the engine never repaints a layer mid-fade */
-  --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x YouTube's edge; 0.3 lands on its ~+25/255 */
+  --ambient-opacity: 0.3; /* MEASURED (Step 4): 0.55 peaked ~3x the reference site's edge; 0.3 lands on its ~+25/255 */
   position: absolute;
   top: calc(-1 * var(--ambient-reach-y)); /* token-exempt: glow reach (geometry), not a spacing token */
   right: calc(-1 * var(--ambient-reach-x)); /* token-exempt: glow reach (geometry), not a spacing token */
@@ -7039,7 +7039,7 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
 }
 /* One layer = one painted source. ambient.js sets the vignetted PNG data URL as
    the BACK layer's background-image, then swaps `is-front`, so a tile change is
-   a cross-fade, never a pop (YouTube cross-fades two canvases continuously, one
+   a cross-fade, never a pop (the reference site cross-fades two canvases continuously, one
    swap per ~3.5s). v1.314 (Dean: "ambient changes too much and is slow"): the
    fade is 2.4s and the engine now SMOOTHS in media time (each tile is blended
    into the running field with a 15s time constant), absorbs a step that barely
@@ -7059,7 +7059,7 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
 }
 .ambient-glow-layer.is-front { opacity: 1; }
 /* v1.312 (Dean): ONE look. The v1.187 subtle/normal/intense/extreme ladder and
-   its picker are gone - the glow matches YouTube's measured reach and peak. */
+   its picker are gone - the glow matches the reference site's measured reach and peak. */
 /* Belt for a dark->light flip: the JS themeObs stops the engine, but this closes
    the sub-frame gap before it fires by forcing the glow invisible in light. */
 :root:not([data-mode="dark"]) .ambient-glow {
@@ -7088,7 +7088,7 @@ body.ft-audio-expanded .music-player-stage {
 }
 /* v1.317 M4 (Dean: "Ambient mode in the music player in desktop"): the music view's
    PLAYER stage - the .watch-player-stage shape around #player-slot, so the same
-   .ambient-glow sits behind the expanded player and reaches the same YouTube-matched
+   .ambient-glow sits behind the expanded player and reaches the same reference-matched
    distance (its negative insets are a % of THIS box = the player). DESKTOP ONLY: the
    stage takes position + its stacking context only above the mobile breakpoint. On a
    phone the full-screen skin renders position:fixed covers inside this subtree, and a
@@ -7207,14 +7207,14 @@ body:not([data-view="watch"]) #video-type-btn { display: none; }
 #home-feed-host { display: block; }
 
 /* ============================================================
-   v1.84 Modern YouTube Mode - a third home layout.
+   v1.84 Modern grid mode - a third home layout.
    `[data-modern="on"]` (on <html>) styles the card SKIN (rounded
    thumbnails + the channel avatar) wherever modern is on;
    `.modern-home-mode` (on the view root) styles the flat HOME grid +
    chip row + mobile avatar bar (bare home only). Tokens only.
    ============================================================ */
 
-/* v1.85.2 (Dean, on-device #3+#4): the modern home is a clean YouTube-style
+/* v1.85.2 (Dean, on-device #3+#4): the modern home is a clean video-site-style
    grid, so HIDE the classic section-title row entirely - both the default
    folder-name heading (e.g. "Downloads", set in main.js) AND the whole controls
    bar it wraps (.section-actions: sort dropdown / Shuffle / Rescan / list-card
@@ -7395,7 +7395,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    row's trailing edge (in the phone sheet it takes the row's reserved action column). */
 .sidebar-item .ui-btn.pinned-unpin-btn { margin-left: auto; flex-shrink: 0; }
 /* v1.341.1 (Dean): a pinned row's label takes the leftover width on ONE line, cut with an
-   ellipsis (his pick, like YouTube's sidebar), and the pin never shrinks: the pin sits in the same
+   ellipsis (his pick, like the reference site's sidebar), and the pin never shrinks: the pin sits in the same
    column and every row is the same height. A long one-word name used to squeeze the pin right. */
 .sidebar-item__label { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -7757,7 +7757,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   .reader-nowplaying #player-slot .player-controls .pc-seek {
     order: 0; /* undo the scrub-lift; one inline row again */
   }
-  /* v1.50.5 gate CRITICAL 1: the watch bar's YouTube-ish row-2 orders
+  /* v1.50.5 gate CRITICAL 1: the watch bar's video-site-ish row-2 orders
      (above, #player-slot-scoped) LEAK into this bar -- the reader mounts
      #player-slot too -- and flex-sorted the play button behind the scrub
      row ([0:00][seek][3:45][>][1x]). Reset every remaining bar button (v1.112:
@@ -7803,7 +7803,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    v1.43 auth: the /login + /welcome sign-in card.
    Entirely token-driven, so it inherits every era + light/dark automatically
    (2005 boxy Verdana box with square corners; 2009 glossy; 2014 flat; 2021
-   clean rounded card) — the "period YouTube sign-in" feel emerges per era.
+   clean rounded card) — the "period video-site sign-in" feel emerges per era.
    Everything is scoped under .login-page so nothing collides with the app.
    ========================================================================== */
 .login-page {
@@ -12214,7 +12214,7 @@ a.tv-continue-card { text-decoration: none; }
 }
 
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
-   slot on watch, YouTube-playlist-box treatment. */
+   slot on watch, playlist-box treatment. */
 .queue-upnext-box {
   display: flex;
   flex-direction: column;

@@ -3582,7 +3582,7 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
-  // v1.84: Modern YouTube Mode - same per-user server-synced posture as the
+  // v1.84: Modern grid mode - same per-user server-synced posture as the
   // home-feed toggle above (applyModernModePref writes localStorage, sets
   // data-modern on <html>, AND mirrors to the account). Prefill from the device
   // value; the async boot seed re-reflects if the server value lands later.

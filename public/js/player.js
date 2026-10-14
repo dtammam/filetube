@@ -360,7 +360,7 @@ function shouldReleaseForLifecycleEvent(eventType, ctx) {
 // the app backgrounds -- `shouldPauseForLifecycleEvent` above pauses it
 // cleanly (today's behavior, unchanged). When the `backgroundAudioForVideo`
 // setting is ON, that exact case instead hands off to a hidden <audio>
-// element playing an audio-only extraction of the same item, YouTube-
+// element playing an audio-only extraction of the same item, video-site-
 // Premium-style, then swaps back on foreground. This is a small, explicit
 // state machine (mirrors `shouldPauseForLifecycleEvent`'s own "pure
 // decision, impure caller" split) so the transition table is directly
@@ -1439,7 +1439,7 @@ function classifyTapGesture(ctx) {
   // v1.140 (Dean's confirmed friction): the SKIP CHAIN - after a double-tap
   // skip, every further tap while the chain is hot keeps skipping in the
   // tapped half's direction (no same-half or timing pairing required, the
-  // YouTube convention) and tap-to-pause stays suppressed until the chain
+  // common convention) and tap-to-pause stays suppressed until the chain
   // cools. Without this, tap #3 of a skip-skip-skip run started a fresh
   // cycle, classified single, and PAUSED - the exact inadvertent pause.
   if (opts.skipChainActive) {
@@ -1731,7 +1731,7 @@ function chapterBoundaryPercents(chapters, total) {
 
 // ---- FR-4 (T1, v1.22.1): persistent playback-speed pure helper ------------
 // v1.50.3 (Dean, item A): slower-than-1x joins the list -- 0.25/0.5/0.75,
-// the YouTube set. The list stays a MODULE-LEVEL constant so the speed MENU
+// the common set. The list stays a MODULE-LEVEL constant so the speed MENU
 // (v1.50.3 -- #speed-btn now opens a picker instead of blind-cycling eight
 // rates), the </> shortcuts, and loadStoredPlaybackRate's validation always
 // agree on the exact same list. Old persisted values are a strict subset,
@@ -1751,9 +1751,9 @@ function sanitizePlaybackRate(rate) {
 // v1.50.3 (Dean, item A): the blind cycle (`nextPlaybackRate`, v1.22.1) is
 // RETIRED -- with eight rates, click-to-cycle means up to seven clicks
 // through speeds you don't want, so #speed-btn now opens a PICKER (the
-// YouTube pattern), built on the chapters-menu popup this bar already has.
+// common pattern), built on the chapters-menu popup this bar already has.
 // This pure model is the picker's single source of truth: one row per rate,
-// 1x labeled 'Normal' (YouTube's own spelling), the active row derived from
+// 1x labeled 'Normal' (the reference site's own spelling), the active row derived from
 // the CURRENT rate with the same unrecognized-degrades-to-normal posture
 // the </> stepper uses (never a surprise quarter-speed default).
 function buildSpeedMenuModel(currentRate) {
@@ -1763,8 +1763,8 @@ function buildSpeedMenuModel(currentRate) {
   });
 }
 
-// v1.41.11 (Dean: YouTube-style shortcuts): the </> keys step the rate list
-// WITHOUT wrapping -- YouTube clamps at both ends ('<' at minimum speed is a
+// v1.41.11 (Dean: familiar video-site shortcuts): the </> keys step the rate list
+// WITHOUT wrapping -- the reference site clamps at both ends ('<' at minimum speed is a
 // no-op), and a wrap is an intent inversion for a directional key: '<' at 1x
 // meaning "jump to 2x" is the opposite of "slow down" (adversarial-gate W4,
 // that release). v1.50.3: every rate is now reachable through the PICKER
@@ -2877,7 +2877,7 @@ if (typeof module !== 'undefined' && module.exports) {
     clearControlsAutoHide();
     if (!inImmersiveMode()) return;
     // v1.124 F2 (Dean): auto-hide now runs on DESKTOP immersive views too
-    // (video fullscreen + the audio-expanded overlay), YouTube-style - the bar
+    // (video fullscreen + the audio-expanded overlay), video-site-style - the bar
     // overlays the picture there, so fading it while playing is the right
     // convention. The v1.120 desktop exclusion existed only because desktop had
     // NO reveal path but a click; F2 adds a `mousemove` reveal (wired in
@@ -3192,7 +3192,7 @@ if (typeof module !== 'undefined' && module.exports) {
       seekPreviewImgEl.className = 'seek-preview-img';
       seekPreviewTimeEl = document.createElement('div');
       seekPreviewTimeEl.className = 'seek-preview-time';
-      // v1.109: the hovered chapter's name (YouTube tooltip). Between the
+      // v1.109: the hovered chapter's name (a hover tooltip). Between the
       // thumbnail and the timestamp; hidden unless the hovered position is in a
       // chapter.
       seekPreviewChapterEl = document.createElement('div');
@@ -5520,7 +5520,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return matchMediaBool('(prefers-reduced-motion: reduce)') === true;
   }
 
-  // ---- v1.362.4: the page under the video fades like YouTube's (plan 2026-10-04-minimize-crossfade) ----
+  // ---- v1.362.4: the page under the video fades like the reference site's (plan 2026-10-04-minimize-crossfade) ----
   // style.css owns the paint (opacity on the watch page's content around the player stage, or on another page's
   // whole #view-root while it does not hold the player; never an ancestor of the video, LESSONS 7). This only
   // flips classes, one custom property and one <html> mark: `--minimize-fade` (0..1, the pull's progress) on the
@@ -7241,7 +7241,7 @@ if (typeof module !== 'undefined' && module.exports) {
       showThumb = seekSpriteReady;
     }
     // v1.109 (Dean): the chapter at the HOVERED position (not the playhead) --
-    // YouTube's hover tooltip. Independent of the thumbnail, so an
+    // The reference site's hover tooltip. Independent of the thumbnail, so an
     // audio-with-chapters item (no storyboard) still names the section you're
     // pointing at.
     var chIdx = currentChapters.length ? currentChapterIndex(currentChapters, t) : -1;
@@ -7458,7 +7458,7 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) { /* storage disabled/full -- persistence is best-effort only */ }
   }
 
-  // v1.41.11 (Dean: YouTube-style shortcuts): the shared 5% volume step for
+  // v1.41.11 (Dean: familiar video-site shortcuts): the shared 5% volume step for
   // ArrowUp/ArrowDown and the wheel-over-slider gesture. Only sets
   // mediaPlayer.volume/.muted -- slider fill, mute icon, and persistence all
   // ride the existing 'volumechange' listener (one sync path, no drift).
@@ -8266,7 +8266,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.311.2 (Dean): the tappable ±15s buttons are gone on every surface (their
     // hover/tap reveal went with them); double-tap seek + its ripple remain.
     // v1.124 F2: desktop mouse-move reveals the auto-hidden control bar and
-    // restarts the fade countdown (the YouTube/desktop convention - touch devices
+    // restarts the fade countdown (the desktop convention - touch devices
     // use the touchstart/pointerdown reveal above). No-op outside an immersive
     // overlay (inline never auto-hides), and armControlsAutoHide's own guards
     // keep it from ever hiding while paused/ended/scrubbing.
@@ -8453,8 +8453,8 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.volume = v;
         if (v > 0 && mediaPlayer.muted) mediaPlayer.muted = false; // raising volume off 0 implies un-muting, matching native <audio controls> behavior
       });
-      // v1.41.11 (Dean: "mouse scroll wheel impacts the volume slider like
-      // YouTube"): wheel OVER THE SLIDER ONLY -- deliberately not over the
+      // v1.41.11 (Dean, paraphrased: the mouse scroll wheel should change the volume
+      // slider as it does on the big video sites): wheel OVER THE SLIDER ONLY -- deliberately not over the
       // whole video (Dean's pick), so the page keeps scrolling normally
       // everywhere else. 5% steps, same as the ArrowUp/ArrowDown shortcuts;
       // passive:false because preventDefault must stop the page scroll while
@@ -8935,7 +8935,7 @@ if (typeof module !== 'undefined' && module.exports) {
       closeBtn.addEventListener('click', closeChaptersMenu);
       header.appendChild(closeBtn);
       chaptersMenu.appendChild(header);
-      // v1.110 (Dean): the ORIGINAL YouTube link for this item, if the server
+      // v1.110 (Dean): the ORIGINAL source link for this item, if the server
       // resolved one (watch.js spreads mediaData into player.load, so it rides
       // currentData). Present -> each chapter row gets a share icon that shares
       // the link at that chapter's start; absent (a plain local file) -> no icons.
@@ -9003,7 +9003,7 @@ if (typeof module !== 'undefined' && module.exports) {
         });
         row.appendChild(item);
         row.appendChild(loopBtn);
-        // v1.110 (Dean): the per-chapter share icon (only for a YouTube-derived
+        // v1.110 (Dean): the per-chapter share icon (only for a source-link-derived
         // item). Shares the ORIGINAL link at THIS chapter's start via
         // withShareStartTime (common.js) + the shared shareExternalUrl decision.
         // stopPropagation so tapping share never seeks the row.
@@ -9665,8 +9665,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (typeof window !== 'undefined' && typeof window.isShortcutsModalOpen === 'function'
         && window.isShortcutsModalOpen()) return;
       if (awaitingTranscode) return;
-      // v1.41.11 (Dean): the switch below mirrors YouTube's core shortcut
-      // set. Arrow seeks moved from SKIP_SECONDS (15s) to YouTube's 5s --
+      // v1.41.11 (Dean): the switch below mirrors the reference site's core shortcut
+      // set. Arrow seeks moved from SKIP_SECONDS (15s) to the reference site's 5s --
       // J/L take over the "big" step at 10s; double-tap seek and the lock-screen
       // skip keep SKIP_SECONDS (the on-bar ±15s buttons were removed in v1.311.2). Digits jump to N*10%. Shift+N/Shift+P drive
       // the SAME registered trackNav handlers the hardware media keys and

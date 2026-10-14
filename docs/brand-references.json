@@ -1,0 +1,576 @@
+{
+ "_note": "Functional references to the external SOURCE (R5). Shrink-only: an entry may be deleted, never added without a reason Dean would accept. Identifiers and youtube.com are not matched by the guard.",
+ "globs": [
+  {
+   "glob": "lib/ytdlp/**",
+   "reason": "the downloader module names its source site by design (R5); its brand-as-style comments were reworded by hand"
+  }
+ ],
+ "lines": [
+  {
+   "file": "public/css/style.css",
+   "text": "/* v1.244 (Dean): non-square art (most YouTube covers) is shown WHOLE (object-fit:contain)",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// only (read-layer, no data mutation) -- a YouTube channel DISPLAY name never",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// Canonicalize a YouTube channel URL to a stable key, or `null` when the URL",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// YouTube). Anything else unrecognized -> `null` (conservative -- never",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// v1.41.13: any yt-dlp-supported site, not just YouTube (universal one-offs).",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// A YouTube link that carries a playlist is asked about first (R1): a video in a list -> \"Just this video\" /",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "const PLAYLIST_MIX_NOTE = 'This is a YouTube Mix; downloading just this video.';",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "const PLAYLIST_PERSONAL_NOTE = 'Watch Later and Liked are private to your YouTube account; downloading just this video.';",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// channel (\"Kyle Gordon - Topic\" for a \"Provided to YouTube\" track). The first name to reach the top count wins a tie.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/common.js",
+   "text": "// v1.110 (Dean): append a YouTube start-time to an ALREADY-server-resolved share",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "public/js/music.js",
+   "text": "// track the artist line goes to the CHANNEL grid (for YouTube content the channel IS the",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/music.js",
+   "text": "// mp3 from the media byte route, arts from its YouTube thumbnail, and saves",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/stats.js",
+   "text": "// generally first-class experiences): a By channel row is either a YouTube",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// The title-equality guard is NOT incidental. For non-YouTube (\"universal\")",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// YouTube (auto-generated tracklists, link dumps), so the worst case was a",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// bound. For non-YouTube downloads the item's TITLE is its description",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// YouTube form (`1h2m3s`, `2m`, `45s`); null for empty, negative, junk or over 24 h. The URL keeps it,",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// v1.337's `sourceShareUrl` for a non-YouTube download) -- a plain local",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// `sourceShareUrl` for a non-YouTube download).",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// (`sourceExtractor`, no YouTube channel identity) keeps Pin. Pin needs",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// Subscribe and the bell stay YouTube-only; the pins routes live behind",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// v1.33 T2: share the item's ORIGINAL link - its YouTube `mediaData.watchUrl`",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// v1.337, a non-YouTube download's `sourceShareUrl` (server-read from the file).",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// we captured\"): the link this item shares - its YouTube `watchUrl`, else the `sourceShareUrl`",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "public/js/watch.js",
+   "text": "// the server read from a non-YouTube download's own file tags (Facebook, Reddit, ...). '' = none.",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/admin/backup.js",
+   "text": "// full validateChannelUrl (YouTube host, path shape, normalization): a backup this or an older",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "sourceShare, // v1.337: lib/media/source-share resolver - a non-YouTube download's page URL, read from its file's tags",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// v1.338 (plan first-class-any-site D5): a non-YouTube download's saved page link (re-checked).",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// v1.67: the ORIGINAL YouTube watch URL, derived exactly like the",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// badge (D7) only when none has one - a download from another site sharing a YouTube",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// v1.33 T2 (Share button): the ORIGINAL YouTube watch URL, derived at",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// we captured\"): a yt-dlp download from another site has no YouTube `watchUrl`, so its watch page",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// the skins' timed share (`?t=` starts), which stay YouTube-only; v1.338 D6 made the cards, search",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// v1.41.13: archive by the item's real SOURCE. A legacy YouTube item",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// v1.41.13 (design D4): a non-YouTube item records its source ref too,",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// survivor by identity (same folder + ext, exactly like the YouTube",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// video RESURRECTED. A pure-YouTube item never builds a sourceRef",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/media/routes.js",
+   "text": "// (no sourceExtractor/sourceId), so this is a no-op on the YouTube path.",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/media/source-share.js",
+   "text": "// A yt-dlp download from a site other than YouTube (an item carrying `sourceExtractor` and no YouTube",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/source-share.js",
+   "text": "// `sourceExtractor` (yt-dlp's `[Extractor=id]` downloads - a proxy-host YouTube one too, but that one",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/source-share.js",
+   "text": "// also gets a `youtubeId`, so its YouTube link wins here) with a file and no YouTube link. Pure.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/source-share.js",
+   "text": "// the items the watch route would look up (a non-YouTube download with no YouTube link). undefined",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/media/user-routes.js",
+   "text": "buildWatchUrl, // v1.338: lib/ytdlp/url - the Liked cards' Share corner (YouTube)",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/media/user-routes.js",
+   "text": "// derived `watchUrl`, so a Share corner on a Liked card was blank even for YouTube (found by",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/media/user-routes.js",
+   "text": "// the D5 research); now it carries the YouTube link, or a non-YouTube download's saved one.",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/music/libraryAudio.js",
+   "text": "// why a fresh YouTube album never surfaced. Normalize to ISO here so a projected",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/music/libraryAudio.js",
+   "text": "// The item's YouTube thumbnail stands in for embedded album art; the grid's",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "//   T6 the seed's YouTube category, for a station with no genre (T0 tuning, see genreKey)",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// genre is a game genre ('video game', 'chiptune'), or junk (none, or a YouTube category on yt-dlp audio)",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// library audio \"Music\" or \"Gaming\" says which YouTube shelf it sat on, not what it sounds like",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// The YouTube category a yt-dlp track sits in (folded), else null.",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// The genre a station tiers by: the folded primary genre, except a YouTube category on yt-dlp",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// v1.375.0 (gate r1 qa W1): an untagged album keeps its YouTube category as its last close tier",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// ...and style, format, mood, platform and generic game words (grown from the shapes of YouTube",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// YouTube categories that are not music at all: an upload filed there (a podcast, a vlog, a talk",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/radio.js",
+   "text": "// artist and folder before the YouTube category, which comes in only when the channel runs out",
+   "reason": "YouTube's category names are the data the Music code reads from yt-dlp tags (R5)"
+  },
+  {
+   "file": "lib/music/routes.js",
+   "text": "// item's YouTube thumbnail - real imagery instead of the placeholder. Only a",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/captured.js",
+   "text": "// (universal, the D1a proxy-host YouTube recovery, and the plain YouTube",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/captured.js",
+   "text": "// how many times DEAN has played that file. Writing a YouTube view count into",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/captured.js",
+   "text": "// sites in one pass (universal + the D1a proxy-host YouTube recovery).",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// filename bracket id, an untrusted URL-ish string reduced to a safe YouTube",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// tag, typically) down to a safe YouTube video id, through the SAME",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// anything that is not a well-formed single-video YouTube URL. Pure, never",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// v1.33 T1: scan-time YouTube-id derivation, shared by the new/updated",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// is only ever a claim about which YouTube video this file CAME FROM --",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// Share link / reheat metadata at a different-but-legitimate YouTube video.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// The gate guarantees it can only ever be a well-formed YouTube video URL",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// link back to YouTube is exactly this tag). The blast radius of a forged tag",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// is unchanged in KIND (a well-formed YouTube video URL, fetched read-only,",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/identity.js",
+   "text": "// when the item is not a non-YouTube download (leave the key ABSENT - it may become one later this",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// v1.41.13 (design D4/D5): the SAME secondary match for a NON-YouTube",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// the YouTube branch uses. Cross-directory copies of the same source",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// v1.33 T1: persisted YouTube id -- filename `[id]` bracket",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// v1.41.13 (universal one-offs): the non-YouTube source identity carries",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// playlist video's arrival (lib/ytdlp/arrivals.js - the same YouTube id AND the same type, audio or video) is quiet,",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// non-legacy-YouTube file carries a `[ExtractorKey=id]` bracket. Bridge",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// D1a: a proxy-host YouTube item keeps its real source-site identity.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// Its capture (extractor_key 'Youtube') was stored by the YouTube",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// YouTube-consume block below never runs. Recover it HERE: set",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// youtubeId and consume the YouTube downloadMeta by the bracket id, so",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// v1.33 T1: the bracket id IS this item's YouTube id -- persist it",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// bracket -- either the legacy YouTube `[<11-char id>]` OR (v1.41.13) the",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// parses both shapes; the YouTube leg is byte-identical to the prior",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/scan/orchestrator.js",
+   "text": "// The exact bracket text this ref renders as on disk: `[id]` for YouTube,",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// `sourceExtractor`, no YouTube `channelUrl`) groups by site + uploader - its",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// Grouped by `channelUrl` -- only ever set on yt-dlp-managed YouTube items",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// pass so its key can never merge into a YouTube row). Plain library files",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// YouTube id; its identity is the (site, id) pair the scan persisted",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// always carries a ':' - a YouTube id (VIDEO_ID_SHAPE, or the bracket",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// YouTube id, even one spelled the same. Asked only when no YouTube id",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// resolved (a proxy-host YouTube download keeps its YouTube key). `null`",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/stats.js",
+   "text": "// YouTube titles (`=HYPERLINK(...) [id].mp4` is a legal filename). A cell",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "lib/transcript.js",
+   "text": "// (YouTube auto-captions) is a ROLLING document. Every spoken line appears",
+   "reason": "describes caption data a source site emits, which the parser handles (R5)"
+  },
+  {
+   "file": "lib/transcript.js",
+   "text": "// YouTube animates its two-line caption box. Naively concatenating cue text",
+   "reason": "describes caption data a source site emits, which the parser handles (R5)"
+  },
+  {
+   "file": "lib/transcript.js",
+   "text": "// The handful of entities YouTube/yt-dlp actually emit in cue payloads. A",
+   "reason": "describes caption data a source site emits, which the parser handles (R5)"
+  },
+  {
+   "file": "lib/ytdlpIntermediates.js",
+   "text": "// YouTube video ids actually use -- is NEVER matched by ANY pattern in this",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// item carries a YouTube channel identity AND that identity maps to a subscription",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// unsubscribed channel, a non-YouTube item (channelName only, no URL), a podcast",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// exact shape of a YouTube video id, which is also what `--restrict-filenames`",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// `classifySingleVideo` gate decides whether it is actually a YouTube video",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// YouTube-description chapter-list line, and the SAME grammar the manual",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// from the media byte route, arts from its YouTube thumbnail, and saves",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "// v1.337: the watch page's Share for a non-YouTube download - the page URL yt-dlp wrote into the",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "sourceShare, // v1.337: a non-YouTube download's page URL for the watch page's Share",
+   "reason": "contrasts the YouTube path with the other-site path the downloader also reads (R5)"
+  },
+  {
+   "file": "server.js",
+   "text": "buildWatchUrl, // v1.338: the Liked cards' YouTube Share link",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "A lightweight, self-hosted media server with a nostalgic, classic-YouTube interface.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "looks and feels like the YouTube you remember - pick your era (2005, 2009,",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "- **Classic YouTube experience** - grid home, uploader channels, star ratings, mock comments, and four era themes (2005 / 2009 / 2014 / 2021) with matching icon sets, plus light/dark mode.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "- **Downloaded music channels in the Music library** (optional, off by default) - if you download MP3s from music channels (game-music remixes, album mixes, and the like), turn this on to have them appear in the Music library too - grouped by channel, played through the music mini-player - without duplicating anything or removing them from your feed. Channels whose uploads are tagged \"Music\" appear automatically; a per-channel \"♪\" toggle includes the ones YouTube tags differently. Turn it on in Settings; it's per-account.",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "- **Optional YouTube subscriptions (yt-dlp)** - off by default. Subscribe to channels, auto-download new videos into your library, with per-channel quality/length/Shorts controls and one-shot URL downloads. [Full guide →](docs/CONFIGURATION.md#optional-youtube-subscriptions-yt-dlp)",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "recognizes well-known yt-dlp sites (YouTube, Vimeo, SoundCloud, Twitch, TikTok,",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "README.md",
+   "text": "migration notes, YouTube subscriptions, cookies for members-only content,",
+   "reason": "names the external source site as the origin of the behaviour described (R5)"
+  },
+  {
+   "file": "docs/CONFIGURATION.md",
+   "text": "| `FILETUBE_YTDLP_PLAYER_CLIENT` | unset | Advanced: forces a specific YouTube player client (`--extractor-args youtube:player_client=<value>`), e.g. `web` or `android,web`. Unset by default - yt-dlp picks its own client(s). Only lowercase letters, digits, `_`, `,`, and `-` are accepted; anything else (or unset) means no flag is emitted. |",
+   "reason": "names the source site whose id, link or metadata shape the code parses or stores (R5)"
+  }
+ ]
+}

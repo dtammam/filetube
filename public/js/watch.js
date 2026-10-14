@@ -53,8 +53,8 @@ function theaterModeStorageValue(isActive) {
   return isActive ? '1' : '0';
 }
 
-// v1.319 (Dean: "YouTube's theatre view sizes the video so the title + channel +
-// action row still show at the bottom of the first screen"). theatreReservePx: the
+// v1.319 (Dean, paraphrased: the reference site theatre view sizes the video so the title + channel +
+// action row still show at the bottom of the first screen). theatreReservePx: the
 // room the desktop theatre player must leave BELOW itself for the info block's
 // CONTROLS row, in px = that row's bottom edge minus the player stage's bottom edge.
 // MEASURED, not a fixed budget: FileTube's action bar wraps with the column width
@@ -89,7 +89,7 @@ function theatreReserveTargetRect(barRect, rowRect, titleRect) {
 }
 // v1.319 gate r1 (adversary W3): the WIDTH aspect of the desktop theatre stage. The
 // stage is sized as (budget height) x aspect; a 16:9 box shrank a WIDER item (21:9 at
-// 1280x720: 846x357 instead of the base 1000x422), where YouTube's full-width band
+// 1280x720: 846x357 instead of the base 1000x422), where the reference site's full-width band
 // keeps its width. So the stage takes the item's real aspect when it is wider than
 // 16:9 (player.js writes `--media-aspect` "w / h" on the host), and 16:9 otherwise:
 // a 4:3 item stays pillarboxed inside the 16:9 box (the picture cap), a portrait item
@@ -102,7 +102,7 @@ function theatreWidthAspect(rawMediaAspect) {
   return Number.isFinite(r) && r > THEATRE_BASE_ASPECT ? r : THEATRE_BASE_ASPECT;
 }
 
-// v1.319 (Architect ruling D2 on Dean's "match YouTube's theatre geometry"): YouTube
+// v1.319 (Architect ruling D2 on Dean's ask, paraphrased: match the reference site theatre geometry): the reference site
 // hides its guide in theatre, so on desktop the left sidebar collapses while theatre is
 // ON and comes back when theatre goes OFF or the watch view is left. It reuses the ONE
 // existing mechanism, the header #menu-toggle's desktop collapse pair (common.js:
@@ -348,7 +348,7 @@ const MOCK_COMMENT_BANK = [
   { author: 'Maligned Mentor', text: 'please tell me a human wrote this and not some chatbot', timeStr: '1 week ago' },
   { author: 'Maligned Mentor', text: 'impressive, i guess. the sun still exists though.', timeStr: '3 days ago' },
   { author: 'Maligned Mentor', text: 'neat. go outside.', timeStr: '4 days ago' },
-  { author: 'Betting Bug', text: 'lil b really built his own youtube 😤', timeStr: '2 days ago' },
+  { author: 'Betting Bug', text: 'lil b really built his own streaming site 😤', timeStr: '2 days ago' },
   { author: 'Betting Bug', text: 'clean work lil b. anyway i got the Lakers +4 tonight', timeStr: '5 days ago' },
   { author: 'Betting Bug', text: 'lil b i\'m 3 legs into a 5 leg parlay and STILL watching this', timeStr: '1 week ago' },
   { author: 'Betting Bug', text: '10/10 lil b. hits better than cashing a same-game parlay', timeStr: '3 days ago' },
@@ -365,7 +365,7 @@ const MOCK_COMMENT_BANK = [
 
   // Family
   { author: 'Ball Busting Brother', text: 'oh good, another project instead of answering my texts', timeStr: '2 days ago' },
-  { author: 'Ball Busting Brother', text: 'you invented youtube. truly no one has ever done this before.', timeStr: '5 days ago' },
+  { author: 'Ball Busting Brother', text: 'you invented video streaming. truly no one has ever done this before.', timeStr: '5 days ago' },
   { author: 'Ball Busting Brother', text: 'impressive. anyway you still owe me for lunch.', timeStr: '1 week ago' },
   { author: 'Ball Busting Brother', text: 'cool app. still only the second funniest person in the family though.', timeStr: '3 days ago' },
   { author: 'Ball Busting Brother', text: 'so THIS is what "im busy" meant', timeStr: '4 days ago' },
@@ -558,7 +558,7 @@ function buildMockComments(mediaId, bank, count, videoTitle) {
 // YouTube (auto-generated tracklists, link dumps), so the worst case was a
 // browser hang on an attacker-influenced field.
 //
-// 50k characters is far above any real description (YouTube's own limit is
+// 50k characters is far above any real description (the reference site's own limit is
 // 5000) while turning "unbounded" into a chosen number. This is an availability
 // bound only; XSS was never in play (textContent, never innerHTML).
 const MAX_DISPLAY_DESCRIPTION = 50000;
@@ -744,7 +744,7 @@ function resolveWatchMediaId(search) {
 
 // v1.352 L1: `&t=` starts a library video at a moment (a bookmark of it). Whole seconds (`90`) or the
 // YouTube form (`1h2m3s`, `2m`, `45s`); null for empty, negative, junk or over 24 h. The URL keeps it,
-// so a reload restarts at the same moment, as YouTube does.
+// so a reload restarts at the same moment, as the reference site does.
 var START_TIME_MAX_SEC = 24 * 60 * 60;
 function parseStartTime(str) {
   if (typeof str !== 'string') return null;
@@ -2394,7 +2394,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (ambientRow && ambientRow.parentNode === menu) ambientRow.insertAdjacentHTML('beforebegin', watchRows);
         else menu.insertAdjacentHTML('beforeend', watchRows);
       }
-      // v1.312 (Dean): the v1.187 "Ambient amount" ladder is GONE - one YouTube-
+      // v1.312 (Dean): the v1.187 "Ambient amount" ladder is GONE - one video-site-
       // matched look, no picker (its ft-ambient-intensity key left the sync list).
       if (menu && window.FileTubeAmbient && typeof window.FileTubeAmbient.ensureAmbientToggleRow === 'function') {
         window.FileTubeAmbient.ensureAmbientToggleRow(document);
@@ -2666,11 +2666,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // v1.319 (Dean: keep the title + action row on the first screen in theatre, like
-    // YouTube): keep `--watch-theatre-reserve` on `.watch-container` equal to the
+    // the big video sites): keep `--watch-theatre-reserve` on `.watch-container` equal to the
     // room below the player down to the controls row (the pure theatreReservePx over
     // theatreReserveTargetRect: the action bar on a video, the SHOW row on a TV episode
     // whose bar is hidden - gate r1 W1). style.css's desktop theatre rule subtracts it,
-    // plus YouTube's measured 23px fold margin, from the height the player may use.
+    // plus the reference site's measured 23px fold margin, from the height the player may use.
     // The same measure keeps `--watch-theatre-aspect` = the item's width aspect when it
     // is WIDER than 16:9 (theatreWidthAspect, gate r1 W3), else unset (16:9). Re-
     // measured whenever the stage (the player mounting, the picture's aspect), the
@@ -2779,7 +2779,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // v1.186 (Dean): AMBIENT MODE. Casts a soft colour glow behind the player
-    // (YouTube-style). DARK THEMES ONLY (light hides the toggle row AND forces it
+    // (video-site-style). DARK THEMES ONLY (light hides the toggle row AND forces it
     // off); default OFF, opt-in, persisted in localStorage['ft-ambient'].
     // Torn down whenever ambientShouldRun() is false (paused, tab hidden, off, or
     // light) - no idle battery cost (v1.160). #ambient-glow is a WATCH-VIEW node
@@ -3219,8 +3219,8 @@ if (typeof module !== 'undefined' && module.exports) {
     function applySubscribeAndPinState(item, moduleEnabled, subs, channelPins, confirmed) {
       if (!subscribeBtn || !item) return;
       currentSubState = decideSubscribeButtonState(item, subs, moduleEnabled);
-      // v1.338 D8a (Dean: "non-YouTube things supported by YT DLP should have
-      // generally first-class experiences"): a download from another site
+      // v1.338 D8a (Dean, paraphrased: other sites supported by YT DLP should have
+      // generally first-class experiences): a download from another site
       // (`sourceExtractor`, no YouTube channel identity) keeps Pin. Pin needs
       // only the folder (the channelDir fallback below), and the universal lane
       // folds each uploader into its own folder under the download root.
@@ -3444,7 +3444,7 @@ if (typeof module !== 'undefined' && module.exports) {
             localStorage.setItem(savedCommentsKey, JSON.stringify(comments));
           }
         } else {
-          // Prepopulate with a few classic YouTube comments to keep the aesthetic alive!
+          // Prepopulate with a few classic video-site comments to keep the aesthetic alive!
           comments = getMockInitialComments();
           localStorage.setItem(savedCommentsKey, JSON.stringify(comments));
         }
@@ -3636,7 +3636,7 @@ if (typeof module !== 'undefined' && module.exports) {
       );
     }
 
-    // "Like" toggle in the YouTube heart convention (v1.108, Dean): NOT-liked is the
+    // "Like" toggle in the usual heart convention (v1.108, Dean): NOT-liked is the
     // resting state, LIKED fills the heart. UI pass sweep S3 (D4.9, F21, D8.8): a stacked
     // ui-btn in the bar whose label is the stable stack (Like / Liked: one grid cell, the
     // width never changes on a tap) and whose icon swaps to `favorite.fill` (ui.setPressed);
@@ -3768,7 +3768,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!base) return;
       const player = (typeof window !== 'undefined' && window.FileTube) ? window.FileTube.player : null;
       const t = (player && typeof player.getCurrentTime === 'function') ? player.getCurrentTime() : null;
-      // The "at current time" choice is YouTube's `?t=`; another site's link is shared as it is.
+      // The "at current time" choice is the reference site's `?t=`; another site's link is shared as it is.
       const isYouTube = base === mediaData.watchUrl;
       if (isYouTube && typeof t === 'number' && isFinite(t) && t >= 1) {
         ui.menu({
@@ -3795,7 +3795,7 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       // v1.337: named for what it shares.
-      const shareName = link === mediaData.watchUrl ? 'Share the original YouTube link' : 'Share the original link';
+      const shareName = 'Share the original link';
       if (!shareBtn) {
         shareBtn = barButton('share', 'share-media-btn', { icon: 'share', label: 'Share', ariaLabel: shareName });
         shareBtn.addEventListener('click', handleShareClick, { signal });

@@ -121,8 +121,8 @@ function shortenChannelLabel(channelUrl) {
   }
 }
 
-// v1.338 D8b (Dean: "non-YouTube things supported by YT DLP should have
-// generally first-class experiences"): a By channel row is either a YouTube
+// v1.338 D8b (Dean, paraphrased: other sites supported by YT DLP should have
+// generally first-class experiences): a By channel row is either a YouTube
 // channel (`channelUrl`, shortened as above) or a download from another site
 // (`sourceExtractor` + `channelName`, lib/stats.js computeBreakdownByChannel),
 // labelled with the uploader and the site, e.g. "someuser (Reddit)".

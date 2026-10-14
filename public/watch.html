@@ -216,7 +216,7 @@
                #player-dock (DOCKED) -- see watch.js's init(), which calls
                window.FileTube.player.load(id, data, { slot: this element }). -->
           <!-- v1.186 (Dean): Ambient mode stage. The glow sits BEHIND the player
-               and bleeds a soft colour glow outward (YouTube-style). It is a
+               and bleeds a soft colour glow outward (video-site-style). It is a
                WATCH-VIEW node (never inside the persistent host), so it is absent
                when docked/closed for free. Dark-themes-only, opt-in (watch.js
                drives it). aria-hidden + pointer-events:none.
@@ -462,7 +462,7 @@
         </button>
         <button type="button" id="fs-btn" class="pc-btn fs-btn" aria-label="Fullscreen">⛶</button>
         <!-- v1.112 (Dean): settings cog centralizes Speed + CC + PiP off the bar
-             (YouTube's gear). The three controls are RELOCATED here as menu rows
+             (the gear menu). The three controls are RELOCATED here as menu rows
              with their ids + wired handlers intact; cc-btn/pip-btn keep their own
              visibility gates, which now hide the ROW. -->
         <div id="settings-menu" class="chapters-menu settings-menu" hidden>

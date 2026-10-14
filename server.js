@@ -480,14 +480,14 @@ const DEFAULT_SETTINGS = {
   // (non-fullscreen) mobile VIDEO. When ON, a playing inline mobile video
   // hands off to a hidden <audio> element playing an audio-only extraction
   // of the same item while backgrounded, then swaps back on foreground --
-  // YouTube-Premium-style background audio. OFF by default -- mirrors
+  // premium-style background audio. OFF by default -- mirrors
   // autoplayNext's own pattern exactly (see settingsResponse/KNOWN_KEYS/the
   // POST validation branch below). Desktop and audio-type items are
   // completely unaffected (see public/js/player.js's handoff gating).
   backgroundAudioForVideo: false,
   // v1.34 (Dean): the DEFAULT home sort -- what the library renders when a
   // browser has no explicit per-browser dropdown pick (localStorage
-  // `filetube_sort`) yet. Dean's "real-YouTube feed" flip: release-date is
+  // `filetube_sort`) yet. Dean's "real video-site feed" flip (paraphrased): release-date is
   // the out-of-the-box order now that the v1.33 trust chain landed. An
   // explicit dropdown pick still wins in that browser (see main.js).
   defaultSort: 'release-date',
@@ -2444,7 +2444,7 @@ function parseManualChapterText(text) {
 
 // The DESCRIPTION acceptance gate: a description only counts as carrying a
 // chapter list when it parses to at least TWO chapters and the first starts
-// at 0:00 -- YouTube's own convention, and the difference between "a chapter
+// at 0:00 -- the source site's own convention, and the difference between "a chapter
 // list" and "a stray timestamp mentioned in prose". Manual edits face no
 // such gate (the editor's textarea goes through bare parseChapterLines).
 function deriveDescriptionChapters(description) {
@@ -5263,7 +5263,7 @@ mediaRoutes.registerBrowseRoutes(app, {
 // Wave 7b (slice S10a): the ROUTE itself now lives in lib/media/routes.js; the
 // two id-to-card resolvers below stayed (other readers + the exports).
 //
-// GET /api/home assembles the per-user, YouTube-style row feed. It mirrors
+// GET /api/home assembles the per-user, video-site-style row feed. It mirrors
 // v1.78's GET /api/handoff posture exactly: the pure lib/home/feed.js selects
 // ids from LIGHT per-user candidate records; THIS route resolves the selected
 // ids to render fields. The client supplies nothing - every title, thumbnail
