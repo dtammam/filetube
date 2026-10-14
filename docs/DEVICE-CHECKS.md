@@ -5,6 +5,12 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## App Store cleanup (v1.391.0)
+
+- [ ] v1.391.0 - (a) The store-build gate: on an iOS build that does NOT announce `mediaFetch`, signed in to a server with downloads on, none of these appear: Subs or Download tabs, the header Download button, the bell, Reheat, Subscribe, Pin, the Downloads folder, Settings > Downloads, Notifications and Imported videos, and /subscriptions says "Not available in this app". The offline Download control still works. A build that announces it, and Safari, are unchanged. (iOS Root / Dean)
+- [ ] v1.391.0 - (b) Pocket: skin names read Classic, Mini, Slim, Clip, Touch, Custom with plain numbers and no years; the three Transparent skins show the new board, the Coil skin the same ring, sideways too.
+- [ ] v1.391.0 - (c) Settings copy: no brand names; Settings > Mobile player ends with the non-affiliation line; the Home page rows read "rows by topic" and "Modern grid".
+
 ## Sideways scrolling (v1.390.0)
 
 Phone held sideways, a video's watch page (not fullscreen), Safari and the FileTube app:
