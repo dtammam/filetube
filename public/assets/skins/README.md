@@ -1,21 +1,12 @@
 # Skin artwork
 
-Photographic artwork for the Custom 5G Transparent skins (`ipod-custom5-transparent`,
-`ipod-custom5-transparent-black`, `ipod-custom5-transparent-coil`).
+Artwork for the Custom Transparent skins (`ipod-custom5-transparent`, `ipod-custom5-transparent-black`,
+`ipod-custom5-transparent-coil`; the ids stay as they are so saved choices keep working).
 
-| File | Source | Licence |
-|------|--------|---------|
-| `transparent-board.webp` | ["IPod classic 80 GB (A1238, YMV) - board-0020.jpg"](https://commons.wikimedia.org/wiki/File:IPod_classic_80_GB_(A1238,_YMV)_-_board-0020.jpg), Wikimedia Commons | CC BY-SA 4.0 |
-| `transparent-board-r90.webp` | Derived: `transparent-board.webp` rotated 90 degrees counter-clockwise (the board photo pinned to the phone when it turns to landscape). Original: ["IPod classic 80 GB (A1238, YMV) - board-0020.jpg"](https://commons.wikimedia.org/wiki/File:IPod_classic_80_GB_(A1238,_YMV)_-_board-0020.jpg), Wikimedia Commons | CC BY-SA 4.0 |
-| `transparent-board-r270.webp` | Derived: `transparent-board.webp` rotated 90 degrees clockwise (the other landscape direction). Original: ["IPod classic 80 GB (A1238, YMV) - board-0020.jpg"](https://commons.wikimedia.org/wiki/File:IPod_classic_80_GB_(A1238,_YMV)_-_board-0020.jpg), Wikimedia Commons | CC BY-SA 4.0 |
-| `transparent-ring.webp` | ["IPod classic 80 GB (A1238, YMV) - board with keypad-0019.jpg"](https://commons.wikimedia.org/wiki/File:IPod_classic_80_GB_(A1238,_YMV)_-_board_with_keypad-0019.jpg), Wikimedia Commons | CC BY-SA 4.0 |
+| File | What it is | Licence |
+|------|------------|---------|
+| `transparent-board.webp` | The circuit board shown under the clear shell: an original image supplied by the project owner, with the printing on the chips smudged. | MIT (this repository) |
+| `transparent-board-r90.webp`, `transparent-board-r270.webp` | The same board turned 90 degrees either way (for when the phone is turned sideways). | MIT (this repository) |
+| `transparent-ring.webp` | The flex ring with gold pads for the Coil skin: cut out of a photograph on Wikimedia Commons by Raimond Spekking (own work), from the series "board with keypad" of a hard-drive music player. Changes made: cropped, darkened and desaturated, cut out as a ring, turned 3.4 degrees to sit square, and given a transparent centre. | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) |
 
-Both photos are by Raimond Spekking (own work), from the same Commons series (search Commons for "IPod classic 80 GB (A1238, YMV)").
-
-Changes made: cropped, rotated, darkened and desaturated, faded at one edge and given a
-transparent background (the board), and cut out as a ring, turned 3.4 degrees to sit square
-and given a transparent centre (the ring).
-
-These derived images are shared under the same licence,
-[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The rest of the repository
-stays MIT; the licence above covers only the two files in this table.
+Only `transparent-ring.webp` carries the CC BY-SA 4.0 licence; the rest of the repository, including the board images, is MIT.
