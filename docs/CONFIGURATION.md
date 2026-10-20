@@ -172,6 +172,15 @@ docker compose up -d
 Prefer automatic updates? Point a tool like [Watchtower](https://containrrr.dev/watchtower/)
 at the `latest` tag. See [docs/RELEASING.md](docs/RELEASING.md) for the full tag scheme.
 
+### How the container runs (v1.392.0+)
+
+The image starts FileTube under [tini](https://github.com/krallin/tini), a tiny init process
+(`ENTRYPOINT ["/sbin/tini", "--"]`, `CMD ["node", "server.js"]`). tini is PID 1: it cleans up
+leftover helper processes (a download's ffmpeg whose parent has gone) and passes `docker stop`
+straight to FileTube, which saves what it is doing and stops any running download on the way
+out. You need nothing in your compose file for this; do not add `init: true` as well (that
+would run a second init). If you override the image's command, keep tini in front of it.
+
 ---
 
 ## Optional: subscriptions and downloads (yt-dlp)

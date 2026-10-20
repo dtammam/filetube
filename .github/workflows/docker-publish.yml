@@ -196,7 +196,20 @@ jobs:
           [ "$code" = "200" ] || fail "GET /login (following redirects) never reached 200 (last: $code)"
           api=$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/stats || echo 000)
           [ "$api" = "401" ] || fail "unauthenticated GET /api/stats returned $api, expected 401 (auth gate)"
-          echo "smoke OK: /login -> 200 (via /welcome), /api/stats unauth -> 401"
+          # v1.392.0 (R3): tini is PID 1 (it reaps orphans and forwards SIGTERM to node), node is its child,
+          # and the bundled yt-dlp still runs under it.
+          pid1=$(docker exec smoke cat /proc/1/comm || echo none)
+          [ "$pid1" = "tini" ] || fail "PID 1 is '$pid1', expected tini"
+          node_ppid=$(docker exec smoke sh -c 'for p in /proc/[0-9]*; do [ "$(cat $p/comm 2>/dev/null)" = node ] && awk "{print \$4}" $p/stat && break; done' || echo none)
+          [ "$node_ppid" = "1" ] || fail "node's parent is '$node_ppid', expected 1 (tini)"
+          ytv=$(docker exec smoke yt-dlp --version || echo none)
+          [ "$ytv" != "none" ] && [ -n "$ytv" ] || fail "the bundled yt-dlp did not run (got '$ytv')"
+          # docker stop's SIGTERM must reach node (via tini) and end it cleanly: exit 0 well inside the timeout,
+          # never 137 (the SIGKILL docker sends when the signal went nowhere).
+          docker stop -t 20 smoke >/dev/null || fail "docker stop failed"
+          stopped=$(docker inspect -f '{{.State.ExitCode}}' smoke || echo none)
+          [ "$stopped" = "0" ] || fail "after docker stop the container exited $stopped, expected 0 (SIGTERM forwarded to node)"
+          echo "smoke OK: /login -> 200 (via /welcome), /api/stats unauth -> 401, PID 1 = tini, node under it, yt-dlp $ytv, docker stop -> exit 0"
           docker rm -f smoke
 
       # Push-side steps: skipped entirely on a workflow_dispatch dry-run.
