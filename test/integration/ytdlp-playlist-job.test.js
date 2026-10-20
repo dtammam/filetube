@@ -201,7 +201,7 @@ test('gate r1 W3: Cancel KILLS the video running now (its process), and that vid
   run.runDownload = async (sub, cfg, vids, opts) => {
     calls.push({ id: vids[0], folder: sub.name });
     return new Promise((resolve) => {
-      const child = { pid: 4242, kill: () => { kills.push(vids[0]); resolve({ ok: false, code: null, stdout: '', stderr: '', error: 'killed' }); } };
+      const child = { kill: () => { kills.push(vids[0]); resolve({ ok: false, code: null, stdout: '', stderr: '', error: 'killed' }); } };
       if (opts && typeof opts.onChild === 'function') opts.onChild(child);
       if (vids[0] !== ids[1]) setTimeout(() => resolve({ ok: true, code: 0, stdout: '', stderr: '' }), 5);
     });

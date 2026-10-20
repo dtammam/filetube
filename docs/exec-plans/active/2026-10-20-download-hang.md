@@ -113,7 +113,8 @@ with `node scripts/plan-complete.js <this plan> "Shipped v1.392.0" --apply` in t
   stayed held by the wedged first job", "Cancel must kill the whole yt-dlp group, grandchild included"); the one green case is
   the clean-exit control. 0 stray `sleep 600` after. F2 on main (scratchpad f2-probe.js, production 2 min delay, interval 60
   min, a subscription, boot with no ledger): main `polls in the first 130 s after boot = 0`; branch `= 1` (at +120 s).
-- Branch results (green), the mutants and their red tests: grandchild-hang 19/19 (Node 22), boot-poll 8/8, trace tests 32/32,
+- Branch results (green), the mutants and their red tests: grandchild-hang 18/18 at 0e238bef (the seat's count; the
+  earlier "19" was a miscount), 21/21 at af7b8002 after the r1 tests (Node 22), boot-poll 8/8, trace tests 32/32,
   ci-pipeline-locks + dockerfile 24/24. Mutants in a /tmp `git archive` sandbox, diffed against a pristine copy, each red by name:
   R1 grace settle off -> 10 red (escaped-group exit, stall, kill-grace, list, heavy gate, cancels, runlog, trace, server exit);
   R2 group kill off -> 10 red (exit, stall, timeout, list x2, all four cancels, trace); R2 exit-time group kill off -> 3 red;
@@ -122,11 +123,31 @@ with `node scripts/plan-complete.js <this plan> "Shipped v1.392.0" --apply` in t
   `run.killYtdlp` now binds the wiring, 85af3a95); server exit hook off -> 1 red; runlog settledBy off -> 2 red; trace settle
   off -> 1 red. W3: boot call off -> 2 red; sanitizer drops the ledger -> 4 red; due ignores the ledger -> 2 red; record off
   -> 2 red; record on every poll -> 1 red; read-only guard off -> 1 red; interval 0 polls -> 2 red. 19/19 killed.
+  Gate r1 fixes (@af7b8002), each red by its own case: late-pipe destroy off (download; list); liveGroups delete at exit off;
+  liveGroups kept on kill-grace off; group signal after exit; groupSurvivors set at kill time; the instanceof guard off.
+  INCIDENT: the instanceof-guard test first used `fake.pid = 1`; its mutant ran `process.kill(-1, 'SIGKILL')` and killed every
+  process the user owned (every tmux / Claude session on the box, twice, 03:36 and 03:44). The fixture now uses a sacrificial
+  detached `sleep` (af7b8002); re-run, the mutant is red only by "the sacrificial sleeper is alive", 0 stray processes.
+  LESSONS 2 records the class.
 - Suites (counts, both Nodes): @b61731d8 Node 22.23.1 `npm test`: tests 12570, pass 12557, fail 0, skipped 13 (exit 0).
   Node 24.20.0 first run in a `git archive` copy: 9 fail, all environmental (`fatal: not a git repository` from tests that
   `git ls-files`, an EISDIR through the symlinked node_modules); re-run in a real git worktree below.
-- Image smoke test and PID 1:
+- Image smoke test and PID 1: publish dry run 39363539226 (workflow_dispatch @0e238bef; Dockerfile and docker-publish.yml
+  unchanged since): secret-scan, qualify (22), audit, publish all success. Smoke, verbatim: `smoke OK: /login -> 200 (via
+  /welcome), /api/stats unauth -> 401, PID 1 = tini, node under it, yt-dlp 2026.08.17.073947, docker stop -> exit 0`.
 - Gate verdicts (sha):
+  - Gate: APPROVED r1 @0e238bef — security-brief (N1 kill-grace drops the group from the exit list; N2 tini unpinned,
+    advisory; N3 a future lastPollAt suppresses the boot poll)
+  - Gate: CHANGES r1 @0e238bef — qa (W1 groupSurvivors on kill-grace always true and DEVICE-CHECKS overclaimed "which
+    helper"; N1 module header; N2 group signal after exit; N3 an unmeasured restart-timing claim)
+  - Gate: APPROVED r1 @0e238bef — adversary (no hang outside R1/R2 found; NOTEs: late-pipe destroy, liveGroups cleanup, the
+    done latch, the instanceof guard, the retry settledBy merge unbound; the escaped-helper and D-state gaps; the test count)
+  - Fixed in 4402c4db + af7b8002 (above). Accepted: adversary N3 (masked by the after-exit guard), N5 (disclosed in ROADMAP),
+    security N2 (matches the existing apk posture).
+  - Gate: APPROVED r2 @af7b8002 — security-brief (N1, N3 fixed; new N4: playlist-job.test.js:204 still had a made-up pid 4242)
+  - Gate: APPROVED r2 @af7b8002 — qa (W1, N1-N3 fixed; 93/93 Node 22, 131/131 Node 24 on its targeted set)
+  - Gate: APPROVED r2 @af7b8002 — adversary (every r1 fix's mutant red, box intact; new N8: the same pid 4242)
+  - The pid 4242 removal (a test fixture, not bookkeeping) goes back to the same seats for r3.
 
 ## Done means
 
