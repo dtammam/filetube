@@ -199,12 +199,63 @@ test('download: the absolute timeout kills a hung yt-dlp whose grandchild holds 
 test('download: a helper that ESCAPED the group (setsid) still cannot wedge the job: exit + grace settles it (settledBy exit-grace)', async () => {
   setModes(['escape-exit']);
   const started = Date.now();
-  const result = await within(run.spawnYtdlpDownload(['x'], { exitGraceMs: TEST_GRACE_MS }), TEST_GRACE_MS + SLACK_MS);
+  let child = null;
+  const traced = [];
+  const result = await within(run.spawnYtdlpDownload(['x'], { exitGraceMs: TEST_GRACE_MS, onChild: (c) => { child = c; }, onTrace: (ev, f) => traced.push([ev, f]) }), TEST_GRACE_MS + SLACK_MS);
   assert.notEqual(result, HANG, 'only the exit + grace settle can free a job whose pipe holder left the group');
   assert.ok(Date.now() - started >= TEST_GRACE_MS - 50, 'the grace period is honoured before giving up on close');
   assert.equal(result.ok, true);
   assert.equal(result.code, 0);
   assert.equal(result.settledBy, 'exit-grace');
+  assert.ok(child.stdout.destroyed && child.stderr.destroyed, 'the late pipes are destroyed (no fds held for the escaped helper)');
+  const settle = traced.filter(([ev]) => ev === 'settle');
+  assert.equal(settle.length, 1);
+  assert.equal(settle[0][1].groupSurvivors, false, 'at the exit the group was already empty: the holder had left it');
+  assert.ok(!run.liveGroupsForTests().includes(child.pid), 'a settled, exited run leaves the server-exit list');
+});
+
+test('download: a Cancel AFTER yt-dlp exited never signals its (reaped) group again', async () => {
+  setModes(['escape-exit']);
+  let child = null;
+  const settled = run.spawnYtdlpDownload(['x'], { exitGraceMs: TEST_GRACE_MS, onChild: (c) => { child = c; } });
+  await waitFor(() => child && child.exitCode !== null, 3000);
+  const originalKill = process.kill;
+  const negative = [];
+  process.kill = (pid, sig) => { if (pid < 0) negative.push(pid); return originalKill.call(process, pid, sig); };
+  try {
+    run.killYtdlp(child, 'SIGKILL');
+  } finally {
+    process.kill = originalKill;
+  }
+  assert.deepEqual(negative, [], 'the exit-time group kill already ran; a later kill sends no group signal');
+  assert.equal((await within(settled, TEST_GRACE_MS + SLACK_MS)).settledBy, 'exit-grace');
+});
+
+test('download: a fake child (not a real ChildProcess) with a numeric pid is never group-killed', async () => {
+  const cp = require('node:child_process');
+  const { EventEmitter } = require('node:events');
+  const originalSpawn = cp.spawn;
+  const originalKill = process.kill;
+  const negative = [];
+  cp.spawn = () => {
+    const fake = new EventEmitter();
+    fake.stdout = new EventEmitter(); fake.stderr = new EventEmitter();
+    fake.pid = 1; // the worst case: process.kill(-1) would signal every process we may signal
+    fake.kill = () => { setImmediate(() => { fake.emit('exit', null, 'SIGKILL'); fake.emit('close', null, 'SIGKILL'); }); };
+    setImmediate(() => fake.emit('exit', 0, null));
+    setImmediate(() => fake.emit('close', 0, null));
+    return fake;
+  };
+  process.kill = (pid, sig) => { if (pid < 0) negative.push(pid); return originalKill.call(process, pid, sig); };
+  try {
+    const result = await within(run.spawnYtdlpDownload(['x'], { exitGraceMs: TEST_GRACE_MS }), SLACK_MS);
+    assert.notEqual(result, HANG);
+    assert.equal(result.ok, true);
+  } finally {
+    cp.spawn = originalSpawn;
+    process.kill = originalKill;
+  }
+  assert.deepEqual(negative, [], 'only a real, spawned ChildProcess is ever signalled as a group');
 });
 
 test('download: a stall kill whose pipe holder escaped the group settles at exit + grace, still ESTALLED', async () => {
@@ -223,6 +274,21 @@ test('download: a kill that never ends the process (it ignores the signal) settl
   assert.ok(Date.now() - started >= 300 + TEST_GRACE_MS - 50, 'it waited the grace period after the kill');
   assert.equal(result.code, 'ESTALLED');
   assert.equal(result.settledBy, 'kill-grace');
+});
+
+test('download: kill + grace reports groupSurvivors unknown (null), and the never-exited group stays on the server-exit list until it exits', async () => {
+  setModes(['ignore-term-hang']);
+  let child = null;
+  const traced = [];
+  const result = await within(run.spawnYtdlpDownload(['x'], { stallMs: 300, killSignal: 'SIGTERM', exitGraceMs: TEST_GRACE_MS, onChild: (c) => { child = c; }, onTrace: (ev, f) => traced.push([ev, f]) }), 300 + TEST_GRACE_MS + SLACK_MS);
+  assert.equal(result.settledBy, 'kill-grace');
+  const settle = traced.find(([ev]) => ev === 'settle');
+  assert.equal(settle[1].groupSurvivors, null, 'a kill-time signal says nothing about helpers: unknown');
+  assert.ok(run.liveGroupsForTests().includes(child.pid), 'still alive, so the server exit must still kill it');
+  const exited = new Promise((r) => child.once('exit', r));
+  process.kill(-child.pid, 'SIGKILL');
+  await within(exited, SLACK_MS);
+  assert.ok(!run.liveGroupsForTests().includes(child.pid), 'it leaves the list once it really exits');
 });
 
 test('download: a normal exit with no lingering helper still settles on close (no settledBy, no grace wait)', async () => {
@@ -256,12 +322,22 @@ test('list: yt-dlp exits but a grandchild holds the pipes -> settles with its st
   assert.ok(await waitDead(grandchildPids()[0], 1000));
 });
 
-test('list: a helper that escaped the group settles at exit + grace', async () => {
+test('list: a helper that escaped the group settles at exit + grace, and the late pipes are destroyed', async () => {
   setModes(['escape-exit']);
-  const result = await within(run.spawnYtdlp(['x'], { exitGraceMs: TEST_GRACE_MS }), TEST_GRACE_MS + SLACK_MS);
+  const cp = require('node:child_process');
+  const originalSpawn = cp.spawn;
+  let child = null;
+  cp.spawn = (...a) => { child = originalSpawn(...a); return child; };
+  let result;
+  try {
+    result = await within(run.spawnYtdlp(['x'], { exitGraceMs: TEST_GRACE_MS }), TEST_GRACE_MS + SLACK_MS);
+  } finally {
+    cp.spawn = originalSpawn;
+  }
   assert.notEqual(result, HANG);
   assert.equal(result.ok, true);
   assert.equal(result.settledBy, 'exit-grace');
+  assert.ok(child.stdout.destroyed && child.stderr.destroyed, 'the late pipes are destroyed');
 });
 
 // ---- the heavy gate (R4): a job whose child never closes its pipes releases the queue ----------------------

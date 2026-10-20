@@ -9,8 +9,8 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 - [ ] v1.392.0 - Next time a download looks stuck, do NOT restart: wait for the stall timer (10 min with no progress) or press Cancel. It clears on its own, and the downloads queued behind it start.
 - [ ] v1.392.0 - After this update (and any later one), subscriptions are checked within a few minutes of FileTube starting, not an hour later (the bell or the Subscriptions page shows new videos without a manual re-pull).
-- [ ] v1.392.0 - Server: `docker exec <container> cat /proc/1/comm` prints `tini`, and `docker compose restart` (or an update) takes a second or two, not ten.
-- [ ] v1.392.0 - If a download is ever freed this way, the container log has one line `yt-dlp settled without close: settledBy=...`; send it (and, for a one-off, the Download trace) - it says which helper held it.
+- [ ] v1.392.0 - Server: `docker exec <container> cat /proc/1/comm` prints `tini`.
+- [ ] v1.392.0 - If a download is ever freed this way, the container log has one line `yt-dlp settled without close: settledBy=...`; send it (and, for a one-off, the Download trace). It says which way the job was freed (exit-grace or kill-grace) and whether a helper was still alive in yt-dlp's group when it exited.
 
 ## App Store cleanup (v1.391.0)
 

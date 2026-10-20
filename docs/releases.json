@@ -3723,6 +3723,6 @@
     "version": "1.392.0",
     "date": "2026-10-20",
     "title": "Downloads no longer get stuck until you restart FileTube",
-    "intent": "A download whose helper (for example the step that joins video and sound) hung could block every download behind it until the container was recreated. Now the stall timer or Cancel always frees it, the queue moves on, and nothing is left running. After an update, subscriptions are checked within a few minutes instead of waiting a full interval. The image now starts FileTube under a small init process (tini); you do not need to change your compose file."
+    "intent": "A download whose helper (for example the step that joins video and sound) hung could block every download behind it until the container was recreated. Now the stall timer or Cancel always frees it, the stuck step is stopped, and the queue moves on. After an update, subscriptions are checked within a few minutes instead of waiting a full interval. The image now starts FileTube under a small init process (tini); you do not need to change your compose file."
   }
 ]

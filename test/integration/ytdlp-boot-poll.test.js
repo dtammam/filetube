@@ -164,5 +164,6 @@ test('bootPollDue: missing = due, older than the interval = due, inside it = not
   assert.equal(ytdlp.bootPollDue(now - 60 * 60 * 1000, 60, now), true);
   assert.equal(ytdlp.bootPollDue(now - 59 * 60 * 1000, 60, now), false);
   assert.equal(ytdlp.bootPollDue(null, 0, now), false);
+  assert.equal(ytdlp.bootPollDue(now + 60 * 60 * 1000, 60, now), true, 'a ledger in the future (clock moved back) is not trusted');
   assert.equal(ytdlp.BOOT_POLL_DELAY_MS, 2 * 60 * 1000, 'production waits 2 min after boot');
 });
