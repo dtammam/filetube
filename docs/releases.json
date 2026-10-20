@@ -3718,5 +3718,11 @@
     "date": "2026-10-14",
     "title": "Clearer names in Settings and Pocket, a shorter README, and a privacy page for the iPhone app",
     "intent": "Pocket's skins now have plain names (Classic, Mini, Slim, Clip, Touch, Custom, with simple numbers) and the Settings wording is neutral. The README is shorter, with a new features guide, and there is a privacy page for the iPhone app. The iPhone app can now hide the downloader screens. Everything else works as before."
+  },
+  {
+    "version": "1.392.0",
+    "date": "2026-10-20",
+    "title": "Downloads no longer get stuck until you restart FileTube",
+    "intent": "A download whose helper (for example the step that joins video and sound) hung could block every download behind it until the container was recreated. Now the stall timer or Cancel always frees it, the queue moves on, and nothing is left running. After an update, subscriptions are checked within a few minutes instead of waiting a full interval. The image now starts FileTube under a small init process (tini); you do not need to change your compose file."
   }
 ]

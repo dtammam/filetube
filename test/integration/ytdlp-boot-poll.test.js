@@ -23,6 +23,8 @@ const { featureStoreFor, docView } = require('../helpers/scratch-feature-store')
 
 const originalRunList = run.runList;
 const originalVersion = run.getYtdlpVersion;
+const originalAvatar = run.probeChannelAvatar;
+const originalFollowers = run.probeChannelFollowerCount;
 const DELAY_MS = 30;
 let dataDir;
 let listCalls;
@@ -35,6 +37,8 @@ beforeEach(() => {
     return { ok: true, stdout: '', stderr: '' };
   };
   run.getYtdlpVersion = async () => null; // startBackground's version-cache prime: no real spawn
+  run.probeChannelAvatar = async () => null; // the poll's channel probes: no real spawn, no network
+  run.probeChannelFollowerCount = async () => null;
   ytdlp.setBootPollDelayForTests(DELAY_MS);
 });
 
@@ -46,6 +50,8 @@ afterEach(() => {
   ytdlp.resetPollRerunStateForTests();
   run.runList = originalRunList;
   run.getYtdlpVersion = originalVersion;
+  run.probeChannelAvatar = originalAvatar;
+  run.probeChannelFollowerCount = originalFollowers;
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
