@@ -394,7 +394,7 @@ test('v1.371.0: through the REAL runDownload, the spawned yt-dlp argv carries ea
     argvs.push(argv);
     const child = new EventEmitter();
     child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
-    child.kill = () => {}; child.pid = 4242;
+    child.kill = () => {}; // no pid: a fake pid must never reach a real process (v1.392.0)
     setImmediate(() => child.emit('close', 0));
     return child;
   };

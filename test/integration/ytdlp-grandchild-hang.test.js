@@ -221,7 +221,14 @@ test('download: a Cancel AFTER yt-dlp exited never signals its (reaped) group ag
   await waitFor(() => child && child.exitCode !== null, 3000);
   const originalKill = process.kill;
   const negative = [];
-  process.kill = (pid, sig) => { if (pid < 0) negative.push(pid); return originalKill.call(process, pid, sig); };
+  // Records group signals and forwards only one aimed at this job's own group (never anything else).
+  process.kill = (pid, sig) => {
+    if (pid < 0) {
+      negative.push(pid);
+      if (-pid !== child.pid) return true;
+    }
+    return originalKill.call(process, pid, sig);
+  };
   try {
     run.killYtdlp(child, 'SIGKILL');
   } finally {
@@ -231,31 +238,47 @@ test('download: a Cancel AFTER yt-dlp exited never signals its (reaped) group ag
   assert.equal((await within(settled, TEST_GRACE_MS + SLACK_MS)).settledBy, 'exit-grace');
 });
 
-test('download: a fake child (not a real ChildProcess) with a numeric pid is never group-killed', async () => {
+// A FAKE child's pid must be a SACRIFICIAL process, never a made-up number: with this guard mutated away the code
+// group-kills the fake's pid, and a fixture of pid 1 turned that mutant into process.kill(-1, 'SIGKILL'), which
+// killed every process the user owned (v1.392.0 build: twice, every session on the box). So the fake carries the
+// pid of a detached `sleep` (its own process group, nothing else in it), the mutant can only kill that sleeper,
+// and the spy forwards only signals aimed at the sleeper's own group.
+test('download: a fake child (not a real ChildProcess) is never group-killed (a sacrificial sleeper stays alive)', async () => {
   const cp = require('node:child_process');
   const { EventEmitter } = require('node:events');
+  const sleeper = cp.spawn('sleep', ['600'], { detached: true, stdio: 'ignore' });
+  assert.ok(Number.isInteger(sleeper.pid) && sleeper.pid > 1, 'the sacrificial sleeper started');
   const originalSpawn = cp.spawn;
   const originalKill = process.kill;
-  const negative = [];
+  const groupSignals = [];
   cp.spawn = () => {
     const fake = new EventEmitter();
     fake.stdout = new EventEmitter(); fake.stderr = new EventEmitter();
-    fake.pid = 1; // the worst case: process.kill(-1) would signal every process we may signal
+    fake.pid = sleeper.pid;
     fake.kill = () => { setImmediate(() => { fake.emit('exit', null, 'SIGKILL'); fake.emit('close', null, 'SIGKILL'); }); };
     setImmediate(() => fake.emit('exit', 0, null));
     setImmediate(() => fake.emit('close', 0, null));
     return fake;
   };
-  process.kill = (pid, sig) => { if (pid < 0) negative.push(pid); return originalKill.call(process, pid, sig); };
+  process.kill = (pid, sig) => {
+    if (pid < 0) {
+      groupSignals.push(pid);
+      if (-pid !== sleeper.pid) return true; // never forward a group signal to anything but the sleeper
+    }
+    return originalKill.call(process, pid, sig);
+  };
   try {
     const result = await within(run.spawnYtdlpDownload(['x'], { exitGraceMs: TEST_GRACE_MS }), SLACK_MS);
     assert.notEqual(result, HANG);
     assert.equal(result.ok, true);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.ok(isAlive(sleeper.pid), 'the sacrificial sleeper is alive: the fake child was never group-killed');
+    assert.deepEqual(groupSignals, [], 'only a real, spawned ChildProcess is ever signalled as a group');
   } finally {
     cp.spawn = originalSpawn;
     process.kill = originalKill;
+    try { process.kill(sleeper.pid, 'SIGKILL'); } catch (_) { /* gone */ }
   }
-  assert.deepEqual(negative, [], 'only a real, spawned ChildProcess is ever signalled as a group');
 });
 
 test('download: a stall kill whose pipe holder escaped the group settles at exit + grace, still ESTALLED', async () => {
