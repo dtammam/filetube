@@ -322,6 +322,20 @@ async function waitFor(fn, ms) {
   return false;
 }
 
+// The cancel routes must kill through `run.killYtdlp` (the group kill that also arms the kill + grace settle). A
+// plain `child.kill` is MASKED in the grandchild assertions: yt-dlp dies, and the exit-time group kill takes the
+// grandchild anyway; what it loses is the kill + grace settle for a process the kill cannot end (D state), which
+// no fake can reproduce. So each cancel case also spies the wiring (it delegates, so the real kill still runs).
+function spyKillYtdlp() {
+  const original = run.killYtdlp;
+  const calls = [];
+  run.killYtdlp = (child, signal, why) => {
+    calls.push({ pid: child && child.pid, signal });
+    return original(child, signal, why);
+  };
+  return { calls, restore: () => { run.killYtdlp = original; } };
+}
+
 test('one-off Cancel: kills the yt-dlp group (grandchild dead), the job settles, and the one-off queued behind it runs', async () => {
   run.probeChannel = async () => null;
   setModes(['hang-linger', 'ok']);
@@ -343,8 +357,12 @@ test('one-off Cancel: kills the yt-dlp group (grandchild dead), the job settles,
     assert.equal(r2.status, 202);
     const { jobId: second } = await r2.json();
 
-    const cancel = await postJson(base, `/api/ytdlp/download/${first}/cancel`);
+    const spy = spyKillYtdlp();
+    let cancel;
+    try { cancel = await postJson(base, `/api/ytdlp/download/${first}/cancel`); } finally { spy.restore(); }
     assert.equal(cancel.status, 200);
+    assert.equal(spy.calls.length, 1, 'the one-off cancel route kills through run.killYtdlp');
+    assert.equal(spy.calls[0].signal, 'SIGKILL');
     assert.ok(await waitDead(grandchildPids()[0], 2000), 'Cancel must kill the whole yt-dlp group, grandchild included');
     const ran = await waitFor(async () => invocations() === 2 && ['done', 'error'].includes((await status())[second]?.state), 5000 + SLACK_MS);
     assert.ok(ran, `the one-off queued behind the cancelled one never ran (invocations=${invocations()}, state=${(await status())[second]?.state})`);
@@ -370,8 +388,11 @@ test('playlist Cancel: kills the running video\'s yt-dlp group (grandchild dead)
     assert.equal(r.status, 202);
     const { jobId } = await r.json();
     assert.ok(await waitFor(() => grandchildPids().length === 1, 5000), 'the first video spawned yt-dlp and its grandchild');
-    const cancel = await postJson(base, `/api/ytdlp/download/${jobId}/cancel`);
+    const spy = spyKillYtdlp();
+    let cancel;
+    try { cancel = await postJson(base, `/api/ytdlp/download/${jobId}/cancel`); } finally { spy.restore(); }
     assert.equal(cancel.status, 200);
+    assert.equal(spy.calls.length, 1, 'the playlist cancel kills the running video through run.killYtdlp');
     assert.ok(await waitDead(grandchildPids()[0], 2000), 'Cancel must kill the running video\'s whole yt-dlp group');
     assert.ok(await waitFor(async () => invocations() === 1 && (await status())[jobId]?.state === 'cancelled', SLACK_MS), 'the playlist job settles as cancelled and spawns nothing more');
   } finally {
@@ -410,8 +431,11 @@ for (const route of ['single', 'stop-all']) {
     const { sub, app, poll, dlDir } = await startSubscriptionDownload(undefined);
     try {
       assert.ok(await waitFor(() => grandchildPids().length === 1, 5000), 'the subscription download spawned yt-dlp and its grandchild');
-      const res = await postJson(app.base, route === 'single' ? `/api/subscriptions/${sub.id}/cancel` : '/api/subscriptions/downloads/cancel');
+      const spy = spyKillYtdlp();
+      let res;
+      try { res = await postJson(app.base, route === 'single' ? `/api/subscriptions/${sub.id}/cancel` : '/api/subscriptions/downloads/cancel'); } finally { spy.restore(); }
       assert.equal(res.status, 200);
+      assert.equal(spy.calls.length, 1, `the ${route} cancel route kills through run.killYtdlp`);
       assert.ok(await waitDead(grandchildPids()[0], 2000), 'Cancel must kill the whole yt-dlp group, grandchild included');
       const settled = await within(poll, SLACK_MS);
       assert.notEqual(settled, HANG, 'the poll stayed wedged on the cancelled download');
