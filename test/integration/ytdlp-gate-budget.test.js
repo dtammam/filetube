@@ -21,6 +21,7 @@ const run = require('../../lib/ytdlp/run');
 const store = require('../../lib/ytdlp/store');
 const gate = require('../../lib/heavyGate');
 const activity = require('../../lib/ytdlp/activity');
+const oneshotTrace = require('../../lib/ytdlp/oneshotTrace');
 
 // The watchdog's timers are unref'd (the server keeps the process alive); the test runner needs a keep-alive.
 const keepAlive = setInterval(() => {}, 1000);
@@ -123,7 +124,7 @@ test('R3 killAllLiveYtdlp: true at once when nothing is alive; kills a real hang
 });
 
 test('R3 wired: a channel job that hangs (no child, the orphaned-promise shape) is released at its budget, its row says why, the poll moves on and pollBusy clears', { timeout: 20000 }, async () => {
-  const deps = makeFakeDeps();
+  const deps = { ...makeFakeDeps(), dataDir: tmpDir };
   const config = enabledConfig();
   const subA = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanA', format: 'video', quality: 'best' });
   const subB = await store.addSubscription(deps, { channelUrl: 'https://www.youtube.com/@chanB', format: 'video', quality: 'best' });
@@ -147,6 +148,9 @@ test('R3 wired: a channel job that hangs (no child, the orphaned-promise shape) 
   assert.match(a.lastStatus, /stopped: exceeded its time budget/);
   assert.ok(a.lastCheckedAt, 'recorded as a failed check, so the channel backs off instead of wedging the next poll the same way');
   assert.strictEqual(gate.isHeavyJobActive(), false);
+  // R5: the trace says the gate freed it (the job's own lifecycle closes with gate-leave ok:false).
+  const evs = oneshotTrace.readEntries(tmpDir).filter((e) => e.jobId === `sub:${subA.id}`).map((e) => e.ev);
+  assert.deepStrictEqual(evs, ['gate-enter', 'list-start', 'budget-stop', 'gate-leave']);
 });
 
 test('R3 the budget is DERIVED from the job\'s own timeouts (list + probe + two downloads + grace + slack), not a guess', () => {
