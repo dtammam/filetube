@@ -356,6 +356,32 @@ test('one-off Cancel: kills the yt-dlp group (grandchild dead), the job settles,
   }
 });
 
+test('playlist Cancel: kills the running video\'s yt-dlp group (grandchild dead) and the job settles', async () => {
+  run.probeChannel = async () => null;
+  setModes(['hang-linger']);
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-fake-ytdlp-data-'));
+  const dlDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-fake-ytdlp-dl-'));
+  const deps = { ...makeFakeDeps(), dataDir };
+  const config = ytdlp.parseYtdlpConfig({ FILETUBE_YTDLP_ENABLED: 'true', FILETUBE_YTDLP_POLL_MINUTES: '0', FILETUBE_YTDLP_DOWNLOAD_DIR: dlDir });
+  const { base, close } = await startTestApp(deps, config);
+  const status = async () => (await (await fetch(`${base}/api/subscriptions/status`)).json()).oneShots || {};
+  try {
+    const r = await postJson(base, '/api/ytdlp/download-playlist', { listId: 'PLUtyNbQXMTLg', title: 'Hang', ids: ['vid00000001', 'vid00000002'], format: 'video', quality: 'best' });
+    assert.equal(r.status, 202);
+    const { jobId } = await r.json();
+    assert.ok(await waitFor(() => grandchildPids().length === 1, 5000), 'the first video spawned yt-dlp and its grandchild');
+    const cancel = await postJson(base, `/api/ytdlp/download/${jobId}/cancel`);
+    assert.equal(cancel.status, 200);
+    assert.ok(await waitDead(grandchildPids()[0], 2000), 'Cancel must kill the running video\'s whole yt-dlp group');
+    assert.ok(await waitFor(async () => invocations() === 1 && (await status())[jobId]?.state === 'cancelled', SLACK_MS), 'the playlist job settles as cancelled and spawns nothing more');
+  } finally {
+    killStragglers();
+    await close();
+    fs.rmSync(dlDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
 // ---- both subscription cancel routes (index.js: stop-all and single) through the real spawn ------------------
 
 const runlog = require('../../lib/ytdlp/runlog');
