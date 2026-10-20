@@ -3,10 +3,10 @@ plan: download-hang
 harness: v2 · full
 branch: fix/v1.392.0-download-hang
 anchor: spec
-status: Built (W1-W4 committed), at the gate
-next: full gate r1 (adversary + qa + security-brief), the publish dry run (tini smoke), then release
+status: Shipped v1.392.0
+next: none - shipped; Dean owes the v1.392.0 lines in docs/DEVICE-CHECKS.md
 design: Approved 2026-10-20 @0b3bbbe6
-gate: pending
+gate: APPROVED r3 @381d7001 (adversary + qa + security-brief)
 builder: smart
 ---
 
@@ -131,7 +131,14 @@ with `node scripts/plan-complete.js <this plan> "Shipped v1.392.0" --apply` in t
   LESSONS 2 records the class.
 - Suites (counts, both Nodes): @b61731d8 Node 22.23.1 `npm test`: tests 12570, pass 12557, fail 0, skipped 13 (exit 0).
   Node 24.20.0 first run in a `git archive` copy: 9 fail, all environmental (`fatal: not a git repository` from tests that
-  `git ls-files`, an EISDIR through the symlinked node_modules); re-run in a real git worktree below.
+  `git ls-files`, an EISDIR through the symlinked node_modules); re-run in a real git worktree @0e238bef: tests 12570,
+  pass 12557, fail 0, skipped 13 (exit 0).
+  Release suites @381d7001 (the approved sha): Node 24.20.0 tests 12573, pass 12560, fail 0, skipped 13 (exit 0). Node
+  22.23.1, run CONCURRENTLY with the Node 24 suite: tests 12573, pass 12557, fail 3 (books-api.test.js "T6: progress pings
+  coalesce" expected 1 batch, actual 0, and the dependent "T6: filter=reading" expected 2, actual 1; music-radio-series-r1
+  "game station 165.2 ms vs real-genre 63.1 ms", the known timing-ratio flake). Neither file nor its modules is in this diff;
+  both files alone 3/3 green (38/38 each run); Node 22.23.1 re-run ALONE @381d7001: tests 12573, pass 12560, fail 0,
+  skipped 13 (exit 0).
 - Image smoke test and PID 1: publish dry run 39363539226 (workflow_dispatch @0e238bef; Dockerfile and docker-publish.yml
   unchanged since): secret-scan, qualify (22), audit, publish all success. Smoke, verbatim: `smoke OK: /login -> 200 (via
   /welcome), /api/stats unauth -> 401, PID 1 = tini, node under it, yt-dlp 2026.08.17.073947, docker stop -> exit 0`.
@@ -148,6 +155,12 @@ with `node scripts/plan-complete.js <this plan> "Shipped v1.392.0" --apply` in t
   - Gate: APPROVED r2 @af7b8002 — qa (W1, N1-N3 fixed; 93/93 Node 22, 131/131 Node 24 on its targeted set)
   - Gate: APPROVED r2 @af7b8002 — adversary (every r1 fix's mutant red, box intact; new N8: the same pid 4242)
   - The pid 4242 removal (a test fixture, not bookkeeping) goes back to the same seats for r3.
+  - Gate: APPROVED r3 @381d7001 — security-brief (N4 fixed; N2 advisory)
+  - Gate: APPROVED r3 @381d7001 — adversary (N8 fixed; playlist-job 32/32; the plan's evidence matches its runs)
+  - Gate: APPROVED r3 @381d7001 — qa (pid gone; grandchild-hang + playlist-job 53/53; evidence lines checked)
+  - Close-out after approval at 381d7001 is bookkeeping only (no seat re-check, RELEASING step 1); bound by
+    `git diff --name-only 381d7001..HEAD`: ROADMAP.md docs/exec-plans/completed/2026-10-20-download-hang.md (docs and the plan move only; package.json /
+    package-lock.json unchanged since the approval, the version bump landed before the gate in b61731d8).
 
 ## Done means
 
