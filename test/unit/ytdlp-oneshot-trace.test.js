@@ -212,7 +212,10 @@ async function withBin(bin, fn) {
   try { return await fn(require('../../lib/ytdlp/run')); } finally { engine.activeBinaryPath = orig; }
 }
 // The adversary's shape: the child exits at once while a grandchild holds its stdout/stderr for `ms`.
-const GRANDCHILD = (ms) => `require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${ms})'], { stdio: ['ignore', 'inherit', 'inherit'] }); process.exit(0);`;
+// v1.392.0: the grandchild is `detached` (its own session, so it ESCAPES yt-dlp's process group). Since v1.392.0
+// run.js kills yt-dlp's group the moment it exits, so a same-group grandchild no longer holds the pipes at all;
+// only a helper outside the group can, for at most EXIT_SETTLE_GRACE_MS (these hold them well inside it).
+const GRANDCHILD = (ms) => `require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, ${ms})'], { stdio: ['ignore', 'inherit', 'inherit'], detached: true }); process.exit(0);`;
 
 test('gate r1 W2: the heartbeat keeps beating after the exit until the pipes close, and says so (exited, msSinceExit)', async () => {
   const d = tmpDir();
