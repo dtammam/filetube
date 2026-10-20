@@ -406,6 +406,12 @@
 - [ ] **Bug: `waitForOneShotTerminal` polls with no time limit** _(v1.392.0 kickoff, noted out of scope)_ - the wait loop
   (lib/ytdlp/index.js) re-polls a one-off's state until it is terminal with no wall-clock cap (LESSONS 11 "every poll loop
   terminates"). Since v1.392.0 every download settles, so it ends in practice; it still needs its own cap.
+- [ ] **Bug (same class as v1.392.0 F1): the engine's own processes settle only on `'close'`, inside the shared download
+  queue** _(v1.392.0 build, found while briefing the gate; out of the plan's scope)_ - `runEngineProcess` (lib/ytdlp/engine.js: the
+  python venv, `pip install`, the version probe) settles only on the child's `'close'`, its timeout kills only the pid, and an engine
+  install runs inside the same `runExclusive` queue as every download (`queueEngineInstall`). A pip subprocess that kept the pipes
+  would wedge the queue exactly like F1 did. Fix: the same exit + grace settle and group kill as run.js (share the helper).
+  Also check `lib/ytdlp/cover.js`'s `execFile` (ffmpeg) for the same shape.
 - [ ] **A subscription download has no trace hook** _(v1.392.0 kickoff, noted out of scope)_ - the one-off download trace
   (Settings > Troubleshooting > Download trace) records only one-offs; a subscription download's spawn, exit, close, kill and the
   v1.392.0 `settle` line reach only the container log and the runlog's `settledBy`. Wire `onTrace` for the subscription lane.

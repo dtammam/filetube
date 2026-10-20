@@ -3,8 +3,8 @@ plan: download-hang
 harness: v2 · full
 branch: fix/v1.392.0-download-hang
 anchor: spec
-status: Approved, not started
-next: builder - cut the branch from main @0b3bbbe6, Step 0 (reproduce the hang red), then W1
+status: Built (W1-W4 committed), at the gate
+next: full gate r1 (adversary + qa + security-brief), the publish dry run (tini smoke), then release
 design: Approved 2026-10-20 @0b3bbbe6
 gate: pending
 builder: smart
@@ -107,9 +107,24 @@ with `node scripts/plan-complete.js <this plan> "Shipped v1.392.0" --apply` in t
 
 ## Evidence (builder fills)
 
-- Step 0 repro on main (red output):
-- Branch results (green), the mutants and their red tests:
-- Suites (counts, both Nodes):
+- Step 0 repro on main (red output): test/integration/ytdlp-grandchild-hang.test.js at 8d8ca7eb (main's code): `# tests 11 # pass 1 # fail 10`.
+  Every hang case red with its own message ("the download promise never settled: a grandchild holding the pipes wedged it",
+  "a stall kill never settled the job", "a timeout kill never settled the job", "a list timeout kill never settled", "the gate
+  stayed held by the wedged first job", "Cancel must kill the whole yt-dlp group, grandchild included"); the one green case is
+  the clean-exit control. 0 stray `sleep 600` after. F2 on main (scratchpad f2-probe.js, production 2 min delay, interval 60
+  min, a subscription, boot with no ledger): main `polls in the first 130 s after boot = 0`; branch `= 1` (at +120 s).
+- Branch results (green), the mutants and their red tests: grandchild-hang 19/19 (Node 22), boot-poll 8/8, trace tests 32/32,
+  ci-pipeline-locks + dockerfile 24/24. Mutants in a /tmp `git archive` sandbox, diffed against a pristine copy, each red by name:
+  R1 grace settle off -> 10 red (escaped-group exit, stall, kill-grace, list, heavy gate, cancels, runlog, trace, server exit);
+  R2 group kill off -> 10 red (exit, stall, timeout, list x2, all four cancels, trace); R2 exit-time group kill off -> 3 red;
+  detached off (download) -> 8 red; detached off (list) -> 2 red; each cancel site back to `child.kill` (one-off, playlist,
+  stop-all, single) -> red by its own case (they first SURVIVED, masked by the exit-time group kill; a delegating spy on
+  `run.killYtdlp` now binds the wiring, 85af3a95); server exit hook off -> 1 red; runlog settledBy off -> 2 red; trace settle
+  off -> 1 red. W3: boot call off -> 2 red; sanitizer drops the ledger -> 4 red; due ignores the ledger -> 2 red; record off
+  -> 2 red; record on every poll -> 1 red; read-only guard off -> 1 red; interval 0 polls -> 2 red. 19/19 killed.
+- Suites (counts, both Nodes): @b61731d8 Node 22.23.1 `npm test`: tests 12570, pass 12557, fail 0, skipped 13 (exit 0).
+  Node 24.20.0 first run in a `git archive` copy: 9 fail, all environmental (`fatal: not a git repository` from tests that
+  `git ls-files`, an EISDIR through the symlinked node_modules); re-run in a real git worktree below.
 - Image smoke test and PID 1:
 - Gate verdicts (sha):
 
