@@ -201,7 +201,7 @@ test('gate r1 W3: Cancel KILLS the video running now (its process), and that vid
   run.runDownload = async (sub, cfg, vids, opts) => {
     calls.push({ id: vids[0], folder: sub.name });
     return new Promise((resolve) => {
-      const child = { pid: 4242, kill: () => { kills.push(vids[0]); resolve({ ok: false, code: null, stdout: '', stderr: '', error: 'killed' }); } };
+      const child = { kill: () => { kills.push(vids[0]); resolve({ ok: false, code: null, stdout: '', stderr: '', error: 'killed' }); } };
       if (opts && typeof opts.onChild === 'function') opts.onChild(child);
       if (vids[0] !== ids[1]) setTimeout(() => resolve({ ok: true, code: 0, stdout: '', stderr: '' }), 5);
     });
@@ -394,7 +394,7 @@ test('v1.371.0: through the REAL runDownload, the spawned yt-dlp argv carries ea
     argvs.push(argv);
     const child = new EventEmitter();
     child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
-    child.kill = () => {}; child.pid = 4242;
+    child.kill = () => {}; // no pid: a fake pid must never reach a real process (v1.392.0)
     setImmediate(() => child.emit('close', 0));
     return child;
   };

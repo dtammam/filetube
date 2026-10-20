@@ -14,7 +14,9 @@ FROM node:22-alpine
 # ~300MB nobody who sticks with the default needs) -- Piper stays STRICTLY
 # opt-in: set FILETUBE_TTS_ENGINE=piper + FILETUBE_TTS_PIPER_MODEL to a mounted
 # .onnx voice model (see README) to upgrade the voice.
-RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng
+#
+# v1.392.0: also tini, the image's init (PID 1, see ENTRYPOINT below).
+RUN apk add --no-cache ffmpeg python3 py3-pip espeak-ng tini
 
 # Pin the BUNDLED yt-dlp version. This ARG (and the mirrored ENV below) is
 # the source of truth for the binary BAKED INTO the image - the permanent
@@ -121,4 +123,10 @@ ENV NODE_ENV=production
 # Media folders should be mounted (e.g. -v /path/to/my/movies:/media) and then configured via UI.
 VOLUME [ "/app/data" ]
 
-CMD [ "npm", "start" ]
+# v1.392.0 (plan 2026-10-20-download-hang, R3): tini is PID 1. It reaps orphaned processes (a yt-dlp helper
+# whose parent died) and forwards `docker stop`'s SIGTERM to node, which flushes and exits, killing any running
+# yt-dlp process group on the way out. Before, `npm start` ran as PID 1: orphans were never reaped and the
+# SIGTERM never reached node. Every self-hoster gets this from the image; do NOT also set compose `init: true`
+# (it would double up). node runs directly (not through npm), so its signals are its own.
+ENTRYPOINT [ "/sbin/tini", "--" ]
+CMD [ "node", "server.js" ]

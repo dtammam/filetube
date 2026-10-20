@@ -22,7 +22,9 @@ const tmpl = argv[argv.indexOf('-o') + 1];
 const target_url = argv[argv.indexOf('--') + 1];
 const id = new URL(target_url).searchParams.get('v');
 // Gate r1 fixtures, by video id: HANGHANGHAN hangs after its first progress line (a live child to cancel);
-// GRANDCHILD1 exits while a grandchild still holds its stdout/stderr for 1.5 s (the adversary's shape).
+// GRANDCHILD1 exits while a grandchild still holds its stdout/stderr for 1.5 s (the adversary's shape). v1.392.0:
+// the grandchild is detached (out of yt-dlp's process group): run.js now kills the group at the exit, so only a
+// helper outside it can still hold the pipes (up to EXIT_SETTLE_GRACE_MS).
 if (id === 'HANGHANGHAN') { process.stdout.write('[download]  10.0% of 1.00MiB at 1.00MiB/s ETA 00:09\n'); setInterval(() => {}, 1000); return; }
 const target = tmpl.replace('%(title)s', 'Trace Video').replace('%(id)s', id).replace('%(ext)s', 'mp4');
 fs.mkdirSync(require('path').dirname(target), { recursive: true });
@@ -35,7 +37,7 @@ for (const p of prints) {
   if (body.includes('%(__real_download)j')) process.stdout.write(body.replace('%(__real_download)j', 'true') + '\n');
 }
 if (id === 'GRANDCHILD1') {
-  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], { stdio: ['ignore', 'inherit', 'inherit'] });
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], { stdio: ['ignore', 'inherit', 'inherit'], detached: true });
 }
 process.exit(0);
 `;

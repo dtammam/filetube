@@ -391,7 +391,7 @@
   every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
   and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
 
-- [ ] **Bug (investigate): a one-off download sometimes looks stuck until the container restarts** (Dean,
+- [x] **Bug: a one-off download sometimes looks stuck until the container restarts** - SHIPPED v1.392.0 (see Shipped) (Dean,
   2026-09-30: "sometimes I see one-off downloads getting stuck. I don't know if they're actually stuck or if
   they're just a graphical thing"). **v1.365.0 instruments it** (no hang fix). Next time a row looks stuck, before restarting:
   look at the row. "Can't reach FileTube, last reached N ago" = the screen is stale (the page cannot reach the server). A
@@ -399,6 +399,22 @@
   "waiting N" = it waits behind another download. Merging / Converting rows show no age (follow-up below). Then Settings >
   Troubleshooting > Download trace (admin) and send the .txt. Outcome wanted: Dean can tell "stuck" from "stale" without
   restarting the container.
+- [ ] **Bug: a video that failed inside a `partial` run is never listed again** _(v1.392.0 kickoff, noted out of scope)_ - a
+  `partial` subscription run moves the channel's cutoff to today (lib/ytdlp/index.js, the partial arm; rules.js's cutoff), so a
+  video that failed in it falls behind the cutoff and the next poll never lists it. First question: keep the cutoff at the oldest
+  failed video's date, or keep a per-channel retry list.
+- [ ] **Bug: `waitForOneShotTerminal` polls with no time limit** _(v1.392.0 kickoff, noted out of scope)_ - the wait loop
+  (lib/ytdlp/index.js) re-polls a one-off's state until it is terminal with no wall-clock cap (LESSONS 11 "every poll loop
+  terminates"). Since v1.392.0 every download settles, so it ends in practice; it still needs its own cap.
+- [ ] **Bug (same class as v1.392.0 F1): the engine's own processes settle only on `'close'`, inside the shared download
+  queue** _(v1.392.0 build, found while briefing the gate; out of the plan's scope)_ - `runEngineProcess` (lib/ytdlp/engine.js: the
+  python venv, `pip install`, the version probe) settles only on the child's `'close'`, its timeout kills only the pid, and an engine
+  install runs inside the same `runExclusive` queue as every download (`queueEngineInstall`). A pip subprocess that kept the pipes
+  would wedge the queue exactly like F1 did. Fix: the same exit + grace settle and group kill as run.js (share the helper).
+  Also check `lib/ytdlp/cover.js`'s `execFile` (ffmpeg) for the same shape.
+- [ ] **A subscription download has no trace hook** _(v1.392.0 kickoff, noted out of scope)_ - the one-off download trace
+  (Settings > Troubleshooting > Download trace) records only one-offs; a subscription download's spawn, exit, close, kill and the
+  v1.392.0 `settle` line reach only the container log and the runlog's `settledBy`. Wire `onTrace` for the subscription lane.
 - [ ] **Download rows: a stuck merge says so, and phones see "last reached"** _(v1.365.0 gate r2, Dean: ship now, follow up)_ - (a) a
   Merging / Converting row shows no age, so a stuck ffmpeg merge (probably the likeliest real hang) reads "Merging..." forever: show
   "merging for N min" past about 10 min; (b) on a phone the offline chip shows only "Can't reach FileTube" (the "last reached N
@@ -846,6 +862,17 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.392.0 - Downloads never wedge until the container is recreated (2026-10-20)
+
+- **Settle on exit + grace (F1, R1)**: both yt-dlp spawners (`spawnYtdlp`, `spawnYtdlpDownload`) used to settle only on the child's `'close'`, which waits for EVERY holder of its stdout/stderr pipes; a helper yt-dlp left behind (an ffmpeg merge, the node challenge solver) held them forever, so the job, the shared heavy queue and the poll (`pollBusy`) wedged until a container recreate. Now a run settles at the child's `'exit'` plus `EXIT_SETTLE_GRACE_MS` (5 s), or at a kill plus the grace when `'exit'` never comes, destroying the late pipes; a normal `'close'` settles exactly as before. Results keep their shape and the stalled / timed-out / cancel outcomes.
+- **Kill the process group (R2)**: yt-dlp spawns `detached` (its own group); every kill (stall, timeout, stream error, the one-off, playlist, stop-all and single subscription cancels via `run.killYtdlp`) signals the group, falling back to `child.kill`; the group is killed again at yt-dlp's exit so no helper outlives the job; the server's `'exit'` kills every still-live group (SIGTERM / SIGINT exit through `process.exit`).
+- **The hang explains itself (R6)**: a settle without `'close'` logs one line (`yt-dlp settled without close: settledBy=... pid=... msSinceExit=... groupSurvivors=...`), writes a `settle` line to the one-off trace, and marks the runlog row `settledBy: 'exit-grace' | 'kill-grace'`.
+- **tini in the image (R3)**: `apk add tini`, `ENTRYPOINT ["/sbin/tini", "--"]`, `CMD ["node", "server.js"]` (was `npm start` as PID 1: no reaping, SIGTERM never reached node). The publish smoke now asserts PID 1 = tini, node under it, the bundled `yt-dlp --version`, and `docker stop` exiting 0. Compose `init: true` is not needed (and would double up).
+- **Boot catch-up poll (F2, R5)**: the poll timer's ledger `lastPollAt` sits beside the engine's `lastCheckAt` in the engine state store; at boot, when it is missing or older than the poll interval, one catch-up poll runs 2 min after boot through the normal scheduled tick (read-only media, the breaker resume, pollBusy and backoff still apply). Measured: main 0 polls in the first 130 s after a boot with the interval at 60 min, the branch 1 (at +120 s).
+- **Tests**: test/integration/ytdlp-grandchild-hang.test.js (a fake `yt-dlp` through the real spawn whose grandchild holds the pipes: exit, stall, timeout, list timeout, escaped-group helpers, a process that ignores the kill, the heavy queue, all four cancel routes, the runlog and trace lines, the server exit; 10 of the first 11 red on main), test/integration/ytdlp-boot-poll.test.js; 19 mutants, each red by name.
+- **Gate**: adversary + qa + security-brief (full), three rounds. r1 @0e238bef: QA CHANGES (a `groupSurvivors` that always read true on a kill + grace settle, and a device check that promised the log names the helper); adversary and security APPROVED with notes (late pipes, the server-exit list, guards no test bound). r2 @af7b8002 APPROVED; r3 @381d7001 APPROVED after the last made-up test pid was removed. During r1 fixes a guard test's fixture of pid 1 turned its own mutant into `kill(-1)` and killed every session on the build box twice; the fixture is now a sacrificial process (LESSONS 2). Publish dry run: PID 1 = tini, node under it, the bundled yt-dlp runs, `docker stop` exits 0.
+- Disclosed: a helper that leaves yt-dlp's process group on its own (its own session) is not killed - the job is still freed at exit + grace and the log line says `groupSurvivors=false`; a process the kernel cannot kill (stuck in uninterruptible I/O) is freed at kill + grace but may linger until the I/O returns (its group stays on the server's exit list until it exits; the log reports `groupSurvivors=unknown`); a run whose retry (attempt 2) settled normally keeps the first attempt's `settledBy` unbound by a test.
 
 ### v1.388.0 - The sticker menu becomes a FileTube sheet, daily controls first (2026-10-13)
 

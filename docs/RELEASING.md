@@ -364,8 +364,12 @@ Since v1.148 the publish job never rebuilds between testing and pushing:
 2. A SMOKE TEST boots that exact image against a fresh anonymous data
    volume and asserts the measured first-run contract: `GET /login`
    (following redirects) reaches 200 via `/welcome`, and an
-   unauthenticated `GET /api/stats` answers 401. A failed smoke dumps
-   the container logs and blocks the push - nothing untested ships.
+   unauthenticated `GET /api/stats` answers 401. Since v1.392.0 it also
+   asserts the process model: PID 1 is tini, node is its child, the
+   bundled `yt-dlp --version` runs, and `docker stop` ends the container
+   with exit 0 (the SIGTERM reached node; 137 would mean it went nowhere).
+   A failed smoke dumps the container logs and blocks the push - nothing
+   untested ships.
 3. The SAME local image is promoted by identity (`docker tag` +
    `docker push`) to every release tag; the image id and repo digests
    are written to the run's step summary.
