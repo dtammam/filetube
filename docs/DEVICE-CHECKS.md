@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Downloads never wedge (v1.392.0)
+
+- [ ] v1.392.0 - Next time a download looks stuck, do NOT restart: wait for the stall timer (10 min with no progress) or press Cancel. It clears on its own, and the downloads queued behind it start.
+- [ ] v1.392.0 - After this update (and any later one), subscriptions are checked within a few minutes of FileTube starting, not an hour later (the bell or the Subscriptions page shows new videos without a manual re-pull).
+- [ ] v1.392.0 - Server: `docker exec <container> cat /proc/1/comm` prints `tini`.
+- [ ] v1.392.0 - If a download is ever freed this way, the container log has one line `yt-dlp settled without close: settledBy=...`; send it (and, for a one-off, the Download trace). It says which way the job was freed (exit-grace or kill-grace) and whether a helper was still alive in yt-dlp's group when it exited.
+
 ## App Store cleanup (v1.391.0)
 
 - [ ] v1.391.0 - (a) The store-build gate: on an iOS build that does NOT announce `mediaFetch`, signed in to a server with downloads on, none of these appear: Subs or Download tabs, the header Download button, the bell, Reheat, Subscribe, Pin, the Downloads folder, Settings > Downloads, Notifications and Imported videos, and /subscriptions says "Not available in this app". The offline Download control still works. A build that announces it, and Safari, are unchanged. (iOS Root / Dean)

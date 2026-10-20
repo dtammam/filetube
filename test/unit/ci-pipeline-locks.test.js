@@ -117,6 +117,28 @@ test('docker-publish: the smoke asserts the MEASURED contract and blocks the pus
   assert.match(smoke, /exit 1/, 'the smoke failure path exits nonzero - without this a broken image pushes');
 });
 
+test('v1.392.0 (R3): the smoke asserts PID 1 = tini, node under it, the bundled yt-dlp runs, and docker stop exits 0', () => {
+  const smoke = PUBLISH.slice(PUBLISH.indexOf('Smoke-test the built image'), PUBLISH.indexOf('Log in to Docker Hub'));
+  assert.match(smoke, /docker exec smoke cat \/proc\/1\/comm/);
+  assert.match(smoke, /"\$pid1" = "tini" \] \|\| fail/);
+  assert.match(smoke, /"\$node_ppid" = "1" \] \|\| fail/);
+  assert.match(smoke, /docker exec smoke yt-dlp --version/);
+  assert.match(smoke, /\|\| fail "the bundled yt-dlp did not run/);
+  assert.match(smoke, /docker stop -t \d+ smoke/);
+  assert.match(smoke, /"\$stopped" = "0" \] \|\| fail/);
+  // ORDER: every check runs before the container is removed.
+  assert.ok(smoke.indexOf('"$stopped" = "0"') < smoke.lastIndexOf('docker rm -f smoke'), 'the stop check runs before the final rm');
+});
+
+test('v1.392.0 (R3): the image runs node under tini (ENTRYPOINT), never npm as PID 1, and installs tini', () => {
+  const dockerfile = raw('Dockerfile').replace(/^\s*#.*$/gm, '');
+  assert.match(dockerfile, /^RUN apk add --no-cache [^\n]*\btini\b/m, 'tini is installed from Alpine');
+  assert.match(dockerfile, /^ENTRYPOINT \[ "\/sbin\/tini", "--" \]$/m);
+  assert.match(dockerfile, /^CMD \[ "node", "server\.js" \]$/m);
+  assert.doesNotMatch(dockerfile, /npm", "start/, 'npm must not be PID 1 (or the child of tini that node signals pass through)');
+  assert.doesNotMatch(raw('docker-compose.yml').replace(/^\s*#.*$/gm, ''), /^\s*init:\s*true/m, 'compose init: true would double up with tini');
+});
+
 test('docker-publish: promotion is BY IDENTITY (docker tag + push of the smoked image), push-event-gated', () => {
   const promote = PUBLISH.slice(PUBLISH.indexOf('Log in to Docker Hub'));
   assert.equal((promote.match(/if: github\.event_name == 'push'/g) || []).length, 2, 'login AND promote are both push-gated (the dispatch dry-run skips them)');
