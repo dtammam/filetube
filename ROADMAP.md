@@ -85,6 +85,20 @@
 
 ### Bugs
 
+- [ ] **Gate watchdog follow-ups** _(v1.393.0 gate, disclosed not fixed)_ - (a) engine, probe, re-pull and podcast gate jobs carry no
+  budget (only channel and one-off jobs do; the others are bounded by their own spawn timeouts, and the engine's pip children are
+  not yt-dlp groups the watchdog can prove gone); (b) a zombie job that wakes after its budget release can still overwrite its own
+  activity row; (c) the per-job abandoned flag rides AsyncLocalStorage, which does not follow an event-emitter callback registered
+  outside the job; (d) a repeated `sub:<id>` lane can push its `gate-leave` trace line out of the kept window (sticky pinning like
+  the one-off lane); (e) `unhandledRejection` is not recorded in the download trace (only `uncaughtException` is).
+- [ ] **A list line over 64 MB skips that video for good** _(v1.393.0)_ - the slim list pass drops an over-long `--dump-json` line
+  (counted and logged), and once the cutoff advances that video is never listed again. Use the same fix as the partial-run item
+  below (do not advance past a skipped entry), or switch the list pass to `--print` of just the kept fields so no line is large.
+- [ ] **A cancelled listing still runs the avatar self-heal probe** _(v1.393.0 gate, low)_ - after Cancel on a listing the cycle
+  returns `cancelled` but the channel avatar probe may still spawn once. Skip it when the latch is set.
+- [ ] **Uncaught-trace scrub: slice before the regex** _(v1.393.0 security-brief, INFO)_ - `scrub` in `lib/ytdlp/oneshotTrace.js`
+  runs `\S*cookies\S*` on the full message before the 300-character cut; a huge unbroken message could stall the handler. Cut the
+  message to about 2000 characters first, then scrub.
 - [ ] **Stray text selection outside text fields** _(Dean, 2026-10-13, via the FileTube Root)_ - he sees text drag / selection
   highlights on UI surfaces where nothing should be selectable. Make app chrome non-selectable (`user-select: none` on the shell,
   cards, menus, sheets, player) and keep selection ONLY in real text inputs (search and every other field, textarea,
@@ -412,9 +426,7 @@
   install runs inside the same `runExclusive` queue as every download (`queueEngineInstall`). A pip subprocess that kept the pipes
   would wedge the queue exactly like F1 did. Fix: the same exit + grace settle and group kill as run.js (share the helper).
   Also check `lib/ytdlp/cover.js`'s `execFile` (ffmpeg) for the same shape.
-- [ ] **A subscription download has no trace hook** _(v1.392.0 kickoff, noted out of scope)_ - the one-off download trace
-  (Settings > Troubleshooting > Download trace) records only one-offs; a subscription download's spawn, exit, close, kill and the
-  v1.392.0 `settle` line reach only the container log and the runlog's `settledBy`. Wire `onTrace` for the subscription lane.
+  **v1.393.0 fixed `runEngineProcess` (exit + 5 s grace, pipes destroyed); the `cover.js` ffmpeg `execFile` check is still open, and the engine job is still unbudgeted by the gate watchdog.**
 - [ ] **Download rows: a stuck merge says so, and phones see "last reached"** _(v1.365.0 gate r2, Dean: ship now, follow up)_ - (a) a
   Merging / Converting row shows no age, so a stuck ffmpeg merge (probably the likeliest real hang) reads "Merging..." forever: show
   "merging for N min" past about 10 min; (b) on a phone the offline chip shows only "Can't reach FileTube" (the "last reached N
@@ -862,6 +874,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.393.0 - A listing that is too big never wedges the download queue (2026-10-21)
+
+- **Settle bodies never throw (R1)**: a throw after the settle latch (production: `Buffer.toString` on more than 512 MB of list output, `ERR_STRING_TOO_LONG`) escaped to server.js's log-only `uncaughtException` handler, the promise never resolved, and the heavy gate and `pollBusy` were held for hours. Every settle site of `spawnYtdlp`, `spawnYtdlpDownload` and `runEngineProcess` now runs through `guardSettle`: a throw resolves `{ ok: false, code: 'ESETTLE' }` (resolved before logging, cookies path redacted), including the exit/kill-grace settle.
+- **The list pass streams and slims (R2)**: the `--dump-json` output is parsed line by line from raw bytes and only the 16 fields any reader uses are kept (`LIST_KEEP_FIELDS`), with 64 MB line and kept caps (skips and drops are counted and logged). Measured on real yt-dlp 2026.08.19: 11.5 MB per NASA-channel entry (`automatic_captions` alone is 10.4 MB), so about 45 entries exceeded 512 MB. A real child writing 587 MB now resolves ok with the slim entries while the test process grows 10-17 MB. Byte-identical proof on a fixture of real lines at five chunkings, a differential fuzz of 3000 cases (0 mismatches), and a scan test that every reader's field is kept.
+- **Cancel frees a listing (R4)**: a `listing` subscription registers its list child, so Cancel and Stop-all kill it (process group), the row settles `cancelled` (not an error that counts toward the breaker), and the poll moves on. A Cancel that arrives while the list finished ok no longer goes on to download.
+- **Gate-job budget watchdog (R3)**: channel and one-off gate jobs carry a budget derived from their own timeouts (channel about 6.4 h, one-off about 6.2 h). Past it the job is abandoned (it can spawn nothing: `EABANDONED`), every live yt-dlp group is SIGKILLed, and the gate is released ONLY once every group is proven exited, so two yt-dlp never run at once. The row says "stopped: exceeded its time budget" and the channel backs off.
+- **Engine process cannot wedge the gate**: `runEngineProcess` settles at exit or kill plus a 5 s grace and destroys the pipes (a pip grandchild holding them no longer holds the queue).
+- **Instruments (R5)**: `uncaughtException` is recorded in the download trace (Settings > Troubleshooting > Download trace) with a scrubbed message and the first stack lines, not only logged; the subscription lane writes `sub:<id>` events (`gate-enter`, `list-start`, `list-end`, `budget-stop`, `gate-leave`, and the download's own).
+- Gate: adversary, qa, security-brief APPROVED r2 @596d44aa (r1 found the engine wedge, the unbound one-off wiring, and test gaps; all fixed with mutants red). Dual-Node suites 12610 tests each, 0 fail.
 
 ### v1.392.0 - Downloads never wedge until the container is recreated (2026-10-20)
 

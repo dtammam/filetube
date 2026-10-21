@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## A listing never wedges the queue (v1.393.0)
+
+- [ ] v1.393.0 - Unpause the Scott Hanselman subscription (it was paused during the incident). It checks and finishes, or fails with a message, within an hour; it does not sit on "listing" for hours.
+- [ ] v1.393.0 - Queue a one-off download while a subscription poll is running: the one-off starts when the poll's current channel finishes (it is not stuck behind a channel for hours).
+- [ ] v1.393.0 - If a subscription ever sits on "Checking" for a long time, press Cancel on its row: it says cancelled, the next channel is checked, and the downloads behind it run.
+- [ ] v1.393.0 - If a check or download is stopped by the safety limit, its row reads "stopped: exceeded its time budget"; send the Download trace (it now records the subscription lane and any crash).
+
 ## Downloads never wedge (v1.392.0)
 
 - [ ] v1.392.0 - Next time a download looks stuck, do NOT restart: wait for the stall timer (10 min with no progress) or press Cancel. It clears on its own, and the downloads queued behind it start.
