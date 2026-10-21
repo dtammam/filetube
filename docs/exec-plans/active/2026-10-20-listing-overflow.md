@@ -59,6 +59,8 @@ index.js list pass) uses only a handful of fields per entry.
 tracked child"), so today only a restart frees it. **Worse:** after a restart, the v1.392.0 catch-up poll reaches the
 same channel and wedges again.
 
+Gate: APPROVED r1 @35d23677 - security-brief
+
 ## Rulings (settled at kickoff - do not reopen)
 
 | # | Question | Ruling |
@@ -124,3 +126,6 @@ authorizes the merge.
 - Suites (counts, both Nodes):
 - Image smoke:
 - Gate verdicts (sha):
+Gate: CHANGES r1 @35d23677 - qa
+
+Gate: CHANGES r1 @35d23677 - adversary

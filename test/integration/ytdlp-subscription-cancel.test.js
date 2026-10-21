@@ -461,7 +461,7 @@ test('POST /api/subscriptions/:id/cancel: a KNOWN subscription with nothing curr
 // child to kill during listing, so it must be an honest {cancelled: false}
 // no-op, not a {cancelled: true} that leads the client to believe the
 // download was stopped while it actually proceeds to completion.
-test('POST /api/subscriptions/:id/cancel: a "listing" subscription is a no-op that reports {cancelled: false} -- never a fake success, and the listing proceeds unaffected', async () => {
+test('POST /api/subscriptions/:id/cancel: a "listing" subscription with NO registered list child (a stubbed runList never calls onChild) is a no-op that reports {cancelled: false} -- never a fake success, and the listing proceeds unaffected', async () => {
   const deps = makeFakeDeps();
   const config = enabledConfig();
   const sub = await addSub(deps);
