@@ -7307,9 +7307,9 @@ if (require.main === module) {
   process.on('unhandledRejection', (reason) => {
     console.error('Unhandled promise rejection:', reason);
   });
-  process.on('uncaughtException', (err) => {
-    console.error('Uncaught exception:', err);
-  });
+  // v1.393.0 (R5): also recorded in the download trace (Settings > Troubleshooting), so a throw that escapes a
+  // listener is readable without docker access.
+  process.on('uncaughtException', require('./lib/ytdlp/oneshotTrace').makeUncaughtHandler(DATA_DIR));
 
   // v1.30 A4 (AC4.3, shutdown flush): persist any queued-but-not-yet-flushed
   // watch position before the process actually exits, on every graceful-exit
