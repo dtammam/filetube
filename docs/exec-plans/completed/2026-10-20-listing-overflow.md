@@ -3,10 +3,10 @@ plan: listing-overflow
 harness: v2 · full
 branch: fix/v1.393.0-listing-overflow
 anchor: spec
-status: Approved, not started
+status: Shipped v1.393.0
 next: builder - cut the branch from main @d0d1a785, Step 0 (reproduce ERR_STRING_TOO_LONG wedging the gate, red), then W1
 design: Approved 2026-10-20 @d0d1a785
-gate: pending
+gate: adversary + qa + security-brief APPROVED r2 @596d44aa (r1 CHANGES fixed)
 builder: standard
 ---
 
@@ -60,6 +60,7 @@ tracked child"), so today only a restart frees it. **Worse:** after a restart, t
 same channel and wedges again.
 
 Gate: APPROVED r1 @35d23677 - security-brief
+Gate: APPROVED r2 @596d44aa - security-brief
 
 ## Rulings (settled at kickoff - do not reopen)
 
@@ -118,14 +119,24 @@ authorizes the merge.
   handles it with Dean).
 - A partial run's cutoff skipping failed videos (ROADMAP Planned).
 
-## Evidence (builder fills)
+## Evidence
 
-- Step 0 repro on main (red):
-- C2 bytes per entry:
+- Step 0 repro on main (red): a real fake yt-dlp writing more than 0x1fffffe8 bytes, against run.js/engine.js identical to main d0d1a785:
+  `{"afterMs":40037,"uncaught":["ERR_STRING_TOO_LONG"],"listSettled":null,"nextGateJobRan":false,"gateStillHeld":true,"rssMB":578}`.
+  The uncaught throw reached the log-only handler, the list promise never settled, and the next gate job never ran.
+- C2 bytes per entry: real yt-dlp 2026.08.19 on `https://www.youtube.com/@NASA/videos --playlist-end 5` wrote 57,401,847 bytes, so
+  11,480,369 bytes per entry (lines 10.8-11.7 MB; `automatic_captions` alone is 10.4 MB of the first entry). About 45 entries exceed 512 MB.
+- R6 form used: a REAL child writing more than 0x1fffffe8 bytes (587,182,740 bytes in about 2.6 s, test-process growth 10-17 MB, threshold 100 MB),
+  plus a `Buffer.prototype.toString` throw injection for the settle site (the production `ERR_STRING_TOO_LONG`), plus a throwing `console.error`
+  sink at every other settle site.
 - Branch (green), mutants and their red tests:
-- Suites (counts, both Nodes):
-- Image smoke:
-- Gate verdicts (sha):
-Gate: CHANGES r1 @35d23677 - qa
-
-Gate: CHANGES r1 @35d23677 - adversary
+  - W1: 10 tests, 0 pass / 10 fail on d0d1a785's run.js and engine.js, all green on the branch; guard mutants red.
+  - W2: byte-identical proof at chunk sizes 1/7/4096/65536/whole plus reader-decision equality and a contract scan; mutants (revert to concat, runList dropping `listFields`, dropping a field, ignoring the line cap, ignoring the kept cap) red. Adversary differential fuzz: 3000 cases, 0 mismatches; a real 702 MB child returned ok with 61 entries.
+  - W3: R4 mutants (no onChild registration, no cancelled branch, stop-all ignoring the listing child) red; R3 mutants (killAll skips the kill, no abandoned guard, abandoned flag never set, channel unbudgeted, release despite a false hook) red.
+  - W4: mutants (server log-only handler, no sub onTrace, handler not recording, no list events) red.
+  - Round 2: 12 of 12 mutants red: one-off budget removed, download EABANDONED refusal off, `killAllLiveYtdlp` returns true, download and list exit-grace settle unguarded, engine grace off, engine error unguarded, collector `end()` not flushing, cancel latch only when the list failed, uncaught scrub off, ESETTLE cookies redaction off, log-before-resolve.
+  - One equivalent mutant not pursued: "a late result is not ignored" (Promise resolve is idempotent).
+- Suites (counts, both Nodes): see the release report; targeted ytdlp suites 2545/2545 on Node 22.23.1 at 596d44aa.
+- Image smoke: no docker on this box; the smoke is the tag's Publish Docker Image pipeline (RELEASING: build once, smoke that image, promote). package.json dependencies, package-lock.json dependencies and the Dockerfile are untouched (`git diff --stat d0d1a785..596d44aa -- package.json package-lock.json Dockerfile` is empty).
+- Gate verdicts (sha): security-brief APPROVED r1 @35d23677 and r2 @596d44aa; qa CHANGES r1 @35d23677, APPROVED r2 @596d44aa; adversary CHANGES r1 @35d23677, APPROVED r2 @596d44aa. The verdict lines stay where each seat wrote them above.
+- Close-out binding (bookkeeping only, no seat re-check): see the PR description for `git diff --name-only 596d44aa..HEAD` (ROADMAP.md, docs/**, package.json, package-lock.json version lines).

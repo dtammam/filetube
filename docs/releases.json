@@ -3724,5 +3724,11 @@
     "date": "2026-10-20",
     "title": "Downloads no longer get stuck until you restart FileTube",
     "intent": "A download whose helper (for example the step that joins video and sound) hung could block every download behind it until the container was recreated. Now the stall timer or Cancel always frees it, the stuck step is stopped, and the queue moves on. After an update, subscriptions are checked within a few minutes instead of waiting a full interval. The image now starts FileTube under a small init process (tini); you do not need to change your compose file."
+  },
+  {
+    "version": "1.393.0",
+    "date": "2026-10-21",
+    "title": "A very large channel can no longer block every download",
+    "intent": "Checking a channel with very large video listings could stall, and every download waiting behind it stayed stuck for hours. Channel checks now read only what they need, so they stay small and fast. Cancel works on a channel that is being checked, and a check or download that gets stuck is stopped on its own after a generous time limit. The download log now also records crashes."
   }
 ]
