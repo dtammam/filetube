@@ -1184,3 +1184,16 @@ test('v1.49: allowViewCountDecrease does NOT weaken the validator -- an invalid 
   assert.equal(item.sourceViewCount, 900, 'the stored count is untouched by an invalid input');
   assert.equal(item.sourceViewCountCapturedAt, 1_000, 'and keeps its original date');
 });
+
+test('v1.394.0 gate r1: enumerateRepullableItems flags an audio item (its reheat never asks for comments) and not a video', () => {
+  const config = ytdlp.parseYtdlpConfig();
+  const audioPath = path.join(downloadDir, 'A Song [aud12345678].mp3');
+  const videoPath = path.join(downloadDir, 'A Video [vid12345678].mp4');
+  const db = { metadata: {
+    [getMediaId(audioPath)]: { id: getMediaId(audioPath), filePath: audioPath, name: path.basename(audioPath), ext: '.mp3', type: 'audio' },
+    [getMediaId(videoPath)]: { id: getMediaId(videoPath), filePath: videoPath, name: path.basename(videoPath), ext: '.mp4', type: 'video' },
+  } };
+  const byId = Object.fromEntries(enumerateRepullableItems(db, config).items.map((it) => [it.mediaId, it]));
+  assert.strictEqual(byId[getMediaId(audioPath)].isAudio, true);
+  assert.strictEqual(byId[getMediaId(videoPath)].isAudio, false);
+});
