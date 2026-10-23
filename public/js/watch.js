@@ -1227,6 +1227,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // "About this file"). The variable name is kept because
     // every reference below means "the thing Show more expands".
     const descriptionParagraph = root.querySelector('#video-description');
+    let currentDescriptionText = ''; // v1.394.0: the raw description (Copy description reads it)
     const expandDescBtn = root.querySelector('#expand-desc-btn');
 
     const commentCountBadge = root.querySelector('#comment-count-badge');
@@ -1456,7 +1457,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       else if (id === 'download') saveToDevice();
       else if (id === 'watched') handleToggleWatched();
-      else if (id === 'copy-description') ui.copy(descriptionParagraph ? descriptionParagraph.textContent : '', { label: 'Description copied' });
+      else if (id === 'copy-description') ui.copy(currentDescriptionText, { label: 'Description copied' });
       else if (id === 'reheat') handleReheatClick();
       else if (id === 'move') handleMoveClick();
       else if (id === 'attribute') handleAttributeClick();
@@ -1924,7 +1925,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // that read the CURRENT mediaData at tap time - nothing to re-arm per paint.)
 
       if (plan.isFullItem) {
-        renderVideoDescription(item.tags, item.title);
+        renderVideoDescription(item.tags, item.title, item.duration);
         renderEmbeddedTags(item.tags, item.title);
         // Measure once the (async) webfont has loaded, so line wrapping --
         // and thus the overflow check -- reflects the final font.
@@ -1942,13 +1943,17 @@ if (typeof module !== 'undefined' && module.exports) {
       paintMetadata(mediaData, channelName);
     }
 
-    // v1.48 item 1: write the video's own description into the box. `textContent`
-    // (never innerHTML) because this is attacker-influenced text read straight out
-    // of a downloaded file's metadata tags -- and setting it to '' is what makes
-    // `.video-description:empty` collapse the element for files with none.
-    function renderVideoDescription(tags, title) {
+    // v1.48 item 1: write the video's own description into the box. Never innerHTML:
+    // this is attacker-influenced text read straight out of a downloaded file's metadata
+    // tags. v1.394.0: it goes through the shared rich-text renderer (rich-text.js: text
+    // nodes, http(s) links in a new tab, seek chips for times within the duration). An
+    // empty description renders no nodes, which is what makes `.video-description:empty`
+    // collapse the element. The raw text is kept for Copy description: a long link's
+    // visible text is shortened, so textContent is no longer the description.
+    function renderVideoDescription(tags, title, duration) {
       if (!descriptionParagraph) return;
-      descriptionParagraph.textContent = resolveDisplayDescription(tags, title);
+      currentDescriptionText = resolveDisplayDescription(tags, title);
+      descriptionParagraph.replaceChildren(renderRichText(currentDescriptionText, duration));
       // v1.52: the cold-load skeleton lines under the description collapse
       // the moment a real (possibly empty) description is painted.
       // v1.186.1 (gate SUGGESTION): also STRIP the `.skeleton-shimmer` class, not
@@ -1962,6 +1967,20 @@ if (typeof module !== 'undefined' && module.exports) {
         descSkel.hidden = true;
         descSkel.querySelectorAll('.skeleton-shimmer').forEach((el) => el.classList.remove('skeleton-shimmer'));
       }
+    }
+
+    // v1.394.0: untrusted text (the description, a saved comment) -> links + seek chips.
+    // A chip seeks the shared player, within this item's duration only.
+    function seekFromText(sec) {
+      const p = window.FileTube && window.FileTube.player;
+      if (!p || typeof p.seek !== 'function') return;
+      p.seek(sec);
+      if (typeof p.play === 'function') p.play();
+    }
+    function renderRichText(text, duration) {
+      const rt = window.FileTubeRichText;
+      if (!rt) return document.createTextNode(text || '');
+      return rt.render(text, { doc: document, duration: typeof duration === 'number' ? duration : 0, onSeek: seekFromText });
     }
 
     // Only offer "Show more" when the description overflows by a meaningful amount;

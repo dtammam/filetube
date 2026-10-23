@@ -2050,6 +2050,16 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
   display: none;
 }
 
+/* v1.394.0: the shared rich-text renderer (rich-text.js) - a link (`a`) and a seek chip (a
+   ui-link <button>) inside untrusted text, the description and a saved comment. Both take
+   the role --ink-link (D8.6: ink, the 2005 era's link blue; the channel About's links are
+   the prior art) and an underline, so on a touch screen a link reads as one without hover. */
+.rich-text__link,
+.rich-text__time {
+  color: var(--ink-link);
+  text-decoration: underline;
+}
+
 .ui-btn.expand-description-btn {
   margin: 0 var(--space-4);
 }
