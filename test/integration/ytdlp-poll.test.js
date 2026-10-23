@@ -1546,3 +1546,25 @@ test('F1: a "merging" phase left dangling is cleared by the successful-completio
   assert.equal(snap.state, 'done');
   assert.equal(snap.phase, null, 'F1: the successful-completion terminal write must clear a leftover phase');
 });
+
+// ---- v1.394.0 gate r1 (adversary W3, M41/M26): the subscription lane's "Save top comments" wire ----
+
+test('v1.394.0: the subscription lane passes "Save top comments" from the data dir\'s setting - on by default, off when turned off, never without a data dir', async () => {
+  const engine = require('../../lib/ytdlp/engine');
+  const seen = [];
+  run.runList = async () => ({ ok: true, stdout: ndjson([{ id: 'survivor1', availability: 'public' }]), stderr: '' });
+  run.runDownload = async (_sub, _config, _ids, opts) => { seen.push(opts && opts.saveComments); return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const runOnce = async (dataDir) => {
+    const deps = makeFakeDeps();
+    if (dataDir) deps.dataDir = dataDir;
+    await addSub(deps);
+    fs.rmSync(args.resolveArchivePath(baseConfig()), { force: true });
+    await ytdlp.runPoll(deps, baseConfig());
+  };
+  const dataDir = fs.mkdtempSync(path.join(tmpDir, 'data-'));
+  await runOnce(dataDir);
+  engine.setSaveComments({ dataDir, enabled: false });
+  await runOnce(dataDir);
+  await runOnce(null);
+  assert.deepStrictEqual(seen, [true, false, false], 'on by default; off when turned off; a bundle with no data dir never asks');
+});

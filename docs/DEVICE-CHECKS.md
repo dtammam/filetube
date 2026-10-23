@@ -5,6 +5,15 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Clickable links and real comments (v1.394.0)
+
+- [ ] v1.394.0 - (a) A link in a video's description and in a top comment opens: on desktop in a new tab, in the iPhone app in Safari.
+- [ ] v1.394.0 - (b) A time like 2:15 in a description or a comment jumps the video there, on the phone and on desktop.
+- [ ] v1.394.0 - (c) Download a new video, open it on the phone: "Top comments · saved ..." shows the comments in Modern and in a retro look.
+- [ ] v1.394.0 - (d) Settings > Appearance > Comments: Top comments and fun / Top comments only / Fun comments only / Off each show what they say (fun ones only in the retro looks; Off hides the section), and the choice follows you to another device.
+- [ ] v1.394.0 - (e) Signed in as the kid account, a downloaded video shows no top comments (the fun ones only).
+- [ ] v1.394.0 - (f) Reheat metadata on an older download: its top comments appear. (A library-wide Reheat now fetches every older download's comments once, about 10 s each - start it when you do not need downloads for a while.)
+
 ## A listing never wedges the queue (v1.393.0)
 
 - [ ] v1.393.0 - Unpause the Scott Hanselman subscription (it was paused during the incident). It checks and finishes, or fails with a message, within an hour; it does not sit on "listing" for hours.

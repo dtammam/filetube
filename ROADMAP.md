@@ -443,13 +443,8 @@
 
 ### Features
 
-- [ ] **Scrape YouTube comments with yt-dlp** _(Dean, 2026-10-13, via the FileTube Root)_ - fetch a video's comments
-  (`--write-comments`, written into the info JSON) at download time and on demand for existing items, store them in a
-  feature-owned place (not per-item `db.metadata`, LESSONS 9), show them on the watch page. Verify the flags and extractor args
-  (sort, max count) against yt-dlp source before planning (LESSONS 2, 11); large threads need a cap.
-- [ ] **Clickable links in video descriptions (and comments, once they exist)** _(Dean, 2026-10-13, via the FileTube Root)_ -
-  turn URLs in the watch page description into links (open in a new tab, `rel="noopener noreferrer"`), built from text nodes,
-  never by injecting HTML (escape first; only http/https). The same renderer is reused for comments.
+- [ ] **Real comments for Reddit and other sites** _(v1.394.0, Dean's R8)_ - v1.394.0 saves top comments for YouTube downloads only. yt-dlp has NO Reddit comment extraction (`yt_dlp/extractor/reddit.py` has no `_get_comments`), so Reddit needs FileTube's own fetch; other sites need a per-extractor check (and a cap - `--get-comments` on the any-site lane would fetch every comment).
+- [ ] **Backup restore cap vs saved comments** _(v1.394.0 gate, qa S1)_ - every bundle now carries `sourceComments` (~2-6 KB per downloaded video, 48 KB cap). Dean's instance stays under the 32 MB restore cap (~16-24 MB estimated), but ~5,000 downloaded videos with long threads would reach the ~28 MB revisit trigger. Raise the cap (Dean-approved number) or stream the restore before then.
 - [ ] **External search with quick download** _(Dean, 2026-10-13, via the FileTube Root)_ - a basic in-app search of outside
   sites (YouTube, Reddit, and more) that lists results with a one-tap download button feeding the existing download queue.
   Likely through yt-dlp's search extractors (e.g. `ytsearch`) server-side; security matters (SSRF, who may download: the
@@ -874,6 +869,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.394.0 - Clickable links and times in descriptions, and the real top comments (2026-10-23)
+
+- **Clickable descriptions (W1)**: one shared renderer for untrusted text (`public/js/rich-text.js`, loaded before watch.js on every shell that loads it): text nodes, `http(s)` links in a new tab (`rel="noopener noreferrer"`, the URL parser's own serialization, every other scheme stays text, a shortened link never cuts inside its host), and seek chips for `m:ss` / `h:mm:ss` within the duration ("10:00 am" is a clock, not a chip). Never innerHTML; Copy description copies the raw text.
+- **Saved top comments (W2)**: a new feature-owned table `media_source_comments` (schema v38, additive; the nineteenth floor). "Save top comments" (Settings > Downloads, on by default) adds `--get-comments`, `--no-write-info-json`, an `FTCOMMENTS` print and `max_comments=10,all,0;comment_sort=top` joined into the one `youtube:` extractor-args element. Measured on the real pinned yt-dlp: +2.1 s per download. A comment-API error fails the whole video under `ignoreerrors='only_download'` (measured), so a comments-on download that fails retries once without comments (Dean's ruling); the retry keeps what the first attempt captured. The stdout line cap is 1 MiB (the real line is 5.7 KB; the old 4096 cap would have discarded it). Rides removeMediaState / rekeyMediaState and the backup bundle (`sourceComments`).
+- **Reheat (W3)**: per item and library-wide refresh the snapshot (+1.1 to 2.5 s per item measured); a failed, interrupted or empty fetch keeps the stored one, and "turned off at the source" never erases saved comments (Dean's ruling). A reheated video with no snapshot is re-pulled once (the backfill), and the library pass waits 2 s after each comments-on item.
+- **Watch page + setting (W4)**: GET /api/videos/:id/comments (the item's gate first; a restricted account always gets none, decided on the server). "Top comments · saved ~3 days ago" in every look; author names plain text, dates "~<relative>"; Settings > Appearance > Comments: both / top only / fun only / off (synced pref `ft-comments`).
+- Gate: FULL (adversary, qa, security-brief). r1 CHANGES (the retry dropped first-attempt captures, a reheat could leave an orphan row, "disabled" erased saved comments, unbound lane wires); all fixed with mutants red; r2 APPROVED @b4203a78 by all three seats. Suites: Node 22 full suite before the gate 12,698 tests (1 intended spawn-count change, fixed); the release-commit suite below in the plan Evidence.
 
 ### v1.393.0 - A listing that is too big never wedges the download queue (2026-10-21)
 

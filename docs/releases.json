@@ -3730,5 +3730,11 @@
     "date": "2026-10-21",
     "title": "A very large channel can no longer block every download",
     "intent": "Checking a channel with very large video listings could stall, and every download waiting behind it stayed stuck for hours. Channel checks now read only what they need, so they stay small and fast. Cancel works on a channel that is being checked, and a check or download that gets stuck is stopped on its own after a generous time limit. The download log now also records crashes."
+  },
+  {
+    "version": "1.394.0",
+    "date": "2026-10-23",
+    "title": "Clickable links and the real top comments",
+    "intent": "Links in video descriptions now open in a new tab, and times like 2:15 jump the video there. Downloaded videos also keep their top 10 comments as they were when you saved them, shown under the video in every look, and Reheat refreshes them without ever erasing ones already saved. Settings has a new Comments choice, and the first library-wide Reheat fetches comments for your older downloads, a few seconds each."
   }
 ]

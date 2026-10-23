@@ -100,7 +100,8 @@ the media index in Wave 6 - the MEDIA box). The doc-object key list in
 `lib/db/sqlite.js` (`DOC_OBJECT_KEYS`, just `metadata`) is a LOCK
 (`assertNoUnknownKeys()` throws on strangers). Measured at v1.296.0 (Wave 7):
 no document tables (`doc_kv` and `doc_single` were dropped in schema v33),
-67 relational tables, schema version 37. (The arc's plan:
+68 relational tables, schema version 38 (v1.394.0 added
+`media_source_comments`). (The arc's plan:
 `docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
@@ -117,6 +118,7 @@ flowchart LR
         DT["lib/media/deleteTombstones.js<br/>media_delete_tombstones (media_id, deleted_at, json)<br/>the deferred-delete records: minted/retired/consumed<br/>INSIDE the doc commit's transaction (inSaveTransaction)"]
         TR["lib/media/trashRecords.js<br/>media_trash (media_id = trashId, trashed_at, json)<br/>the trashed-item records - the only way back for a trashed file:<br/>minted/retired inside the doc commit's transaction;<br/>the retention sweep queries trashed_at"]
         LK["lib/media/liked.js<br/>media_liked (media_id, position)<br/>the FROZEN pre-auth likes the first admin adopts once;<br/>re-keyed/removed inside the doc commit by rename/trash/restore/purge"]
+        SC["lib/media/sourceComments.js<br/>media_source_comments (media_id, payload, fetched_at, state)<br/>a downloaded video's saved top comments (v1.394.0);<br/>rides removeMediaState / rekeyMediaState and the bundle"]
         MI["lib/media/items.js<br/>media_items (media_id, json)<br/>the MEDIA INDEX - the last namespace out of the document model (Wave 6):<br/>one row per indexed file, verbatim, in rowid order;<br/>the routes still read it as the `{ metadata }` object load() assembles,<br/>the mutators still write that object, the adapter diffs it back ROW BY ROW<br/>inside the same commit as every inSaveTransaction effect"]
     end
 

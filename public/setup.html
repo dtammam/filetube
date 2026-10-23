@@ -314,6 +314,13 @@
           </div>
           <p class="setup-note">Off by default. FileTube rings the bell with the result either way.</p>
         </div>
+        <!-- v1.394.0 (R7): GET/POST /api/ytdlp/engine `saveComments` - the downloader's own switch, default on. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="save-comments-check">Save top comments</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="save-comments-check" /></span></div>
+          </div>
+          <p class="setup-note">On by default. A new video download keeps the video's top 10 comments as they were that day, and Reheat refreshes them. Saved comments are never erased by a later fetch.</p>
+        </div>
         <div class="setup-group">
           <div class="setup-inline setup-inline--wrap">
             <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="engine-update-btn"><span class="ui-btn__label">Update now</span></button>
@@ -395,6 +402,20 @@
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="hide-stars-check">Hide star ratings</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="hide-stars-check" /></span></div>
           </div>
           <p class="setup-note">The stars are decorative &mdash; a deterministic mock, not real ratings. Hide them app-wide for a cleaner look.</p>
+        </div>
+        <!-- v1.394.0 (R1): which comments the watch page shows; a synced pref (ft-comments), watch.js owns the rule. -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Comments</h3>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="comments-mode-select">Show on the watch page</label>
+            <span class="ui-select"><select id="comments-mode-select" class="ui-select__native">
+                <option value="both" selected>Top comments and fun comments</option>
+                <option value="real">Top comments only</option>
+                <option value="fun">Fun comments only</option>
+                <option value="off">Off</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+          </div>
+          <p class="setup-note">Top comments are the ones a downloaded video had when it was saved. Fun comments are made up, and show only in the retro looks.</p>
         </div>
         <!-- v1.77 (Dean): the Library entries' glyphs (renderLibraryGlyphEditor, per-user server-persisted). -->
         <div class="setup-group">
@@ -1384,6 +1405,7 @@
        view module. -->
   <script src="/js/main.js"></script>
   <script src="/js/ambient.js"></script>
+  <script src="/js/rich-text.js"></script>
   <script src="/js/watch.js"></script>
   <script src="/js/feed-settings.js"></script>
   <script src="/js/setup.js"></script>

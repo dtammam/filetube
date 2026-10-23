@@ -47,16 +47,16 @@ function member(name = 'kid') {
   return users.createUser({ username: name, displayName: name, passwordHash: 'scrypt$32768$8$1$aaaa$bbbb' }, ISO);
 }
 
-test('schema v37: device_tokens exists, users.device_epoch defaults to 0, SCHEMA_VERSION is 37', () => {
-  assert.strictEqual(SCHEMA_VERSION, 37);
-  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, 37);
+test('schema v37: device_tokens exists, users.device_epoch defaults to 0, SCHEMA_VERSION is 37 or later', () => {
+  assert.ok(SCHEMA_VERSION >= 37, 'v37 is a floor; v1.394.0 added v38');
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   const cols = adapter.sql.prepare('PRAGMA table_info(device_tokens)').all().map((c) => c.name);
   assert.deepStrictEqual(cols, ['id', 'user_id', 'token_hash', 'name', 'platform', 'epoch', 'created_at', 'last_used_at']);
   const a = admin();
   assert.strictEqual(a.deviceEpoch, 0, 'a fresh user starts at epoch 0');
 });
 
-test('migration: a v36 database (no device_epoch column, no table) gains both and stamps 37; a re-run is a no-op', () => {
+test('migration: a v36 database (no device_epoch column, no table) gains both and stamps the current version; a re-run is a no-op', () => {
   // Rewind the fresh db to look like v36 through the adapter's own handle (the source lock keeps
   // node:sqlite to lib/db/sqlite.js): drop the table and the column, stamp 36, reopen.
   adapter.sql.exec('DROP TABLE device_tokens');
@@ -64,14 +64,14 @@ test('migration: a v36 database (no device_epoch column, no table) gains both an
   adapter.sql.exec('PRAGMA user_version = 36');
   adapter.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
-  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, 37);
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   assert.ok(adapter.sql.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'device_tokens'").get());
   assert.ok(adapter.sql.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'device_epoch'));
   // Victim shape: the column present but the version not stamped (a crash between the two) heals too.
   adapter.sql.exec('PRAGMA user_version = 36');
   adapter.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
-  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, 37, 'the presence-checked ALTER lets the block re-run');
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'the presence-checked ALTER lets the block re-run');
 });
 
 test('issue: the token is ftd_ + the secret, only its sha256 is stored, lookup finds the row by the token and never by the hash', () => {

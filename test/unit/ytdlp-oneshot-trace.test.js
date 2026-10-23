@@ -183,7 +183,7 @@ test('run.js: the stall watchdog\'s kill is traced with its reason, before the e
 
 test('run.runDownload forwards the hook and numbers the subtitle retry as attempt 2 (source lock on the one wire)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'run.js'), 'utf8');
-  assert.match(src, /onTrace: opts && opts\.onTrace,\n\s+attempt: skipSubtitles \? 2 : 1,/);
+  assert.match(src, /onTrace: opts && opts\.onTrace,\n\s+attempt: skipSubtitles \|\| skipComments \? 2 : 1,/); // v1.394.0: the comments-stripped retry is attempt 2 too
 });
 
 // ---- the backup bundle never carries the trace ----------------------------------------------

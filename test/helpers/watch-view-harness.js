@@ -80,6 +80,7 @@ function watchViewRealm(o) {
   if (Array.isArray(opts.hostCaps)) w.FileTubeHost = { bridge: 1, platform: 'ios', capabilities: opts.hostCaps.slice(), post() {} };
   const srcs = (Array.isArray(opts.hostCaps) ? ['public/js/host-adapter.js'] : []).concat(['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/common.js', 'public/js/main.js']).map(read);
   srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate;');
+  srcs.push(read('public/js/rich-text.js')); // v1.394.0: the shell loads it right before watch.js
   srcs.push(read('public/js/watch.js'));
   w.eval(srcs.join('\n;\n'));
   const $ = (s) => w.document.querySelector(s);
