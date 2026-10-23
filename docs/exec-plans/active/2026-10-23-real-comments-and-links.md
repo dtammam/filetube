@@ -3,8 +3,8 @@ plan: real-comments-and-links
 harness: v2 · lean
 branch: feat/v1.394.0-real-comments
 anchor: spec
-status: Approved @a11d7b9d
-next: builder - cut nothing (the branch carries this plan); Step 0, then W1 (the shared linkify renderer)
+status: Building
+next: the FULL gate (adversary + qa + security-brief) on W1-W4
 design: Approved 2026-10-23 @a11d7b9d
 gate: pending
 builder: smart
@@ -276,3 +276,62 @@ Add these DEVICE-CHECKS lines:
   the videos the bundle's library index still has, and drops the rest (no orphan rows).
 
 ## Evidence (builder fills)
+
+### W1 - the rich-text renderer
+- Tests: test/unit/rich-text.test.js 21/21 (schemes incl. `javascript://example.com/...`, `JaVaScRiPt:`, lookalikes,
+  HTML-as-text, trailing punctuation + balanced parens, long links, times within/past the duration, "10:00 am"
+  decided NOT a chip, the shell census, the real watch view: link + chip + Copy description copies the raw text).
+- ReDoS: 7 pathological 100 KB inputs each tokenize in < 1 s (asserted; the scanners are a fixed prefix + one class).
+- Mutants (sandbox of the committed tree): protocol check removed -> first SURVIVED (masked by the hostname check),
+  a test with hostname-bearing non-http schemes added -> KILLED; scanner accepts any scheme -> KILLED (4); paren
+  balance -> KILLED; duration bound -> KILLED; clock suffix -> KILLED.
+
+### W2 - storage + capture (REAL run, pinned yt-dlp 2026.8.17.73947.dev0 in a scratch venv, static ffmpeg 7.0.2)
+- Video jNQXAC9IVRw through FileTube's own `run.runDownload`, one-off lane: comments off 14.9 s, on 17.0 s (+2.1 s);
+  raw yt-dlp with the FileTube argv: 13.6 / 13.3 s off, 15.8 / 15.7 s on (+2.2 / +2.4 s). Under the 5 s stop rule; no
+  bot check.
+- FTCOMMENTS line shape (fixture test/fixtures/ytdlp-comments/ftcomments-jNQXAC9IVRw.txt, 5,716 bytes):
+  `FTCOMMENTS {"id": "jNQXAC9IVRw", "comment_count": 10, "comments": [{"id", "parent": "root", "text", "like_count",
+  "author_id", "author", "author_thumbnail", "author_is_uploader", "author_is_verified", "author_url", "is_favorited",
+  "_time_text", "timestamp", "is_pinned"}, ...10]}`. Stored row keeps id/text/author/likeCount/isPinned/isUploader/
+  timestamp/timeText only.
+- Injected comment-API error (real binary, `_comment_entries` raising ExtractorError): attempt 1 exit 1 with no file;
+  the comments-stripped retry landed the video (`commentsFallback: true`). Injected `CommentsDisabled`:
+  `FTCOMMENTS {"id": "jNQXAC9IVRw"}` -> stored state `disabled`.
+- Stored row (bridge -> scan, test/integration/ytdlp-comments-capture.test.js on the real fixture lines):
+  `{state:'ok', comments: 10, comments[0].author '@SanDiegoZoo', isPinned true}` under the scanned item's id.
+- Mutants: 15/16 KILLED; M16 (the any-site proxy consume site not passing `consumed`) is equivalent - that lane
+  never asks for comments (D6).
+
+### W3 - reheat (REAL run)
+- `repullItemMetaAndSubs` on the downloaded file: off 6.2 s / 6.1 s, on 8.7 s / 7.2 s (+1.1 to +2.5 s), 10 comments
+  decided. (Its subtitle pass exits 1 on this box in BOTH modes - pre-existing, unrelated.)
+- R3 pacing: the library batch had no inter-item gap and no --sleep-requests on the re-pull; a comments-on item is
+  now followed by REHEAT_COMMENTS_GAP_MS = 2000 ms (the download lane's --sleep-interval default).
+- Backfill choice: a reheated video with no snapshot is "may-refresh" (preview + executor share one predicate); the
+  Run card copy says so. A zero-comment or always-failing video stays may-refresh (bounded, disclosed).
+- Mutants: 9/10 KILLED (R9 "always replace" in the writer KILLED; the fallback dump deciding KILLED); W3M9 (the
+  route's `result.sourceComments &&`) is masked by the store's own null guard, which W3M8b binds.
+
+### W4 - serving + watch page + setting
+- R2 surfaces (LESSONS 10): GET /api/videos/:id/comments is the ONLY reader (item gate first, R2 second, private
+  no-store). Not in GET /api/videos/:id, the library list, search (asserted: no comment text on any of them), the
+  stats page (lib/stats.js reads no comments table), the device-token scope (default deny, not listed), push or
+  notifications. The backup bundle carries `sourceComments` (admin-only route).
+- R2 over admin / restricted blocklist / restricted allowlist / unrestricted member / admin-with-rows: comments-api
+  6/6. Hidden item, missing, `__proto__`, `constructor`, NUL id: 404.
+- R1 matrix: 4 values x Modern + 2009 through the REAL view with the page's own era CSS (getComputedStyle):
+  watch-real-comments 13/13.
+- Measured (Chromium, the visual harness, seeded fixture + a hostile long name/link comment): phone 390 px and
+  desktop 1440 px, Modern and 2009 - document width == viewport (first run found an unbroken 70-char author at
+  579 px on the phone: fixed with overflow-wrap on .comment-author-name, re-measured 390); the long link wraps to
+  2 lines on the phone; 10 rows; fun rows 0 in Modern, visible in 2009; Comment button 95.7 / 96.6 px.
+- lint:ui OK (ledger unchanged); overlay census 0.
+- Mutants: 10/10 KILLED (incl. .ft-fabricated on real rows, R2 off, visibility off, own-property lookup, the
+  duration re-render, the "~", admin-first).
+
+### Full suite before the gate (Node 22.23.1, npm test, at e74377cc)
+- 12,698 tests: 12,684 pass, **1 fail**, 13 skipped. The fail: `ytdlp-oneshot-keep-mine.test.js` S1 (c),
+  "anti-vacuity: the failing download really ran" expected 1 spawn, actual 2 - the new comments-stripped retry
+  (D1), intended. The test now asserts 2 spawns with the retry free of comment flags and the only copy intact
+  after both; re-run 8/8.

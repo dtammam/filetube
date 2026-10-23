@@ -327,7 +327,11 @@ test('S1 (c): a one-off that FAILS (exit 1 after partial output) leaves the pre-
     assert.strictEqual(fs.statSync(libraryFile).ino, inodeBefore, 'same inode');
     const leftovers = fs.readdirSync(path.dirname(libraryFile)).filter((n) => n !== path.basename(libraryFile));
     assert.deepStrictEqual(leftovers, [], 'the failed run\'s intermediate was cleaned; nothing else in the folder was removed or added');
-    assert.strictEqual(downloadSpawns().length, 1, 'anti-vacuity: the failing download really ran');
+    // v1.394.0 (Dean's ruling 2026-10-23): a failed download that asked for the top comments ("Save top
+    // comments" is on by default) is retried ONCE without them - the only copy survives BOTH attempts.
+    const spawns = downloadSpawns();
+    assert.strictEqual(spawns.length, 2, 'anti-vacuity: the failing download really ran, and its comments-stripped retry too');
+    assert.ok(JSON.stringify(spawns[0]).includes('--get-comments') && !JSON.stringify(spawns[1]).includes('--get-comments'), 'the retry carries no comment flags');
   } finally {
     await close();
   }
