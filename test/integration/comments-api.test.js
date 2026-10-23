@@ -103,3 +103,11 @@ test('no other read surface carries the comments: the item body, the library lis
     assert.ok(!r.text.includes('SECRET-COMMENT-TEXT'), url + ' must not carry comment text');
   }
 });
+
+test('R2: an ADMIN is never restricted, even with leftover user_restrictions rows (the role check comes first)', async () => {
+  seed();
+  const boss = __mintTestSession({ username: 'boss-admin', role: 'admin' });
+  userStore.setRestrictions(boss.user.id, [{ kind: 'folder', value: 'Grown' }]);
+  assert.ok(userStore.getRestrictions(boss.user.id).length > 0, 'precondition: the admin carries a row');
+  assert.deepStrictEqual(JSON.parse((await bodyText('/api/videos/kidsvid/comments', boss.cookie)).text), SNAP);
+});
