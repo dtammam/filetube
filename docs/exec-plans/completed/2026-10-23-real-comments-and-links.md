@@ -3,10 +3,10 @@ plan: real-comments-and-links
 harness: v2 · lean
 branch: feat/v1.394.0-real-comments
 anchor: spec
-status: Building
-next: the FULL gate (adversary + qa + security-brief) on W1-W4
+status: Shipped v1.394.0
+next: release v1.394.0 (bookkeeping past b4203a78 only)
 design: Approved 2026-10-23 @a11d7b9d
-gate: pending
+gate: APPROVED r2 @b4203a78 (adversary, qa, security-brief)
 builder: smart
 ---
 
@@ -346,6 +346,19 @@ Add these DEVICE-CHECKS lines:
 - Mutants: 10/10 KILLED (incl. .ft-fabricated on real rows, R2 off, visibility off, own-property lookup, the
   duration re-render, the "~", admin-first).
 
+### Gate (FULL: adversary + qa + security-brief)
+- r1 @73380359: security-brief APPROVED (3 NOTEs); qa CHANGES (W1 the retry dropped first-attempt captures, W2 "disabled"
+  erased saved comments); adversary CHANGES (W1 the same drop, W2 an orphan row from a reheat racing a delete, W3 four
+  unbound enabling wires). W2 (qa) went to Dean: "Keep the saved ones" (D9).
+- Fix round 7fdf97e7 + b4203a78: 12/12 builder mutants on the new guards killed (one survivor, the enumerator's isAudio
+  wire, bound in b4203a78 and then killed).
+- r2 @b4203a78: all three APPROVED (adversary 15/16 delta mutants killed, the survivor `>` vs `>=` at an equal ms
+  equivalent, real end-to-end download + reheat still reach the table; qa 11/11 delta mutants, 342/342 branch tests;
+  security-brief: the delta opens no hole, NOTE-4 cosmetic).
+- Open notes carried, not fixed: security NOTE-4 / adversary NOTE (the no-key restore path's plain assignment would drop a
+  crafted `__proto__` row; real ids are md5), a future `fetchedAt` up to +1 day could pin a row until the clock catches
+  up, YouTube re-pull answers are not id-verified (predates this release).
+
 ### Full suite before the gate (Node 22.23.1, npm test, at e74377cc)
 - 12,698 tests: 12,684 pass, **1 fail**, 13 skipped. The fail: `ytdlp-oneshot-keep-mine.test.js` S1 (c),
   "anti-vacuity: the failing download really ran" expected 1 spawn, actual 2 - the new comments-stripped retry
@@ -356,3 +369,27 @@ Add these DEVICE-CHECKS lines:
 - Gate: APPROVED r1 @73380359 — security-brief (no CRITICAL/WARNING: DOM-only renderer with http(s)-only parsed hrefs, fixed-literal argv, JSON-escaped sentinel with discard-whole cap, R2 enforced server-side on the only reader; 3 NOTEs)
 - Gate: CHANGES r1 @73380359 — qa (2 WARNINGs: a comments retry drops the first attempt's captured meta/comments for a batch's landed siblings (verified repro); a 'disabled' fetch overwrites a saved ok snapshot (R9 vs the Why); 5 SUGGESTIONs)
 - Gate: CHANGES r1 @73380359 — adversary (3 WARNINGs: the comments retry drops attempt-1 captured meta + comments of a batch's landed videos (repro); a reheat writes the snapshot under an id deleted/moved mid-run, an orphan row (repro); unbound wires - the subscription lane's saveComments and R7-off at both download sites and the reheat retry's numeric-code guard survive mutation; real e2e download+reheat reach the table; 5 SUGGESTIONs)
+- Gate: APPROVED r2 @b4203a78 — security-brief (delta opens no hole: NOTE-1 and NOTE-2 fixed as prescribed, restore filter own-key safe incl. `__proto__`, retry merge bounded by MAX_CAPTURED_META, displayUrl linear; 1 new NOTE)
+- Gate: APPROVED r2 @b4203a78 — qa (W1 + W2 fixed as prescribed and bound; S1-S5 fixed; 11/11 delta mutants killed; 342/342 branch tests; no new finding)
+- Gate: APPROVED r2 @b4203a78 — adversary (W1-W3 fixed and bound: both r1 repros now green, M21/M26/M36/M41 killed; 15/16 delta mutants killed, the survivor (stale guard > vs >= at an equal ms) equivalent; real e2e download + reheat still reach the table through the liveness check; no new finding)
+
+### Release close-out binding (bookkeeping only past the approved sha b4203a78; RELEASING.md step 1)
+- Full suite on the release tree (Node 22.23.1, npm test): 12,710 tests, 12,697 pass, 0 fail, 0 cancelled, 13 skipped.
+- `git diff --name-only b4203a78..<close-out>`:
+    ROADMAP.md
+    docs/DEVICE-CHECKS.md
+    docs/LESSONS.md
+    docs/RELEASING.md
+    docs/exec-plans/completed/2026-10-23-real-comments-and-links.md
+    docs/releases.json
+    package-lock.json
+    package.json
+- `git diff b4203a78..<close-out> -- package.json package-lock.json` (version lines only):
+    -  "version": "1.393.0",
+    +  "version": "1.394.0",
+    -      "version": "1.393.0",
+    +      "version": "1.394.0",
+    -  "version": "1.393.0",
+    +  "version": "1.394.0",
+- Device checks owed: docs/DEVICE-CHECKS.md "Clickable links and real comments (v1.394.0)" (a)-(f).
+
