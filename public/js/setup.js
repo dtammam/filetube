@@ -1035,6 +1035,19 @@ function wireHideStarsControl(signal) {
   }, { signal });
 }
 
+// v1.394.0 (R1): the watch page's comments setting - a synced pref (prefs-sync mirrors the
+// write); watch.js owns what each value shows (resolveCommentsMode). Default: both.
+function wireCommentsModeControl(signal) {
+  const sel = document.getElementById('comments-mode-select');
+  if (!sel) return;
+  let stored = null;
+  try { stored = localStorage.getItem('ft-comments'); } catch (_) { /* storage off */ }
+  sel.value = ['both', 'real', 'fun', 'off'].includes(stored) ? stored : 'both';
+  sel.addEventListener('change', () => {
+    try { localStorage.setItem('ft-comments', sel.value); } catch (_) { /* storage off */ }
+  }, { signal });
+}
+
 // v1.166 (Dean): Sneaky critter mode. Per-device (localStorage); common.js owns
 // the engine (applyCritterMode re-scatters or clears immediately) - these
 // controls just reflect and fire it, the hide-stars posture.
@@ -4876,6 +4889,7 @@ function buildEngineViewModel(s) {
     nightlyText: channelText(latest && latest.nightly),
     channel: typeof s.channel === 'string' ? s.channel : 'bundled',
     autoUpdate: s.autoUpdate === true,
+    saveComments: s.saveComments !== false, // v1.394.0 (R7): default on
     controlsDisabled: Boolean(busy) || s.supported !== true,
     updateDisabled: Boolean(busy) || s.supported !== true || s.channel === 'bundled',
     busy: Boolean(busy),
@@ -4901,6 +4915,12 @@ function renderEngineSection(status) {
   if (autoCheck) {
     autoCheck.checked = vm.autoUpdate;
     autoCheck.disabled = vm.controlsDisabled;
+  }
+  // v1.394.0 (R7): not an engine control - only a busy write disables it.
+  const commentsCheck = document.getElementById('save-comments-check');
+  if (commentsCheck) {
+    commentsCheck.checked = vm.saveComments;
+    commentsCheck.disabled = vm.busy;
   }
   const updateBtn = document.getElementById('engine-update-btn');
   if (updateBtn) updateBtn.disabled = vm.updateDisabled;
@@ -4997,6 +5017,12 @@ async function loadEngineSection(signal) {
   if (autoCheck) {
     autoCheck.addEventListener('change', (e) => {
       postEngine('/api/ytdlp/engine', { autoUpdate: e.target.checked });
+    }, { signal });
+  }
+  const commentsCheck = document.getElementById('save-comments-check');
+  if (commentsCheck) {
+    commentsCheck.addEventListener('change', (e) => {
+      postEngine('/api/ytdlp/engine', { saveComments: e.target.checked }); // v1.394.0 (R7)
     }, { signal });
   }
   const updateBtn = document.getElementById('engine-update-btn');
@@ -5537,6 +5563,7 @@ function init(root) {
   renderMusicSkinPicker(); // v1.230: the mobile Music-player skin (per-device)
   renderStickerPicker();   // v1.238: the player-sticker icon picker (logo / emoji / custom upload)
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
+  wireCommentsModeControl(controller.signal); // v1.394.0: which comments the watch page shows
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Critters page's sound check (a diagnostic)
   wireBgTimingLog(controller.signal); // lock-to-audio phase 1: the Experimental background-audio timing log

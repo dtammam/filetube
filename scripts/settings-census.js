@@ -24,6 +24,7 @@ const P = '/api/prefs (synced) + ' + D; // v1.382.0: a synced pref (prefs-sync.j
 // id -> [save path, roles that see the control today ("all" | "admin" | "library-write" | "push-on")]
 const SAVE = {
   'hide-stars-check': [U + ' + ' + D, 'all'],
+  'comments-mode-select': [P, 'all'], // v1.394.0: ft-comments, which comments the watch page shows
   'logo-file-input': ['/api/settings/logo', 'all'], 'logo-upload-btn': ['/api/settings/logo', 'all'], 'logo-reset-btn': ['/api/settings/logo', 'all'],
   'logo-file-input-dark': ['/api/settings/logo', 'all'], 'logo-upload-btn-dark': ['/api/settings/logo', 'all'], 'logo-reset-btn-dark': ['/api/settings/logo', 'all'],
   'sticker-file-input': ['/api/me/sticker', 'all'],
@@ -52,7 +53,8 @@ const SAVE = {
   'scan-now-btn': ['/api/scan', 'all'], 'clear-cache-btn': ['/api/cache/clear', 'all'],
   'cache-age-select': [S, 'all'], 'cache-cap-input': [S, 'all'],
   'engine-channel-bundled': ['/api/ytdlp/engine', 'admin'], 'engine-channel-stable': ['/api/ytdlp/engine', 'admin'], 'engine-channel-nightly': ['/api/ytdlp/engine', 'admin'],
-  'engine-autoupdate-check': ['/api/ytdlp/engine', 'admin'], 'engine-update-btn': ['/api/ytdlp/engine/update', 'admin'],
+  'engine-autoupdate-check': ['/api/ytdlp/engine', 'admin'], 'save-comments-check': ['/api/ytdlp/engine', 'admin'], // v1.394.0 (R7)
+  'engine-update-btn': ['/api/ytdlp/engine/update', 'admin'],
   'trash-retention-select': [S, 'all'], 'trash-empty-all': ['/api/trash/purge-all', 'all'],
   'logout-btn': ['/api/auth/logout', 'all'],
   'account-photo-upload': ['/api/me/avatar', 'all'], 'account-photo-remove': ['/api/me/avatar', 'all'], 'account-photo-input': ['/api/me/avatar', 'all'],

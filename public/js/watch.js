@@ -683,6 +683,45 @@ function isUserComment(c) {
   return !!c && typeof c.author === 'string' && c.author.trim().toLowerCase() === USER_COMMENT_AUTHOR.toLowerCase();
 }
 
+// ---- v1.394.0 (plan 2026-10-23-real-comments-and-links): the real top comments ----------------
+
+// R1: the synced pref `ft-comments` - both (default) / real / fun / off. What each value shows:
+// `real` the saved top comments (every look, Modern included), `fun` the mock personas (still
+// limited to the retro looks by .ft-fabricated - unchanged), `mine` the user's own posted
+// comments (today's behaviour in every mode but off), `section` the whole Comments block.
+const COMMENTS_MODES = ['both', 'real', 'fun', 'off'];
+function resolveCommentsMode(stored) {
+  return COMMENTS_MODES.includes(stored) ? stored : 'both';
+}
+function commentsModeShows(mode) {
+  const m = resolveCommentsMode(mode);
+  return { real: m === 'both' || m === 'real', fun: m === 'both' || m === 'fun', mine: m !== 'off', section: m !== 'off' };
+}
+
+// R6: the source only gives relative time, and yt-dlp's timestamp is an ESTIMATE made at fetch
+// time - so it is shown as relative time from NOW with a leading "~" (it ages correctly), never as
+// an exact date. Seconds (yt-dlp's unit) in, '' for no usable estimate.
+function formatEstimatedAgo(epochSec, nowMs) {
+  if (typeof epochSec !== 'number' || !isFinite(epochSec) || epochSec <= 0) return '';
+  const now = typeof nowMs === 'number' ? nowMs : Date.now();
+  const diffSec = Math.max(0, Math.round(now / 1000 - epochSec));
+  const steps = [['year', 31536000], ['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
+  for (const [unit, size] of steps) {
+    if (diffSec >= size) {
+      const n = Math.floor(diffSec / size);
+      return '~' + n + ' ' + unit + (n === 1 ? '' : 's') + ' ago';
+    }
+  }
+  return '~just now';
+}
+
+// The block's heading: "Top comments · saved ~3 days ago" (R10: neutral words, no site name).
+function sourceCommentsHeading(fetchedAtIso, nowMs) {
+  const ms = typeof fetchedAtIso === 'string' ? Date.parse(fetchedAtIso) : NaN;
+  const ago = isFinite(ms) ? formatEstimatedAgo(ms / 1000, nowMs) : '';
+  return ago ? 'Top comments \u00b7 saved ' + ago : 'Top comments';
+}
+
 // D4.9: the action bar's columns, in order. Like and Listen always; Share and Transcript
 // when the item has a link / a caption sidecar; More always (every other action is in its
 // menu - buildWatchMoreItems). One list: the bar mounts each button at its index here.
@@ -939,6 +978,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseStartTime, // v1.352 L1
     VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, nativePresentationKind, VR_NATIVE_SETTLE_MS, vrNativeNotice, VR_NATIVE_NOTE, VR_PIP_NOTE, vrMotionSupported, VR_MOTION_DENIED_NOTE, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
     resolveDisplayDescription,
+    COMMENTS_MODES, resolveCommentsMode, commentsModeShows, formatEstimatedAgo, sourceCommentsHeading, // v1.394.0 (real comments)
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
     buildWatchMoreItems,
@@ -1232,6 +1272,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
     const commentCountBadge = root.querySelector('#comment-count-badge');
     const commentsContainer = root.querySelector('#comments-container');
+    const commentsSection = root.querySelector('.comments-section'); // v1.394.0: hidden whole when ft-comments is off
+    let sourceCommentsSnap = null; // v1.394.0: the saved top comments (loadSourceComments)
+    let lastRenderedComments = null; // v1.394.0: what renderComments last drew (the top comments re-render it)
+    let commentsDuration = 0; // v1.394.0: the item's duration once known (the comments' seek chips are bounded by it)
     const newCommentText = root.querySelector('#new-comment-text');
     const postCommentBtn = root.querySelector('#post-comment-btn');
 
@@ -1525,6 +1569,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // frame one on every path (their old initWatch() call sites are gone).
     renderStarRating();
     loadComments();
+    loadSourceComments(); // v1.394.0: the saved top comments (the ?tv= path has none)
 
     // (v1.54 A1's frame-one Subscribe/Pin seed render moved BELOW the
     // applier's own `let` declarations -- gate round 1, adversarial C1: from
@@ -1926,6 +1971,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
       if (plan.isFullItem) {
         renderVideoDescription(item.tags, item.title, item.duration);
+        // v1.394.0: the top comments' seek chips need the duration; they may have rendered first.
+        if (typeof item.duration === 'number' && item.duration !== commentsDuration) {
+          commentsDuration = item.duration;
+          if (sourceCommentsSnap && lastRenderedComments) renderComments(lastRenderedComments);
+        }
         renderEmbeddedTags(item.tags, item.title);
         // Measure once the (async) webfont has loaded, so line wrapping --
         // and thus the overflow check -- reflects the final font.
@@ -3514,28 +3564,119 @@ if (typeof module !== 'undefined' && module.exports) {
       return item;
     }
 
+    // v1.394.0: one saved top comment (the snapshot GET /api/videos/:id/comments serves). NOT
+    // .ft-fabricated - real comments show in every look, Modern included (R1). Built from DOM nodes
+    // only: the author is plain text (never a link, R4), the date an estimate with a "~" (R6), the
+    // text through the shared rich-text renderer (links + seek chips within the duration).
+    function buildSourceCommentNode(c) {
+      const item = document.createElement('div');
+      item.className = 'comment-item comment-item--source';
+      const author = typeof c.author === 'string' && c.author !== '' ? c.author : 'Viewer';
+      const avatar = ui.avatar({ name: author.replace(/^@/, ''), url: null, kind: 'person', size: 'md' });
+      avatar.classList.add('comment-item__avatar');
+      item.appendChild(avatar);
+      const body = document.createElement('div');
+      body.className = 'comment-body';
+      const meta = document.createElement('div');
+      meta.className = 'comment-author-meta';
+      const authorSpan = document.createElement('span');
+      authorSpan.className = 'comment-author-name';
+      authorSpan.textContent = author;
+      meta.appendChild(authorSpan);
+      if (c.isPinned === true) {
+        const pin = document.createElement('span');
+        pin.className = 'comment-pinned';
+        pin.textContent = 'Pinned';
+        meta.appendChild(pin);
+      }
+      const ago = formatEstimatedAgo(c.timestamp);
+      if (ago) {
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'comment-time';
+        timeSpan.textContent = ago;
+        meta.appendChild(timeSpan);
+      }
+      const content = document.createElement('div');
+      content.className = 'comment-content';
+      content.appendChild(renderRichText(typeof c.text === 'string' ? c.text : '', commentsDuration));
+      body.appendChild(meta);
+      body.appendChild(content);
+      item.appendChild(body);
+      return item;
+    }
+
+    // v1.394.0: the saved top comments as one block (a heading + the rows), or null when the
+    // setting or the snapshot gives nothing to show. Comments turned off at the source say so.
+    function buildSourceCommentsBlock() {
+      const snap = sourceCommentsSnap;
+      if (!snap || (snap.state !== 'ok' && snap.state !== 'disabled')) return null;
+      const block = document.createElement('div');
+      block.className = 'source-comments';
+      block.setAttribute('data-source-comments', snap.state);
+      const heading = document.createElement('div');
+      heading.className = 'source-comments__heading';
+      heading.textContent = sourceCommentsHeading(snap.fetchedAt);
+      block.appendChild(heading);
+      if (snap.state === 'disabled') {
+        const off = document.createElement('div');
+        off.className = 'comments-empty';
+        off.textContent = 'Comments were turned off for this video.';
+        block.appendChild(off);
+        return block;
+      }
+      for (const c of Array.isArray(snap.comments) ? snap.comments : []) block.appendChild(buildSourceCommentNode(c));
+      return block;
+    }
+
     // UI pass sweep S3 (D8.1): two counts - every comment (the retro eras, where the
     // mock personas show) and Dean's own only (Modern, where they are hidden); the era
     // flourish rule shows exactly one. The empty state shows wherever no comment does:
     // everywhere when there are none, only in Modern when all of them are mocks.
+    // v1.394.0 (R1): the `ft-comments` setting picks what renders (commentsModeShows): the
+    // saved top comments sit above the rest and count in BOTH badges (they show in every look);
+    // `real` drops the mock personas, `fun` the top comments, `off` hides the whole section.
     function renderComments(comments) {
-      const real = comments.filter(isUserComment).length;
-      commentCountBadge.textContent = comments.length;
+      lastRenderedComments = comments;
+      let stored = null;
+      try { stored = localStorage.getItem('ft-comments'); } catch (_) { /* storage off */ }
+      const shows = commentsModeShows(stored);
+      if (commentsSection) commentsSection.hidden = !shows.section;
+      const listed = comments.filter((c) => (isUserComment(c) ? shows.mine : shows.fun));
+      const real = listed.filter(isUserComment).length;
+      const sourceBlock = shows.real ? buildSourceCommentsBlock() : null;
+      const top = sourceBlock && sourceCommentsSnap.state === 'ok' ? sourceCommentsSnap.comments.length : 0;
+      commentCountBadge.textContent = listed.length + top;
       const realBadge = root.querySelector('#comment-count-real');
-      if (realBadge) realBadge.textContent = real;
+      if (realBadge) realBadge.textContent = real + top;
 
       commentsContainer.textContent = ''; // clear any previous render (never innerHTML)
+      if (sourceBlock) commentsContainer.appendChild(sourceBlock);
 
-      if (real === 0) {
+      if (real === 0 && !sourceBlock) {
         const empty = document.createElement('div');
-        empty.className = 'comments-empty' + (comments.length > 0 ? ' ft-unfabricated' : '');
+        empty.className = 'comments-empty' + (listed.length > 0 ? ' ft-unfabricated' : '');
         empty.textContent = 'No comments yet. Be the first to comment!';
         commentsContainer.appendChild(empty);
       }
 
-      comments.forEach((c) => {
+      listed.forEach((c) => {
         commentsContainer.appendChild(buildCommentNode(c));
       });
+    }
+
+    // v1.394.0: fetch the video's saved top comments once (the server decides R2 - a restricted
+    // account always gets the empty answer), then re-render the list it joins. A failed fetch is
+    // simply no top comments; the rest of the section is unaffected.
+    function loadSourceComments() {
+      if (!mediaId) return;
+      fetch('/api/videos/' + encodeURIComponent(mediaId) + '/comments', { signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!body || (body.state !== 'ok' && body.state !== 'disabled')) return;
+          sourceCommentsSnap = body;
+          if (lastRenderedComments) renderComments(lastRenderedComments);
+        })
+        .catch(() => { /* no top comments */ });
     }
 
     // v1.198: wrapped so the tv path can wire the SAME form (the inline

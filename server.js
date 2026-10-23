@@ -6700,6 +6700,11 @@ chapterSnapRoutes.registerChapterSnapRoutes(app, {
   maxChapters: MAX_CHAPTERS,
 });
 
+// v1.394.0 (W4): GET /api/videos/:id/comments - a video's saved top comments, behind the item's
+// own visibility gate, and never served to a restricted account (R2; lib/media/commentsRoutes.js).
+const commentsRoutes = require('./lib/media/commentsRoutes');
+commentsRoutes.registerCommentRoutes(app, { getCachedDatabase, mediaVisibleTo, sourceCommentStore, userStore });
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
 // lives in lib/media/routes.js; the two count resolvers below stayed.

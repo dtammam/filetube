@@ -2140,6 +2140,7 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
 
 .comment-author-meta {
   display: flex;
+  flex-wrap: wrap; /* v1.394.0: a long name + Pinned + the date wrap, never squeeze */
   align-items: baseline;
   gap: var(--space-4);
   margin-bottom: var(--space-1);
@@ -2149,6 +2150,8 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
   color: var(--ink-1);
   font: var(--t-footnote);
   font-weight: var(--fw-semibold);
+  min-width: 0; /* v1.394.0: a saved comment's author is a stranger's text - an unbroken name wraps, never widens the page */
+  overflow-wrap: anywhere;
 }
 
 .comment-time {
@@ -2162,6 +2165,25 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
   overflow-wrap: anywhere;
 }
 
+/* v1.394.0: the saved top comments - one block above the rest of the list, its rows the same
+   .comment-item grid (so every era's comment styling applies), a quiet heading over them. Never
+   .ft-fabricated: real comments show in every look. A long link wraps (.comment-content's
+   overflow-wrap) and never widens the page. */
+.source-comments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.source-comments__heading {
+  color: var(--ink-2);
+  font: var(--t-footnote);
+  font-weight: var(--fw-semibold);
+}
+.comment-pinned {
+  color: var(--ink-2);
+  font: var(--t-footnote);
+}
 .comments-empty {
   padding: var(--space-6) 0;
   color: var(--ink-2);
