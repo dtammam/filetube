@@ -305,6 +305,11 @@ const deviceStore = createDeviceStore(dbAdapter, { generateSecret: authCrypto.ge
 // `db.viewCounts`, which the save-lock now refuses.
 const createViewCountStore = require('./lib/media/viewCounts');
 const viewCountStore = createViewCountStore(dbAdapter);
+// v1.394.0: a downloaded video's saved top comments (lib/media/sourceComments.js) -
+// written by the download consume and Reheat, served by GET /api/videos/:id/comments,
+// carried by removeMediaState / rekeyMediaState and the backup bundle.
+const { createSourceCommentStore } = require('./lib/media/sourceComments');
+const sourceCommentStore = createSourceCommentStore(dbAdapter);
 // Wave 2 (v1.292): the frozen pre-auth watch positions (adopted once by the
 // first admin) and the deferred-delete tombstones are relational too. Their
 // writes that must be atomic with a doc commit (the delete's tombstone mint,
@@ -3017,6 +3022,7 @@ const {
   trashStore,
   updateDatabase,
   userStore,
+  sourceCommentStore, // v1.394.0: a download's comments snapshot, written after the scan's commit
   viewCountStore,
   ytdlp,
   ytdlpDb,
@@ -5079,6 +5085,7 @@ adminBackup.registerRoutes(app, {
   updateDatabase,
   userStore,
   validateBackupBundle, // from the factory above - it runs BEFORE the wipe
+  sourceCommentStore, // v1.394.0: the bundle's `sourceComments`
   viewCountStore,
   ytdlpDb,
 });
@@ -7657,6 +7664,7 @@ module.exports = {
   // so integration tests seed and read counts through the SAME API the
   // routes use (the doc-model `viewCounts` key is refused by the save-lock).
   viewCountStore,
+  sourceCommentStore, // v1.394.0
   // Wave 2: the frozen pre-auth positions + the deferred-delete tombstones
   // (their doc keys are refused by the save-lock too), and the in-save
   // transaction hook for tests that bind the atomicity contract.

@@ -242,4 +242,37 @@ Add these DEVICE-CHECKS lines:
 
 ## Deviations (builder logs here)
 
+- **D1 (W2, Dean's ruling 2026-10-23): a comment failure fails the whole download.** The Research
+  bullet ("the download itself does not fail") is wrong for FileTube's effective
+  `ignoreerrors='only_download'`: `extract_comments` re-raises (`common.py:3899`), the post-extractor runs
+  before the download, and `_handle_extraction_exceptions` reports the error and skips the video.
+  Measured on the real pinned binary with an injected `ExtractorError` in `_comment_entries`: exit 1, no
+  file. Asked Dean (AskUserQuestion, three options); he chose "Retry once without": a comments-on
+  download that fails retries ONCE with every comment flag stripped (`run.js shouldRetryWithoutComments`),
+  except when every failure is plainly about the video itself (private, removed, members-only, a bot
+  check, a live event). Any retry strips comments. Measured through FileTube's own `runDownload`: the
+  injected failure, then the stripped retry, landed the video (`commentsFallback: true`).
+- **D2 (W2): the "comments disabled" discriminator is "both keys absent", not `comment_count` 0.**
+  `CommentsDisabled` returns `{comments: None, comment_count: None}` (`common.py:3895`), and the `.{}`
+  print selector (and `--dump-json`'s sanitize) drop None keys: the line is `{"id": ...}` (measured,
+  injected). An interruption leaves a partial list with `comment_count` None, a success a full list with
+  `comment_count == len`. So R9 is decidable (`sourceComments.decideSnapshot`); no stop rule.
+- **D3 (W2): the stdout line cap.** `run.js`'s line splitter discarded every line over 4096 characters;
+  the real FTCOMMENTS line is 5,716 bytes, so the capture would have been inert. stdout now has its own
+  1 MiB cap (`STDOUT_LINE_LIMIT`); stderr keeps 4096. Bound by the real fixture through the spawn path.
+- **D4 (W2): `--no-write-info-json`.** `yt_dlp/__init__.py:598` turns `--get-comments` into
+  `writeinfojson=True` when nothing prints JSON and the option is unset. The download argv passes the
+  explicit "no" so no `.info.json` is ever written.
+- **D5 (W2): the R7 setting lives in the downloader's state file** (`lib/ytdlp/engine.js`, the store behind
+  Settings > Downloads, beside `autoUpdate`), not a database namespace. It is not in the backup bundle;
+  after a restore it reads as the default (on).
+- **D6 (W2): comments ride only a YouTube-lane VIDEO download.** Audio downloads and the any-site
+  (universal) lane never ask (R8, and audio files are music tracks).
+- **D7 (W2): the bridge is the download-meta entry** (the plan's preferred path): run.js joins the
+  FTCOMMENTS snapshot onto its FTCHMETA entry by video id, the existing record / consume re-validate it,
+  and the scan writes the table under the item's id after its commit (`noteDownloaded(item, consumed)`,
+  all three consume sites). A capture with no channel identity (consume returns null) carries no comments.
+- **D8 (W2): a restore bundle without `sourceComments`** (every older export) keeps the live snapshots of
+  the videos the bundle's library index still has, and drops the rest (no orphan rows).
+
 ## Evidence (builder fills)

@@ -300,7 +300,11 @@ test('source lock: server.js never touches the table or the dead doc key in CODE
   // before it is staged (an untracked writer would otherwise be invisible).
   const tracked = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\0').filter(Boolean)
     .filter((p) => !p.startsWith('test/') && !/(^|\/)(vendor|node_modules)\//.test(p));
-  const inserters = tracked.filter((p) => /INSERT\s+INTO\s+(media_view_counts|\$\{TABLE\})/.test(stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'))));
+  // A `${TABLE}` insert counts only in a module whose TABLE is this one (v1.394.0: sourceComments.js has its own).
+  const inserters = tracked.filter((p) => {
+    const src = stripComments(fs.readFileSync(path.join(ROOT, p), 'utf8'));
+    return /INSERT\s+INTO\s+media_view_counts/.test(src) || (/INSERT\s+INTO\s+\$\{TABLE\}/.test(src) && /const TABLE = 'media_view_counts'/.test(src));
+  });
   assert.deepStrictEqual(inserters, ['lib/media/viewCounts.js'], 'exactly one module owns the INSERT text');
   const sqlite = stripComments(fs.readFileSync(path.join(ROOT, 'lib', 'db', 'sqlite.js'), 'utf8'));
   assert.ok(/VIEW_COUNT_UPSERT_SQL/.test(sqlite) && /require\('\.\.\/media\/viewCounts'\)/.test(sqlite), 'the adapter reuses the store\'s upsert text, never a copy');
