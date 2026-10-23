@@ -14,7 +14,7 @@
 // - A trailing `.,;:!?'"` (and `*`, `>`, `]`, `}`) is not part of a link; a trailing `)` is
 //   dropped only while the link has more `)` than `(` (a Wikipedia link keeps its own).
 // - A link longer than MAX_HREF stays text; the visible text of a long link is cut at
-//   MAX_LINK_TEXT characters with an ellipsis (the href stays whole).
+//   MAX_LINK_TEXT characters with an ellipsis (the href stays whole), never inside the host.
 // - A time is `m:ss` (1-3 minute digits) or `h:mm:ss` (1-2 hour digits), not glued to a
 //   letter, digit, `:`, `.` or `/` on either side. It becomes a seek chip only when it lies
 //   within the media's duration; with no known duration there are no chips.
@@ -59,8 +59,16 @@
     return s.slice(0, end);
   }
 
+  // A long link's visible text is cut at MAX_LINK_TEXT, but never inside its host (gate r1,
+  // security NOTE-2): "https://accounts.example.com.<long>.evil.test/" must show the real host
+  // whole, so the cut lands at the end of the origin when the origin itself is long.
   function displayUrl(s) {
-    return s.length > MAX_LINK_TEXT ? s.slice(0, MAX_LINK_TEXT - 1) + '…' : s;
+    if (s.length <= MAX_LINK_TEXT) return s;
+    var hostStart = s.indexOf('//') + 2;
+    var rest = s.slice(hostStart).search(/[/?#]/);
+    var originEnd = rest === -1 ? s.length : hostStart + rest;
+    var cut = Math.max(MAX_LINK_TEXT - 1, originEnd);
+    return cut >= s.length ? s : s.slice(0, cut) + '\u2026';
   }
 
   function isGlue(ch) {

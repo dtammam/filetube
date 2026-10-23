@@ -86,6 +86,13 @@ test('links: a long link keeps its whole href and shows a shortened text; a link
   assert.deepStrictEqual(links(huge), []);
 });
 
+test('gate r1 (security NOTE-2): a shortened link never cuts inside its host', () => {
+  const host = 'accounts.example.com.' + 'a'.repeat(80) + '.evil.test';
+  const seg = RT.tokenize('https://' + host + '/login?x=1').find((x) => x.type === 'link');
+  assert.ok(seg.text.startsWith('https://' + host), 'the whole host shows: ' + seg.text.slice(-24));
+  assert.ok(seg.text.endsWith('\u2026'), 'the path part is what gets cut');
+});
+
 test('safeHref: the protocol check itself (mutating it to accept any scheme turns these red)', () => {
   assert.strictEqual(RT.safeHref('javascript:alert(1)'), null);
   assert.strictEqual(RT.safeHref('data:text/html,x'), null);

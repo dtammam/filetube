@@ -22,16 +22,22 @@ const { authenticateFetch } = require('../helpers/auth');
 
 let server;
 let base;
+let auth;
 before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
-  authenticateFetch(server, base);
+  auth = authenticateFetch(server, base);
 });
 after(async () => {
   server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
 });
-beforeEach(() => __resetDatabaseForTests());
+beforeEach(async () => {
+  await __resetDatabaseForTests();
+  // a users-restoring restore bumps the admin's token_version: re-sign the harness cookie (backup-restore.test.js's posture)
+  auth.restore();
+  auth = authenticateFetch(server, base);
+});
 
 const SNAP = {
   state: 'ok', fetchedAt: '2026-10-20T00:00:00.000Z',
@@ -141,4 +147,31 @@ test('the writer refuses a NUL-bearing id and an empty id', () => {
   assert.throws(() => sourceCommentStore.apply('abc\u0000def', SNAP), /U\+0000/);
   assert.throws(() => sourceCommentStore.apply('', SNAP), /non-empty/);
   assert.strictEqual(sourceCommentStore.size(), 0);
+});
+
+async function trashedWithBundle() {
+  const fp = path.join(DATA_DIR, 'sc-trashed.mp4');
+  fs.writeFileSync(fp, 'bytes');
+  const it = seedOne(fp, DATA_DIR);
+  assert.strictEqual((await fetch(`${base}/api/videos/${it.id}`, { method: 'DELETE' })).status, 200);
+  const tid = Object.keys(trashStore().getAll())[0];
+  assert.deepStrictEqual(sourceCommentStore.get(tid), SNAP, 'precondition: the trashed video\'s snapshot is under its trashId');
+  return { tid, bundle: await (await fetch(`${base}/api/admin/backup`)).json() };
+}
+const restore = (bundle) => fetch(`${base}/api/admin/restore`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(bundle) });
+
+test('gate r1 (adversary S4 + qa S4): a bundle WITH sourceComments imports only ids the restore has - the library AND the trash; orphans are dropped', async () => {
+  const { tid, bundle } = await trashedWithBundle();
+  const res = await restore({ ...bundle, sourceComments: { ...bundle.sourceComments, 'not-a-video': SNAP, ['__proto__']: SNAP } });
+  assert.strictEqual(res.status, 200, await res.text());
+  assert.deepStrictEqual(sourceCommentStore.get(tid), SNAP, 'the trashed video keeps its comments');
+  assert.strictEqual(sourceCommentStore.size(), 1, 'the orphans were not imported');
+});
+
+test('gate r1: a bundle WITHOUT sourceComments keeps a trashed video\'s live snapshot (its trashId is in the restored trash)', async () => {
+  const { tid, bundle } = await trashedWithBundle();
+  delete bundle.sourceComments;
+  const res = await restore(bundle);
+  assert.strictEqual(res.status, 200, await res.text());
+  assert.deepStrictEqual(sourceCommentStore.get(tid), SNAP);
 });

@@ -157,7 +157,7 @@ test('schema v38: a fresh database has media_source_comments; a v37 database gai
   adapter.close();
 });
 
-test('store.apply is R9\'s writer: null keeps the row, a snapshot replaces it, disabled replaces it', () => {
+test('store.apply is R9\'s writer: null keeps the row, a newer snapshot replaces it, "turned off" never replaces saved comments', () => {
   const { adapter } = freshAdapter();
   const store = SC.createSourceCommentStore(adapter);
   const ok = SC.decideSnapshot(REAL, NOW);
@@ -168,10 +168,17 @@ test('store.apply is R9\'s writer: null keeps the row, a snapshot replaces it, d
   const newer = SC.decideSnapshot({ comments: [{ text: 'newer', parent: 'root' }], comment_count: 1 }, NOW + 1000);
   assert.strictEqual(store.apply('v', newer), true);
   assert.strictEqual(store.get('v').comments[0].text, 'newer');
-  assert.strictEqual(store.apply('v', SC.decideSnapshot({ id: 'v' }, NOW + 2000)), true);
-  assert.strictEqual(store.get('v').state, 'disabled');
+  // Dean's ruling (gate r1): "turned off" never replaces saved comments ...
+  assert.strictEqual(store.apply('v', SC.decideSnapshot({ id: 'v' }, NOW + 2000)), false);
+  assert.strictEqual(store.get('v').comments[0].text, 'newer', 'the saved comments survive a "turned off" answer');
+  // ... it is stored only where nothing was saved, and an OLDER fetch never replaces a newer one
+  assert.strictEqual(store.apply('w', SC.decideSnapshot({ id: 'w' }, NOW + 2000)), true);
+  assert.strictEqual(store.get('w').state, 'disabled');
+  assert.strictEqual(store.apply('w', SC.decideSnapshot({ comments: [{ text: 'came later', parent: 'root' }], comment_count: 1 }, NOW + 3000)), true, 'real comments replace "turned off"');
+  assert.strictEqual(store.apply('w', SC.decideSnapshot({ comments: [{ text: 'stale', parent: 'root' }], comment_count: 1 }, NOW)), false, 'an older fetch is ignored');
+  assert.strictEqual(store.get('w').comments[0].text, 'came later');
   assert.strictEqual(store.get('nope\u0000'), null, 'reads are tolerant');
   assert.throws(() => store.replaceAll({ a: ok, b: { state: 'ok', fetchedAt: ok.fetchedAt, comments: [] } }), /not valid/);
-  assert.strictEqual(store.get('v').state, 'disabled', 'a refused replaceAll touched nothing');
+  assert.strictEqual(store.get('v').comments[0].text, 'newer', 'a refused replaceAll touched nothing');
   adapter.close();
 });

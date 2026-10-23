@@ -6131,7 +6131,9 @@ function classifyMetadataEffect(item) {
 // with NO saved comments snapshot counts as 'may-refresh' even when it carries the reheat marker,
 // so a non-force library reheat backfills the library's comments once. The SAME predicate feeds
 // the preview (classifyMetadataEffect above) and the executor (enumerateRepullableItems'
-// `alreadyRepulled`), so the two cannot drift. A video whose fetch keeps failing, or that has no
+// `alreadyRepulled`). One difference in the id each passes (gate r1, adversary S3): the preview
+// reads the persisted `youtubeId`, the executor the filename bracket first - the scan sets
+// `youtubeId` from that same bracket on every download, so they agree in practice. A video whose fetch keeps failing, or that has no
 // comments at all, stays 'may-refresh' (R9 stores nothing for those) - a bounded retry, disclosed.
 // The setting is read at most once a second (a library-wide enumeration asks per item).
 let saveCommentsMemo = { at: 0, value: true };

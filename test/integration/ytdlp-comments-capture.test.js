@@ -121,6 +121,33 @@ test('no retry: a failure about the video itself, comments off, or our own kill'
   assert.strictEqual(spawnCalls.length, 1, 'a non-numeric code (our kill / cancel) never re-spawns');
 });
 
+test('gate r1 (adversary W1 + qa W1): a batch whose retry skips the video that already landed KEEPS that video\'s first-attempt capture and comments', async () => {
+  // attempt 1: video A lands (its FTCOMMENTS + FTCHMETA print), video B fails; attempt 2 (the archive skips A): only B's error.
+  const B_ERR = 'ERROR: [youtube] BBBBBBBBBBB: Unable to download API page: HTTP Error 403: Forbidden';
+  stubSpawnScript([{ stdout: [COMMENTS_LINE + '\n', META_LINE + '\n'], stderr: B_ERR, code: 1 }, { stderr: B_ERR, code: 1 }]);
+  const r = await run.runDownload(sub, config(), ['jNQXAC9IVRw', 'BBBBBBBBBBB'], { saveComments: true });
+  assert.strictEqual(spawnCalls.length, 2, 'precondition: the comments-stripped retry ran');
+  assert.ok(spawnCalls[1].argv.includes('--download-archive'), 'precondition: the subscription lane skips what landed');
+  const a = r.channelMeta.find((m) => m.videoId === 'jNQXAC9IVRw');
+  assert.ok(a, 'A\'s first-attempt FTCHMETA entry survives the retry');
+  assert.strictEqual(a.sourceComments.comments.length, 10, 'and so do its comments');
+  // the same merge on the subtitle-retry branch
+  spawnCalls = [];
+  stubSpawnScript([{ stdout: [COMMENTS_LINE + '\n', META_LINE + '\n'], stderr: "ERROR: Unable to download video subtitles for 'en-en-US': HTTP Error 429: Too Many Requests", code: 1 }, { code: 0 }]);
+  const r2 = await run.runDownload(sub, config(), ['jNQXAC9IVRw', 'BBBBBBBBBBB'], { saveComments: true });
+  assert.strictEqual(spawnCalls.length, 2);
+  assert.strictEqual(r2.subtitleFallback, true);
+  assert.strictEqual(r2.channelMeta.find((m) => m.videoId === 'jNQXAC9IVRw').sourceComments.comments.length, 10);
+});
+
+test('mergeRetryCapture: union by id, the retry entry wins but keeps the first attempt\'s comments', () => {
+  const snap = { state: 'ok', fetchedAt: 'x', comments: [1] };
+  const out = run.mergeRetryCapture([{ videoId: 'a', v: 1, sourceComments: snap }, { videoId: 'b', v: 1 }], [{ videoId: 'a', v: 2 }]);
+  assert.deepStrictEqual(out.map((m) => [m.videoId, m.v]), [['a', 2], ['b', 1]]);
+  assert.strictEqual(out[0].sourceComments, snap);
+  assert.deepStrictEqual(run.mergeRetryCapture(undefined, undefined), []);
+});
+
 test('shouldRetryWithoutComments: the predicate table', () => {
   const f = (reason) => ({ videoId: 'v', reason });
   assert.strictEqual(run.shouldRetryWithoutComments({ ok: false, code: 1, itemFailures: [] }), true, 'an unattributed exit 1');

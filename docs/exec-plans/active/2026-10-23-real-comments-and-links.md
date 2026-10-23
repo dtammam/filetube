@@ -272,8 +272,24 @@ Add these DEVICE-CHECKS lines:
   FTCOMMENTS snapshot onto its FTCHMETA entry by video id, the existing record / consume re-validate it,
   and the scan writes the table under the item's id after its commit (`noteDownloaded(item, consumed)`,
   all three consume sites). A capture with no channel identity (consume returns null) carries no comments.
-- **D8 (W2): a restore bundle without `sourceComments`** (every older export) keeps the live snapshots of
-  the videos the bundle's library index still has, and drops the rest (no orphan rows).
+- **D8 (W2, widened in gate r1): a restore keeps snapshots only for ids the restore has** - the bundle's
+  library index AND its trash records (a trashed video's snapshot lives under its trashId). A bundle without
+  `sourceComments` (every older export) keeps those live snapshots; a bundle with it imports only those ids
+  (orphans and `__proto__` keys dropped).
+- **D9 (gate r1, Dean's ruling 2026-10-23, AskUserQuestion): "comments turned off" never erases saved comments.**
+  R9's exception stored the disabled state over any snapshot; qa found yt-dlp raises `CommentsDisabled` for ANY
+  source message with zero comments (`_video.py:2663-2666`), and the feature exists because comments vanish.
+  Dean chose "Keep the saved ones": `apply()` stores `disabled` only where nothing was saved.
+- **D10 (gate r1): an older fetch never replaces a newer one** (`apply()` compares `fetchedAt`; a stale
+  download-meta entry consumed after a reheat is ignored).
+- **D11 (gate r1): the comments retry keeps the first attempt's capture** for every video it skipped
+  (`mergeRetryCapture`, both retry branches - the subtitle branch had the same drop before this release). A
+  rate limit (HTTP 429) still retries once (the comment API's 429 is the case the retry rescues; it asks for
+  fewer requests). A reheat writes only while the item still owns its id, never asks for an audio item, and
+  the library pass paces a FAILED comments-on item too.
+- **Disclosed (gate r1, security NOTE-3):** an extreme comment set (ten 10,000-character comments of emoji,
+  escaped as `\uXXXX`) can exceed the 1 MiB stdout line; that download then saves no comments (R9 keeps any
+  stored snapshot). A shortened link never cuts inside its host (NOTE-2, fixed).
 
 ## Evidence (builder fills)
 
@@ -335,3 +351,8 @@ Add these DEVICE-CHECKS lines:
   "anti-vacuity: the failing download really ran" expected 1 spawn, actual 2 - the new comments-stripped retry
   (D1), intended. The test now asserts 2 spawns with the retry free of comment flags and the only copy intact
   after both; re-run 8/8.
+
+### Gate verdicts
+- Gate: APPROVED r1 @73380359 — security-brief (no CRITICAL/WARNING: DOM-only renderer with http(s)-only parsed hrefs, fixed-literal argv, JSON-escaped sentinel with discard-whole cap, R2 enforced server-side on the only reader; 3 NOTEs)
+- Gate: CHANGES r1 @73380359 — qa (2 WARNINGs: a comments retry drops the first attempt's captured meta/comments for a batch's landed siblings (verified repro); a 'disabled' fetch overwrites a saved ok snapshot (R9 vs the Why); 5 SUGGESTIONs)
+- Gate: CHANGES r1 @73380359 — adversary (3 WARNINGs: the comments retry drops attempt-1 captured meta + comments of a batch's landed videos (repro); a reheat writes the snapshot under an id deleted/moved mid-run, an orphan row (repro); unbound wires - the subscription lane's saveComments and R7-off at both download sites and the reheat retry's numeric-code guard survive mutation; real e2e download+reheat reach the table; 5 SUGGESTIONs)

@@ -160,12 +160,64 @@ test('R9 partial: an interrupted list (no comment_count) keeps the old snapshot;
   }
 });
 
-test('comments disabled at the source (both keys absent, measured): the snapshot becomes the disabled state', async () => {
+test('comments disabled at the source (both keys absent, measured): saved comments are KEPT (Dean\'s ruling); a video with none stores the disabled state', async () => {
   commentStore.apply(MEDIA_ID, OLD);
   stubSpawn((argv) => (argv.includes('--dump-json') ? { stdout: dump({}), code: 0 } : { code: 0 }));
   const { deps } = makeDeps([makeItem()]);
   await reheatOne(deps);
-  assert.strictEqual(commentStore.get(MEDIA_ID).state, 'disabled');
+  assert.deepStrictEqual(commentStore.get(MEDIA_ID), OLD, 'a "turned off" answer never erases the saved copy');
+  commentStore.replaceAll({});
+  const { deps: deps2 } = makeDeps([makeItem()]);
+  await reheatOne(deps2);
+  assert.strictEqual(commentStore.get(MEDIA_ID).state, 'disabled', 'nothing was saved: the state is recorded');
+});
+
+test('gate r1 (adversary W2): an item deleted while its re-pull runs gets NO row (no orphan under the dead id)', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  stubSpawn(() => null);
+  const pending = [];
+  cp.spawn = ((orig) => (cmd, argv) => {
+    if (!argv.includes('--dump-json')) return orig(cmd, argv);
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.kill = () => setImmediate(() => child.emit('close', null, 'SIGTERM'));
+    spawns.push({ argv, at: Date.now() });
+    pending.push(held.then(() => {
+      child.stdout.emit('data', Buffer.from(dump({ comment_count: REAL.comment_count, comments: REAL.comments })));
+      setImmediate(() => { child.emit('exit', 0, null); child.emit('close', 0, null); });
+    }));
+    return child;
+  })(cp.spawn);
+  const { deps } = makeDeps([makeItem()]);
+  const db = deps.loadDatabase();
+  const { base, close } = await startApp(deps);
+  try {
+    assert.strictEqual((await fetch(`${base}/api/ytdlp/repull-metadata/item/${encodeURIComponent(MEDIA_ID)}`, { method: 'POST' })).status, 202);
+    await flush(30);
+    assert.strictEqual(metaSpawns().length, 1, 'precondition: the dump is in flight');
+    delete db.metadata[MEDIA_ID]; // the user deletes (or moves) the video meanwhile
+    release();
+    await flush(80);
+  } finally { await close(); }
+  assert.strictEqual(commentStore.size(), 0, 'nothing written under the vanished id');
+});
+
+test('gate r1 (qa S2): an AUDIO item\'s reheat never asks for comments', async () => {
+  stubSpawn((argv) => (argv.includes('--dump-json') ? { stdout: dump({}), code: 0 } : { code: 0 }));
+  const { deps } = makeDeps([{ ...makeItem(), isAudio: true }]);
+  await reheatOne(deps);
+  assert.ok(!metaSpawns()[0].argv.includes('--get-comments'));
+  assert.strictEqual(commentStore.size(), 0);
+});
+
+test('gate r1 (adversary W3/M21): a timed-out comments dump (non-numeric code) is NOT re-run', async () => {
+  commentStore.apply(MEDIA_ID, OLD);
+  stubSpawn((argv) => (argv.includes('--dump-json') ? { code: null } : { code: 0 }));
+  const { deps } = makeDeps([makeItem()]);
+  await reheatOne(deps);
+  assert.strictEqual(metaSpawns().length, 1, 'our own kill / timeout never re-spawns');
+  assert.deepStrictEqual(commentStore.get(MEDIA_ID), OLD);
 });
 
 test('R7 off: the reheat never asks, and the row stays exactly as it was', async () => {
@@ -194,6 +246,21 @@ test('library-wide: every item is asked; a comments-on item is followed by the p
   assert.ok(metas.every((m) => m.argv.includes('--get-comments')));
   assert.ok(metas[1].at - metas[0].at >= 280, 'the second item waited the gap (' + (metas[1].at - metas[0].at) + ' ms)');
   for (const it of items) assert.strictEqual(commentStore.get(it.mediaId).comments.length, 10);
+});
+
+test('gate r1 (adversary S2): a FAILED comments-on item is paced too', async () => {
+  const items = [makeItem('aaaaaaaaaaa'), makeItem('bbbbbbbbbbb')];
+  stubSpawn((argv) => (argv.includes('--dump-json') ? { stderr: 'ERROR: boom\n', code: 1 } : { code: 0 }));
+  const { deps } = makeDeps(items);
+  deps.reheatCommentsGapMs = 300;
+  const { base, close } = await startApp(deps);
+  try {
+    assert.strictEqual((await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' })).status, 202);
+    await flush(1000);
+  } finally { await close(); }
+  const metas = metaSpawns();
+  assert.strictEqual(metas.length, 4, 'two items, each re-run once without comments');
+  assert.ok(metas[2].at - metas[1].at >= 280, 'the gap follows the failed first item (' + (metas[2].at - metas[1].at) + ' ms)');
 });
 
 test('REHEAT_COMMENTS_GAP_MS is the download lane\'s --sleep-interval default (2 s)', () => {

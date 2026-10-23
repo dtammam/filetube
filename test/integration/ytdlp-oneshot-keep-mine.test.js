@@ -337,6 +337,27 @@ test('S1 (c): a one-off that FAILS (exit 1 after partial output) leaves the pre-
   }
 });
 
+// v1.394.0 gate r1 (adversary W3, M36/M40): the one-off lane reads "Save top comments" too.
+test('v1.394.0: a one-off asks for comments while "Save top comments" is on, and not once it is turned off', async () => {
+  const engine = require('../../lib/ytdlp/engine');
+  process.env.FAKE_YTDLP_MODE = 'fail';
+  const deps = makeDeps();
+  const cfg = config();
+  seedLibraryFile(cfg);
+  engine.setSaveComments({ dataDir, enabled: false });
+  const { base, close } = await startApp(deps, cfg);
+  try {
+    const res = await postDownload(base, { url: VIDEO_URL, folder: FOLDER });
+    await waitForSettled(res.body.jobId);
+    const spawns = downloadSpawns();
+    assert.strictEqual(spawns.length, 1, 'off: no comments, so no comments-stripped retry either');
+    assert.ok(!JSON.stringify(spawns[0]).includes('--get-comments'), 'off: the argv never asks');
+  } finally {
+    engine.setSaveComments({ dataDir, enabled: true });
+    await close();
+  }
+});
+
 // ---- (d) single-flight: two concurrent one-offs for one id -> ONE child ----
 
 test('S1 (d): two concurrent one-offs for the same video spawn exactly ONE yt-dlp child -- the second request JOINS the first job (same jobId, no second pending entry)', async () => {
