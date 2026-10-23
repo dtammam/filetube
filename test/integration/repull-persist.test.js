@@ -22,6 +22,7 @@ const { test, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const {
   getMediaId, loadDatabase, updateDatabase, recordRepulledItemMeta, enumerateRepullableItems,
+  sourceCommentStore, // v1.394.0: an already-reheated video that still needs its comments is not "done"
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state'); // Wave 2: relational seeding/reads
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -560,6 +561,9 @@ test('enumerateRepullableItems: counts are correct across a mixed set, and an al
       },
     };
 
+    // v1.394.0: "already done" also needs a saved comments snapshot while "Save top comments" is on
+    // (the default) - without one the item is re-pulled once for its comments (the backfill rule).
+    sourceCommentStore.apply(alreadyDoneId, { state: 'ok', fetchedAt: '2026-10-20T00:00:00.000Z', comments: [{ id: 'c1', text: 'a saved comment', author: 'Viewer' }] });
     const result = enumerateRepullableItems(db, config);
     // v1.33 T1: the bracket-less item is eligible (local-pass-only, null
     // videoId). v1.41.5: so is the outside-root one -- but with a null videoId,
@@ -573,7 +577,10 @@ test('enumerateRepullableItems: counts are correct across a mixed set, and an al
     assert.ok(byId[eligibleId]);
     assert.equal(byId[eligibleId].alreadyRepulled, false);
     assert.ok(byId[alreadyDoneId]);
-    assert.equal(byId[alreadyDoneId].alreadyRepulled, true, 'an item with metadataRepulledAt must be flagged as already-done');
+    assert.equal(byId[alreadyDoneId].alreadyRepulled, true, 'an item with metadataRepulledAt (and its comments) must be flagged as already-done');
+    sourceCommentStore.replaceAll({});
+    assert.equal(enumerateRepullableItems(db, config).items.find((it) => it.mediaId === alreadyDoneId).alreadyRepulled, false,
+      'v1.394.0: with no comments snapshot the same item is re-pulled once (the comments backfill)');
     assert.ok(byId[noSuffixId], 'the non-suffixed item now appears (local-pass eligible)');
     assert.equal(byId[noSuffixId].videoId, null);
     assert.equal(byId[noSuffixId].watchUrl, null);

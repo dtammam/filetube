@@ -39,6 +39,7 @@ const {
   planImportRelocation, buildImportRelocationPreview, classifyMetadataEffect,
   relocateHydratedImportIntoChannelFolder, enumerateRepullableItems,
   __getLoadDatabaseCallCount,
+  sourceCommentStore, // v1.394.0: "up to date" also needs the saved comments (the backfill rule)
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -290,6 +291,7 @@ test('the preview groups moves and skips and rolls up the summary counts', () =>
     liked: [], settings: baseSettings(),
   });
 
+  sourceCommentStore.apply(movableId, { state: 'ok', fetchedAt: '2026-10-20T00:00:00.000Z', comments: [{ id: 'c1', text: 'a saved comment', author: 'Viewer' }] }); // v1.394.0: reheated AND its comments saved
   const preview = buildImportRelocationPreview(DEPS, config);
   assert.equal(preview.summary.totalItems, 2);
   assert.equal(preview.summary.moveCount, 1);
