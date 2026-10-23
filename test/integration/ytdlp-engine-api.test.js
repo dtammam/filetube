@@ -164,6 +164,23 @@ test('POST autoUpdate round-trips (strict opt-in, default OFF)', async () => {
   assert.equal(off.autoUpdate, false);
 });
 
+test('v1.394.0 (R7): saveComments defaults ON, round-trips, persists for the download builder, and refuses a non-boolean', async () => {
+  const read = async () => (await (await fetch(`${base}/api/ytdlp/engine`)).json()).saveComments;
+  assert.equal(await read(), true, 'default on');
+  assert.equal(engine.getSaveComments(DATA_DIR), true);
+  const off = await (await fetch(`${base}/api/ytdlp/engine`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveComments: false }),
+  })).json();
+  assert.equal(off.saveComments, false);
+  assert.equal(await read(), false, 'reflected on the next load');
+  assert.equal(engine.getSaveComments(DATA_DIR), false, 'what the download and reheat builders read');
+  const bad = await fetch(`${base}/api/ytdlp/engine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveComments: 'no' }) });
+  assert.equal(bad.status, 400);
+  assert.equal(engine.getSaveComments(DATA_DIR), false, 'a refused write changes nothing');
+  await fetch(`${base}/api/ytdlp/engine`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveComments: true }) });
+  assert.equal(engine.getSaveComments(DATA_DIR), true);
+});
+
 test('channel switch to nightly: gated install -> health probe -> venv active + an "updated" bell', async () => {
   armSpawns();
   const res = await fetch(`${base}/api/ytdlp/engine`, {

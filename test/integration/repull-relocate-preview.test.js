@@ -39,6 +39,7 @@ const {
   planImportRelocation, buildImportRelocationPreview, classifyMetadataEffect,
   relocateHydratedImportIntoChannelFolder, enumerateRepullableItems,
   __getLoadDatabaseCallCount,
+  sourceCommentStore, // v1.394.0: "up to date" also needs the saved comments (the backfill rule)
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { readPersistedDatabase } = require('../../lib/db/sqlite');
@@ -290,6 +291,7 @@ test('the preview groups moves and skips and rolls up the summary counts', () =>
     liked: [], settings: baseSettings(),
   });
 
+  sourceCommentStore.apply(movableId, { state: 'ok', fetchedAt: '2026-10-20T00:00:00.000Z', comments: [{ id: 'c1', text: 'a saved comment', author: 'Viewer' }] }); // v1.394.0: reheated AND its comments saved
   const preview = buildImportRelocationPreview(DEPS, config);
   assert.equal(preview.summary.totalItems, 2);
   assert.equal(preview.summary.moveCount, 1);
@@ -464,4 +466,15 @@ test('MUTATION: planImportRelocation yields the IDENTICAL decision with a fresh 
     planImportRelocation(DEPS, config, skipId),
     'snapshot vs fresh must agree on skip decisions too'
   );
+});
+
+test('v1.394.0: the preview reads the comments backfill - a reheated video with no saved comments may refresh, with them it is up to date', () => {
+  const fp = path.join(libraryDir, 'Backfill [' + VIDEO_ID + '].mp4');
+  const item = { filePath: fp, type: 'video', youtubeId: VIDEO_ID, metadataRepulledAt: 1_800_000_000_000 };
+  sourceCommentStore.replaceAll({});
+  assert.equal(classifyMetadataEffect(item), 'may-refresh', 'no snapshot: the reheat will fetch its comments');
+  sourceCommentStore.apply(getMediaId(fp), { state: 'disabled', fetchedAt: '2026-10-20T00:00:00.000Z', comments: [] });
+  assert.equal(classifyMetadataEffect(item), 'up-to-date', 'a snapshot (even comments-off) closes the backfill');
+  assert.equal(classifyMetadataEffect({ ...item, type: 'audio', filePath: fp + '.mp3' }), 'up-to-date', 'audio never backfills');
+  sourceCommentStore.replaceAll({});
 });

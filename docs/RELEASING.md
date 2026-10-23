@@ -355,6 +355,14 @@ token is a credential), `device_epoch` does not ride either, and a
 users-replacing restore drops every device row by cascade, so each phone pairs
 again.
 
+**Nineteenth floor - schema v38 (v1.394.0, real comments).** One new table,
+`media_source_comments` (`media_id` PK, `payload` the sanitized comments JSON,
+`fetched_at`, `state` 'ok' | 'disabled'), born empty by an additive migration:
+a downloaded video's top comments. A v1.393.0-or-earlier build refuses a v38
+database at boot; bundles gain a `sourceComments` map (an older bundle without
+it keeps the live snapshots of the videos it restores, and an older build
+refuses the bundle key it does not know - restore that build's own backup).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

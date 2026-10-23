@@ -305,6 +305,12 @@ const deviceStore = createDeviceStore(dbAdapter, { generateSecret: authCrypto.ge
 // `db.viewCounts`, which the save-lock now refuses.
 const createViewCountStore = require('./lib/media/viewCounts');
 const viewCountStore = createViewCountStore(dbAdapter);
+// v1.394.0: a downloaded video's saved top comments (lib/media/sourceComments.js) -
+// written by the download consume and Reheat, served by GET /api/videos/:id/comments,
+// carried by removeMediaState / rekeyMediaState and the backup bundle.
+const { createSourceCommentStore } = require('./lib/media/sourceComments');
+const sourceCommentStore = createSourceCommentStore(dbAdapter);
+const ytdlpEngine = require('./lib/ytdlp/engine'); // v1.394.0: "Save top comments" (R7) for the reheat backfill rule
 // Wave 2 (v1.292): the frozen pre-auth watch positions (adopted once by the
 // first admin) and the deferred-delete tombstones are relational too. Their
 // writes that must be atomic with a doc commit (the delete's tombstone mint,
@@ -3017,6 +3023,7 @@ const {
   trashStore,
   updateDatabase,
   userStore,
+  sourceCommentStore, // v1.394.0: a download's comments snapshot, written after the scan's commit
   viewCountStore,
   ytdlp,
   ytdlpDb,
@@ -5079,6 +5086,7 @@ adminBackup.registerRoutes(app, {
   updateDatabase,
   userStore,
   validateBackupBundle, // from the factory above - it runs BEFORE the wipe
+  sourceCommentStore, // v1.394.0: the bundle's `sourceComments`
   viewCountStore,
   ytdlpDb,
 });
@@ -6028,6 +6036,7 @@ const {
   activeProtectedPaths, // (now) -> the recently-served path Set a relocation must not yank a file out of
   buildWatchUrl,
   classifyMetadataEffect,
+  commentsBackfillDue, // v1.394.0: the executor's half of the comments backfill rule
   classifyTransfer,
   extractYtdlpVideoId,
   finalizeChapters,
@@ -6115,7 +6124,28 @@ function classifyTransfer(sourcePath, destinationDir, fsImpl) {
 // Kept as its own tiny exported helper so BOTH `planImportRelocation` and the
 // preview builder read the metadata effect from the SAME place.
 function classifyMetadataEffect(item) {
-  return (item && item.metadataRepulledAt) ? 'up-to-date' : 'may-refresh';
+  return (item && item.metadataRepulledAt && !commentsBackfillDue(item, isSafeVideoId(item.youtubeId) ? item.youtubeId : null)) ? 'up-to-date' : 'may-refresh';
+}
+
+// v1.394.0 (W3, the plan's recommended choice): while "Save top comments" is on, a downloaded video (a source id)
+// with NO saved comments snapshot counts as 'may-refresh' even when it carries the reheat marker,
+// so a non-force library reheat backfills the library's comments once. The SAME predicate feeds
+// the preview (classifyMetadataEffect above) and the executor (enumerateRepullableItems'
+// `alreadyRepulled`). One difference in the id each passes (gate r1, adversary S3): the preview
+// reads the persisted `youtubeId`, the executor the filename bracket first - the scan sets
+// `youtubeId` from that same bracket on every download, so they agree in practice. A video whose fetch keeps failing, or that has no
+// comments at all, stays 'may-refresh' (R9 stores nothing for those) - a bounded retry, disclosed.
+// The setting is read at most once a second (a library-wide enumeration asks per item).
+let saveCommentsMemo = { at: 0, value: true };
+function saveCommentsOn() {
+  const now = Date.now();
+  if (now - saveCommentsMemo.at > 1000) saveCommentsMemo = { at: now, value: ytdlpEngine.getSaveComments(DATA_DIR) };
+  return saveCommentsMemo.value;
+}
+function commentsBackfillDue(item, videoId) {
+  if (!item || item.type === 'audio' || !videoId || typeof item.filePath !== 'string') return false;
+  if (!saveCommentsOn()) return false;
+  return sourceCommentStore.get(getMediaId(item.filePath)) === null;
 }
 
 // v1.41.6 gate fix (adversarial WARNING): is ffmpeg queued on, or actively
@@ -6672,6 +6702,11 @@ chapterSnapRoutes.registerChapterSnapRoutes(app, {
   maxChapters: MAX_CHAPTERS,
 });
 
+// v1.394.0 (W4): GET /api/videos/:id/comments - a video's saved top comments, behind the item's
+// own visibility gate, and never served to a restricted account (R2; lib/media/commentsRoutes.js).
+const commentsRoutes = require('./lib/media/commentsRoutes');
+commentsRoutes.registerCommentRoutes(app, { getCachedDatabase, mediaVisibleTo, sourceCommentStore, userStore });
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
 // lives in lib/media/routes.js; the two count resolvers below stayed.
@@ -7071,6 +7106,7 @@ ytdlp.registerRoutes(app, {
   // Wave 4: the heal's display-name write goes to channel_folder_display_names
   // INSIDE the doc commit (this dep is called from within the mutator above).
   setFolderDisplayName: (name, value) => inSaveTransaction(() => folderDisplayNameStore.set(name, value)),
+  sourceCommentStore, // v1.394.0: Reheat writes the comments snapshot (R9 in apply)
   enumerateRepullableItems,
   // v1.43 (chunk 4b): channel pins are per-user (user_channel_pins rows).
   // The pin routes keep lib/ytdlp/store.js's PURE reducers as the single
@@ -7657,6 +7693,7 @@ module.exports = {
   // so integration tests seed and read counts through the SAME API the
   // routes use (the doc-model `viewCounts` key is refused by the save-lock).
   viewCountStore,
+  sourceCommentStore, // v1.394.0
   // Wave 2: the frozen pre-auth positions + the deferred-delete tombstones
   // (their doc keys are refused by the save-lock too), and the in-save
   // transaction hook for tests that bind the atomicity contract.

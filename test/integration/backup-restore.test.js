@@ -19,6 +19,7 @@ const { app, loadDatabase, pendingProgress, pendingProgressKey, flushPendingProg
   trashStore, // Wave 3: the trashed-item records, likewise
   musicDb, // Wave 5: the music namespace, likewise
   __failNextRestorePopulateForTests, // Wave 5: the mid-populate rollback seam
+  sourceCommentStore, // v1.394.0: a video's saved top comments
 } = require('../../server');
 const { seedState, podcastsDb } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -156,7 +157,11 @@ const FULL_TRASH = {
     item: { id: 'vidgone', title: 'Old', filePath: '/media/videos/old.mp4', type: 'video', ext: '.mp4' },
   },
 };
-const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash'];
+// v1.394.0: a video's saved top comments ride the bundle as `sourceComments`.
+const FULL_SOURCE_COMMENTS = {
+  vid1: { state: 'ok', fetchedAt: '2026-10-20T00:00:00.000Z', comments: [{ id: 'c1', text: 'Great part at 0:30 https://example.com/x', author: 'Viewer', likeCount: 5, isPinned: true, timestamp: 1700000000, timeText: '1 year ago' }] },
+};
+const RELATIONAL_KEYS = ['viewCounts', 'progress', 'deleteTombstones', 'trash', 'sourceComments'];
 function seedFullState(overrides) {
   const state = { ...fullState(), ...(overrides || {}) };
   seedState(state);
@@ -164,6 +169,7 @@ function seedFullState(overrides) {
   progressStore.replaceAll(FULL_PROGRESS);
   tombstoneStore.replaceAll(FULL_TOMBSTONES);
   trashStore.replaceAll(FULL_TRASH);
+  sourceCommentStore.replaceAll(FULL_SOURCE_COMMENTS);
   return state;
 }
 
@@ -197,6 +203,8 @@ test('AC6: backup -> wipe -> restore -> deep-equal (every namespace round-trips;
   assert.deepEqual(progressStore.getAll(), FULL_PROGRESS, 'the frozen pre-auth positions restored into their table');
   assert.deepEqual(tombstoneStore.getAll(), FULL_TOMBSTONES, 'the tombstones restored into their table');
   assert.deepEqual(trashStore.getAll(), FULL_TRASH, 'the trash records restored into their table (Wave 3)');
+  assert.deepEqual(bundle.sourceComments, FULL_SOURCE_COMMENTS, 'the saved comments ride the bundle (v1.394.0)');
+  assert.deepEqual(sourceCommentStore.getAll(), FULL_SOURCE_COMMENTS, 'the saved comments restored into their table (v1.394.0)');
 });
 
 test('v1.82 (gate S4 binding): a users-restoring restore WIPES stored avatars (no reassigned-id photo bleed)', async () => {

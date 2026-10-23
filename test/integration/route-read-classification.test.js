@@ -152,6 +152,7 @@ const READ = {
   '/api/offline/file/:kind/:id': 'GATED', // v1.387.0 offline D3: the bytes the iOS rule picks, gated like the matching byte route (404 hidden); proven in offline-manifest.test.js
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
+  '/api/videos/:id/comments': 'GATED', // v1.394.0: mediaVisibleTo FIRST (neutral 404), and a restricted account gets none (R2); comments-api.test.js
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)
   '/api/ytdlp/playlist': 'GATED', // v1.370.0 W2: one page of a YouTube playlist for the picker; requireManageSubscriptions first-line; its only library-derived field (inLibrary) is computed over mediaVisiblePredicate(req) - a hidden folder's copy reads false (ytdlp-playlist-listing.test.js)
   '/api/ytdlp/oneshot-trace.txt': 'ADMIN', // v1.365.0: the one-off download trace file; requireAdmin first-line (fail-closed in lib/ytdlp/index.js)
