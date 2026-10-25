@@ -9,6 +9,8 @@ const reasonEl = document.getElementById('reason');
 const statusEl = document.getElementById('status');
 const audioBtn = document.getElementById('audio');
 const videoBtn = document.getElementById('video');
+const savePageBtn = document.getElementById('save-page'); // v1.395.0 Pages
+let currentTabId = null;
 
 let currentUrl = '';
 
@@ -85,6 +87,7 @@ function setStatus(text, kind) {
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentUrl = (tab && tab.url) || '';
+  currentTabId = tab && typeof tab.id === 'number' ? tab.id : null;
   urlEl.textContent = currentUrl || 'No active tab URL.';
 
   // Always show which sites are supported (a positive hint, shown even when the
@@ -96,6 +99,9 @@ async function init() {
   // an instance. Asking the worker (rather than reading storage here) keeps the
   // token inside the service worker (D1).
   const status = await chrome.runtime.sendMessage({ type: 'status' });
+  // v1.395.0 Pages: Save to Pages needs only the instance and a Pages token (not yt-dlp).
+  savePageBtn.disabled = !(status && status.pagesConfigured) || !/^https?:/i.test(currentUrl);
+  if (status && !status.pagesConfigured) savePageBtn.title = 'Set a Pages token in Options (FileTube Settings > Pages).';
   if (!status || !status.configured) {
     audioBtn.disabled = true;
     videoBtn.disabled = true;
@@ -162,11 +168,37 @@ async function download(format) {
   videoBtn.disabled = !compat.ok;
 }
 
+// v1.395.0 Pages: the tab as the browser rendered it (logins, paywalls: exactly what you see),
+// serialized with XMLSerializer in the page; a page the extension cannot read (the Web Store, a
+// PDF viewer) is sent as its URL alone and the server fetches it.
+async function savePage() {
+  savePageBtn.disabled = true;
+  setStatus('Saving to Pages...', null);
+  let html = null;
+  if (currentTabId !== null && chrome.scripting) {
+    try {
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId: currentTabId },
+        func: () => new XMLSerializer().serializeToString(document),
+      });
+      if (res && typeof res.result === 'string') html = res.result;
+    } catch { html = null; }
+  }
+  const result = await chrome.runtime.sendMessage({ type: 'savePage', url: currentUrl, html });
+  if (result && result.ok) {
+    setStatus(result.message + (result.sentHtml ? '' : ' (from its link)'), 'ok');
+    return;
+  }
+  setStatus((result && result.error) || 'Could not save the page.', 'error');
+  savePageBtn.disabled = false;
+}
+
 function openOptions(e) {
   if (e) e.preventDefault();
   chrome.runtime.openOptionsPage();
 }
 
+savePageBtn.addEventListener('click', savePage);
 audioBtn.addEventListener('click', () => download('audio'));
 videoBtn.addEventListener('click', () => download('video'));
 document.getElementById('open-options').addEventListener('click', openOptions);

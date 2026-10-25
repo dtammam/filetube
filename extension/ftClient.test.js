@@ -96,3 +96,43 @@ test('gate r1: a 202 "playlist waiting" reply is a message, not a failure; Audio
   assert.equal(isPlaylistOnly('https://youtu.be/U3P8pUboZ5g?list=PLUtyNbQXMTLg'), false);
   assert.equal(isPlaylistOnly('https://example.com/?list=1'), false);
 });
+
+// v1.395.0 Pages: Save to Pages - the save-only token as a Bearer, the rendered HTML when it fits.
+test('buildSavePageRequest: not configured without a Pages token; only http(s) tabs', async () => {
+  const { buildSavePageRequest } = await mod();
+  const r = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: '', url: 'https://x.tld/a', html: '<p/>' });
+  assert.equal(r.ok, false);
+  assert.equal(r.configured, false);
+  assert.equal(buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 'ftd_x', url: 'chrome://extensions', html: null }).ok, false);
+  assert.equal(buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 'ftd_x', url: 'not a url', html: null }).ok, false);
+});
+
+test('buildSavePageRequest: POST /api/pages with Authorization Bearer, { url, html, source }', async () => {
+  const { buildSavePageRequest, PAGES_PATH } = await mod();
+  const r = buildSavePageRequest({ instanceUrl: 'https://ft.tld/', pagesToken: 'ftd_tok', url: 'https://x.tld/a', html: '<html><body>Hi</body></html>' });
+  assert.equal(r.ok, true);
+  assert.equal(r.sentHtml, true);
+  assert.equal(r.request.endpoint, `https://ft.tld${PAGES_PATH}`);
+  assert.equal(r.request.init.method, 'POST');
+  assert.equal(r.request.init.headers.Authorization, 'Bearer ftd_tok');
+  assert.ok(!('X-FileTube-Token' in r.request.init.headers), 'never the shared API token');
+  assert.deepEqual(JSON.parse(r.request.init.body), { url: 'https://x.tld/a', source: 'extension', html: '<html><body>Hi</body></html>' });
+});
+
+test('buildSavePageRequest: a page larger than the cap (or none) is sent as its URL alone', async () => {
+  const { buildSavePageRequest, PAGE_HTML_MAX_CHARS } = await mod();
+  const big = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: 'x'.repeat(PAGE_HTML_MAX_CHARS + 1) });
+  assert.equal(big.sentHtml, false);
+  assert.deepEqual(JSON.parse(big.request.init.body), { url: 'https://x.tld/a', source: 'extension' });
+  const none = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: null });
+  assert.equal(none.sentHtml, false);
+});
+
+test('interpretSavePageResponse: saved, already saved, a refused token, the server message verbatim', async () => {
+  const { interpretSavePageResponse } = await mod();
+  assert.deepEqual(interpretSavePageResponse(200, { item: { title: 'T' }, duplicate: false, message: 'Saved to Pages' }), { ok: true, duplicate: false, message: 'Saved to Pages', title: 'T' });
+  assert.equal(interpretSavePageResponse(200, { item: { title: 'T' }, duplicate: true, message: 'Already in Pages' }).message, 'Already in Pages');
+  assert.match(interpretSavePageResponse(401, { error: 'device token revoked' }).error, /revoked/);
+  assert.match(interpretSavePageResponse(401, null).error, /Pages token/);
+  assert.equal(interpretSavePageResponse(502, { error: 'Could not fetch the page: timeout' }).error, 'Could not fetch the page: timeout');
+});

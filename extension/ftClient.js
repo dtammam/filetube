@@ -21,6 +21,16 @@
 //   -> 503 { error }                      // download queue full
 
 export const DOWNLOAD_PATH = '/api/ytdlp/download';
+// v1.395.0 Pages: "Save to Pages" posts the tab to the user's own Pages with a SAVE-ONLY token
+// (Settings > Pages makes it; `Authorization: Bearer ftd_...`, accepted on this one route only).
+// The FILETUBE_API_TOKEN above has no user, so it can never save to Pages.
+//   POST {instanceUrl}/api/pages   body { url, html?, source: 'extension' }
+//   -> 200 { item, duplicate, message }   ("Saved to Pages" / "Already in Pages")
+//   -> 400 / 401 / 413 / 502 { error }
+export const PAGES_PATH = '/api/pages';
+// The page as the browser rendered it is sent when it fits the server's 10 MB cap (with room for
+// JSON escaping); a larger page is sent as its URL alone, and the server fetches it.
+export const PAGE_HTML_MAX_CHARS = 8 * 1024 * 1024;
 export const VALID_FORMATS = ['audio', 'video'];
 
 // Strip trailing slashes so `${base}${DOWNLOAD_PATH}` is always clean.
@@ -184,4 +194,37 @@ export function interpretTestResponse(status, payload, contentType) {
   // 400 (our empty url), 202, 503, or any other JSON reply from the handler all
   // mean the token got PAST the auth gate and the endpoint is live.
   return { ok: true, message: 'Connection OK - token accepted and the download endpoint is reachable.' };
+}
+
+// v1.395.0 Pages: the save request, or an error result. `html` is optional (null = the server fetches).
+export function buildSavePageRequest({ instanceUrl, pagesToken, url, html }) {
+  const base = normalizeInstanceUrl(instanceUrl);
+  if (!base || !pagesToken) {
+    return { ok: false, configured: false, error: 'Saving to Pages needs your instance URL and a Pages token (FileTube Settings > Pages). Open the extension options.' };
+  }
+  let u;
+  try { u = new URL(String(url || '')); } catch { return { ok: false, error: 'This tab has no web page to save.' }; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'Only http(s) pages can be saved.' };
+  const body = { url: u.toString(), source: 'extension' };
+  if (typeof html === 'string' && html.length > 0 && html.length <= PAGE_HTML_MAX_CHARS) body.html = html;
+  return {
+    ok: true,
+    sentHtml: Boolean(body.html),
+    request: {
+      endpoint: `${base}${PAGES_PATH}`,
+      init: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${pagesToken}` },
+        body: JSON.stringify(body),
+      },
+    },
+  };
+}
+
+export function interpretSavePageResponse(status, payload) {
+  if (status === 200 && payload && payload.item) {
+    return { ok: true, duplicate: payload.duplicate === true, message: typeof payload.message === 'string' ? payload.message : (payload.duplicate ? 'Already in Pages' : 'Saved to Pages'), title: payload.item.title || '' };
+  }
+  if (status === 401) return { ok: false, status, error: (payload && payload.error) || 'The Pages token was not accepted. Make a new one in FileTube Settings > Pages.' };
+  return { ok: false, status, error: (payload && payload.error) || `Request failed (HTTP ${status}).` };
 }

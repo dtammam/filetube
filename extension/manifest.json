@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "FileTube Downloader",
-  "version": "0.2.0",
-  "description": "Download the current tab (audio or video) into your self-hosted FileTube instance via yt-dlp.",
+  "version": "0.3.0",
+  "description": "Send the current tab to your self-hosted FileTube: save the page to Pages, or download its audio or video via yt-dlp.",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage"
   ],
   "optional_host_permissions": [
@@ -21,7 +22,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Download to FileTube",
+    "default_title": "Send to FileTube",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
