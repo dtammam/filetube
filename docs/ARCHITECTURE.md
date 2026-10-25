@@ -210,8 +210,7 @@ tables), `visibility.js` (the ONE pure visibility decision).
 
 ## Pages (saved web pages and text, v1.395.0)
 
-`lib/pages/` - the reading library (plan `docs/exec-plans/active/2026-10-25-pages.md`, moved to `completed/`
-when it ships). The FILES are the source of truth for content: one folder per item under `FILETUBE_PAGES_DIR`
+`lib/pages/` - the reading library (plan `docs/exec-plans/completed/2026-10-25-pages.md`, shipped v1.395.0). The FILES are the source of truth for content: one folder per item under `FILETUBE_PAGES_DIR`
 (default `<DATA_DIR>/pages`), `<userId>/items/<yyyy>/<yyyy-mm-dd>-<slug>-<id>/` holding `item.json` (the
 metadata and the note), `reader.html`, `original.html`, `text.txt` and `assets/`; the database tables
 (`pages_items` + the `pages_fts` full-text index) are an index rebuilt from those files, while the per-user

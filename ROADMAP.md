@@ -499,6 +499,15 @@
 - [ ] **The outbound fetch guard does not refuse 198.18.0.0/15** _(v1.395.0 gate r1, adversary)_ - the benchmarking range
   (RFC 2544) passes `isPrivateOrLocalHost` (lib/ytdlp/url.js), shared by the podcasts, the shortlink resolver and Pages. Rarely
   an internal network, but add it (and re-check the other special-purpose ranges) with the guard's own test.
+- [ ] **Pages: capture queue follow-ups** _(v1.395.0 gate r3, non-blocking)_ - (a) two release paths of the queue
+  (lib/pages/capture.js) have no test that fails without them: the release when a save fails before its images, and holding the slot
+  through localization (adversary A9); (b) a slot is held through the image download (up to 120 s): release it after the worker and
+  take it again for localize's CPU step, and give `acquire()` a wait timeout (A10); (c) the queue is shared by every account, so one
+  account can make others' URL saves answer "busy" for minutes: 1 running + 1 waiting per account (security-brief S6); (d) a
+  once-guard on the limiter's `release()`.
+- [ ] **Pages: two plan-path comments** _(v1.395.0 close-out)_ - lib/pages/index.js:3 and public/js/pages.js:2 name the plan at
+  `docs/exec-plans/active/`; it moved to `completed/` at release (left alone so the close-out stayed bookkeeping-only). Fix on the next
+  code change there (R2).
 - [ ] **Pages later** _(v1.395.0 P13, out of scope for R1)_ - text-to-speech of the Reader (Listen from Here), iOS offline copies of
   Pages, re-capturing a newer copy of a saved page, Feed cards for Pages (Feed phase 2).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
@@ -877,6 +886,17 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.395.0 - Pages: save web pages and text to read later (2026-10-25)
+
+Plan: docs/exec-plans/completed/2026-10-25-pages.md (R1; R2 highlights is Planned). Rulings P1-P14 unchanged; deviations 1-10 in the plan.
+- **The store (step 1)**: files are the source of truth, one folder per item under `FILETUBE_PAGES_DIR` (default `<DATA_DIR>/pages`): `item.json` (one normalizer, one byte order), `reader.html`, `original.html`, `text.txt`, `assets/`; built as a dot `.part` folder and renamed, edited by temp + rename. Schema v39 (additive, the twentieth floor): `pages_items` + the `pages_fts` FTS5 index (rebuilt from the files, refused over a missing or empty folder), `pages_state` and the lists (per-user state, in the backup bundle as `pages`). Delete = a move to the user's trash, emptied after 30 days by the file's own stamp. `owner.json` per user folder; a folder that names someone else is set aside, never adopted.
+- **Capture (steps 2-3)**: Mozilla Readability 0.6.0 vendored unmodified (sha256-locked; the vendoring rule D-VENDOR in ARCHITECTURE.md); our tidier for tag soup; an allowlist sanitizer with capture and final modes and a tokenizing CSS sanitizer; the CPU work in a worker thread with a 20 s deadline; every outbound fetch (page, images, stylesheets, fonts) through the podcasts' guard, whose connect-time DNS answer is now checked too (rebinding closed, podcasts included); images and stylesheets stored locally (300 / 50 MB caps). Fixture corpus: 15 real pages, both capture paths agree.
+- **Render**: the Reader inline (sanitized at save and again when served); the Original in `<iframe sandbox>` under a strict CSP + CSP sandbox, its own images inlined as data: URIs (measured: Chromium and Firefox send no Lax cookie for a sandboxed frame's images).
+- **API + auth (step 4)**: 15 user-scoped `/api/pages*` routes (another user's item is the neutral 404); a save-only device-token platform `shortcut` accepted ONLY on POST /api/pages; an iOS token may also save; a bounded capture queue (2 + 4, then 503 with a message).
+- **UI (step 5)**: /pages (the History shell transformed), the item page at /pages?id=, lists, full-text search, Add, Share with AI (the transcript prompts, renamed "Share with AI" in Settings), a Settings > Pages section (the Shortcut and extension tokens, the recipe), Rebuild Pages, the Download dialog's Page choice (Page only with yt-dlp off; nothing on a host without mediaFetch), an opt-in bottom-bar item (new `article` glyph).
+- **Extension (step 6)**: 0.3.0, Save to Pages (new `scripting` permission), proven on a live page in Chromium.
+- Gate: FULL (adversary, qa, security-brief), three rounds (Dean ran round 3). r1 CHANGES: an account could inherit another's library after a restore (CRITICAL), every saved link stripped by the final pass (CRITICAL), a 40 s Readability stall, a quadratic CSS scan, a stale scroll listener, uneditable lists after a purge, duplicate matching text/trash, plus hardening. r2 CHANGES: the worker fix let parallel saves stack (8 at once: 4.45 GB), a web toast hid "in the trash". r3 APPROVED @0d08bbb7 by all three. Mutation (builder): r1 33 mutants (23 killed, 9 survived, 1 did not apply), r2 10 (8 killed; the 2 survivors masked by an upstream rule), the r1-fix round 15 (15 killed), the r2-fix round 8 (6 killed, the 2 survivors bound by tests and killed on re-run). Suites in the plan Evidence.
 
 ### v1.394.0 - Clickable links and times in descriptions, and the real top comments (2026-10-23)
 
