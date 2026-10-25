@@ -349,3 +349,17 @@ test('gate r2 A7: the limiter - a refused acquire never takes a slot; a waiting 
   assert.deepStrictEqual(order, ['second', 'resume']);
   assert.deepStrictEqual(l.stats(), { active: 0, waiting: 0 });
 });
+
+test('gate r2 A7: a restart\'s resume WAITS for a free slot (never refused like a save)', async () => {
+  const t = setup(BASE_ROUTES, { maxActive: 1, maxWaiting: 0 });
+  const { buildFromUrl } = require('../../lib/pages/capture');
+  const built = await buildFromUrl({ url: 'https://news.example.com/boathouse' }, { deps: t.fetchDeps });
+  const saved = await t.service.saveItem(1, { record: built.record, files: built.files });
+  const held = await t.capture.limiter.acquire(); // a save is busy
+  const resumed = t.capture.resumePending();
+  await new Promise((r) => setTimeout(r, 50));
+  assert.strictEqual(t.service.getItem(1, saved.item.id).assetsState, 'pending', 'it waits');
+  held();
+  assert.strictEqual(await resumed, 1);
+  assert.strictEqual(t.service.getItem(1, saved.item.id).assetsState, 'done');
+});

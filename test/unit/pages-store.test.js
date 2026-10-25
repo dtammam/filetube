@@ -327,3 +327,13 @@ test('gate r2 A8: a damaged owner.json in a folder whose items ARE this account\
   assert.strictEqual(fs.readdirSync(path.join(t.root, '.deleted-users')).length, 1);
   assert.deepStrictEqual(t.svc.index.listItems(1).items.map((i) => i.kind), ['text']);
 });
+
+test('gate r2 A8: after a set-aside the id\'s index rows (the previous person\'s) are dropped at once, before any rebuild', async () => {
+  const t = setup();
+  const { item } = await t.svc.saveText(2, { text: 'Sam private notes.' });
+  t.adapter.sql.exec("DELETE FROM pages_items WHERE 0; UPDATE users SET username = 'kid' WHERE id = 2"); // the id now names another person; Sam's rows are still indexed
+  assert.ok(t.svc.getItem(2, item.id), 'precondition: the previous person\'s row is in the index');
+  await t.svc.saveText(2, { text: 'Kid homework.' });
+  assert.strictEqual(t.svc.getItem(2, item.id), null, 'gone from the index with the folder');
+  assert.deepStrictEqual(t.svc.index.listItems(2, { q: 'private' }).items, []);
+});
