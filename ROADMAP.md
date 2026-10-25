@@ -499,6 +499,9 @@
 - [ ] **The outbound fetch guard does not refuse 198.18.0.0/15** _(v1.395.0 gate r1, adversary)_ - the benchmarking range
   (RFC 2544) passes `isPrivateOrLocalHost` (lib/ytdlp/url.js), shared by the podcasts, the shortlink resolver and Pages. Rarely
   an internal network, but add it (and re-check the other special-purpose ranges) with the guard's own test.
+- [ ] **Pages: the save route's 413 has no `message`** _(v1.395.1 gate r4 adversary, pre-existing)_ - a body over 16 MB
+  answers `{"error":"request body too large"}` from the route's own body-parser error handler, which the `message` wrapper does
+  not cover, so an iOS Shortcut shows no text (the extension retries link-only on the status alone). Add the message there.
 - [ ] **Pages: capture queue follow-ups** _(v1.395.0 gate r3, non-blocking)_ - (a) two release paths of the queue
   (lib/pages/capture.js) have no test that fails without them: the release when a save fails before its images, and holding the slot
   through localization (adversary A9); (b) a slot is held through the image download (up to 120 s): release it after the worker and
@@ -889,10 +892,11 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### v1.395.1 - Security updates for two built-in libraries; Pages reaches the image (2026-10-25)
 
-- v1.395.0's tag failed its dependency audit on two advisories published that day: GHSA-27r3-jxmh-p828 (body-parser, under
-  express: a denial of service via trailing bytes after a compressed body) and GHSA-xjj6-f33q-929c (undici, under jsdom, dev
-  only). `npm audit fix --package-lock-only`: body-parser 1.20.8 -> 1.20.9, undici 7.30.0 -> 7.30.1, both inside the existing
-  ranges (package.json unchanged, no new dependency). A pushed tag is never moved, so the v1.395.0 image was never published and
+- v1.395.0's tag failed its dependency audit on two high advisories: GHSA-27r3-jxmh-p828 (body-parser, under express: a
+  denial of service via trailing bytes after a compressed body) and GHSA-xjj6-f33q-929c (undici, under jsdom, dev only; 7.30.1
+  also closes GHSA-4qv8-2p9j-2685 and GHSA-f72v-6w45-q472). `npm audit fix --package-lock-only`: body-parser 1.20.8 -> 1.20.9,
+  undici 7.30.0 -> 7.30.1, both inside the existing ranges (dependency ranges unchanged, no new dependency; integrity = the
+  registry's). A pushed tag is never moved, so the v1.395.0 image was never published and
   Pages ships in this tag. Gate: the forced dependency row (adversary, qa, security-brief) re-confirmed the lockfile delta.
 
 ### v1.395.0 - Pages: save web pages and text to read later (2026-10-25)
