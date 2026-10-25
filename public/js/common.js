@@ -5680,6 +5680,13 @@ const ONEOFF_FORMAT_OPTIONS = [
 // With yt-dlp off (or a native host without the mediaFetch capability) it is the ONLY choice: the
 // button and the dialog still exist, for pages. Pure, exported.
 const ONEOFF_PAGE_OPTION = { value: 'page', label: 'Page' };
+// The toast after a save to Pages: the SERVER's message ("Already in Pages, in the trash: ..." says
+// what a bare "Already in Pages" hid, gate r2 qa W3), else the plain answer. Both web entry points
+// (the Pages Add sheet, this dialog's Page) use it.
+function pagesSavedMessage(data) {
+  if (data && typeof data.message === 'string' && data.message.trim() !== '') return data.message;
+  return data && data.duplicate ? 'Already in Pages' : 'Saved to Pages';
+}
 function oneOffFormatOptions(mediaAllowed) {
   return mediaAllowed ? ONEOFF_FORMAT_OPTIONS.concat([ONEOFF_PAGE_OPTION]) : [ONEOFF_PAGE_OPTION];
 }
@@ -8307,7 +8314,7 @@ function injectOneOffDownloadButtonIfEnabled() {
                   const data = await r.json().catch(() => ({}));
                   if (modalState !== state) return;
                   if (!r.ok) { state.statusEl.textContent = data.error || 'Could not save the page.'; return; }
-                  if (typeof showToast === 'function') showToast(data.duplicate ? 'Already in Pages' : 'Saved to Pages');
+                  if (typeof showToast === 'function') showToast(pagesSavedMessage(data));
                   closeModal();
                 })
                 .catch(() => { if (modalState === state) state.statusEl.textContent = 'Could not save the page (network error).'; });
@@ -18483,7 +18490,7 @@ if (typeof module !== 'undefined' && module.exports) {
     REORDER_LONG_PRESS_MS, REORDER_MOUSE_THRESHOLD_PX, REORDER_TOUCH_SLOP_PX,
     REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
-    shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody, oneOffFormatOptions, // v1.395.0
+    shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody, oneOffFormatOptions, pagesSavedMessage, // v1.395.0
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,

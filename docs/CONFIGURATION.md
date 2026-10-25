@@ -361,7 +361,8 @@ Rebuild Pages). Read state, positions and lists live in the database and ride th
 When the server fetches a link (the Add box, the Download dialog's Page, a Shortcut that sends a link)
 it refuses private and local addresses, follows at most 5 redirects (each checked) and caps a page at
 10 MB; a page's images, stylesheets and fonts are fetched the same way, at most 300 files and 50 MB per
-page. Pages that need a login are best saved from the browser extension or the Safari Shortcut, which
+page. At most two pages are processed at once and four more wait; past that a save answers "FileTube
+is busy saving other pages" (try again in a minute). Pages that need a login are best saved from the browser extension or the Safari Shortcut, which
 send the page exactly as you see it.
 
 **Saving from an iPhone (Shortcut) or the browser extension.** Settings > Pages makes a save-only

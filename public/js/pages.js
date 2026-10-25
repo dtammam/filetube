@@ -1,4 +1,4 @@
-/* global showToast, composeTranscriptAiShare, shareTextContent, fetchTranscriptAiPrompts, copyTextToClipboard, uiStateHtml */
+/* global showToast, composeTranscriptAiShare, shareTextContent, fetchTranscriptAiPrompts, copyTextToClipboard, uiStateHtml, pagesSavedMessage */
 // FileTube Pages (v1.395.0, plan docs/exec-plans/active/2026-10-25-pages.md) -- registered VIEW
 // MODULE (the history.js / feed.js pattern): `init(root)` runs on a full load AND an in-app swap
 // into /pages; every listener binds through ONE per-instance AbortController so `destroy()`
@@ -165,7 +165,7 @@ if (typeof module !== 'undefined' && module.exports) {
       sendJson('POST', '/api/pages', pagesSaveBody(value, note.value, 'web'))
         .then(function (r) {
           sheet.close();
-          toast(r.duplicate ? 'Already in Pages' : 'Saved to Pages');
+          toast(typeof pagesSavedMessage === 'function' ? pagesSavedMessage(r) : (r.message || 'Saved to Pages'));
           if (typeof onSaved === 'function') onSaved(r.item);
         })
         .catch(function (err) { status.textContent = err.message || 'Could not save that.'; })

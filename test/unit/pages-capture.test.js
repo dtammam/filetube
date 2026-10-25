@@ -33,14 +33,14 @@ function fakeHttp(routes, requested) {
       res.headers = Object.assign({}, route.headers || {});
       if (route.location) res.headers.location = route.location;
       res.destroy = () => { res.destroyed = true; };
-      setImmediate(() => {
+      setTimeout(() => {
         cb(res);
         if (route.location) return;
         setImmediate(() => {
           for (const c of route.chunks || []) { if (res.destroyed) return; res.emit('data', Buffer.from(c)); }
           res.emit('end');
         });
-      });
+      }, route.delayMs || 0);
       return { setTimeout() {}, on() {}, end() {}, destroy() {} };
     },
   };
@@ -50,7 +50,7 @@ function fakeLookup(privateHosts) {
   return (host, _opts, cb) => setImmediate(() => cb(null, [{ address: privateHosts.has(host) ? '10.1.2.3' : '203.0.113.7', family: 4 }]));
 }
 
-function setup(routes, { privateHosts = new Set() } = {}) {
+function setup(routes, { privateHosts = new Set(), maxActive, maxWaiting } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-pages-capture-'));
   const adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
   adapter.sql.prepare("INSERT INTO users (id, username, password_hash, role, created_at) VALUES (1, 'dean', 'x', 'admin', '2026-01-01T00:00:00.000Z')").run();
@@ -59,7 +59,7 @@ function setup(routes, { privateHosts = new Set() } = {}) {
   const service = createPagesService({ adapter, root, userStore, log: () => {} });
   const requested = [];
   const fetchDeps = { http: fakeHttp(routes, requested), https: fakeHttp(routes, requested), lookup: fakeLookup(privateHosts) };
-  const capture = createCapture({ service, deps: { fetch: fetchDeps }, log: () => {} });
+  const capture = createCapture({ service, deps: { fetch: fetchDeps }, log: () => {}, maxActive, maxWaiting });
   return { dir, adapter, root, service, capture, requested, fetchDeps, userStore };
 }
 
@@ -319,4 +319,33 @@ test('gate r1 A2: the heavy work runs in a worker - a hostile page never stalls 
   // The control: a normal page gets both phases.
   const ok = await processInWorker(ARTICLE(), 'https://news.example.com/boathouse');
   assert.ok(ok.original && ok.reader, ok.error);
+});
+
+test('gate r2 A7: captures are bounded - past the active + waiting slots a save is refused at once (503, a message), never a pile of workers', async () => {
+  const slowRoutes = { ...BASE_ROUTES, 'https://news.example.com/photo.png': { status: 200, chunks: [PNG], delayMs: 600 } };
+  const t = setup(slowRoutes, { maxActive: 1, maxWaiting: 0 });
+  const first = await t.capture.saveUrl(1, { url: 'https://news.example.com/boathouse', html: ARTICLE() });
+  assert.deepStrictEqual(t.capture.limiter.stats(), { active: 1, waiting: 0 }, 'the first save holds its slot through the image localization');
+  await assert.rejects(t.capture.saveUrl(1, { url: 'https://news.example.com/other', html: ARTICLE() }), (err) => err.status === 503 && /busy saving other pages/.test(err.message));
+  await first.localized;
+  assert.deepStrictEqual(t.capture.limiter.stats(), { active: 0, waiting: 0 }, 'released when the images are stored');
+  const third = await t.capture.saveUrl(1, { url: 'https://news.example.com/third', html: ARTICLE() });
+  await third.localized;
+  assert.strictEqual(t.service.index.countAll(), 2);
+});
+
+test('gate r2 A7: the limiter - a refused acquire never takes a slot; a waiting one runs in order; a resume (wait) always waits', async () => {
+  const { createLimiter } = require('../../lib/pages/capture');
+  const l = createLimiter(1, 1);
+  const r1 = await l.acquire();
+  const order = [];
+  const p2 = l.acquire().then((rel) => { order.push('second'); return rel; });
+  await assert.rejects(l.acquire(), (e) => e.status === 503);
+  const p4 = l.acquire({ wait: true }).then((rel) => { order.push('resume'); return rel; });
+  assert.deepStrictEqual(l.stats(), { active: 1, waiting: 2 });
+  r1();
+  (await p2)();
+  (await p4)();
+  assert.deepStrictEqual(order, ['second', 'resume']);
+  assert.deepStrictEqual(l.stats(), { active: 0, waiting: 0 });
 });

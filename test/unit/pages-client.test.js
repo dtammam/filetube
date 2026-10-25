@@ -195,3 +195,15 @@ test('gate r1 qa W1: after the "saving images" poll re-renders, the first render
   assert.deepStrictEqual(patches, [], 'no position / read write from a stale listener');
   view.destroy();
 });
+
+test('gate r2 qa W3: both web save toasts show the server\'s message ("in the trash" included)', () => {
+  const { pagesSavedMessage } = require('../../public/js/common.js');
+  assert.strictEqual(pagesSavedMessage({ duplicate: true, message: 'Already in Pages, in the trash: restore it from Pages > Trash' }), 'Already in Pages, in the trash: restore it from Pages > Trash');
+  assert.strictEqual(pagesSavedMessage({ duplicate: true }), 'Already in Pages');
+  assert.strictEqual(pagesSavedMessage({}), 'Saved to Pages');
+  const common = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  const pagesJs = fs.readFileSync(path.join(__dirname, '../../public/js/pages.js'), 'utf8');
+  assert.match(common, /showToast\(pagesSavedMessage\(data\)\)/, 'the Download dialog Page toast');
+  assert.match(pagesJs, /toast\(typeof pagesSavedMessage === 'function' \? pagesSavedMessage\(r\)/, 'the Add sheet toast');
+  assert.ok(!/showToast\(data\.duplicate \?|toast\(r\.duplicate \?/.test(common + pagesJs), 'no hand-built toast left at either call site');
+});

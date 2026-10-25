@@ -309,3 +309,21 @@ test('gate r1 qa W3: only URL items are duplicate keys; a text save that carries
   await t.svc.saveText(1, { text: 'Quote from the article.', url: 'https://example.com/a' });
   assert.strictEqual(t.svc.index.findByUrl(1, 'https://example.com/a'), null);
 });
+
+test('gate r2 A8: a damaged owner.json in a folder whose items ARE this account\'s is rewritten, never set aside', async () => {
+  const t = setup();
+  const first = (await t.svc.saveText(1, { text: 'Mine.' })).item;
+  fs.writeFileSync(path.join(t.root, '1', 'owner.json'), '');
+  const second = (await t.svc.saveText(1, { text: 'Mine too.' })).item;
+  assert.strictEqual(fs.existsSync(path.join(t.root, '.deleted-users')), false, 'nothing set aside');
+  assert.deepStrictEqual(disk.readOwner(t.root, 1), { userId: 1, username: 'dean' });
+  assert.ok(t.svc.readRecord(t.svc.getItem(1, first.id)), 'the first item is still where its index row says');
+  assert.ok(await t.svc.trash(1, first.id));
+  assert.ok(t.svc.getItem(1, second.id));
+  // The other side: a folder with no owner.json and items this account's index does NOT hold is set aside.
+  fs.unlinkSync(path.join(t.root, '1', 'owner.json'));
+  t.svc.index.replaceIndex([], { userIds: [1] });
+  await t.svc.saveText(1, { text: 'After.' });
+  assert.strictEqual(fs.readdirSync(path.join(t.root, '.deleted-users')).length, 1);
+  assert.deepStrictEqual(t.svc.index.listItems(1).items.map((i) => i.kind), ['text']);
+});
