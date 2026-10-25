@@ -263,3 +263,60 @@ test('a FETCHED stylesheet that tries to close its <style> (</style><img onerror
   assert.ok(![...dom.window.document.querySelectorAll('img')].some((i) => i.getAttribute('src') === 'x'));
   dom.window.close();
 });
+
+test('DNS rebinding: the CONNECT resolves through a checked lookup - a host that answers public to the guard and private to the socket is never reached', async () => {
+  const http = require('http');
+  const { guardedFetch } = require('../../lib/pages/fetch');
+  let hits = 0;
+  const local = http.createServer((req, res) => { hits += 1; res.end('secret router page'); });
+  await new Promise((r) => local.listen(0, '127.0.0.1', r));
+  const port = local.address().port;
+  let calls = 0;
+  // The first answer (guardHop's resolve-then-check) is public; every later one (the connect) is loopback.
+  const lookup = (host, opts, cb) => { calls += 1; setImmediate(() => cb(null, [{ address: calls === 1 ? '203.0.113.7' : '127.0.0.1', family: 4 }])); };
+  try {
+    const r = await guardedFetch(`http://rebind.example:${port}/admin`, { deps: { lookup } });
+    assert.strictEqual(r.ok, false, JSON.stringify(r));
+    assert.strictEqual(hits, 0, 'the private address was never connected to');
+    assert.ok(calls >= 2, 'the connect resolved through the injected (checked) lookup');
+    // The control: a lookup that answers loopback for the CONNECT only when the check is skipped would reach it.
+    const { checkedLookup } = require('../../lib/podcasts/fetchGuard');
+    await new Promise((resolve) => checkedLookup((h, o, cb) => cb(null, [{ address: '10.0.0.1', family: 4 }]))('x', {}, (err) => { assert.ok(err && err.code === 'EPRIVATE'); resolve(); }));
+    await new Promise((resolve) => checkedLookup((h, o, cb) => cb(null, [{ address: '203.0.113.9', family: 4 }]))('x', {}, (err, addr, fam) => { assert.strictEqual(err, null); assert.strictEqual(addr, '203.0.113.9'); assert.strictEqual(fam, 4); resolve(); }));
+  } finally {
+    local.close();
+  }
+});
+
+test('gate r1 C1: a URL save keeps its links in BOTH views after the images are stored', async () => {
+  const html = ARTICLE('<p>Read <a href="https://other.example/report">the report</a>.</p>');
+  const t = setup({ ...BASE_ROUTES, 'https://news.example.com/boathouse': { status: 200, headers: { 'content-type': 'text/html' }, chunks: [html] } });
+  const { item, localized } = await t.capture.saveUrl(1, { url: 'https://news.example.com/boathouse' });
+  const done = await localized;
+  assert.strictEqual(done.assetsState, 'done');
+  for (const f of ['reader.html', 'original.html']) {
+    assert.match(t.service.readFile(item, f), /<a href="https:\/\/other\.example\/report" target="_blank" rel="noopener noreferrer">the report<\/a>/, f);
+  }
+});
+
+test('gate r1 A2: the heavy work runs in a worker - a hostile page never stalls the event loop, and a slow Reader saves Original-only', async () => {
+  const { processInWorker } = require('../../lib/pages/process');
+  const hostile = ('<div>'.repeat(195) + '<p>x, y.</p>' + '</div>'.repeat(195)).repeat(600);
+  let last = Date.now();
+  let worstGap = 0;
+  const tick = setInterval(() => { const now = Date.now(); worstGap = Math.max(worstGap, now - last); last = now; }, 20);
+  const t0 = Date.now();
+  const got = await processInWorker(hostile, 'https://evil.example/a', { deadlineMs: 4000 });
+  clearInterval(tick);
+  const total = Date.now() - t0;
+  assert.ok(worstGap < 500, `the event loop stalled ${worstGap} ms`);
+  assert.ok(total < 6000, `bounded by the deadline (${total} ms)`);
+  assert.ok(got.original, 'the Original phase finished: ' + got.error);
+  assert.strictEqual(got.reader, null, 'the Reader phase was cut at the deadline');
+  // No phase in time: nothing is written and the save answers an error.
+  const { buildFromUrl } = require('../../lib/pages/capture');
+  await assert.rejects(buildFromUrl({ url: 'https://evil.example/a', html: hostile }, { deadlineMs: 1 }), (err) => err.status === 422);
+  // The control: a normal page gets both phases.
+  const ok = await processInWorker(ARTICLE(), 'https://news.example.com/boathouse');
+  assert.ok(ok.original && ok.reader, ok.error);
+});

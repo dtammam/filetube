@@ -90,6 +90,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var THEMES = ['paper', 'sepia', 'night'];
 
   function U() { return window.ui; }
+  // uiStateHtml writes its title / body as HTML: anything not a fixed string is escaped first
+  // (gate r1 security-brief S2 / adversary A6).
+  function esc(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function readPref(k) { try { return window.localStorage.getItem(k); } catch (_) { return null; } }
   function writePref(k, v) { try { window.localStorage.setItem(k, v); } catch (_) { /* storage off */ } }
   function toast(msg, kind) { if (typeof showToast === 'function') showToast(msg); else if (U() && U().toast) U().toast(msg, { kind: kind || 'neutral' }); }
@@ -222,8 +225,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var actions;
       if (item.trashedAt) {
         var restore = u.button({ variant: 'tonal', size: 'sm', label: 'Restore', pill: true });
-        restore.classList.add('pages-restore');
-        restore.setAttribute('data-id', item.id);
+        restore.setAttribute('data-pages-restore', item.id);
         actions = [restore];
       } else {
         actions = [null];
@@ -277,7 +279,7 @@ if (typeof module !== 'undefined' && module.exports) {
         listEl.replaceChildren();
         listEl.hidden = true;
         emptyEl.hidden = false;
-        emptyEl.innerHTML = typeof uiStateHtml === 'function' ? uiStateHtml({ icon: 'warning', title: 'Could not load your pages', body: err.message || '', tone: 'error' }) : '';
+        emptyEl.innerHTML = typeof uiStateHtml === 'function' ? uiStateHtml({ icon: 'warning', title: 'Could not load your pages', body: esc(err.message || ''), tone: 'error' }) : '';
       });
     }
 
@@ -298,7 +300,6 @@ if (typeof module !== 'undefined' && module.exports) {
         viewsEl.appendChild(chip);
       });
       var add = u.chip({ kind: 'filter', label: 'New list', onClick: function () { newList(); } });
-      add.classList.add('pages-newlist-chip');
       viewsEl.appendChild(add);
       renderListActions();
     }
@@ -357,10 +358,10 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     listEl.addEventListener('click', function (e) {
-      var btn = e.target.closest('.pages-restore');
+      var btn = e.target.closest('[data-pages-restore]');
       if (!btn) return;
       e.preventDefault();
-      var id = btn.getAttribute('data-id');
+      var id = btn.getAttribute('data-pages-restore');
       sendJson('POST', '/api/pages/' + id + '/restore', {}, signal).then(function () {
         toast('Restored');
         var row = btn.closest('.ui-row');
@@ -395,7 +396,15 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined && text !== null) n.textContent = text; return n; }
 
+    // Each render owns its listeners: the "saving images" poll renders again, and the first
+    // render's window scroll listener must not outlive its (detached) Reader - it measured the
+    // detached box as 0 high and marked the page read (gate r1 qa W1).
+    var renderCtl = null;
+    signal.addEventListener('abort', function () { if (renderCtl) renderCtl.abort(); });
     function render(data) {
+      if (renderCtl) renderCtl.abort();
+      renderCtl = new AbortController();
+      var rsig = renderCtl.signal;
       var item = data.item;
       host.replaceChildren();
       var back = el('a', 'pages-back ui-btn ui-btn--plain ui-btn--sm');
@@ -441,7 +450,7 @@ if (typeof module !== 'undefined' && module.exports) {
             if (lbl) lbl.textContent = item.note ? 'Edit note' : 'Add note';
           }).catch(function (err) { toast(err.message || 'Could not save the note.'); });
         });
-      }, { signal: signal });
+      }, { signal: rsig });
 
       // Actions: the view toggle, Aa, lists, share, read, delete. A row that wraps, never shrinks.
       var bar = el('div', 'pages-item-actions');
@@ -459,7 +468,9 @@ if (typeof module !== 'undefined' && module.exports) {
       var listBtn = u.button({ variant: 'secondary', size: 'sm', icon: 'playlist_add', label: 'Add to list', pill: true });
       var shareBtn = u.button({ variant: 'secondary', size: 'sm', icon: 'share', label: 'Share with AI', pill: true });
       var readBtn = u.button({ variant: 'secondary', size: 'sm', icon: 'check', labels: ['Mark read', 'Mark unread'], pressed: !!item.read, pill: true });
-      var delBtn = u.button({ variant: 'danger', size: 'sm', icon: 'delete', label: item.trashedAt ? 'Restore' : 'Delete', pill: true });
+      var delBtn = item.trashedAt
+        ? u.button({ variant: 'secondary', size: 'sm', label: 'Restore', pill: true })
+        : u.button({ variant: 'danger', size: 'sm', icon: 'delete', label: 'Delete', pill: true });
       [aa, listBtn, shareBtn, readBtn, delBtn].forEach(function (b) { bar.appendChild(b); });
       host.appendChild(bar);
 
@@ -524,7 +535,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (f >= 0.98 && !item.read) { body.read = true; item.read = true; if (u.setPressed) u.setPressed(readBtn, true); }
           sendJson('PATCH', '/api/pages/' + id, body, signal).catch(function () { /* the next scroll tries again */ });
         }, POSITION_DEBOUNCE_MS);
-      }, { signal: signal, passive: true });
+      }, { signal: rsig, passive: true });
 
       aa.addEventListener('click', function () {
         var box = el('div', 'reader-settings');
@@ -545,7 +556,7 @@ if (typeof module !== 'undefined' && module.exports) {
         themeRow.appendChild(u.segmented({ label: 'Reading theme', value: theme, options: [{ value: 'paper', label: 'Paper' }, { value: 'sepia', label: 'Sepia' }, { value: 'night', label: 'Night' }], onChange: function (v) { theme = v; writePref(READER_THEME_KEY, v); applyLook(); } }));
         box.appendChild(themeRow);
         u.sheet({ variant: 'auto', anchor: aa, title: 'Reader settings', content: box, signal: viewSignal(signal) }).open();
-      }, { signal: signal });
+      }, { signal: rsig });
 
       listBtn.addEventListener('click', function () {
         api('/api/pages/lists', { signal: signal }).then(function (r) {
@@ -563,7 +574,7 @@ if (typeof module !== 'undefined' && module.exports) {
           } });
           u.menu({ title: 'Add to list', label: 'Add to list', anchor: listBtn, items: items, signal: viewSignal(signal) });
         }).catch(function () { toast('Could not load your lists.'); });
-      }, { signal: signal });
+      }, { signal: rsig });
 
       // Membership is compare-and-set (the server's version): a stale copy retries once.
       function toggleList(list, add, retried) {
@@ -581,7 +592,7 @@ if (typeof module !== 'undefined' && module.exports) {
         });
       }
 
-      shareBtn.addEventListener('click', function () { openShareMenu(shareBtn, signal, '/api/pages/' + id + '/share', item.title); }, { signal: signal });
+      shareBtn.addEventListener('click', function () { openShareMenu(shareBtn, signal, '/api/pages/' + id + '/share', item.title); }, { signal: rsig });
 
       readBtn.addEventListener('click', function () {
         var next = !item.read;
@@ -589,7 +600,7 @@ if (typeof module !== 'undefined' && module.exports) {
           item.read = r.item.read;
           if (u.setPressed) u.setPressed(readBtn, item.read);
         }).catch(function (err) { toast(err.message || 'Could not change that.'); });
-      }, { signal: signal });
+      }, { signal: rsig });
 
       delBtn.addEventListener('click', function () {
         if (item.trashedAt) {
@@ -603,7 +614,7 @@ if (typeof module !== 'undefined' && module.exports) {
             go('/pages');
           }).catch(function (err) { toast(err.message || 'Could not delete it.'); });
         });
-      }, { signal: signal });
+      }, { signal: rsig });
 
       // While images are still being stored, check back until they land.
       if (item.saving) {
@@ -624,7 +635,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }).catch(function (err) {
       if (signal.aborted) return;
       host.innerHTML = typeof uiStateHtml === 'function'
-        ? uiStateHtml({ icon: 'warning', title: err.status === 404 ? 'This page is not in your Pages' : 'Could not open this page', body: err.status === 404 ? '' : (err.message || ''), tone: 'error' })
+        ? uiStateHtml({ icon: 'warning', title: err.status === 404 ? 'This page is not in your Pages' : 'Could not open this page', body: err.status === 404 ? '' : esc(err.message || ''), tone: 'error' })
         : '';
     });
   }

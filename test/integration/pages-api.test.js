@@ -194,6 +194,48 @@ test('D-AUTH: a shortcut token (password re-entry, shown once) saves to Pages an
   assert.strictEqual((await call('POST', '/api/pages', { headers: bearer, body: { text: 'after revoke' } })).status, 401);
 });
 
+test('gate r1: a duplicate of a TRASHED page says so; a save-only token gets { duplicate, message } and no item', async () => {
+  const html = ARTICLE.replace('periwinkle lanterns', 'marigold kites');
+  const first = await json(await call('POST', '/api/pages', { session: owner, body: { url: 'https://news.example.com/kites', html } }));
+  await call('DELETE', `/api/pages/${first.body.item.id}`, { session: owner });
+  const again = await json(await call('POST', '/api/pages', { session: owner, body: { url: 'https://news.example.com/kites', html } }));
+  assert.strictEqual(again.body.duplicate, true);
+  assert.match(again.body.message, /in the trash/);
+  const issued = deviceStore.issue({ userId: owner.user.id, name: 'Save token', platform: 'shortcut', epoch: userStore.getById(owner.user.id).deviceEpoch }, new Date().toISOString());
+  const viaToken = await json(await call('POST', '/api/pages', { headers: { Authorization: 'Bearer ' + issued.token }, body: { url: 'https://news.example.com/kites', html } }));
+  assert.deepStrictEqual(viaToken.body, { duplicate: true, message: again.body.message }, 'nothing about the item is read back');
+  await call('POST', `/api/pages/${first.body.item.id}/restore`, { session: owner });
+});
+
+test('gate r1 A4: the Reader is sanitized again as it is served (a reader.html edited on disk cannot run script in the app)', async () => {
+  const it = pages.service.getItem(owner.user.id, urlItem.id);
+  const fsx = require('node:fs');
+  const dir = require('../../lib/pages/disk').locate(pages.service.root, owner.user.id, it.folder).dir;
+  const file = path.join(dir, 'reader.html');
+  const good = fsx.readFileSync(file, 'utf8');
+  fsx.writeFileSync(file, good + '<img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a>\n');
+  try {
+    const g = await json(await call('GET', `/api/pages/${urlItem.id}`, { session: owner }));
+    assert.ok(!/onerror|<script|javascript:/i.test(g.body.reader), g.body.reader.slice(-200));
+    assert.match(g.body.reader, /periwinkle lanterns/, 'the real text is still there');
+  } finally { fsx.writeFileSync(file, good); }
+});
+
+test('gate r1 qa W2: a list PUT may keep an id whose page is gone (not a 400 forever); a new foreign id is still refused', async () => {
+  const c = await json(await call('POST', '/api/pages/lists', { session: owner, body: { name: 'Keeps a ghost' } }));
+  const lid = c.body.list.id;
+  let v = (await json(await call('GET', `/api/pages/lists/${lid}/items`, { session: owner }))).body.version;
+  assert.strictEqual((await call('PUT', `/api/pages/lists/${lid}/items`, { session: owner, body: { items: [textItem.id], version: v } })).status, 200);
+  pages.service.index.removeItem(owner.user.id, textItem.id); // the index lost it (a rebuild without its files)
+  const cur = (await json(await call('GET', `/api/pages/lists/${lid}/items`, { session: owner }))).body;
+  const put = await call('PUT', `/api/pages/lists/${lid}/items`, { session: owner, body: { items: cur.items.concat([urlItem.id]), version: cur.version } });
+  assert.strictEqual(put.status, 200, 'the ghost id rides along');
+  v = (await json(await call('GET', `/api/pages/lists/${lid}/items`, { session: owner }))).body.version;
+  assert.strictEqual((await call('PUT', `/api/pages/lists/${lid}/items`, { session: owner, body: { items: ['0000000000aa'], version: v } })).status, 400);
+  await pages.service.rebuild();
+  await call('DELETE', `/api/pages/lists/${lid}`, { session: owner }); // later tests count the lists
+});
+
 test('an iOS device token keeps its scope and may also save to Pages', async () => {
   const issued = deviceStore.issue({ userId: owner.user.id, name: 'Phone', platform: 'ios', epoch: userStore.getById(owner.user.id).deviceEpoch }, new Date().toISOString());
   const bearer = { Authorization: 'Bearer ' + issued.token };

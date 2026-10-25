@@ -4136,7 +4136,7 @@ function deviceAddedText(d) {
   const ms = d && d.createdAt ? Date.parse(d.createdAt) : NaN;
   return 'added ' + (Number.isFinite(ms) ? new Date(ms).toLocaleDateString() : 'unknown');
 }
-const DEVICES_EMPTY_TEXT = 'No devices. Devices appear here when the FileTube app is set up for offline playback.';
+const DEVICES_EMPTY_TEXT = 'No devices. Devices appear here when the FileTube app is set up for offline playback, or a Pages token is made (Settings > Pages).';
 // Render the device rows into `host`. `opts`: { doc, signal, onRemove(device) -> Promise<Response>,
 // onRemoveAll?() -> Promise<Response>, refresh() }. `devices` null = the load failed.
 function renderDeviceRows(host, devices, opts) {
@@ -4150,7 +4150,10 @@ function renderDeviceRows(host, devices, opts) {
   const removeOne = async (d) => {
     const yes = await confirmDestructive({
       title: 'Remove ' + (d.name || 'this device') + '?',
-      body: 'That phone stops offline playback at once and has to be set up again in the app. Nothing on the phone is deleted by this.',
+      // v1.395.0: a Pages save token (platform shortcut) is not a phone (gate r1 qa S1).
+      body: d.platform === 'shortcut'
+        ? 'That token stops saving to Pages at once; make a new one in Settings > Pages to use it again. Nothing you saved is deleted.'
+        : 'That phone stops offline playback at once and has to be set up again in the app. Nothing on the phone is deleted by this.',
       confirmLabel: 'Remove',
     });
     if (!yes) return;
@@ -5654,11 +5657,11 @@ function wirePagesSection(signal, win) {
   const doc = w.document;
   const status = doc.getElementById('pages-shortcut-status');
   const tokenBox = doc.getElementById('pages-shortcut-token');
-  for (const code of doc.querySelectorAll('.pages-shortcut-endpoint')) code.textContent = w.location.origin + '/api/pages';
+  for (const code of doc.querySelectorAll('[data-pages-endpoint]')) code.textContent = w.location.origin + '/api/pages';
   // One save-only token per button: the Shortcut and the browser extension each get their own
   // (named, so Account > Devices tells them apart; same `shortcut` kind, same single route).
-  const makers = [['pages-shortcut-btn', 'iOS Shortcut', 'Set up the Shortcut', 'Copy this token into the Shortcut now. It is shown only once.'],
-    ['pages-extension-btn', 'Browser extension', 'Set up the browser extension', 'Paste this token into the extension\'s options now (Pages token). It is shown only once.']];
+  const makers = [['pages-shortcut-btn', 'iOS Shortcut', 'Make Shortcut token', 'Copy this token into the Shortcut now. It is shown only once.'],
+    ['pages-extension-btn', 'Browser extension', 'Make extension token', 'Paste this token into the extension\'s options now (Pages token). It is shown only once.']];
   for (const [id, name, title, hint] of makers) {
     const btn = doc.getElementById(id);
     if (!btn) continue;

@@ -218,8 +218,9 @@ metadata and the note), `reader.html`, `original.html`, `text.txt` and `assets/`
 state that lives only in the database (read time, Reader position, lists) rides the backup bundle. Delete is a
 move to the user's `trash/` folder, emptied after 30 days. A capture is tidied (`tidy.js`, our tolerant HTML
 tree builder), the article found by the vendored Readability (`extract.js`), every element and attribute
-filtered by an allowlist (`sanitize.js`), and its images and stylesheets stored locally through the same
-outbound fetch guard the podcasts use.
+filtered by an allowlist (`sanitize.js`) - all of it in a worker thread with a deadline (`process.js`), never
+on the event loop - and its images and stylesheets stored locally through the same outbound fetch guard the
+podcasts use (whose connect-time DNS answer is checked too, `checkedLookup`).
 
 ### Vendored code (the rule, D-VENDOR)
 

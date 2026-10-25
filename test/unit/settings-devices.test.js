@@ -81,7 +81,8 @@ test('Account > Devices: the empty state and the failed load each say so; a page
     await setup.wireDevicesSection(new dom.window.AbortController().signal, dom.window);
     await flush();
     assert.strictEqual(global.document.querySelector('#devices-list .devices-empty').textContent, setup.DEVICES_EMPTY_TEXT);
-    assert.strictEqual(setup.DEVICES_EMPTY_TEXT, 'No devices. Devices appear here when the FileTube app is set up for offline playback.');
+    // v1.395.0 (gate r1 qa S1): the list also holds the Pages save tokens, so the empty text names them.
+    assert.strictEqual(setup.DEVICES_EMPTY_TEXT, 'No devices. Devices appear here when the FileTube app is set up for offline playback, or a Pages token is made (Settings > Pages).');
   } finally { teardown(dom); }
   dom = mount();
   try {

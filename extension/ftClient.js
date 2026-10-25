@@ -28,9 +28,11 @@ export const DOWNLOAD_PATH = '/api/ytdlp/download';
 //   -> 200 { item, duplicate, message }   ("Saved to Pages" / "Already in Pages")
 //   -> 400 / 401 / 413 / 502 { error }
 export const PAGES_PATH = '/api/pages';
-// The page as the browser rendered it is sent when it fits the server's 10 MB cap (with room for
-// JSON escaping); a larger page is sent as its URL alone, and the server fetches it.
-export const PAGE_HTML_MAX_CHARS = 8 * 1024 * 1024;
+// The page as the browser rendered it is sent when its UTF-8 BYTES fit the server's 10 MB cap
+// (with room for JSON escaping in the 16 MB body); a larger page is sent as its URL alone, and the
+// server fetches it. Bytes, not characters: 4 M characters of CJK text are 12 MB (gate r1 qa S5).
+export const PAGE_HTML_MAX_BYTES = 8 * 1024 * 1024;
+export function utf8Bytes(s) { return new TextEncoder().encode(String(s)).length; }
 export const VALID_FORMATS = ['audio', 'video'];
 
 // Strip trailing slashes so `${base}${DOWNLOAD_PATH}` is always clean.
@@ -206,7 +208,7 @@ export function buildSavePageRequest({ instanceUrl, pagesToken, url, html }) {
   try { u = new URL(String(url || '')); } catch { return { ok: false, error: 'This tab has no web page to save.' }; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'Only http(s) pages can be saved.' };
   const body = { url: u.toString(), source: 'extension' };
-  if (typeof html === 'string' && html.length > 0 && html.length <= PAGE_HTML_MAX_CHARS) body.html = html;
+  if (typeof html === 'string' && html.length > 0 && html.length <= PAGE_HTML_MAX_BYTES && utf8Bytes(html) <= PAGE_HTML_MAX_BYTES) body.html = html;
   return {
     ok: true,
     sentHtml: Boolean(body.html),
@@ -222,8 +224,10 @@ export function buildSavePageRequest({ instanceUrl, pagesToken, url, html }) {
 }
 
 export function interpretSavePageResponse(status, payload) {
-  if (status === 200 && payload && payload.item) {
-    return { ok: true, duplicate: payload.duplicate === true, message: typeof payload.message === 'string' ? payload.message : (payload.duplicate ? 'Already in Pages' : 'Saved to Pages'), title: payload.item.title || '' };
+  // A duplicate saved with a save-only token answers { duplicate, message } and no item (the token
+  // never reads an item back).
+  if (status === 200 && payload && (payload.item || payload.duplicate === true)) {
+    return { ok: true, duplicate: payload.duplicate === true, message: typeof payload.message === 'string' ? payload.message : (payload.duplicate ? 'Already in Pages' : 'Saved to Pages'), title: (payload.item && payload.item.title) || '' };
   }
   if (status === 401) return { ok: false, status, error: (payload && payload.error) || 'The Pages token was not accepted. Make a new one in FileTube Settings > Pages.' };
   return { ok: false, status, error: (payload && payload.error) || `Request failed (HTTP ${status}).` };

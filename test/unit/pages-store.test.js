@@ -269,3 +269,43 @@ test('the FTS query builder turns any input into quoted terms: no operator, colu
   assert.strictEqual(t.svc.index.listItems(1, { q: '"fox brown"' }).total, 0, 'a phrase is ordered');
   assert.strictEqual(t.svc.index.listItems(1, { q: 'jum' }).total, 1, 'the last word is a prefix');
 });
+
+test('gate r1 A1/W1: a save by a different account never takes over a folder whose owner.json names someone else - it is set aside first', async () => {
+  const t = setup();
+  const { item } = await t.svc.saveText(2, { text: 'Sam private: my therapist notes from Tuesday.' });
+  // A users-replacing restore gives id 2 to a different person.
+  t.adapter.sql.exec("DELETE FROM users WHERE id = 2; INSERT INTO users (id, username, password_hash, role, created_at) VALUES (2, 'kid', 'x', 'member', '2026-02-02T00:00:00.000Z')");
+  await t.svc.rebuild({ force: true });
+  const mine = await t.svc.saveText(2, { text: 'Kid homework.' });
+  await t.svc.rebuild();
+  assert.strictEqual(t.svc.getItem(2, item.id), null, 'Sam\'s item never reaches the kid');
+  assert.deepStrictEqual(t.svc.index.listItems(2, { q: 'therapist' }).items, []);
+  assert.ok(t.svc.getItem(2, mine.item.id), 'the kid keeps their own item');
+  assert.deepStrictEqual(disk.readOwner(t.root, 2), { userId: 2, username: 'kid' });
+  const aside = fs.readdirSync(path.join(t.root, '.deleted-users'));
+  assert.strictEqual(aside.length, 1, 'Sam\'s folder is kept, aside');
+  assert.ok(fs.existsSync(path.join(t.root, '.deleted-users', aside[0], 'items')));
+  // Case-only differences are the same account (like login): no set-aside.
+  t.adapter.sql.exec("UPDATE users SET username = 'KID' WHERE id = 2");
+  await t.svc.saveText(2, { text: 'More homework.' });
+  assert.strictEqual(fs.readdirSync(path.join(t.root, '.deleted-users')).length, 1);
+});
+
+test('gate r1 qa W2: the trash expiry forgets the item\'s read state and list memberships', async () => {
+  const t = setup();
+  const { item } = await t.svc.saveText(1, { text: 'Gone soon.' });
+  t.svc.setReadState(1, item.id, { read: true, position: 0.3 });
+  t.svc.index.createList(1, 'aaaaaaaaaaaa', 'L', '2026-10-25T00:00:00.000Z');
+  t.svc.index.setListItems(1, 'aaaaaaaaaaaa', [item.id], '2026-10-25T00:00:00.000Z');
+  await t.svc.trash(1, item.id);
+  t.tick(31 * DAY);
+  assert.strictEqual(await t.svc.purgeExpired(), 1);
+  assert.deepStrictEqual(t.svc.index.listItemIds(1, 'aaaaaaaaaaaa'), []);
+  assert.strictEqual(t.svc.index.getState(1, item.id), null);
+});
+
+test('gate r1 qa W3: only URL items are duplicate keys; a text save that carries the link is not', async () => {
+  const t = setup();
+  await t.svc.saveText(1, { text: 'Quote from the article.', url: 'https://example.com/a' });
+  assert.strictEqual(t.svc.index.findByUrl(1, 'https://example.com/a'), null);
+});

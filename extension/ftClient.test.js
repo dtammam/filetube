@@ -120,8 +120,10 @@ test('buildSavePageRequest: POST /api/pages with Authorization Bearer, { url, ht
 });
 
 test('buildSavePageRequest: a page larger than the cap (or none) is sent as its URL alone', async () => {
-  const { buildSavePageRequest, PAGE_HTML_MAX_CHARS } = await mod();
-  const big = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: 'x'.repeat(PAGE_HTML_MAX_CHARS + 1) });
+  const { buildSavePageRequest, PAGE_HTML_MAX_BYTES } = await mod();
+  const big = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: 'x'.repeat(PAGE_HTML_MAX_BYTES + 1) });
+  const cjk = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: '\u6f22'.repeat(3 * 1024 * 1024) });
+  assert.equal(cjk.sentHtml, false, '3 M CJK characters are 9 MB: over the byte cap though under it in characters');
   assert.equal(big.sentHtml, false);
   assert.deepEqual(JSON.parse(big.request.init.body), { url: 'https://x.tld/a', source: 'extension' });
   const none = buildSavePageRequest({ instanceUrl: 'https://ft.tld', pagesToken: 't', url: 'https://x.tld/a', html: null });
@@ -132,6 +134,7 @@ test('interpretSavePageResponse: saved, already saved, a refused token, the serv
   const { interpretSavePageResponse } = await mod();
   assert.deepEqual(interpretSavePageResponse(200, { item: { title: 'T' }, duplicate: false, message: 'Saved to Pages' }), { ok: true, duplicate: false, message: 'Saved to Pages', title: 'T' });
   assert.equal(interpretSavePageResponse(200, { item: { title: 'T' }, duplicate: true, message: 'Already in Pages' }).message, 'Already in Pages');
+  assert.deepEqual(interpretSavePageResponse(200, { duplicate: true, message: 'Already in Pages' }), { ok: true, duplicate: true, message: 'Already in Pages', title: '' }, 'the save-only token gets no item back');
   assert.match(interpretSavePageResponse(401, { error: 'device token revoked' }).error, /revoked/);
   assert.match(interpretSavePageResponse(401, null).error, /Pages token/);
   assert.equal(interpretSavePageResponse(502, { error: 'Could not fetch the page: timeout' }).error, 'Could not fetch the page: timeout');

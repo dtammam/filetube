@@ -852,7 +852,7 @@
         <div class="setup-group" id="devices-group">
           <h3 class="setup-heading">Devices</h3>
           <div id="devices-list" class="devices-list" aria-live="polite">Loading devices...</div>
-          <p class="setup-note">Phones set up for offline playback in the FileTube app. Remove one and that phone stops at once; it has to be set up again.</p>
+          <p class="setup-note">Phones set up for offline playback in the FileTube app, and the save-only tokens of the iOS Shortcut and the browser extension (Settings &gt; Pages). Remove one and it stops at once; it has to be set up again.</p>
         </div>
       </details>
       <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me confirms the role; the server enforces it regardless). -->
@@ -1054,15 +1054,15 @@
         <div class="action-footer">
           <span id="pages-shortcut-status" class="action-status" aria-live="polite"></span>
           <div class="action-bar">
-            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-shortcut-btn"><span class="ui-btn__label">Set up the Shortcut</span></button>
-            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-extension-btn"><span class="ui-btn__label">Set up the browser extension</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-shortcut-btn"><span class="ui-btn__label">Make Shortcut token</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-extension-btn"><span class="ui-btn__label">Make extension token</span></button>
           </div>
         </div>
         <div class="pages-shortcut-token" id="pages-shortcut-token" hidden></div>
         <ol class="pages-shortcut-steps" id="pages-shortcut-steps">
           <li><strong>From Safari (the page as you see it):</strong> in the Shortcuts app, make a new Shortcut. In its details, turn on <em>Show in Share Sheet</em> and accept <em>Safari web pages</em>.</li>
           <li>Add <em>Run JavaScript on Web Page</em> with: <code>completion({ url: location.href, html: new XMLSerializer().serializeToString(document) });</code></li>
-          <li>Add <em>Get Contents of URL</em>: URL <code class="pages-shortcut-endpoint">https://your-server/api/pages</code>, Method <em>POST</em>, a header <code>Authorization</code> = <code>Bearer</code> + your token, Request Body <em>JSON</em> with <code>url</code> and <code>html</code> from the JavaScript result and <code>source</code> = <code>shortcut</code>.</li>
+          <li>Add <em>Get Contents of URL</em>: URL <code data-pages-endpoint>https://your-server/api/pages</code>, Method <em>POST</em>, a header <code>Authorization</code> = <code>Bearer</code> + your token, Request Body <em>JSON</em> with <code>url</code> and <code>html</code> from the JavaScript result and <code>source</code> = <code>shortcut</code>.</li>
           <li>Add <em>Show Notification</em> with the <code>message</code> of the result ("Saved to Pages", "Already in Pages", or what went wrong). A removed token answers with an <code>error</code> instead: make a new one here.</li>
           <li><strong>From any other app (a link or text):</strong> make a second Shortcut that accepts <em>URLs</em> and <em>Text</em> from the Share Sheet. Use the same <em>Get Contents of URL</em>, with a JSON body of <code>url</code> = the Shortcut Input when it is a link, or <code>text</code> = the Shortcut Input when it is text. The server fetches a link itself.</li>
         </ol>

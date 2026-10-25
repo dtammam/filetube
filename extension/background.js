@@ -76,6 +76,12 @@ async function handleSavePage({ url, html }) {
   if (!built.ok) return built;
   try {
     const { status, payload } = await send(built.request);
+    if (status === 413 && built.sentHtml) {
+      // Too large for the server after all: send the link alone and let the server fetch it.
+      const linkOnly = buildSavePageRequest({ instanceUrl, pagesToken, url, html: null });
+      const again = await send(linkOnly.request);
+      return { ...interpretSavePageResponse(again.status, again.payload), sentHtml: false };
+    }
     return { ...interpretSavePageResponse(status, payload), sentHtml: built.sentHtml };
   } catch (err) {
     const base = instanceUrl.replace(/\/+$/, '');

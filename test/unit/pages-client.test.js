@@ -91,9 +91,15 @@ async function itemView({ id = '0123456789ab', item, reader, pref = 'reader' }) 
   const w = dom.window;
   w.localStorage.setItem(P.PAGES_VIEW_PREF, pref);
   const calls = [];
+  let gets = 0;
   w.fetch = (url, opts) => {
-    calls.push([url, (opts && opts.method) || 'GET']);
-    const body = url === `/api/pages/${id}` ? { item, reader } : {};
+    calls.push([url, (opts && opts.method) || 'GET', opts && opts.body]);
+    let body = {};
+    if (url === `/api/pages/${id}` && !(opts && opts.method)) {
+      gets += 1;
+      // `saving` items: the first GET says saving, the poll's next GET says done.
+      body = { item: gets > 1 ? { ...item, saving: false } : item, reader };
+    }
     return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
   };
   let view = null;
@@ -158,7 +164,7 @@ test('Settings > Pages: the Shortcut and the extension each mint a named shortcu
   global.fetch = (url, opts) => { posts.push([url, JSON.parse(opts.body)]); return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ token: 'ftd_' + posts.length, name: 'x' }) }); };
   try {
     setup.wirePagesSection(new w.AbortController().signal, w);
-    assert.strictEqual(w.document.querySelector('.pages-shortcut-endpoint').textContent, 'https://ft.example/api/pages', 'the steps name this server');
+    assert.strictEqual(w.document.querySelector('[data-pages-endpoint]').textContent, 'https://ft.example/api/pages', 'the steps name this server');
     w.document.getElementById('pages-shortcut-btn').click();
     await new Promise((r) => setTimeout(r, 20));
     assert.deepStrictEqual(posts[0], ['/api/devices', { name: 'iOS Shortcut', platform: 'shortcut', password: 'pw-1' }]);
@@ -175,4 +181,17 @@ test('Settings > Pages: the Shortcut and the extension each mint a named shortcu
     delete global.fetch;
     w.close();
   }
+});
+
+test('gate r1 qa W1: after the "saving images" poll re-renders, the first render\'s scroll listener is gone (a scroll on Original never marks the page read)', async () => {
+  const { w, calls, view } = await itemView({ item: { ...ITEM, saving: true }, reader: '<p>' + 'Long text. '.repeat(50) + '</p>' });
+  await new Promise((r) => setTimeout(r, 3400)); // the poll (3 s) renders again
+  assert.ok(calls.filter((c) => c[0] === '/api/pages/0123456789ab' && c[1] === 'GET').length >= 2, 'the poll re-rendered');
+  const original = [...w.document.querySelectorAll('.ui-segmented button, .ui-segmented [role="radio"], .ui-segmented input')].find((b) => /Original/.test(b.textContent || ''));
+  original.click();
+  w.dispatchEvent(new w.Event('scroll'));
+  await new Promise((r) => setTimeout(r, 1700)); // past the position debounce
+  const patches = calls.filter((c) => c[1] === 'PATCH');
+  assert.deepStrictEqual(patches, [], 'no position / read write from a stale listener');
+  view.destroy();
 });

@@ -496,6 +496,9 @@
 - [ ] **Pages R2: highlights and notes** _(v1.396.0, plan docs/exec-plans/completed/2026-10-25-pages.md "R2 outline")_ - select text in the
   Reader, highlight it, attach a note; anchored by text quote + position so they survive re-render; stored per user AND mirrored into
   `item.json`; a Highlights view per item; Share with AI sends highlights only, or highlights + text.
+- [ ] **The outbound fetch guard does not refuse 198.18.0.0/15** _(v1.395.0 gate r1, adversary)_ - the benchmarking range
+  (RFC 2544) passes `isPrivateOrLocalHost` (lib/ytdlp/url.js), shared by the podcasts, the shortlink resolver and Pages. Rarely
+  an internal network, but add it (and re-check the other special-purpose ranges) with the guard's own test.
 - [ ] **Pages later** _(v1.395.0 P13, out of scope for R1)_ - text-to-speech of the Reader (Listen from Here), iOS offline copies of
   Pages, re-capturing a newer copy of a saved page, Feed cards for Pages (Feed phase 2).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has

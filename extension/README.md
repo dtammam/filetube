@@ -6,8 +6,8 @@ you see it in your Pages, and **Audio** / **Video** start a one-tap download.
 
 - **Save to Pages** reads the tab (with your logins, as rendered) through
   `chrome.scripting` + `XMLSerializer` and POSTs it to `POST /api/pages` with a
-  **Pages token**: make one in FileTube, Settings > Pages > Set up the browser
-  extension. That token can only save pages to your own Pages and is removable
+  **Pages token**: make one in FileTube, Settings > Pages > Make extension
+  token. That token can only save pages to your own Pages and is removable
   under Account > Devices. A tab it cannot read (the Web Store, a PDF) is sent as
   its link and the server fetches it. Permissions: `activeTab` + `scripting`
   (new in 0.3.0, to read the tab you clicked on) + `storage`.

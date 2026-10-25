@@ -236,3 +236,20 @@ test('CSS text can never close its <style> element, and comments do not survive 
   assert.ok(!/secret/.test(css), 'a comment is dropped: ' + css);
   assert.match(css, /b\{color:red\}/);
 });
+
+test('gate r1 C1: the FINAL pass keeps links (absolute markup, no base) - a final pass once stripped every link', () => {
+  const html = '<p>See <a href="https://other.example/report" target="_blank" rel="noopener noreferrer">the report</a> and <a href="mailto:a@b.example">mail</a>.</p>';
+  for (const base of [null, undefined, BASE]) {
+    const out = readerFragment(sanitize(html, { profile: 'reader', base, final: true }).tree);
+    assert.match(out, /<a href="https:\/\/other\.example\/report" target="_blank" rel="noopener noreferrer">the report<\/a>/, String(base));
+    assert.match(out, /href="mailto:a@b\.example"/);
+  }
+});
+
+test('gate r1 A3: dropping @import is linear (80000 of them sanitize in well under a second)', () => {
+  const t0 = Date.now();
+  const { css } = sanitizeCss('@import '.repeat(80000) + 'p{color:red}', { base: BASE });
+  const ms = Date.now() - t0;
+  assert.ok(ms < 1000, `${ms} ms`);
+  assert.ok(!/@import/i.test(css));
+});
