@@ -100,8 +100,9 @@ the media index in Wave 6 - the MEDIA box). The doc-object key list in
 `lib/db/sqlite.js` (`DOC_OBJECT_KEYS`, just `metadata`) is a LOCK
 (`assertNoUnknownKeys()` throws on strangers). Measured at v1.296.0 (Wave 7):
 no document tables (`doc_kv` and `doc_single` were dropped in schema v33),
-68 relational tables, schema version 38 (v1.394.0 added
-`media_source_comments`). (The arc's plan:
+72 relational tables, schema version 39 (v1.394.0 added
+`media_source_comments`; v1.395.0 the four Pages tables, plus the
+`pages_fts` full-text index, a virtual table). (The arc's plan:
 `docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
@@ -135,6 +136,11 @@ flowchart LR
         BK["lib/books/store.js<br/>books_folders · books_items (book_id, json) · books_progress · books_pins (id, position, json) · books_settings · books_audio<br/>the books library: roots, one row per book, the frozen pre-auth positions + shelf pins, TTS status"]
         PC["lib/podcasts/store.js<br/>podcasts_subscriptions (id, position, json) · podcasts_episodes (episode_id, json) · podcasts_settings (key, json)<br/>the podcast registry: the ordered subscriptions (no feed URLs - those stay in the 0600 secrets file), one row per episode (the download ARCHIVE, tombstones included), settings"]
         YT["lib/ytdlp/store.js<br/>ytdlp_subscriptions (id, position, json) · ytdlp_pins (id, position, json) · ytdlp_download_meta (meta_key, json) · ytdlp_channel_avatars (channel_id, json) · ytdlp_settings (key, json)<br/>the downloader: the ordered channel subscriptions, the frozen pre-auth channel pins, the download->scan identity bridge (consumed by the scan inside its commit), the channel-avatar registry, the allowMembersOnly flag"]
+    end
+
+    subgraph PAGESDB["Pages (v1.395.0; lib/pages/indexStore.js) - the FILES under FILETUBE_PAGES_DIR are the source of truth"]
+        PGI["pages_items (id, user_id, folder, kind, url, canonical_url, title, ...) + the pages_fts full-text index<br/>the INDEX: rebuilt from each item's item.json + text.txt; never in a backup bundle"]
+        PGS["pages_state (user_id, item_id, read_at, position) · pages_lists (id, user_id, name, ord) · pages_list_items (list_id, item_id, ord)<br/>per-user state that lives only here: rides the per-user bundle as `pages`; keyed by item id VALUE, so a rebuild never touches it"]
     end
 
     subgraph OUT["Deliberately OUTSIDE the db (and outside backups)"]
