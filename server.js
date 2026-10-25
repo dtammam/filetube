@@ -6707,6 +6707,14 @@ chapterSnapRoutes.registerChapterSnapRoutes(app, {
 const commentsRoutes = require('./lib/media/commentsRoutes');
 commentsRoutes.registerCommentRoutes(app, { getCachedDatabase, mediaVisibleTo, sourceCommentStore, userStore });
 
+// v1.395.0 Pages (lib/pages/index.js): saved web pages and text, per user. The files under
+// FILETUBE_PAGES_DIR (default <DATA_DIR>/pages) are the source of truth; schema v39 is the index.
+// Always on (P1): it does not depend on yt-dlp. Its boot work (rebuild an empty index, resume
+// interrupted images, the 30-day trash expiry) runs under require.main below.
+const pagesLib = require('./lib/pages');
+const pages = pagesLib.createPages({ adapter: dbAdapter, dataDir: DATA_DIR, userStore });
+pagesLib.registerRoutes(app, { pages });
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
 // lives in lib/media/routes.js; the two count resolvers below stayed.
@@ -7385,6 +7393,8 @@ if (require.main === module) {
   sweepAgedTranscodes(Date.now());
   // v1.65: trash retention sweep at boot (async, never blocks startup).
   sweepTrash().catch((err) => console.error('Trash sweep at boot failed:', err));
+  // v1.395.0 Pages: rebuild an empty index from the files, resume images, expire old trash.
+  pages.start().catch((err) => console.error('Pages boot failed:', err));
   // v1.38.0 T12: TTS cache hygiene -- sweep orphaned synth temps and reset any
   // stale 'processing'/'pending' or file-less 'ready' audio status.
   reconcileTtsCacheAtBoot();
@@ -7524,6 +7534,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  pages, // v1.395.0 Pages: tests seed items through the real service and capture
   feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)
   chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,

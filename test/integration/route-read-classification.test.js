@@ -152,6 +152,8 @@ const READ = {
   '/api/offline/file/:kind/:id': 'GATED', // v1.387.0 offline D3: the bytes the iOS rule picks, gated like the matching byte route (404 hidden); proven in offline-manifest.test.js
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
+  '/api/pages/:id/original': 'OWN_STATE', // v1.395.0 Pages: the caller's OWN saved page (another user's id is the neutral 404); no library content - pages-render.test.js
+  '/api/pages/:id/assets/:name': 'OWN_STATE', // v1.395.0 Pages: one stored image/font of the caller's OWN saved page - pages-render.test.js
   '/api/videos/:id/comments': 'GATED', // v1.394.0: mediaVisibleTo FIRST (neutral 404), and a restricted account gets none (R2); comments-api.test.js
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)
   '/api/ytdlp/playlist': 'GATED', // v1.370.0 W2: one page of a YouTube playlist for the picker; requireManageSubscriptions first-line; its only library-derived field (inLibrary) is computed over mediaVisiblePredicate(req) - a hidden folder's copy reads false (ytdlp-playlist-listing.test.js)
