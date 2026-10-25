@@ -208,6 +208,30 @@ tables), `visibility.js` (the ONE pure visibility decision).
   (`lib/ytdlp/album.js`): each new track is tagged (album, album artist,
   track number, optional cleaned title) by yt-dlp's own embed pass.
 
+## Pages (saved web pages and text, v1.395.0)
+
+`lib/pages/` - the reading library (plan `docs/exec-plans/active/2026-10-25-pages.md`, moved to `completed/`
+when it ships). The FILES are the source of truth for content: one folder per item under `FILETUBE_PAGES_DIR`
+(default `<DATA_DIR>/pages`), `<userId>/items/<yyyy>/<yyyy-mm-dd>-<slug>-<id>/` holding `item.json` (the
+metadata and the note), `reader.html`, `original.html`, `text.txt` and `assets/`; the database tables
+(`pages_items` + the `pages_fts` full-text index) are an index rebuilt from those files, while the per-user
+state that lives only in the database (read time, Reader position, lists) rides the backup bundle. Delete is a
+move to the user's `trash/` folder, emptied after 30 days. A capture is tidied (`tidy.js`, our tolerant HTML
+tree builder), the article found by the vendored Readability (`extract.js`), every element and attribute
+filtered by an allowlist (`sanitize.js`), and its images and stylesheets stored locally through the same
+outbound fetch guard the podcasts use.
+
+### Vendored code (the rule, D-VENDOR)
+
+FileTube's default is to write it ourselves; npm packages are not installed for runtime code. Third-party code
+enters only when ALL of these hold: it is a core capability we could not reasonably write and maintain at the
+same quality; it is plain JavaScript with **no dependencies of its own**; it is stable (a slow release cadence
+and a long track record); its license is compatible with MIT. It is then **copied into the repo**, never
+installed: `lib/<area>/vendor/` holds the unmodified files, a `README.md` (source URL, version, date, license,
+the sha256 of each file, the update procedure), and a test fails if a file's sha256 drifts from the README
+(no silent edits; local changes live in our wrapper). This is an exception, not the norm. The one case so far:
+Mozilla Readability 0.6.0 in `lib/pages/vendor/` (v1.395.0), locked by `test/unit/pages-vendor.test.js`.
+
 ## The client
 
 - **Shells**: every `public/*.html` page is a complete server-rendered
