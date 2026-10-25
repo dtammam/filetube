@@ -3742,5 +3742,11 @@
     "date": "2026-10-25",
     "title": "Pages: save web pages and text to read later",
     "intent": "A new Pages section keeps web pages and text you save, as files that last until you delete them. Each page opens in a clean Reader view (your text size and theme, your place kept) or as the Original page with its own pictures, and you can add a note, sort pages into lists, search everything you saved, and send a page or a whole list to your AI app with your own prompts. Save from the Pages page, the Download button, the browser extension, or an iPhone Shortcut set up in Settings > Pages; deleted pages wait in the trash for 30 days."
+  },
+  {
+    "version": "1.395.1",
+    "date": "2026-10-25",
+    "title": "Security updates for two built-in libraries",
+    "intent": "Pages arrives in this version (see 1.395.0). It also updates two libraries FileTube relies on to versions that close newly reported ways to overload a server with a specially built request; nothing changes in how you use the app."
   }
 ]

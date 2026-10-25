@@ -887,6 +887,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.395.1 - Security updates for two built-in libraries; Pages reaches the image (2026-10-25)
+
+- v1.395.0's tag failed its dependency audit on two advisories published that day: GHSA-27r3-jxmh-p828 (body-parser, under
+  express: a denial of service via trailing bytes after a compressed body) and GHSA-xjj6-f33q-929c (undici, under jsdom, dev
+  only). `npm audit fix --package-lock-only`: body-parser 1.20.8 -> 1.20.9, undici 7.30.0 -> 7.30.1, both inside the existing
+  ranges (package.json unchanged, no new dependency). A pushed tag is never moved, so the v1.395.0 image was never published and
+  Pages ships in this tag. Gate: the forced dependency row (adversary, qa, security-brief) re-confirmed the lockfile delta.
+
 ### v1.395.0 - Pages: save web pages and text to read later (2026-10-25)
 
 Plan: docs/exec-plans/completed/2026-10-25-pages.md (R1; R2 highlights is Planned). Rulings P1-P14 unchanged; deviations 1-10 in the plan.
