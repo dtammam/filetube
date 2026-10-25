@@ -19,7 +19,7 @@
 (function () {
   if (window.__ftPrefsSync) return; // double-load guard (QA S2): a second eval must not wrap the first patch
   // The client twin of server.js's SYNCED_PREF_KEYS (a lock test binds both
-  // to the exec plan's key list (25: v1.394.0 added ft-comments; 24: v1.382.0 added ft-feed-settings and ft-feed-fewer; 22: v1.372.0 added ft-home-music, v1.373.0 removed it) - drift = a key that silently never syncs).
+  // to the exec plan's key list (26: v1.395.0 added ft-pages-view; 25: v1.394.0 added ft-comments; 24: v1.382.0 added ft-feed-settings and ft-feed-fewer; 22: v1.372.0 added ft-home-music, v1.373.0 removed it) - drift = a key that silently never syncs).
   var SYNCED = [
     'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
     'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
@@ -30,6 +30,7 @@
     'ft-cleanup-days',
     'ft-comments', // v1.394.0: which comments the watch page shows (both / real / fun / off)
     'ft-feed-settings', 'ft-feed-fewer', // v1.382.0: the Feed's settings and "Fewer from" (public/js/feed-settings.js)
+    'ft-pages-view', // v1.395.0: Pages opens in Reader or Original (public/js/pages.js)
   ];
   var META_KEY = 'ft-prefs-meta'; // {key: updatedAtMs} - written via the RAW setter only (never recurses into the mirror)
   var DEBOUNCE_MS = 1000;

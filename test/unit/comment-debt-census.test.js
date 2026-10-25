@@ -66,7 +66,9 @@ const isMarker = (line, rel) =>
 // (ROADMAP, exec plans, the tracker all discuss debt by name) and is
 // deliberately NOT a code surface.
 const CODE_EXT = new Set(['js', 'cjs', 'mjs', 'css', 'html', 'sh', 'yml', 'yaml', 'json', 'brs', 'xml', 'toml', 'webmanifest']);
-const EXCLUDED = [/^public\/vendor\//, /^node_modules\//, /^package-lock\.json$/, /(^|\/)LICENSE$/];
+// v1.395.0: lib/pages/vendor/ is vendored upstream code like public/vendor/ (Mozilla Readability,
+// UNMODIFIED and sha256-locked by test/unit/pages-vendor.test.js), so its own comments are not ours to reword.
+const EXCLUDED = [/^public\/vendor\//, /^lib\/pages\/vendor\//, /^node_modules\//, /^package-lock\.json$/, /(^|\/)LICENSE$/];
 
 function isCodeFile(p) {
   const base = p.slice(p.lastIndexOf('/') + 1);
@@ -206,6 +208,8 @@ test('census: the file enumeration is live (git-derived; one witness per extensi
     assert.ok(files.includes(must), `${must} must be in the census`);
   }
   assert.ok(!files.some((p) => p.startsWith('public/vendor/')), 'vendored dists are not ours to police');
+  assert.ok(!files.some((p) => p.startsWith('lib/pages/vendor/')), 'nor is the vendored Readability (v1.395.0)');
+  assert.ok(files.includes('lib/pages/tidy.js'), 'but our own Pages code next to it is');
   assert.ok(!files.includes('package-lock.json'), 'the lockfile is generated');
   assert.ok(!files.includes('LICENSE'), 'the licence text is prose');
   const shipped = files.filter(isShipped);

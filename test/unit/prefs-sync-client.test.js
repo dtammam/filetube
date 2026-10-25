@@ -16,7 +16,7 @@ const { routeSurfaceSource } = require('../helpers/route-surface');
 
 const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
-// The plan's keys, 25 (v1.394.0: +1, ft-comments - the watch page's comments setting; v1.382.0: +2, ft-feed-settings and ft-feed-fewer - the Feed settings page; v1.373.0: -1, ft-home-music - Dean removed Settings > Show music in the home feed for the picker's Hide from feed; v1.372.0: +1, ft-home-music; v1.368.0: +1, ft-music-shuffle - the Shuffle mode toggle, synced like
+// The plan's keys, 26 (v1.395.0: +1, ft-pages-view - Pages' Reader / Original choice; v1.394.0: +1, ft-comments - the watch page's comments setting; v1.382.0: +2, ft-feed-settings and ft-feed-fewer - the Feed settings page; v1.373.0: -1, ft-home-music - Dean removed Settings > Show music in the home feed for the picker's Hide from feed; v1.372.0: +1, ft-home-music; v1.368.0: +1, ft-music-shuffle - the Shuffle mode toggle, synced like
 // ft-music-autoplay) - the AUTHORITY all three lists are locked against
 // (v1.312: ft-ambient-intensity left with the ambient amount ladder).
 const PLAN_KEYS = [
@@ -29,6 +29,7 @@ const PLAN_KEYS = [
   'ft-cleanup-days',
   'ft-comments', // v1.394.0: the watch page's comments setting
   'ft-feed-settings', 'ft-feed-fewer',
+  'ft-pages-view', // v1.395.0 Pages: Reader or Original
 ];
 
 function boot({ fetchImpl } = {}) {
@@ -148,7 +149,7 @@ test('the visibility leg: becoming visible refreshes', async () => {
   assert.ok(!b.calls[b.calls.length - 1].opts || !b.calls[b.calls.length - 1].opts.method, 'a GET, not a POST');
 });
 
-test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 25 keys (v1.394.0 added ft-comments; v1.382.0 added the two Feed keys; v1.373.0 removed ft-home-music, which v1.372.0 added; v1.368.0 added ft-music-shuffle; QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
+test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 26 keys (v1.395.0 added ft-pages-view; v1.394.0 added ft-comments; v1.382.0 added the two Feed keys; v1.373.0 removed ft-home-music, which v1.372.0 added; v1.368.0 added ft-music-shuffle; QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
   const clientSrc = AGENT_SRC;
   const b = boot();
   assert.deepEqual([...b.api.SYNCED].sort(), [...PLAN_KEYS].sort(), 'client === plan');

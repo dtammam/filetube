@@ -33,6 +33,8 @@ const NAMES = [
   'schedule',
   // the locked 2x pill (v1.358)
   'lock',
+  // v1.395.0 Pages: the bottom-bar / empty-state glyph (a saved article)
+  'article',
 ];
 
 const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thumb_up', 'favorite', 'star',
@@ -40,7 +42,8 @@ const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thum
   // sweep S1 (F49): the bottom bar's selected tab is its FILLED glyph in ink, so every tab
   // glyph has a twin (home, subscriptions and star above)
   'folder', 'history', 'podcasts', 'music_note', 'menu_book', 'smart_display', 'download',
-  'dark_mode', 'light_mode', 'settings'];
+  'dark_mode', 'light_mode', 'settings',
+  'article']; // v1.395.0 Pages: a bottom-bar tab, so it has its filled twin
 
 // The three icon sets (the data-icons axis). Each maps to a Material Symbols style +
 // FILL: `filled` is the Outlined family at FILL=1 (the solid classic Material look).

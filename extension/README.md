@@ -1,17 +1,28 @@
-# FileTube Downloader (Chromium extension)
+# FileTube (Chromium extension)
 
 A sideloadable Manifest V3 browser extension that sends the current tab to your
-self-hosted FileTube instance as a one-tap **Audio** or **Video** download. It
-POSTs the tab URL to the existing `POST /api/ytdlp/download` endpoint,
-authenticated with an API token that lives only inside the extension's
-background service worker.
+self-hosted FileTube instance: **Save to Pages** (v1.395.0) keeps the page as
+you see it in your Pages, and **Audio** / **Video** start a one-tap download.
+
+- **Save to Pages** reads the tab (with your logins, as rendered) through
+  `chrome.scripting` + `XMLSerializer` and POSTs it to `POST /api/pages` with a
+  **Pages token**: make one in FileTube, Settings > Pages > Make extension
+  token. That token can only save pages to your own Pages and is removable
+  under Account > Devices. A tab it cannot read (the Web Store, a PDF) is sent as
+  its link and the server fetches it. Permissions: `activeTab` + `scripting`
+  (new in 0.3.0, to read the tab you clicked on) + `storage`.
+- **Audio / Video** POST the tab URL to `POST /api/ytdlp/download`,
+  authenticated with the server's `FILETUBE_API_TOKEN`.
+
+Both tokens live only inside the extension's background service worker.
 
 This is a dev/unpacked extension - load it yourself, it is not published to a
 store. It works in Chrome, Edge, Brave, and other Chromium-based browsers.
 
 ## Prerequisites
 
-Your FileTube instance must be started with both of these set:
+Save to Pages needs only a Pages token (above). For downloads, your FileTube
+instance must be started with both of these set:
 
 - `FILETUBE_YTDLP_ENABLED` - turns on the yt-dlp download endpoint.
 - `FILETUBE_API_TOKEN` - a secret string. The extension sends it in the
@@ -29,7 +40,8 @@ environment variables.
 4. Pin the FileTube icon if you like, then open its **Options** (right-click the
    icon > Options, or the gear on the extensions page).
 5. Enter your **instance URL** (e.g. `https://filetube.example.com`, no trailing
-   path) and your **API token** (the `FILETUBE_API_TOKEN` value), then **Save**.
+   path), your **Pages token**, and (for downloads) your **API token** (the
+   `FILETUBE_API_TOKEN` value), then **Save**.
    Use **Test connection** to confirm the instance is reachable.
 
 ## Use it

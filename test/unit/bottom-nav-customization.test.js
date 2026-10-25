@@ -90,7 +90,8 @@ test('v1.71/v1.72/v1.75/v1.82: the roster names podcasts + music + books + downl
   // posture; v1.75 (ruling R3) adds liked; v1.82 adds settings + theme (they
   // moved into the account menu, so the default bar no longer carries them -
   // still addable from the customizer).
-  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme']);
+  // v1.395.0 Pages (P1): `pages` is default-hidden too - an opt-in item.
+  assert.deepEqual(BOTTOM_NAV_DEFAULT_HIDDEN, ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme', 'pages']);
 });
 
 test('v1.71: a present default-hidden item is INVISIBLE with an empty config and with every pre-v1.71 config shape', () => {
@@ -130,9 +131,11 @@ const SHELL_V175 = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music'
 // item. The compat oracle below renders THIS with the v1.74 algorithm.
 const SHELL_V174 = SHELL_V175.filter((id) => id !== 'liked');
 
-test('v1.75: the roster is the 13 sortable ids (12 + the v1.379.0 feed), and home/settings are now IN it', () => {
+test('v1.75: the roster is the 14 sortable ids (12 + the v1.379.0 feed + the v1.395.0 pages), and home/settings are now IN it', () => {
   // v1.379.0 Feed mode (plan D1): `feed` joins right after Liked (Liked stays beside Home), ON by default (not default-hidden).
-  assert.equal(BOTTOM_NAV_OPTIONAL.length, 13, 'nine optionals + home + settings + liked + feed');
+  // v1.395.0 Pages: `pages` joins after Books, default-hidden.
+  assert.equal(BOTTOM_NAV_OPTIONAL.length, 14, 'nine optionals + home + settings + liked + feed + pages');
+  assert.equal(BOTTOM_NAV_OPTIONAL[BOTTOM_NAV_OPTIONAL.indexOf('books') + 1], 'pages', 'Pages sits right after Books');
   assert.equal(BOTTOM_NAV_OPTIONAL[2], 'feed', 'Feed sits right after Liked');
   for (const id of ['home', 'settings', 'liked']) {
     assert.ok(BOTTOM_NAV_OPTIONAL.indexOf(id) >= 0, `${id} joined the sortable roster`);

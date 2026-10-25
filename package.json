@@ -1,6 +1,6 @@
 {
   "name": "filetube",
-  "version": "1.394.0",
+  "version": "1.395.1",
   "description": "A self-hosted media server with switchable retro looks",
   "main": "server.js",
   "scripts": {

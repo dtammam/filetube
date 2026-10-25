@@ -11,6 +11,7 @@ import { originPattern } from './ftClient.js';
 
 const instanceEl = document.getElementById('instanceUrl');
 const tokenEl = document.getElementById('apiToken');
+const pagesTokenEl = document.getElementById('pagesToken'); // v1.395.0 Pages
 const saveBtn = document.getElementById('save');
 const testBtn = document.getElementById('test');
 const statusEl = document.getElementById('status');
@@ -26,6 +27,7 @@ function setStatus(text, kind) {
 async function validateAndAuthorize() {
   const instanceUrl = instanceEl.value.trim().replace(/\/+$/, '');
   const apiToken = tokenEl.value;
+  const pagesToken = pagesTokenEl.value.trim();
 
   let pattern;
   try {
@@ -38,8 +40,8 @@ async function validateAndAuthorize() {
     setStatus('That does not look like a valid URL.', 'error');
     return null;
   }
-  if (!apiToken) {
-    setStatus('An API token is required.', 'error');
+  if (!apiToken && !pagesToken) {
+    setStatus('Enter a Pages token, an API token, or both.', 'error');
     return null;
   }
 
@@ -54,19 +56,20 @@ async function validateAndAuthorize() {
     setStatus('Host permission for the instance was not granted; downloads will not work until it is.', 'error');
     return null;
   }
-  return { instanceUrl, apiToken, pattern };
+  return { instanceUrl, apiToken, pagesToken, pattern };
 }
 
 async function load() {
-  const { instanceUrl, apiToken } = await chrome.storage.local.get(['instanceUrl', 'apiToken']);
+  const { instanceUrl, apiToken, pagesToken } = await chrome.storage.local.get(['instanceUrl', 'apiToken', 'pagesToken']);
   if (instanceUrl) instanceEl.value = instanceUrl;
   if (apiToken) tokenEl.value = apiToken;
+  if (pagesToken) pagesTokenEl.value = pagesToken;
 }
 
 async function save() {
   const v = await validateAndAuthorize();
   if (!v) return;
-  await chrome.storage.local.set({ instanceUrl: v.instanceUrl, apiToken: v.apiToken });
+  await chrome.storage.local.set({ instanceUrl: v.instanceUrl, apiToken: v.apiToken, pagesToken: v.pagesToken });
   setStatus('Saved.', 'ok');
 }
 

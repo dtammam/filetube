@@ -1,0 +1,258 @@
+{
+  "bbc-1": {
+    "file": "bbc-1.html",
+    "kind": "news",
+    "source": "mozilla/readability 0.6.0 test/test-pages/bbc-1/source.html",
+    "url": "https://example.org/bbc-1",
+    "title": "Obama admits US gun laws are his 'biggest frustration'",
+    "author": "BBC News",
+    "publishedTime": "2015-07-24T05:36:09+01:00",
+    "words": [
+      653,
+      1108
+    ],
+    "reader": true,
+    "sentences": [
+      "In an interview with the BBC, Mr Obama said it was \"distressing\" not t",
+      "\"Well, they're not ideal institutions. But what we found is, is that w"
+    ]
+  },
+  "wapo-1": {
+    "file": "wapo-1.html",
+    "kind": "news",
+    "source": "mozilla/readability 0.6.0 test/test-pages/wapo-1/source.html",
+    "url": "https://example.org/wapo-1",
+    "title": "Attack stokes instability fears in North Africa",
+    "author": "By Erin Cunningham",
+    "publishedTime": null,
+    "words": [
+      939,
+      1585
+    ],
+    "reader": true,
+    "sentences": [
+      "It was the most deadly terrorist attack in the North African nation in",
+      "The last major attack on a civilian target in Tunisia was in 2002, whe"
+    ]
+  },
+  "medium-1": {
+    "file": "medium-1.html",
+    "kind": "hosted newsletter / blog (Substack-style)",
+    "source": "mozilla/readability 0.6.0 test/test-pages/medium-1/source.html",
+    "url": "https://example.org/medium-1",
+    "title": "The Open Journalism Project: Better Student Journalism",
+    "author": "Pippin Lee",
+    "publishedTime": "2015-03-17T16:27:40.294Z",
+    "words": [
+      2017,
+      3382
+    ],
+    "reader": true,
+    "sentences": [
+      "Topics like mapping, security, command line tools, and open source are",
+      "We’re still in the early stages of what this project will look like, s"
+    ]
+  },
+  "dropbox-blog": {
+    "file": "dropbox-blog.html",
+    "kind": "blog",
+    "source": "mozilla/readability 0.6.0 test/test-pages/dropbox-blog/source.html",
+    "url": "https://example.org/dropbox-blog",
+    "title": "How we designed Dropbox’s ATF - an async task framework",
+    "author": "Arun Sai Krishnan",
+    "publishedTime": null,
+    "words": [
+      2217,
+      3716
+    ],
+    "reader": true,
+    "sentences": [
+      "This Asynchronous Task Framework (ATF) would replace multiple bespoke ",
+      "One way to reduce this operational overhead and provide an easy interf"
+    ]
+  },
+  "daringfireball-1": {
+    "file": "daringfireball-1.html",
+    "kind": "blog (short)",
+    "source": "mozilla/readability 0.6.0 test/test-pages/daringfireball-1/source.html",
+    "url": "https://example.org/daringfireball-1",
+    "title": "Daring Fireball: Colophon",
+    "author": null,
+    "publishedTime": null,
+    "words": [
+      160,
+      287
+    ],
+    "reader": true,
+    "sentences": [
+      "Stats are tracked using Mint. Additional web nerdery, including the me",
+      "Web standards are important, and Daring Fireball adheres to them. Spec"
+    ]
+  },
+  "quanta-1": {
+    "file": "quanta-1.html",
+    "kind": "long-form essay",
+    "source": "mozilla/readability 0.6.0 test/test-pages/quanta-1/source.html",
+    "url": "https://example.org/quanta-1",
+    "title": "The Hidden Heroines of Chaos",
+    "author": "By Joshua Sokol",
+    "publishedTime": null,
+    "words": [
+      2370,
+      3970
+    ],
+    "reader": true,
+    "sentences": [
+      "The story of chaos is usually told like this: Using the LGP-30, Lorenz",
+      "Today, many programmers leave science not because their role isn’t app"
+    ]
+  },
+  "keep-tabular-data": {
+    "file": "keep-tabular-data.html",
+    "kind": "tables",
+    "source": "mozilla/readability 0.6.0 test/test-pages/keep-tabular-data/source.html",
+    "url": "https://example.org/keep-tabular-data",
+    "title": "Friday Facts #282 - 0.17 in sight | Factorio",
+    "author": null,
+    "publishedTime": null,
+    "words": [
+      1905,
+      3195
+    ],
+    "reader": true,
+    "sentences": [
+      "This week was the time to close and finish all the things that will go",
+      "The design of the accumulator has been always good. The 4 very visible"
+    ]
+  },
+  "v8-blog": {
+    "file": "v8-blog.html",
+    "kind": "code",
+    "source": "mozilla/readability 0.6.0 test/test-pages/v8-blog/source.html",
+    "url": "https://example.org/v8-blog",
+    "title": "standalone WebAssembly binaries using Emscripten · V8",
+    "author": null,
+    "publishedTime": null,
+    "words": [
+      1889,
+      3168
+    ],
+    "reader": true,
+    "sentences": [
+      "First, let's see what you can do with this new feature! Similar to thi",
+      "You can still use all those in Emscripten's standalone mode, but the o"
+    ]
+  },
+  "google-sre-book-1": {
+    "file": "google-sre-book-1.html",
+    "kind": "docs",
+    "source": "mozilla/readability 0.6.0 test/test-pages/google-sre-book-1/source.html",
+    "url": "https://example.org/google-sre-book-1",
+    "title": "Google - Site Reliability Engineering",
+    "author": "Written by Rob Ewaschuk\n                            Edited by Betsy Beyer",
+    "publishedTime": null,
+    "words": [
+      3451,
+      5772
+    ],
+    "reader": true,
+    "sentences": [
+      "There’s no uniformly shared vocabulary for discussing all topics relat",
+      "24See Applying Cardiac Alarm Management Techniques to Your On-Call [Ho"
+    ]
+  },
+  "lazy-image-1": {
+    "file": "lazy-image-1.html",
+    "kind": "lazy-loaded images",
+    "source": "mozilla/readability 0.6.0 test/test-pages/lazy-image-1/source.html",
+    "url": "https://example.org/lazy-image-1",
+    "title": "Node.js and CPU profiling on production (in real-time without downtime)",
+    "author": "Vincent Vallet",
+    "publishedTime": "2019-10-18T17:23:34.816Z",
+    "words": [
+      1229,
+      2068
+    ],
+    "reader": true,
+    "sentences": [
+      "When working with Node.js one of the most critical resources to monito",
+      "The inspector module offers a lot more features than you can use to de"
+    ]
+  },
+  "lemonde-1": {
+    "file": "lemonde-1.html",
+    "kind": "non-English (French)",
+    "source": "mozilla/readability 0.6.0 test/test-pages/lemonde-1/source.html",
+    "url": "https://example.org/lemonde-1",
+    "title": "Le projet de loi sur le renseignement massivement approuvé à l'Assemblée",
+    "author": "Martin Untersinger (avec Damien Leloup et Morgane Tual)",
+    "publishedTime": null,
+    "words": [
+      1185,
+      1996
+    ],
+    "reader": true,
+    "sentences": [
+      "Ont voté contre : 10 députés socialistes (sur 288), 35 UMP (sur 198), ",
+      "La durée de conservation des données collectées – et l’adaptation de c"
+    ]
+  },
+  "hukumusume": {
+    "file": "hukumusume.html",
+    "kind": "non-English (Japanese)",
+    "source": "mozilla/readability 0.6.0 test/test-pages/hukumusume/source.html",
+    "url": "https://example.org/hukumusume",
+    "title": "欲張りなイヌ　＜福娘童話集　きょうのイソップ童話＞",
+    "author": null,
+    "publishedTime": null,
+    "words": [
+      570,
+      970
+    ],
+    "reader": true,
+    "sentences": [
+      "イヌが、橋を渡っていました"
+    ]
+  },
+  "cern": {
+    "file": "cern.html",
+    "kind": "malformed tag soup (1992 markup: no html/body, unclosed P, unquoted attributes)",
+    "source": "live capture of http://info.cern.ch/hypertext/WWW/TheProject.html, 2026-10-25",
+    "url": "http://info.cern.ch/hypertext/WWW/TheProject.html",
+    "title": "The World Wide Web project",
+    "author": null,
+    "publishedTime": null,
+    "words": null,
+    "reader": true,
+    "sentences": [
+      "The WorldWideWeb (W3) is a wide-area"
+    ]
+  },
+  "govuk-home": {
+    "file": "govuk-home.html",
+    "kind": "non-article page (a home page)",
+    "source": "live capture of https://www.gov.uk/, 2026-10-25",
+    "url": "https://www.gov.uk/",
+    "title": "Welcome to GOV.UK",
+    "author": null,
+    "publishedTime": null,
+    "words": null,
+    "reader": false,
+    "sentences": []
+  },
+  "mdn-table": {
+    "file": "mdn-table.html",
+    "kind": "docs with tables and code (live capture, CC BY-SA 2.5)",
+    "source": "live capture of https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/table, 2026-10-25",
+    "url": "https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/table",
+    "title": "<table> HTML table element - HTML | MDN",
+    "author": null,
+    "publishedTime": null,
+    "words": null,
+    "reader": true,
+    "sentences": [
+      "box establishes a table formatting context"
+    ],
+    "note": "Readability itself drops the intro paragraph on this layout (measured on a jsdom DOM with no tidy): the sentences are from the body."
+  }
+}

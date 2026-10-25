@@ -135,7 +135,7 @@ function freshAdapter() {
 }
 
 test('schema v38: a fresh database has media_source_comments; a v37 database gains it and stamps 38; a re-run is a no-op', () => {
-  assert.strictEqual(SCHEMA_VERSION, 38);
+  assert.ok(SCHEMA_VERSION >= 38, 'v38 is a floor; v1.395.0 added v39 (Pages)');
   let { dir, adapter } = freshAdapter();
   const cols = () => adapter.sql.prepare('PRAGMA table_info(media_source_comments)').all().map((c) => c.name);
   assert.deepStrictEqual(cols(), ['media_id', 'payload', 'fetched_at', 'state']);
@@ -146,13 +146,13 @@ test('schema v38: a fresh database has media_source_comments; a v37 database gai
   adapter.sql.exec('PRAGMA user_version = 37');
   adapter.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
-  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, 38);
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   assert.deepStrictEqual(cols(), ['media_id', 'payload', 'fetched_at', 'state'], 'born again, empty');
   SC.createSourceCommentStore(adapter).apply('x', SC.decideSnapshot(REAL, NOW));
   adapter.sql.exec('PRAGMA user_version = 37'); // a crash between the CREATE and the stamp
   adapter.close();
   adapter = new SqliteAdapter(path.join(dir, SQLITE_FILENAME), { log: () => {} });
-  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, 38);
+  assert.strictEqual(adapter.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION);
   assert.strictEqual(SC.createSourceCommentStore(adapter).size(), 1, 'IF NOT EXISTS: the re-run keeps the rows');
   adapter.close();
 });

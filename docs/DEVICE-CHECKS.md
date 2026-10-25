@@ -5,6 +5,20 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Pages (v1.395.0)
+
+- [ ] v1.395.0 - (a) iPhone, Safari: the Shortcut (Settings > Pages) saves the open article in one tap; in Pages it has title, author, site, published and saved dates and a clean Reader; Original shows the page as you saw it, with its images.
+- [ ] v1.395.0 - (b) iPhone, another app (Mail, a chat): sharing a link through the second Shortcut saves it (fetched by the server); sharing text saves a text item.
+- [ ] v1.395.0 - (c) Tell me which Shortcut path showed "Run JavaScript on Web Page" (expected: only the Safari one).
+- [ ] v1.395.0 - (d) Phone: open a saved page, read halfway, open the same page on desktop: it resumes near the same place; reading to the end marks it read.
+- [ ] v1.395.0 - (e) Phone and desktop: Reader / Original switch, text size and Paper / Sepia / Night; the choice of Reader or Original follows you to the other device.
+- [ ] v1.395.0 - (f) Desktop: the browser extension (load `extension/` unpacked, add the Pages token in its options) saves the tab you are on, including a page you are signed in to.
+- [ ] v1.395.0 - (g) The Download button: Page saves the link to Pages; Video / Audio still download.
+- [ ] v1.395.0 - (h) Lists: make one, add a page from its page, Share with AI on the whole list pastes every page with its own header into your AI app.
+- [ ] v1.395.0 - (i) Delete a page, find it in Pages > Trash, Restore it.
+- [ ] v1.395.0 - (j) Settings > Bottom bar: turn on Pages; the item appears and opens Pages.
+- [ ] v1.395.0 - (k) Signed in as the kid account: Pages is empty (none of your pages, nothing in search).
+
 ## Clickable links and real comments (v1.394.0)
 
 - [ ] v1.394.0 - (a) A link in a video's description and in a top comment opens: on desktop in a new tab, in the iPhone app in Safari.
