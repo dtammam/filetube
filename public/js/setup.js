@@ -1985,7 +1985,7 @@ function wireHomeRowToggle(id, key, signal) {
 // retired, so all twelve ids need a label here. The unit suite binds this map
 // against common.js's live roster - an id without a label would otherwise
 // render as its raw slug in Dean's Settings panel.
-const BOTTOMBAR_LABELS = { home: 'Home', feed: 'Feed', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
+const BOTTOMBAR_LABELS = { home: 'Home', feed: 'Feed', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', pages: 'Pages', downloads: 'Downloads', settings: 'Settings' };
 // (v1.67's card-corner editor retired in UI pass sweep S2: every card action now
 // lives in the card's one action menu - kebab, long-press, right-click - so there
 // is no corner layout left to pick. The stored cornerTL..BR settings are ignored.)
@@ -5587,6 +5587,7 @@ function init(root) {
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
   renderTranscriptAiPromptsEditor(controller.signal); // v1.201 "Share with AI" prompts
+  wirePagesSection(controller.signal); // v1.395.0 Pages: the iOS Shortcut + the index rebuild
 
   loadAutomationSettings();
   loadCacheSize();
@@ -5643,8 +5644,79 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors player.js's own module.exports guard.
+// ---- v1.395.0 Pages: Settings > Pages (the iOS Shortcut) + Scan & cache > Rebuild Pages ----
+// The Shortcut token is a `shortcut` device (POST /api/devices with the account password, the
+// pairing rule: a session cookie alone never mints a credential); it is shown ONCE here with a
+// Copy button, then only listed (Account > Devices) and revocable. It can only save to Pages
+// (lib/auth/device-scope.js SHORTCUT_SCOPE). Text only (textContent), never innerHTML.
+function wirePagesSection(signal, win) {
+  const w = win || window;
+  const doc = w.document;
+  const status = doc.getElementById('pages-shortcut-status');
+  const tokenBox = doc.getElementById('pages-shortcut-token');
+  for (const code of doc.querySelectorAll('.pages-shortcut-endpoint')) code.textContent = w.location.origin + '/api/pages';
+  // One save-only token per button: the Shortcut and the browser extension each get their own
+  // (named, so Account > Devices tells them apart; same `shortcut` kind, same single route).
+  const makers = [['pages-shortcut-btn', 'iOS Shortcut', 'Set up the Shortcut', 'Copy this token into the Shortcut now. It is shown only once.'],
+    ['pages-extension-btn', 'Browser extension', 'Set up the browser extension', 'Paste this token into the extension\'s options now (Pages token). It is shown only once.']];
+  for (const [id, name, title, hint] of makers) {
+    const btn = doc.getElementById(id);
+    if (!btn) continue;
+    btn.addEventListener('click', async () => {
+      const u = settingsUi();
+      if (!u) return;
+      const password = await u.prompt({ title, label: 'Your FileTube password', type: 'password', confirmLabel: 'Continue', signal });
+      if (password === null || password === '') return;
+      if (status) status.textContent = 'Making a token...';
+      try {
+        const r = await fetch('/api/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, platform: 'shortcut', password }) });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok || typeof body.token !== 'string') { if (status) status.textContent = body.error || 'Could not make a token.'; return; }
+        if (status) status.textContent = hint;
+        if (tokenBox) {
+          tokenBox.textContent = '';
+          const field = doc.createElement('input');
+          field.className = 'ui-field__input pages-shortcut-token-field';
+          field.type = 'text';
+          field.readOnly = true;
+          field.value = body.token;
+          field.setAttribute('aria-label', 'Shortcut token');
+          tokenBox.appendChild(field);
+          const copy = u.button({ variant: 'primary', size: 'md', label: 'Copy token', icon: 'content_copy' });
+          copy.addEventListener('click', () => {
+            const done = (ok) => settingsNotice(ok ? 'Token copied.' : 'Select the token and copy it.', ok ? 'success' : undefined);
+            if (typeof copyTextToClipboard === 'function') copyTextToClipboard(body.token).then((o) => done(o === 'copied'));
+            else { field.select(); done(false); }
+          }, { signal });
+          tokenBox.appendChild(copy);
+          tokenBox.hidden = false;
+        }
+        if (typeof wireDevicesSection === 'function') wireDevicesSection(signal, w);
+      } catch (_) {
+        if (status) status.textContent = 'Could not make a token (network error).';
+      }
+    }, { signal });
+  }
+  const rebuild = doc.getElementById('pages-rebuild-btn');
+  const rebuildStatus = doc.getElementById('pages-rebuild-status');
+  if (rebuild) {
+    rebuild.addEventListener('click', async () => {
+      if (rebuildStatus) rebuildStatus.textContent = 'Rebuilding...';
+      try {
+        const r = await fetch('/api/pages/rebuild', { method: 'POST' });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) { if (rebuildStatus) rebuildStatus.textContent = body.error || 'Could not rebuild.'; return; }
+        if (rebuildStatus) rebuildStatus.textContent = body.refused ? 'Not rebuilt: the Pages folder is missing or empty (check the mount).' : 'Pages index rebuilt: ' + body.indexed + ' item(s).';
+      } catch (_) {
+        if (rebuildStatus) rebuildStatus.textContent = 'Could not rebuild (network error).';
+      }
+    }, { signal });
+  }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    wirePagesSection, // v1.395.0 Pages (jsdom-bound: the token shown once, the rebuild)
     // Chapter Snap (2026-09-24) (gate r1 qa S8): the lead-in select's wiring (jsdom-bound).
     wireChapterSnapLeadIn,
     // v1.355: Settings > Troubleshooting > Show rotate debug log (jsdom-bound against the real common.js log).

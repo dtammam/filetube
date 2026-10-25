@@ -3180,6 +3180,7 @@ select {
 .icon-flame,
 .icon-history,
 .icon-feed,
+.icon-pages,
 .icon-queue,
 .icon-podcast,
 .icon-downloads,
@@ -3295,6 +3296,7 @@ select {
 .icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
 /* v1.379.0: the Feed sidebar entry's glyph (Material `dynamic_feed`, the bottom bar's sprite twin). Base directory only. */
 .icon-feed { -webkit-mask-image: url(/assets/icons/feed.svg); mask-image: url(/assets/icons/feed.svg); }
+.icon-pages { -webkit-mask-image: url(/assets/icons/article.svg); mask-image: url(/assets/icons/article.svg); } /* v1.395.0 Pages: one base asset (README, chrome icons group) */
 /* v1.67: the playback-queue glyph (three list lines + a play triangle),
    promoted from the v1.63 inline card <svg>. Base directory only, like
    heart/share/flame/history -- an icon with no set-specific variant falls
@@ -3357,7 +3359,7 @@ select {
   .icon-home, .icon-folder, .icon-delete,
   .icon-search, .icon-play, .icon-refresh, .icon-arrow-down,
   .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-more, .icon-download,
-  .icon-flame, .icon-history, .icon-feed, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
+  .icon-flame, .icon-history, .icon-feed, .icon-pages, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
   }
@@ -13056,3 +13058,44 @@ html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"]
 .feed-recap__actions { display: flex; gap: var(--space-3); justify-content: flex-end; flex-wrap: wrap; }
 /* the hold fills the button from the left as the hold lasts (--hold 0..1, set by feed.js as DATA) */
 .feed-hold { background-image: linear-gradient(var(--fill-selected), var(--fill-selected)); background-repeat: no-repeat; background-size: calc(var(--hold, 0) * 100%) 100%; }
+
+/* ---- v1.395.0 Pages (/pages, public/js/pages.js) ------------------------------------------
+   The library (toolbar, search, the view chips, the ui-list rows) and one item (header, note,
+   the action row that wraps, the Reader or the sandboxed Original). The Reader reuses the Books
+   reader's paper / sepia / night tokens and text size; its HTML is server-sanitized. */
+#view-root[data-view="pages"] .pages-library,
+#view-root[data-view="pages"] .pages-item { max-width: calc(var(--space-16) * 24); margin: 0 auto; }
+#view-root[data-view="pages"] .pages-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-5); margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-toolbar h2 { margin: 0; }
+#view-root[data-view="pages"] .pages-toolbar-actions { display: flex; gap: var(--space-4); }
+#view-root[data-view="pages"] .pages-search { margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-views { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-list-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-trash-note,
+#view-root[data-view="pages"] .pages-item-meta,
+#view-root[data-view="pages"] .pages-item-saving,
+#view-root[data-view="pages"] .pages-item-note { font: var(--t-meta); color: var(--ink-2); margin: 0 0 var(--space-6); }
+#view-root[data-view="pages"] .pages-more-wrap { display: flex; justify-content: center; padding: var(--space-8) 0; }
+#view-root[data-view="pages"] .pages-back { margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-item-title { font: var(--t-display); margin: 0 0 var(--space-4); overflow-wrap: anywhere; }
+#view-root[data-view="pages"] .pages-item-source { display: inline-block; font: var(--t-meta); color: var(--accent); margin-bottom: var(--space-6); overflow-wrap: anywhere; }
+#view-root[data-view="pages"] .pages-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-bottom: var(--space-6); }
+#view-root[data-view="pages"] .pages-note-text { font: var(--t-body); margin: 0; padding: var(--space-4) var(--space-6); border-left: var(--space-1) solid var(--separator); white-space: pre-wrap; flex-basis: 100%; }
+#view-root[data-view="pages"] .pages-item-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); margin-bottom: var(--space-8); }
+#view-root[data-view="pages"] .pages-item-skeleton { display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-8) 0; }
+#view-root[data-view="pages"] .pages-reader { font: var(--t-body); line-height: var(--lh-relaxed); padding: var(--space-8) var(--space-10); border-radius: var(--r-md); overflow-wrap: anywhere; }
+#view-root[data-view="pages"] .pages-reader.theme-paper { color: var(--reader-paper-fg); }
+#view-root[data-view="pages"] .pages-reader.theme-sepia { color: var(--reader-sepia-fg); }
+#view-root[data-view="pages"] .pages-reader.theme-night { color: var(--reader-night-fg); }
+#view-root[data-view="pages"] .pages-reader img { max-width: 100%; height: auto; }
+#view-root[data-view="pages"] .pages-reader pre { overflow-x: auto; white-space: pre; }
+#view-root[data-view="pages"] .pages-reader table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+#view-root[data-view="pages"] .pages-reader a { color: inherit; text-decoration: underline; }
+#view-root[data-view="pages"] .pages-original-frame { display: block; width: 100%; height: 80vh; height: 80dvh; border: 0; border-radius: var(--r-md); background: var(--surface-1); }
+.pages-add-form { display: flex; flex-direction: column; gap: var(--space-6); }
+.pages-add-status { font: var(--t-meta); color: var(--ink-2); margin: 0; }
+.pages-add-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-4); }
+.pages-shortcut-token { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-block: var(--space-6); }
+.pages-shortcut-token-field { flex: 1 1 calc(var(--space-16) * 8); font-family: monospace; }
+.pages-shortcut-steps { font: var(--t-body); padding-left: var(--space-12); display: flex; flex-direction: column; gap: var(--space-4); }
+.pages-shortcut-steps code { overflow-wrap: anywhere; }

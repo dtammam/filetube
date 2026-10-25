@@ -249,6 +249,13 @@
             <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="scan-now-btn"><span class="ui-btn__label">Scan now</span></button>
           </div>
         </div>
+        <!-- v1.395.0 Pages: rebuild the Pages index from the files (POST /api/pages/rebuild, admin). -->
+        <div class="action-footer">
+          <span id="pages-rebuild-status" class="action-status" aria-live="polite">Pages index: rebuilt from the saved files when needed.</span>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-rebuild-btn"><span class="ui-btn__label">Rebuild Pages</span></button>
+          </div>
+        </div>
         <h3 class="setup-heading">Chapter snap</h3>
         <!-- Chapter Snap (2026-09-24) (Dean): the server-wide LEAD-IN before the first sound after a silence. -->
         <div class="setup-group">
@@ -1033,6 +1040,33 @@
           </div>
         </div>
       </details>
+      <!-- v1.395.0 Pages: the iOS Shortcut setup (a `shortcut` token: POST /api/devices with the password, shown once; it can only save to Pages) and the trash note. public/js/setup.js wirePagesSection. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="pages" data-md-icon="layers" data-md-group="Library" open>
+        <summary>Pages</summary>
+        <p class="setup-intro">Pages keeps web pages and text you save, as files under the data directory (or <code>FILETUBE_PAGES_DIR</code>), each with a clean Reader view and the Original page. Save from the Pages page, from the Download button, from the browser extension, or from your iPhone with a Shortcut. Deleted pages wait in the trash on the Pages page for 30 days.</p>
+        <div class="action-footer">
+          <div class="action-bar">
+            <a class="ui-btn ui-btn--primary ui-btn--md" id="pages-open-link" href="/pages"><span class="ui-btn__label">Open Pages</span></a>
+          </div>
+        </div>
+        <h3 class="setup-heading">Save from your iPhone or your browser</h3>
+        <p class="setup-note">A Shortcut saves the page you are reading in Safari, or a link or text shared from any other app; the FileTube browser extension (the <code>extension/</code> folder, loaded unpacked in Chrome, Edge or Brave) saves the tab you are on. Each signs in with its own token, which can only save to Pages; tokens are listed under Account &gt; Devices, where you can remove them.</p>
+        <div class="action-footer">
+          <span id="pages-shortcut-status" class="action-status" aria-live="polite"></span>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-shortcut-btn"><span class="ui-btn__label">Set up the Shortcut</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="pages-extension-btn"><span class="ui-btn__label">Set up the browser extension</span></button>
+          </div>
+        </div>
+        <div class="pages-shortcut-token" id="pages-shortcut-token" hidden></div>
+        <ol class="pages-shortcut-steps" id="pages-shortcut-steps">
+          <li><strong>From Safari (the page as you see it):</strong> in the Shortcuts app, make a new Shortcut. In its details, turn on <em>Show in Share Sheet</em> and accept <em>Safari web pages</em>.</li>
+          <li>Add <em>Run JavaScript on Web Page</em> with: <code>completion({ url: location.href, html: new XMLSerializer().serializeToString(document) });</code></li>
+          <li>Add <em>Get Contents of URL</em>: URL <code class="pages-shortcut-endpoint">https://your-server/api/pages</code>, Method <em>POST</em>, a header <code>Authorization</code> = <code>Bearer</code> + your token, Request Body <em>JSON</em> with <code>url</code> and <code>html</code> from the JavaScript result and <code>source</code> = <code>shortcut</code>.</li>
+          <li>Add <em>Show Notification</em> with the <code>message</code> of the result ("Saved to Pages", "Already in Pages", or what went wrong). A removed token answers with an <code>error</code> instead: make a new one here.</li>
+          <li><strong>From any other app (a link or text):</strong> make a second Shortcut that accepts <em>URLs</em> and <em>Text</em> from the Share Sheet. Use the same <em>Get Contents of URL</em>, with a JSON body of <code>url</code> = the Shortcut Input when it is a link, or <code>text</code> = the Shortcut Input when it is text. The server fetches a link itself.</li>
+        </ol>
+      </details>
       <!-- v1.97.1: Hidden -- videos you pruned from YOUR modern feed; rows render from GET /api/feed-hidden. -->
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="hidden" data-md-icon="hidden" data-md-group="Library" open>
         <summary>Hidden</summary>
@@ -1172,10 +1206,11 @@
           </div>
         </div>
       </details>
+      <!-- v1.395.0: renamed "Share with AI" (Pages plan P8: one prompt list for transcripts AND Pages; the key and the saved prompts are unchanged). -->
       <!-- v1.201 (Dean): "Share transcript with AI" - named preamble prompts, instance-wide (admin edits, everyone uses); saved on change via POST /api/settings `transcriptAiPrompts`. -->
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-sharing" data-md-icon="copy" data-md-group="Advanced" open>
-        <summary>Transcript sharing</summary>
-        <p class="setup-intro">Prompts for the <strong>Share with AI</strong> action on a video's transcript. The prompt you pick is placed in front of the transcript in the share sheet, so the AI app you send it to gets your request and the text together. Add one per kind of analysis you ask for; remove them all to hide the action.</p>
+        <summary>Share with AI</summary>
+        <p class="setup-intro">Prompts for the <strong>Share with AI</strong> action on a video's transcript and on a saved page or list in Pages. The prompt you pick is placed in front of the text in the share sheet, so the AI app you send it to gets your request and the text together. Add one per kind of analysis you ask for; with none, Pages still shares the text alone and the transcript action hides.</p>
         <div id="transcript-ai-prompts" class="transcript-ai-prompts" aria-live="polite"></div>
         <div class="action-bar">
           <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="transcript-ai-add-btn"><span class="ui-btn__label">Add prompt</span></button>
@@ -1307,6 +1342,10 @@
     <a href="/books" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="books" hidden>
       <span class="ui-btn__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-menu_book"/></svg></span>
       <span class="ui-btn__label bottom-nav-label">Books</span>
+    </a>
+    <a href="/pages" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="pages" hidden>
+      <span class="ui-btn__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-article"/></svg></span>
+      <span class="ui-btn__label bottom-nav-label">Pages</span>
     </a>
     <a href="/" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="downloads" hidden>
       <span class="ui-btn__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-smart_display"/></svg></span>

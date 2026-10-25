@@ -33,6 +33,7 @@ test('...and it carries every roster entry, none on a CSS mask', () => {
   const subs = navOf('lib/ytdlp/views/subscriptions.html');
   const ids = [...subs.matchAll(/data-nav="([a-z-]+)"/g)].map((m) => m[1]);
   // v1.379.0: Feed sits right after Liked (plan D1), on the sprite like every other item.
-  assert.deepStrictEqual(ids, ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'settings']);
+  // v1.395.0: Pages sits right after Books (hidden by default).
+  assert.deepStrictEqual(ids, ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'pages', 'downloads', 'theme', 'settings']);
   assert.doesNotMatch(subs, /<i class="icon-/, 'no mask glyphs (they pop in late on iOS)');
 });

@@ -27,7 +27,8 @@ test('the census classifies every control (no unclassified id, no stale entry)',
 // (v1.372.0's Home > Show music in the home feed came and went: v1.373.0 removed it.) v1.382.0: the Settings > Feed page's
 // thirteen controls, one synced key.
 // v1.387.0: Account > Devices, the paired phones' Remove buttons (a dynamic host, one DELETE per row).
-const ADDED_SINCE = ['pocket-upright-check|localStorage', 'devices-list|/api/devices/:id', 'comments-mode-select|/api/prefs (synced) + localStorage', 'save-comments-check|/api/ytdlp/engine'].concat(['feed-kind-video', 'feed-kind-podcast', 'feed-kind-book', 'feed-kind-watchlater', 'feed-kind-song', 'feed-which-video', 'feed-where-video', 'feed-which-podcast', 'feed-where-podcast', 'feed-which-book', 'feed-where-book', 'feed-reel', 'feed-slice', 'feed-advance', 'feed-clip', 'feed-music', 'feed-station'].map((id) => id + '|/api/prefs (synced) + localStorage'));
+// v1.395.0: Settings > Pages' two save-token buttons and Scan & cache > Rebuild Pages.
+const ADDED_SINCE = ['pages-shortcut-btn|/api/devices', 'pages-extension-btn|/api/devices', 'pages-rebuild-btn|/api/pages/rebuild', 'pocket-upright-check|localStorage', 'devices-list|/api/devices/:id', 'comments-mode-select|/api/prefs (synced) + localStorage', 'save-comments-check|/api/ytdlp/engine'].concat(['feed-kind-video', 'feed-kind-podcast', 'feed-kind-book', 'feed-kind-watchlater', 'feed-kind-song', 'feed-which-video', 'feed-where-video', 'feed-which-podcast', 'feed-where-podcast', 'feed-which-book', 'feed-where-book', 'feed-reel', 'feed-slice', 'feed-advance', 'feed-clip', 'feed-music', 'feed-station'].map((id) => id + '|/api/prefs (synced) + localStorage'));
 
 test('no control is lost, added or re-routed: (id, save path) equals the v1.366.1 baseline plus the named additions', () => {
   const now = census(HTML).pages.flatMap((p) => p.controls).map((c) => c.id + '|' + c.save).sort();

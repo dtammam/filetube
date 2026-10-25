@@ -167,14 +167,20 @@ test('FIX 4: a 200 (module enabled) health probe injects BOTH the header button 
   });
 });
 
-test('FIX 4: a 404 (module disabled) health probe injects NOTHING -- neither the header button nor the mobile entry', async () => {
+// v1.395.0 Pages (plan P11): with the module disabled (404) the button and the mobile entry still
+// exist, for a Page only - the pre-v1.395.0 "injects NOTHING" is reversed by that ruling. The
+// mediaFetch-less native host still gets nothing (media-fetch-gate.test.js "A1 injectors").
+test('FIX 4 / v1.395.0: a 404 (module disabled) health probe injects the Page-only entries (header button + mobile entry)', async () => {
   const { doc, headerRight, navParent } = makeFakeDocument();
   await withGlobals(doc, () => Promise.resolve({ ok: false, status: 404 }), async () => {
     injectOneOffDownloadButtonIfEnabled();
     await flush();
 
-    assert.strictEqual(headerRight.children.length, 0, 'disabled must leave .header-right untouched');
-    assert.strictEqual(navParent.children.length, 1, 'disabled must leave the bottom-nav untouched (only the pre-existing Settings item)');
+    assert.strictEqual(headerRight.children.length, 1, 'the header button exists');
+    assert.strictEqual(headerRight.children[0].attributes['aria-label'], 'Save a page', 'and says it saves a page');
+    const navBtn = navParent.children.find((c) => c.attributes['data-nav'] === 'oneoff-download');
+    assert.ok(navBtn, 'the mobile entry exists');
+    assert.strictEqual(navBtn.attributes['aria-label'], 'Save a page');
   });
 });
 

@@ -253,3 +253,11 @@ test('deleting an account sets its Pages folder aside (renamed, never unlinked);
   const kept = path.join(process.env.DATA_DIR, 'pages', '.deleted-users', aside.find((n) => n.startsWith(`${sam.id}-`)), 'items');
   assert.ok(fs.existsSync(kept), 'the files are kept');
 });
+
+test('a failed save answers with a `message` the Shortcut can show (the error text)', async () => {
+  const r = await json(await call('POST', '/api/pages', { session: owner, body: { url: 'ftp://nope' } }));
+  assert.strictEqual(r.status, 400);
+  assert.strictEqual(r.body.message, r.body.error);
+  const e = await json(await call('POST', '/api/pages', { session: owner, body: {} }));
+  assert.strictEqual(e.body.message, 'Nothing to save: send a url, or some text.');
+});

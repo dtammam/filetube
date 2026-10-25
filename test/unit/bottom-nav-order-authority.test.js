@@ -426,11 +426,14 @@ test('v1.75 EDITOR: every roster id has a real label - no raw slug reaches the p
   assert.equal(setup.BOTTOMBAR_LABELS.settings, 'Settings');
 });
 
-test('v1.75 EDITOR: rows list all thirteen (twelve + the v1.379.0 feed) in the BAR\'s order, with the default ticks', () => {
+test('v1.75 EDITOR: rows list all fourteen (twelve + the v1.379.0 feed + the v1.395.0 pages) in the BAR\'s order, with the default ticks', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
     const rows = editorRows();
-    assert.equal(rows.length, 13);
+    assert.equal(rows.length, 14);
+    const pages = rows.find((r) => r.label === 'Pages');
+    assert.ok(pages, 'v1.395.0: Pages has a row');
+    assert.equal(pages.checked, false, 'Pages is opt-in (default-hidden, P1)');
     assert.equal(rows[2].label, 'Feed', 'v1.379.0: Feed right after Liked');
     assert.equal(rows[2].checked, true, 'Feed ships visible (plan D1)');
     assert.equal(rows[0].label, 'Home', 'Home heads the list, as it heads the bar');
