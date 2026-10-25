@@ -3736,5 +3736,11 @@
     "date": "2026-10-23",
     "title": "Clickable links and the real top comments",
     "intent": "Links in video descriptions now open in a new tab, and times like 2:15 jump the video there. Downloaded videos also keep their top 10 comments as they were when you saved them, shown under the video in every look, and Reheat refreshes them without ever erasing ones already saved. Settings has a new Comments choice, and the first library-wide Reheat fetches comments for your older downloads, a few seconds each."
+  },
+  {
+    "version": "1.395.0",
+    "date": "2026-10-25",
+    "title": "Pages: save web pages and text to read later",
+    "intent": "A new Pages section keeps web pages and text you save, as files that last until you delete them. Each page opens in a clean Reader view (your text size and theme, your place kept) or as the Original page with its own pictures, and you can add a note, sort pages into lists, search everything you saved, and send a page or a whole list to your AI app with your own prompts. Save from the Pages page, the Download button, the browser extension, or an iPhone Shortcut set up in Settings > Pages; deleted pages wait in the trash for 30 days."
   }
 ]

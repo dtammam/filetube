@@ -61,8 +61,10 @@ test('SOURCE-LOCK: the sidebar Podcasts entry rides the Library section, ordered
   assert.ok(src.includes("(key === 'downloads')\n    ? (document.querySelector('[data-nav-sidebar=\"music\"]')"), 'Downloads sits FIRST - above Music and everything below it');
   // v1.195: TV Shows joined the ladder between Books and Podcasts - each branch
   // below Books re-indented one more level; the relative order is unchanged.
-  assert.ok(src.includes("(key === 'books')\n        ? (document.querySelector('[data-nav-sidebar=\"tv\"]') || document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above TV/Podcasts');
-  assert.ok(src.includes("(key === 'podcasts')\n            ? (document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Podcasts sits above History');
+  // v1.395.0: Pages joined between Podcasts and History - every chain names it before History.
+  assert.ok(src.includes("(key === 'books')\n        ? (document.querySelector('[data-nav-sidebar=\"tv\"]') || document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"pages\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Books sits above TV/Podcasts/Pages');
+  assert.ok(src.includes("(key === 'podcasts')\n            ? (document.querySelector('[data-nav-sidebar=\"pages\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Podcasts sits above Pages and History');
+  assert.ok(src.includes("(key === 'pages')\n              ? (document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList)"), 'Pages sits above History');
   assert.ok(src.includes("podcasts: '/podcasts'"), 'hrefByNavKey lights the sidebar link after SPA nav');
   assert.ok(src.includes("podcasts: '/js/podcasts.js'"), 'the podcasts view script is lazy-loadable');
   assert.ok(src.includes('href="/podcasts" class="sidebar-item"'), 'the Playlists sheet lists Podcasts when enabled');

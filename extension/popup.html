@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Download to FileTube</title>
+  <title>Send to FileTube</title>
   <style>
     :root { color-scheme: light dark; }
     body {
@@ -37,6 +37,7 @@
     }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     #pick { margin-top: 8px; background: #555; }
+    #save-page { margin-bottom: 8px; background: #1f5fbf; }
     .status { margin-top: 12px; font-size: 12px; min-height: 16px; }
     .status.error { color: #cc0000; }
     .status.ok { color: #0a7d28; }
@@ -47,8 +48,9 @@
   </style>
 </head>
 <body>
-  <h1>Download to FileTube</h1>
+  <h1>Send to FileTube</h1>
   <div id="url" class="url">Reading current tab...</div>
+  <div class="buttons"><button id="save-page" disabled>Save to Pages</button></div>
   <div class="buttons">
     <button id="audio" disabled>Audio</button>
     <button id="video" disabled>Video</button>

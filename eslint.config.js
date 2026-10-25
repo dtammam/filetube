@@ -23,6 +23,9 @@ module.exports = [
       // v1.37.0: vendored client dists (minified upstream code) -- see
       // public/vendor/README.md.
       'public/vendor/**',
+      // v1.395.0: Mozilla Readability, vendored UNMODIFIED (sha256-locked by
+      // test/unit/pages-vendor.test.js; the rule is lib/pages/vendor/README.md).
+      'lib/pages/vendor/**',
       'docs/**',
       // v1.77 (QA gate): Claude Code creates isolated git worktrees for
       // subagents under .claude/worktrees/<agent-id>/. They are full checkouts

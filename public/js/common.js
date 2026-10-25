@@ -3476,6 +3476,8 @@ function activeNavItem(pathname, search) {
   if (pathname === '/history' || pathname === '/history.html') return 'history';
   // v1.379.0 Feed mode: its own bottom-bar item and sidebar entry.
   if (pathname === '/feed') return 'feed';
+  // v1.395.0 Pages: its own sidebar entry and (opt-in) bottom-bar item; an item is /pages?id=.
+  if (pathname === '/pages') return 'pages';
   // v1.75: `home` and `liked` SHARE the `/` path - the central Liked playlist
   // is the home grid scoped by `?liked=1` (main.js: `urlParams.get('liked') ===
   // '1'`) - so the highlight discriminates on the QUERY, mirroring that exact
@@ -3506,6 +3508,7 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   podcasts: '/podcasts',
   history: '/history',
   feed: '/feed', // v1.379.0 Feed mode
+  pages: '/pages', // v1.395.0 Pages
 };
 
 // Paints the shell's nav highlight (bottom bar + sidebar) for a location.
@@ -5303,18 +5306,21 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   // v1.73 (Dean ruling 5): Downloads sits FIRST - it anchors before every
   // other Library entry; the existing keys keep their relative ladder.
   const anchor = (key === 'feed')
-    ? (document.querySelector('[data-nav-sidebar="downloads"]') || document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    ? (document.querySelector('[data-nav-sidebar="downloads"]') || document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
     : (key === 'downloads')
-    ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
     : (key === 'music')
-      ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+      ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
       : (key === 'books')
-        ? (document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+        ? (document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
         : (key === 'tv')
-          ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+          ? (document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
           : (key === 'podcasts')
-            ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
-            : foldersList;
+            ? (document.querySelector('[data-nav-sidebar="pages"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+            // v1.395.0 Pages: between Podcasts and History (every chain above names it before History).
+            : (key === 'pages')
+              ? (document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+              : foldersList;
   anchor.insertAdjacentElement('beforebegin', link);
   if (activeNavItem(window.location.pathname, window.location.search) === key) {
     link.classList.add('active');
@@ -5452,6 +5458,13 @@ function injectFeedNavLink() {
   injectLibraryNavEntry('feed', '/feed', 'Feed', 'icon-feed');
 }
 
+// v1.395.0 Pages: always on (P1), never count-gated or yt-dlp-gated: the page says when it is empty.
+function injectPagesNavLink() {
+  if (typeof document === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="pages"]')) return;
+  injectLibraryNavEntry('pages', '/pages', 'Pages', 'icon-pages');
+}
+
 function injectHistoryNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (document.querySelector('[data-nav-sidebar="history"]')) return;
@@ -5483,7 +5496,8 @@ function injectHistoryNavLinkIfEnabled() {
 // v1.379.0 Feed mode (plan D1): `feed` joins the roster right after Liked (Liked keeps its slot
 // beside Home, the v1.75 lock), ON by default (not in BOTTOM_NAV_DEFAULT_HIDDEN) - the plan's
 // ruling; a user hides it from the Settings customizer.
-const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
+// v1.395.0 Pages (P1): `pages` after Books, OFF by default (BOTTOM_NAV_DEFAULT_HIDDEN) - Dean's ruling.
+const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'pages', 'downloads', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
 // but never appears until Settings enables it - Dean's ruling for podcasts,
@@ -5497,7 +5511,7 @@ const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'feed', 'playlists', 'history', 'p
 // default bar loses them here (Dean-approved); a user who explicitly opted one in
 // (`shown`) keeps it. The COMPAT_TAIL pin below still tails `settings` IF
 // re-shown, so its position is unchanged when opted in.
-const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme'];
+const BOTTOM_NAV_DEFAULT_HIDDEN = ['podcasts', 'music', 'books', 'downloads', 'liked', 'settings', 'theme', 'pages'];
 
 // v1.75 COMPAT (the load-bearing subtlety of this wave). Every config written
 // before this release predates `home`/`settings` being sortable, so no such
@@ -5662,6 +5676,20 @@ const ONEOFF_FORMAT_OPTIONS = [
   { value: 'video', label: 'Video' },
   { value: 'audio', label: 'Audio only' },
 ];
+// v1.395.0 Pages (plan P11): the dialog's third choice saves the link to Pages (POST /api/pages).
+// With yt-dlp off (or a native host without the mediaFetch capability) it is the ONLY choice: the
+// button and the dialog still exist, for pages. Pure, exported.
+const ONEOFF_PAGE_OPTION = { value: 'page', label: 'Page' };
+// The toast after a save to Pages: the SERVER's message ("Already in Pages, in the trash: ..." says
+// what a bare "Already in Pages" hid, gate r2 qa W3), else the plain answer. Both web entry points
+// (the Pages Add sheet, this dialog's Page) use it.
+function pagesSavedMessage(data) {
+  if (data && typeof data.message === 'string' && data.message.trim() !== '') return data.message;
+  return data && data.duplicate ? 'Already in Pages' : 'Saved to Pages';
+}
+function oneOffFormatOptions(mediaAllowed) {
+  return mediaAllowed ? ONEOFF_FORMAT_OPTIONS.concat([ONEOFF_PAGE_OPTION]) : [ONEOFF_PAGE_OPTION];
+}
 const ONEOFF_QUALITY_OPTIONS = ['best', '2160p', '1440p', '1080p', '720p', '480p', '360p'];
 const ONEOFF_DEFAULT_QUALITY = 'best';
 const ONEOFF_FILETYPE_OPTIONS = {
@@ -6456,14 +6484,15 @@ function buildOneOffModal(doc, handlers) {
   urlInput.type = 'text';
   urlInput.className = 'ui-field__input';
   // v1.41.13: any yt-dlp-supported site, not just YouTube (universal one-offs).
-  urlInput.setAttribute('placeholder', 'Media URL — any yt-dlp-supported site');
+  urlInput.setAttribute('placeholder', 'Media URL - any yt-dlp-supported site');
   urlInput.setAttribute('aria-label', 'Media URL');
   modal.appendChild(urlInput);
 
   const row = d.createElement('div');
   row.className = 'oneoff-modal-selects';
 
-  const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, 'video');
+  const mediaAllowed = h.mediaAllowed !== false; // v1.395.0: false = Page only (yt-dlp off)
+  const formatSelect = buildOneOffSelect(d, oneOffFormatOptions(mediaAllowed), mediaAllowed ? 'video' : 'page');
   formatSelect.setAttribute('aria-label', 'Format');
   row.appendChild(oneOffSelectBox(d, formatSelect));
 
@@ -6480,7 +6509,8 @@ function buildOneOffModal(doc, handlers) {
   row.appendChild(oneOffSelectBox(d, filetypeSelect));
 
   formatSelect.addEventListener('change', () => {
-    repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
+    if (formatSelect.value !== 'page') repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
+    applyPageMode();
   });
 
   modal.appendChild(row);
@@ -6556,7 +6586,11 @@ function buildOneOffModal(doc, handlers) {
   downloadBtn.addEventListener('click', () => {
     const url = typeof urlInput.value === 'string' ? urlInput.value.trim() : '';
     if (!url) {
-      statusEl.textContent = 'Enter a media URL.';
+      statusEl.textContent = formatSelect.value === 'page' ? 'Enter the page\'s URL.' : 'Enter a media URL.';
+      return;
+    }
+    if (formatSelect.value === 'page') { // v1.395.0: Save to Pages
+      if (typeof h.onSavePage === 'function') h.onSavePage(url);
       return;
     }
     const body = buildOneOffDownloadBody(url, formatSelect.value, qualitySelect.value, filetypeSelect.value, folderInput.value);
@@ -6575,6 +6609,17 @@ function buildOneOffModal(doc, handlers) {
   // for an idle/terminal/absent entry, and marked `.indeterminate` (barber-
   // pole motion, see style.css) whenever there is no genuine percent to show
   // right now rather than rendering a bar that visually never moves.
+  // v1.395.0 Pages: a page has no quality, file type or folder; the button says what it does.
+  function applyPageMode() {
+    const page = formatSelect.value === 'page';
+    qualitySelect.parentElement.hidden = page;
+    filetypeSelect.parentElement.hidden = page;
+    folderInput.hidden = page;
+    downloadBtn.textContent = page ? 'Save to Pages' : 'Download';
+    urlInput.setAttribute('placeholder', page ? 'Page URL' : 'Media URL - any yt-dlp-supported site');
+  }
+  applyPageMode();
+
   function setStatus(entry) {
     currentEntry = (entry && typeof entry === 'object') ? entry : null;
     statusEl.textContent = formatOneOffStatusText(entry) || '';
@@ -6594,7 +6639,7 @@ function buildOneOffModal(doc, handlers) {
   }
 
   const sheet = U.sheet({
-    variant: 'auto', title: 'One-off download', content: modal, initialFocus: urlInput,
+    variant: 'auto', title: mediaAllowed ? 'One-off download' : 'Save to Pages', content: modal, initialFocus: urlInput,
     onClosing: () => { if (typeof h.onClose === 'function') h.onClose(); },
     doc: d, win: d.defaultView,
   });
@@ -8137,11 +8182,18 @@ function injectOneOffDownloadButtonIfEnabled() {
   probeSubscriptionsHealth()
     .then((res) => {
       rememberModuleEnabled(res.ok === true); // v1.339 (L2): the next launch's reserve flag
-      if (!shouldInjectOneOffButton(res)) { dropReserves(); return; } // disabled (404) -- inject nothing
       // v1.47.4 item 4: RE-CHECK after the await, using the SAME predicate as
       // the pre-fetch guard above. Without it, two overlapping calls both pass
       // the pre-fetch check and both build a header button + modal.
       if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) { dropReserves(); return; }
+      // v1.395.0 Pages (P11): with yt-dlp off the button still exists, for a Page only (the
+      // dialog's other choices need the module); nothing pre-painted a reserve for it (the reserve
+      // flag means the module), so it arrives with the probe. A native host without the mediaFetch
+      // capability (the App Store build, v1.391.0) keeps NO Download surface: there Pages is
+      // reached from its own Add box and the app's share action.
+      if (!mediaFetchAllowed()) { dropReserves(); return; }
+      const mediaAllowed = shouldInjectOneOffButton(res);
+      if (!mediaAllowed) dropReserves();
 
       const headerRight = document.querySelector('.header-right');
       // v1.15.1: the desktop header button lives inside `.header-right`. It was
@@ -8252,6 +8304,21 @@ function injectOneOffDownloadButtonIfEnabled() {
         if (!modalState) {
           modalState = buildOneOffModal(document, {
             onClose: closeModal,
+            mediaAllowed,
+            // v1.395.0 Pages: the Page choice saves the link (the server fetches it, through its guard).
+            onSavePage: (url) => {
+              const state = modalState;
+              state.statusEl.textContent = 'Saving the page';
+              fetch('/api/pages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, source: 'download-dialog' }) })
+                .then(async (r) => {
+                  const data = await r.json().catch(() => ({}));
+                  if (modalState !== state) return;
+                  if (!r.ok) { state.statusEl.textContent = data.error || 'Could not save the page.'; return; }
+                  if (typeof showToast === 'function') showToast(pagesSavedMessage(data));
+                  closeModal();
+                })
+                .catch(() => { if (modalState === state) state.statusEl.textContent = 'Could not save the page (network error).'; });
+            },
             // v1.370.0 W4: a link with a playlist is asked about first (R1); one video posts as today
             onDownload: (body) => routeOneOffDownload(body, submitOneOffDownload, {
               status: (t) => showToast(t),
@@ -8282,9 +8349,9 @@ function injectOneOffDownloadButtonIfEnabled() {
         // Sweep S1 (F31): the header Download is a plain ui-btn icon button at every width
         // (it was a bevelled text .btn on desktop beside flat round glyphs, and glyph-only
         // on the phone). The sprite glyph paints with the text (v1.87.1's first-paint rule).
-        const btn = chromeButtonEl({ cls: 'oneoff-download-btn', icon: CHROME_ICON.download, ariaLabel: 'Download a video' });
+        const btn = chromeButtonEl({ cls: 'oneoff-download-btn', icon: CHROME_ICON.download, ariaLabel: mediaAllowed ? 'Download a video' : 'Save a page' });
         btn.id = 'ytdlp-oneoff-btn';
-        btn.title = 'Download a video';
+        btn.title = mediaAllowed ? 'Download a video' : 'Save a page';
 
         // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
         // original intent was "insert before the Settings link when THIS header
@@ -8330,7 +8397,7 @@ function injectOneOffDownloadButtonIfEnabled() {
         // v1.339 (L2): a sprite <svg>, not the `.icon-download` mask (iOS decode lag - the
         // v1.87.1 first-paint glyph rule), matching the reserve's glyph. Sweep S1 (F49): a
         // ui-btn stack tab like every other.
-        const navBtn = bottomNavItemEl({ tag: 'button', nav: 'oneoff-download', icon: CHROME_ICON.download, label: 'Download', ariaLabel: 'Download a video' });
+        const navBtn = bottomNavItemEl({ tag: 'button', nav: 'oneoff-download', icon: CHROME_ICON.download, label: 'Download', ariaLabel: mediaAllowed ? 'Download a video' : 'Save a page' });
         const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
         if (navReserve) navReserve.replaceWith(navBtn);
         else settingsNavItem.insertAdjacentElement('afterend', navBtn);
@@ -8420,6 +8487,8 @@ function deriveRouteView(pathname) {
   if (pathname === '/cleanup') return 'cleanup';
   // v1.379.0 Feed mode: the card feed (lib/feed/shell.js serves the History shell for it).
   if (pathname === '/feed') return 'feed';
+  // v1.395.0 Pages (lib/pages/shell.js serves the History shell for it; one item is /pages?id=).
+  if (pathname === '/pages') return 'pages';
   return null;
 }
 
@@ -11971,6 +12040,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     history: '/js/history.js',
     cleanup: '/js/cleanup.js',
     feed: '/js/feed.js', // v1.379.0 Feed mode (registers { init, destroy } at parse time, no self-boot)
+    pages: '/js/pages.js', // v1.395.0 Pages (registers { init, destroy } at parse time, no self-boot)
     // v1.151: lazy-load the Stats view script on first in-app navigation
     // (same posture as the other secondary views above). stats.js registers
     // { init, destroy } at parse time and has NO DOMContentLoaded self-boot,
@@ -12694,6 +12764,10 @@ function libraryEntriesHtml() {
     // v1.69: Podcasts mirrors its capability marker the same way.
     if (document.querySelector('[data-nav-sidebar="podcasts"]')) {
       html += '<a href="/podcasts" class="sidebar-item"><i class="' + mirroredGlyph('podcasts', 'icon-podcast') + '"></i> Podcasts</a>';
+    }
+    // v1.395.0 Pages: mirrored like Feed, in its sidebar slot (after Podcasts) (its bar item is hidden by default, so this is a phone's way in).
+    if (document.querySelector('[data-nav-sidebar="pages"]')) {
+      html += '<a href="/pages" class="sidebar-item"><i class="' + mirroredGlyph('pages', 'icon-pages') + '"></i> Pages</a>';
     }
     // v1.64: mirrors the count-gated sidebar marker, same as books/music
     // mirror their capability markers -- the sheet and the sidebars can
@@ -18184,6 +18258,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
   injectHistoryNavLinkIfEnabled();
   injectFeedNavLink(); // v1.379.0 Feed mode
+  injectPagesNavLink(); // v1.395.0 Pages
   // v1.117 (Dean bug): the PINNED sidebar is a SHELL-LEVEL surface (it lives in
   // #sidebar, outside #view-root), but its render was only booted by main.js
   // (home) and watch.js (watch) -- so pins vanished on Stats/Music/History/
@@ -18415,7 +18490,7 @@ if (typeof module !== 'undefined' && module.exports) {
     REORDER_LONG_PRESS_MS, REORDER_MOUSE_THRESHOLD_PX, REORDER_TOUCH_SLOP_PX,
     REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
-    shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
+    shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody, oneOffFormatOptions, pagesSavedMessage, // v1.395.0
     formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,

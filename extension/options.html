@@ -20,21 +20,26 @@
   </style>
 </head>
 <body>
-  <h1>FileTube Downloader</h1>
+  <h1>FileTube</h1>
   <p class="hint">
-    Point this at your own FileTube instance. Your instance must be started with
-    <code>FILETUBE_YTDLP_ENABLED</code> and <code>FILETUBE_API_TOKEN</code> set;
-    the token below is that value. It is stored locally in the extension and is
-    only sent to the instance URL you configure here.
+    Point this at your own FileTube instance. Save to Pages needs a Pages token
+    from your FileTube Settings. Audio / Video downloads need the instance started
+    with <code>FILETUBE_YTDLP_ENABLED</code> and <code>FILETUBE_API_TOKEN</code>
+    set (the API token below is that value). Both are stored locally in the
+    extension and only sent to the instance URL you configure here.
   </p>
 
   <label for="instanceUrl">FileTube instance URL</label>
   <input id="instanceUrl" type="url" placeholder="https://filetube.example.com" autocomplete="off" />
   <div class="hint">e.g. https://filetube.example.com (no trailing path).</div>
 
-  <label for="apiToken">API token (X-FileTube-Token)</label>
+  <label for="pagesToken">Pages token (for Save to Pages)</label>
+  <input id="pagesToken" type="password" placeholder="ftd_..." autocomplete="off" />
+  <div class="hint">Make one in FileTube: Settings &gt; Pages &gt; Make extension token. It can only save pages to your own Pages, and you can remove it there (Account &gt; Devices).</div>
+
+  <label for="apiToken">API token (X-FileTube-Token, for downloads)</label>
   <input id="apiToken" type="password" placeholder="FILETUBE_API_TOKEN value" autocomplete="off" />
-  <div class="hint">The value of your server's FILETUBE_API_TOKEN env var.</div>
+  <div class="hint">The value of your server's FILETUBE_API_TOKEN env var. Leave it empty if you only save pages.</div>
 
   <button id="save">Save</button>
   <button id="test" style="background:#444;">Test connection</button>

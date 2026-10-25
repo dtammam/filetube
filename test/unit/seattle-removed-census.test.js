@@ -20,9 +20,14 @@ const TEST_ALLOW = new Set([
   'test/unit/seattle-removed-census.test.js',
 ]);
 
+// v1.395.0: the Pages fixture corpus is third-party pages saved verbatim (an essay's "pivotal",
+// a newspaper's Seattle), not FileTube vocabulary; test/fixtures/pages/README.md names each source.
+const SKIP_DIRS = new Set([path.join(ROOT, 'test', 'fixtures', 'pages')]);
+
 function walk(dir, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+    if (SKIP_DIRS.has(path.join(dir, e.name))) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
     else if (/\.(js|css|html|mjs|cjs)$/.test(e.name)) out.push(p);

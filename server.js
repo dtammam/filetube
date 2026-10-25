@@ -129,6 +129,7 @@ const userRoutes = require('./lib/user/routes');
 const ytdlpArrivals = require('./lib/ytdlp/arrivals'); // v1.373.0: a playlist job's videos - quiet, and hidden from feed when asked
 const cleanupShell = require('./lib/cleanup/shell');
 const feedShell = require('./lib/feed/shell'); // v1.379.0: /feed is the History shell with its #view-root swapped
+const pagesShell = require('./lib/pages/shell'); // v1.395.0: /pages is the History shell with its #view-root swapped
 const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only Clean up shortlist (the delete is the existing trash route)
 // Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
 // and the pre-auth-era per-user media state routes (/api/liked,
@@ -310,6 +311,10 @@ const viewCountStore = createViewCountStore(dbAdapter);
 // carried by removeMediaState / rekeyMediaState and the backup bundle.
 const { createSourceCommentStore } = require('./lib/media/sourceComments');
 const sourceCommentStore = createSourceCommentStore(dbAdapter);
+// v1.395.0 Pages (lib/pages/index.js): created here, beside the other stores, so the user-delete
+// and restore cascades can reach it; its routes register with the media routes below.
+const pagesLib = require('./lib/pages');
+const pages = pagesLib.createPages({ adapter: dbAdapter, dataDir: DATA_DIR, userStore });
 const ytdlpEngine = require('./lib/ytdlp/engine'); // v1.394.0: "Save top comments" (R7) for the reheat backfill rule
 // Wave 2 (v1.292): the frozen pre-auth watch positions (adopted once by the
 // first admin) and the deferred-delete tombstones are relational too. Their
@@ -3107,8 +3112,17 @@ function isRestorePath(reqPath) {
 // undecoded pathname, and the router's non-strict case-insensitive regexp
 // accepts exactly the spellings the normalized compare accepts — no spelling
 // reaches the route through the wrong parser in either direction.
+// v1.395.0 Pages: POST /api/pages carries a whole page's HTML (up to 10 MB) and parses it with
+// its own route-scoped parser (lib/pages/routes.js) - AFTER the auth gate, the restore precedent.
+// The same normalized match (case-folded, trailing slashes stripped) as the restore skip.
+const PAGES_SAVE_PATH = '/api/pages';
+function isPagesSavePath(reqPath) {
+  return typeof reqPath === 'string'
+    && reqPath.replace(/\/+$/, '').toLowerCase() === PAGES_SAVE_PATH;
+}
 app.use((req, res, next) => {
   if (req.method === 'POST' && isRestorePath(req.path)) return next();
+  if (req.method === 'POST' && isPagesSavePath(req.path)) return next();
   return globalJsonParser(req, res, next);
 });
 // v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
@@ -3320,6 +3334,7 @@ authRoutes.registerRoutes(app, {
   requireAdmin,
   unlinkAvatar, // the user-delete cascade: no orphaned profile image / sticker
   unlinkSticker,
+  pagesUserDeleted: (id) => pages.service.userDeleted(id), // v1.395.0: the deleted account's Pages folder is set aside
   userStore,
   ytdlpDb,
 });
@@ -3545,6 +3560,10 @@ app.get('*', (req, res, next) => {
   // header, sidebar, bottom bar and player markup; lib/feed/shell.js swaps in the feed's view root.
   if (req.path === '/feed') {
     if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), feedShell.renderFeedShell)) return next();
+    return;
+  }
+  if (req.path === '/pages') {
+    if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), pagesShell.renderPagesShell)) return next();
     return;
   }
   const shell = shellHtmlForRequestPath(req.path);
@@ -5087,6 +5106,7 @@ adminBackup.registerRoutes(app, {
   userStore,
   validateBackupBundle, // from the factory above - it runs BEFORE the wipe
   sourceCommentStore, // v1.394.0: the bundle's `sourceComments`
+  pagesAfterUsersRestored: () => pages.service.rebuild({ force: true }), // v1.395.0: the index from the files
   viewCountStore,
   ytdlpDb,
 });
@@ -6707,6 +6727,22 @@ chapterSnapRoutes.registerChapterSnapRoutes(app, {
 const commentsRoutes = require('./lib/media/commentsRoutes');
 commentsRoutes.registerCommentRoutes(app, { getCachedDatabase, mediaVisibleTo, sourceCommentStore, userStore });
 
+// v1.395.0 Pages (lib/pages/index.js): saved web pages and text, per user. The files under
+// FILETUBE_PAGES_DIR (default <DATA_DIR>/pages) are the source of truth; schema v39 is the index.
+// Always on (P1): it does not depend on yt-dlp. Its boot work (rebuild an empty index, resume
+// interrupted images, the 30-day trash expiry) runs under require.main below.
+pagesLib.registerRoutes(app, {
+  pages,
+  express, // express.json({ limit: '16mb' }) - the save route's own parser, built at REGISTRATION time
+  formatBodyParserError, // that parser's route-scoped error mapping
+  requireAdmin, // POST /api/pages/rebuild (Settings > Scan & cache)
+  // The ONE "Share with AI" prompt list, shared with transcripts (P8; the transcriptAiPrompts setting).
+  getAiPrompts: () => {
+    const v = settingsStore.getKey('transcriptAiPrompts');
+    return Array.isArray(v) ? v : DEFAULT_SETTINGS.transcriptAiPrompts;
+  },
+});
+
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now
 // lives in lib/media/routes.js; the two count resolvers below stayed.
@@ -7385,6 +7421,8 @@ if (require.main === module) {
   sweepAgedTranscodes(Date.now());
   // v1.65: trash retention sweep at boot (async, never blocks startup).
   sweepTrash().catch((err) => console.error('Trash sweep at boot failed:', err));
+  // v1.395.0 Pages: rebuild an empty index from the files, resume images, expire old trash.
+  pages.start().catch((err) => console.error('Pages boot failed:', err));
   // v1.38.0 T12: TTS cache hygiene -- sweep orphaned synth temps and reset any
   // stale 'processing'/'pending' or file-less 'ready' audio status.
   reconcileTtsCacheAtBoot();
@@ -7524,6 +7562,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  pages, // v1.395.0 Pages: tests seed items through the real service and capture
   feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)
   chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,

@@ -41,6 +41,7 @@ const EXPECTED_REACHABLE = [
   'GET /api/offline/file/:kind/:id',
   'POST /api/offline/status',
   'POST /api/offline/progress',
+  'POST /api/pages', // v1.395.0 Pages: the app's "Save to Pages" share action (D-AUTH)
 ].sort();
 
 function liveRoutes() {
@@ -78,7 +79,7 @@ test('NO DEAD PATTERN: every allowlist entry names a live route, spelled exactly
   assert.deepStrictEqual([...DEVICE_SCOPE].sort(), EXPECTED_REACHABLE, 'the allowlist and the expected set are one list');
 });
 
-test('NOTHING THAT WRITES: the only non-GET routes in scope are the offline status check (a read by POST) and the offline progress sync (plan D4), the ONE write a token may make', () => {
+test('NOTHING ELSE WRITES: the only non-GET routes in scope are the offline status check (a read by POST), the offline progress sync (plan D4) and, since v1.395.0, the app\'s "Save to Pages" (Pages D-AUTH: a paired phone may save to its user\'s own Pages)', () => {
   const writes = DEVICE_SCOPE.filter((e) => !e.startsWith('GET '));
-  assert.deepStrictEqual(writes, ['POST /api/offline/status', 'POST /api/offline/progress']);
+  assert.deepStrictEqual(writes, ['POST /api/offline/status', 'POST /api/offline/progress', 'POST /api/pages']);
 });

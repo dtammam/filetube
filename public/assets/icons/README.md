@@ -13,7 +13,7 @@ Two groups of classes live here, and they have different coverage rules:
    (the tables below), plus ten later additions that ship ONE base asset other
    sets fall back to: all ten (`heart`, `share`, `flame`, `history`, `queue`,
    `podcast`, `downloads`, `books`, `grid`, `list`) fall back in `rounded` and
-   `filled`. That fallback is deliberate, not a gap - but it is now the minority
+   `filled`. (v1.395.0: `article`, the Pages entry's glyph, ships the same way.) That fallback is deliberate, not a gap - but it is now the minority
    behaviour, and it is tracked as tech-debt row 113.
 2. **The assignable glyph pool** (v1.77) - 20 user-selectable folder/Library
    glyphs plus `.icon-liked`, every one of which carries a real variant in

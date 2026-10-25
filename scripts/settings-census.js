@@ -72,6 +72,10 @@ const SAVE = {
   'audio-session-declare-check': [D, 'all'], 'mobile-custom-player-check': [S, 'all'],
   'wheel-cal-open': ['none (test overlay)', 'all'], 'perf-diag-check': [S, 'all'],
   'transcript-ai-add-btn': [S, 'all'],
+  // v1.395.0 Pages: the two save-token buttons (POST /api/devices with the password; shown to everyone, each makes a token
+  // for the caller's own account) and Scan & cache > Rebuild Pages (the admin-only page).
+  'pages-shortcut-btn': ['/api/devices', 'all'], 'pages-extension-btn': ['/api/devices', 'all'],
+  'pages-rebuild-btn': ['/api/pages/rebuild', 'all'],
 };
 // Unlabelled dynamic controls (built by setup.js): id of the host element -> save path.
 const HOSTS = {

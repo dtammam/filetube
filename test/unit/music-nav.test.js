@@ -47,7 +47,8 @@ test('T10 SOURCE-LOCK: Books + Music are Library-section entries; NEITHER inject
   // shape only.
   // v1.69: Podcasts joined the chain between Books and History.
   // v1.195: TV Shows joined the chain between Books and Podcasts.
-  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || document.querySelector('[data-nav-sidebar=\"tv\"]') || document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList"), 'Music sits above Books/TV/Podcasts/History deterministically');
+  // v1.395.0: Pages joined the chain between Podcasts and History.
+  assert.ok(src.includes("document.querySelector('[data-nav-sidebar=\"books\"]') || document.querySelector('[data-nav-sidebar=\"tv\"]') || document.querySelector('[data-nav-sidebar=\"podcasts\"]') || document.querySelector('[data-nav-sidebar=\"pages\"]') || document.querySelector('[data-nav-sidebar=\"history\"]') || foldersList"), 'Music sits above Books/TV/Podcasts/Pages/History deterministically');
   // hrefByNavKey + VIEW_SCRIPT_SRC learn music.
   assert.ok(src.includes("music: '/music'"), 'hrefByNavKey lights the Music sidebar link after SPA nav');
   assert.ok(src.includes("music: '/js/music.js'"), 'the music view script is lazy-loadable');

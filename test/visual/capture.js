@@ -394,6 +394,14 @@ function R3_SCENES(FX) {
     await p.reload({ waitUntil: 'networkidle' });
   };
   const ep = (id, n, title, dur) => ({ id, seasonNum: 1, episodeNum: n, title, durationSec: dur });
+  // v1.395.0 Pages: two saved items, one list (the shapes GET /api/pages* return).
+  const PAGE_ITEM = (id, title, site, author, read) => ({ id, kind: 'url', title, site, author, url: 'https://example.com/' + id, publishedAt: '2026-10-20T09:00:00.000Z', savedAt: '2026-10-24T12:00:00.000Z', wordCount: 1600, readingMinutes: 7, leadImage: null, description: null, hasReader: true, hasOriginal: true, saving: false, read, readAt: read ? '2026-10-24T13:00:00.000Z' : null, position: null, trashedAt: null });
+  const PAGES = {
+    '/api/pages': { items: [PAGE_ITEM('0123456789ab', 'The boathouse moves upstream this winter', 'The River Gazette', 'Sam Rivers', false), PAGE_ITEM('ba9876543210', 'How we designed an async task framework', 'Engineering blog', 'Arun Krishnan', true)], total: 2, nextCursor: null },
+    '/api/pages/lists': { lists: [{ id: 'aaaaaaaaaaaa', name: 'Weekend reading', createdAt: '2026-10-20T09:00:00.000Z', count: 1 }] },
+    '/api/pages/0123456789ab': { item: { ...PAGE_ITEM('0123456789ab', 'The boathouse moves upstream this winter', 'The River Gazette', 'Sam Rivers', false), note: 'From Sam - read before Thursday', language: 'en', canonicalUrl: 'https://example.com/0123456789ab', source: 'shortcut', lists: [], dropped: [] },
+      reader: '<h2>A new home for the rowers</h2><p>The old boathouse is moving upstream this winter, the council said on Tuesday. Rowers will keep their slots, and the cafe stays open through the move.</p><blockquote><p>We wanted the river to stay part of the town.</p></blockquote><p>The move starts in December and ends before the spring regatta.</p>\n' },
+  };
   const TV = {
     '/api/tv': { shows: [
       { id: 'sh1', name: 'Harbor Nights', seasonCount: 2, episodeCount: 14 },
@@ -431,6 +439,9 @@ function R3_SCENES(FX) {
     { id: '99-settings-hidden', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/feed-hidden': HIDDEN }); await section(p, 'hidden'); await sleep(400); } },
     { id: '9a-settings-account', path: '/setup.html', run: async (p) => { await section(p, 'account'); await sleep(400); } },
     { id: '9b-settings-books', path: '/setup.html', run: async (p) => { await section(p, 'books'); await sleep(400); } },
+    // v1.395.0 Pages: the library (stubbed rows, no network images) and one item in Reader.
+    { id: '9e-pages-library', path: '/pages', run: async (p) => { await stubFetches(p, PAGES); await p.waitForSelector('#pages-list .ui-row', { timeout: 12000 }); await sleep(600); } },
+    { id: '9f-pages-item', path: '/pages?id=0123456789ab', run: async (p) => { await stubFetches(p, PAGES); await p.waitForSelector('.pages-reader p', { timeout: 12000 }); await sleep(600); } },
     { id: '9c-settings-transcript-sharing', path: '/setup.html', run: async (p, vp) => { await section(p, 'transcript-sharing');
       await tap(p, '#transcript-ai-add-btn', vp); await sleep(300); await tap(p, '#transcript-ai-add-btn', vp); await sleep(500); } },
   ];
@@ -443,6 +454,7 @@ const SETTINGS_SECTIONS = [
   ['3', 'scan-cache', 'scan-cache'], ['4', 'home-page', 'home-page'], ['4b', 'playback', 'playback'], ['4c', 'notifications', 'notifications'],
   ['5', 'downloads', 'downloads'], ['6', 'trash', 'trash'], ['7', 'users', 'users'],
   ['8', 'backup', 'backup-restore'], ['9', 'experimental', 'experimental'],
+  ['9d', 'pages', 'pages'], // v1.395.0 Pages: the Shortcut setup
 ];
 
 // Opens a Settings section through its menu row (the admin sections reveal after the
