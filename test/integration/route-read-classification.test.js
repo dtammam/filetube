@@ -152,6 +152,12 @@ const READ = {
   '/api/offline/file/:kind/:id': 'GATED', // v1.387.0 offline D3: the bytes the iOS rule picks, gated like the matching byte route (404 hidden); proven in offline-manifest.test.js
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
+  '/api/pages': 'OWN_STATE', // v1.395.0 Pages: the caller's OWN saved items (views, a list, full-text search scoped by user_id in SQL) - pages-api.test.js "isolation (P9)"
+  '/api/pages/lists': 'OWN_STATE', // v1.395.0 Pages: the caller's own lists
+  '/api/pages/lists/:id/items': 'OWN_STATE', // v1.395.0 Pages: one of the caller's own lists (another user's list is the neutral 404)
+  '/api/pages/lists/:id/share': 'OWN_STATE', // v1.395.0 Pages: the Share with AI text of the caller's own list
+  '/api/pages/:id': 'OWN_STATE', // v1.395.0 Pages: one of the caller's own items + its Reader HTML
+  '/api/pages/:id/share': 'OWN_STATE', // v1.395.0 Pages: the Share with AI text of the caller's own item
   '/api/pages/:id/original': 'OWN_STATE', // v1.395.0 Pages: the caller's OWN saved page (another user's id is the neutral 404); no library content - pages-render.test.js
   '/api/pages/:id/assets/:name': 'OWN_STATE', // v1.395.0 Pages: one stored image/font of the caller's OWN saved page - pages-render.test.js
   '/api/videos/:id/comments': 'GATED', // v1.394.0: mediaVisibleTo FIRST (neutral 404), and a restricted account gets none (R2); comments-api.test.js

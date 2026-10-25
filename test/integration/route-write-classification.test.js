@@ -86,6 +86,15 @@ const CLASSIFICATION = {
   'POST /api/me/settings': 'personal',
   'POST /api/offline/progress': 'personal', // v1.387.0 offline D4: the caller's OWN queued positions (newer wins per item; every id through its kind's visibility, hidden = gone; nothing else written); proven in offline-progress.test.js
   'POST /api/offline/status': 'personal', // v1.387.0 offline D3: a READ by POST (a batch of up to 500 ids): each item re-checked through its kind's visibility, a hidden item answers 'gone'; writes nothing; proven in offline-manifest.test.js
+  'POST /api/pages': 'personal', // v1.395.0 Pages: save to the caller's OWN library (a cookie, a paired phone, or the Shortcut token - which reaches nothing else); pages-api.test.js
+  'PATCH /api/pages/:id': 'personal', // v1.395.0 Pages: the caller's own item's note / read state / position (another user's id is a 404)
+  'DELETE /api/pages/:id': 'personal', // v1.395.0 Pages: the caller's own item to the trash (restorable 30 days)
+  'POST /api/pages/:id/restore': 'personal', // v1.395.0 Pages: back from the caller's own trash
+  'POST /api/pages/lists': 'personal', // v1.395.0 Pages: a list of the caller's own
+  'PATCH /api/pages/lists/:id': 'personal', // v1.395.0 Pages: rename the caller's own list
+  'DELETE /api/pages/lists/:id': 'personal', // v1.395.0 Pages: delete the caller's own list (never an item)
+  'PUT /api/pages/lists/:id/items': 'personal', // v1.395.0 Pages: membership + order of the caller's own list, of the caller's own items (compare-and-set)
+  'POST /api/pages/rebuild': 'admin', // v1.395.0 Pages: rebuild the index from the files (requireAdmin FIRST)
   'POST /api/devices': 'personal', // v1.387.0 offline D1: pair the caller's OWN phone (cookie + the account password; a device token is 403); proven in device-tokens.test.js
   'DELETE /api/devices/:id': 'personal', // v1.387.0 offline D1: revoke the caller's OWN phone (another user's id is a 404)
   'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
@@ -375,6 +384,15 @@ const VISIBILITY = {
   'POST /api/me/settings': 'personal',
   'POST /api/offline/progress': 'enforced', // v1.387.0 offline D4: every event through its kind's visibility wrapper before any read or write (hidden = gone, nothing written)
   'POST /api/offline/status': 'enforced', // v1.387.0 offline D3: every item through its kind's visibility wrapper (hidden = 'gone', the restriction wins on the phone too)
+  'POST /api/pages': 'personal', // v1.395.0 Pages: the caller's own saved pages; no library item addressed
+  'PATCH /api/pages/:id': 'personal', // v1.395.0 Pages: the caller's own item
+  'DELETE /api/pages/:id': 'personal', // v1.395.0 Pages: the caller's own item
+  'POST /api/pages/:id/restore': 'personal', // v1.395.0 Pages: the caller's own item
+  'POST /api/pages/lists': 'personal', // v1.395.0 Pages: the caller's own list
+  'PATCH /api/pages/lists/:id': 'personal', // v1.395.0 Pages: the caller's own list
+  'DELETE /api/pages/lists/:id': 'personal', // v1.395.0 Pages: the caller's own list
+  'PUT /api/pages/lists/:id/items': 'personal', // v1.395.0 Pages: the caller's own list and items
+  'POST /api/pages/rebuild': na('the Pages index of every user, rebuilt from the files on disk; admin-only, no item addressed'), // v1.395.0
   'POST /api/devices': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'DELETE /api/devices/:id': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'POST /api/me/avatar': 'personal',

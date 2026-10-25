@@ -310,6 +310,10 @@ const viewCountStore = createViewCountStore(dbAdapter);
 // carried by removeMediaState / rekeyMediaState and the backup bundle.
 const { createSourceCommentStore } = require('./lib/media/sourceComments');
 const sourceCommentStore = createSourceCommentStore(dbAdapter);
+// v1.395.0 Pages (lib/pages/index.js): created here, beside the other stores, so the user-delete
+// and restore cascades can reach it; its routes register with the media routes below.
+const pagesLib = require('./lib/pages');
+const pages = pagesLib.createPages({ adapter: dbAdapter, dataDir: DATA_DIR, userStore });
 const ytdlpEngine = require('./lib/ytdlp/engine'); // v1.394.0: "Save top comments" (R7) for the reheat backfill rule
 // Wave 2 (v1.292): the frozen pre-auth watch positions (adopted once by the
 // first admin) and the deferred-delete tombstones are relational too. Their
@@ -3107,8 +3111,17 @@ function isRestorePath(reqPath) {
 // undecoded pathname, and the router's non-strict case-insensitive regexp
 // accepts exactly the spellings the normalized compare accepts — no spelling
 // reaches the route through the wrong parser in either direction.
+// v1.395.0 Pages: POST /api/pages carries a whole page's HTML (up to 10 MB) and parses it with
+// its own route-scoped parser (lib/pages/routes.js) - AFTER the auth gate, the restore precedent.
+// The same normalized match (case-folded, trailing slashes stripped) as the restore skip.
+const PAGES_SAVE_PATH = '/api/pages';
+function isPagesSavePath(reqPath) {
+  return typeof reqPath === 'string'
+    && reqPath.replace(/\/+$/, '').toLowerCase() === PAGES_SAVE_PATH;
+}
 app.use((req, res, next) => {
   if (req.method === 'POST' && isRestorePath(req.path)) return next();
+  if (req.method === 'POST' && isPagesSavePath(req.path)) return next();
   return globalJsonParser(req, res, next);
 });
 // v1.28.0 (iOS Shortcuts robustness): without this, a malformed JSON body
@@ -3320,6 +3333,7 @@ authRoutes.registerRoutes(app, {
   requireAdmin,
   unlinkAvatar, // the user-delete cascade: no orphaned profile image / sticker
   unlinkSticker,
+  pagesUserDeleted: (id) => pages.service.userDeleted(id), // v1.395.0: the deleted account's Pages folder is set aside
   userStore,
   ytdlpDb,
 });
@@ -5087,6 +5101,7 @@ adminBackup.registerRoutes(app, {
   userStore,
   validateBackupBundle, // from the factory above - it runs BEFORE the wipe
   sourceCommentStore, // v1.394.0: the bundle's `sourceComments`
+  pagesAfterUsersRestored: () => pages.service.rebuild({ force: true }), // v1.395.0: the index from the files
   viewCountStore,
   ytdlpDb,
 });
@@ -6711,9 +6726,17 @@ commentsRoutes.registerCommentRoutes(app, { getCachedDatabase, mediaVisibleTo, s
 // FILETUBE_PAGES_DIR (default <DATA_DIR>/pages) are the source of truth; schema v39 is the index.
 // Always on (P1): it does not depend on yt-dlp. Its boot work (rebuild an empty index, resume
 // interrupted images, the 30-day trash expiry) runs under require.main below.
-const pagesLib = require('./lib/pages');
-const pages = pagesLib.createPages({ adapter: dbAdapter, dataDir: DATA_DIR, userStore });
-pagesLib.registerRoutes(app, { pages });
+pagesLib.registerRoutes(app, {
+  pages,
+  express, // express.json({ limit: '16mb' }) - the save route's own parser, built at REGISTRATION time
+  formatBodyParserError, // that parser's route-scoped error mapping
+  requireAdmin, // POST /api/pages/rebuild (Settings > Scan & cache)
+  // The ONE "Share with AI" prompt list, shared with transcripts (P8; the transcriptAiPrompts setting).
+  getAiPrompts: () => {
+    const v = settingsStore.getKey('transcriptAiPrompts');
+    return Array.isArray(v) ? v : DEFAULT_SETTINGS.transcriptAiPrompts;
+  },
+});
 
 // API: Record a watch-page open, for C4 "most-watched" (v1.24 UX Round,
 // Wave 3). Wave 7b (slice S10a): that route - POST /api/videos/:id/view - now

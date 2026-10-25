@@ -247,3 +247,19 @@ test('a localization that fails entirely leaves the text item intact and marks i
   assert.match(t.service.readFile(item, 'text.txt'), /old boathouse is moving/);
   assert.ok(!/<img /.test(t.service.readFile(item, 'reader.html')), 'an image that could not be stored is removed, never left remote');
 });
+
+test('a FETCHED stylesheet that tries to close its <style> (</style><img onerror>) stays inert once inlined into the Original', async () => {
+  const { JSDOM, VirtualConsole } = require('jsdom');
+  const t = setup({
+    ...BASE_ROUTES,
+    'https://cdn.example.com/site.css': { status: 200, headers: { 'content-type': 'text/css' }, chunks: ['p{color:red} a{content:"</style><img src=x onerror=alert(1)><style>"}'] },
+  });
+  const { item, localized } = await t.capture.saveUrl(1, { url: 'https://news.example.com/boathouse' });
+  await localized;
+  const html = t.service.readFile(item, 'original.html');
+  const dom = new JSDOM(html, { virtualConsole: new VirtualConsole() });
+  const live = [...dom.window.document.querySelectorAll('*')].filter((el) => [...el.attributes].some((a) => a.name.startsWith('on')));
+  assert.deepStrictEqual(live.map((el) => el.outerHTML.slice(0, 60)), [], 'no element with a handler: ' + html.slice(0, 300));
+  assert.ok(![...dom.window.document.querySelectorAll('img')].some((i) => i.getAttribute('src') === 'x'));
+  dom.window.close();
+});

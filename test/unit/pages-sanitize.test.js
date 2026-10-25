@@ -41,6 +41,9 @@ function liveProblems(out) {
         if (an === 'srcdoc' || an === 'formaction' || an === 'action') problems.push(`${name}[${an}]`);
       }
       if (an === 'style') problems.push(...cssProblems(v, `${name}[style]`));
+      // SVG references: <use> only to a local #id; a url() in any other attribute (fill, clip-path) only to a local #id.
+      if (name === 'use' && (an === 'href' || an === 'xlink:href') && !v.trim().startsWith('#')) problems.push(`use[${an}] external ${v.slice(0, 40)}`);
+      if (an !== 'style' && /url\(/i.test(v) && !/^\s*url\(\s*['"]?#[A-Za-z0-9_-]+['"]?\s*\)\s*$/.test(v)) problems.push(`${name}[${an}] url() ${v.slice(0, 40)}`);
     }
     if (name === 'style') problems.push(...cssProblems(el.textContent, '<style>'));
     if (name === 'a' && el.hasAttribute('href') && (el.getAttribute('target') !== '_blank' || el.getAttribute('rel') !== 'noopener noreferrer')) problems.push('a link without target=_blank rel=noopener noreferrer');
@@ -76,6 +79,7 @@ const HOSTILE = {
   'object / embed / applet': '<object data="evil.swf"></object><embed src="evil.swf"><applet code="x"></applet>',
   'svg with script and handlers': '<svg onload="alert(1)"><script>alert(2)</script><a xlink:href="javascript:alert(3)"><rect width="10" height="10"/></a><animate attributeName="href" to="javascript:alert(4)"/><foreignObject><iframe src="x"></iframe></foreignObject><use href="https://evil.example/s.svg#x"/></svg>',
   'svg image and set': '<svg><image href="https://evil.example/x.png"/><set attributeName="onmouseover" to="alert(1)"/></svg>',
+  'svg external references': '<svg><defs><linearGradient id="g"><stop offset="0"/></linearGradient></defs><use xlink:href="https://evil.example/sprite.svg#icon"/><use href="//evil.example/s.svg#i"/><rect fill="url(https://evil.example/p.svg#x)" clip-path="url(//evil.example/c#c)" width="1" height="1"/><rect fill="url(#g)" width="1" height="1"/></svg>',
   'math with an href': '<math><mtext><a href="javascript:alert(1)">m</a></mtext></math>',
   'base and meta refresh': '<head><base href="https://evil.example/"><meta http-equiv="refresh" content="0;url=javascript:alert(1)"><meta http-equiv="Set-Cookie" content="a=b"></head><p>t</p>',
   'forms and formaction': '<form action="javascript:alert(1)"><input name=q><button formaction="javascript:alert(2)">go</button><textarea>t</textarea><select><option>o</option></select></form>',
@@ -209,4 +213,26 @@ test('DROP removes the CONTENT too (a dropped element is never unwrapped into te
 test('an element outside the allowlist is unwrapped (its text kept), never kept as an element', () => {
   const out = render('<custom-card data-x="1"><marquee>scroll</marquee><font color=red>old</font></custom-card>', 'reader', false);
   assert.strictEqual(out, 'scrollold\n');
+});
+
+test('a script URL in a plain attribute (title, alt, class) is dropped, not kept as text', () => {
+  const out = render('<p title="javascript:alert(1)" class="vbscript:x">t</p><img alt="data:text/html,x" src="/i.png">', 'original', false);
+  assert.ok(!/javascript:|vbscript:|data:text/i.test(out), out);
+});
+
+test('the Reader drops the CONTENT of style, noscript, head, title, svg, form and nav (no CSS or script text shows up as words)', () => {
+  for (const name of ['style', 'noscript', 'title', 'svg', 'form', 'nav']) {
+    const out = render('<p>keep</p><' + name + '>SECRET-' + name + '</' + name + '>', 'reader', false);
+    assert.ok(!out.includes('SECRET-'), name + ': ' + out);
+    assert.ok(out.includes('keep'));
+  }
+  const head = render('<html><head><title>T</title><style>p{color:red}</style></head><body><p>keep</p></body></html>', 'reader', false);
+  assert.strictEqual(head, '<p>keep</p>\n');
+});
+
+test('CSS text can never close its <style> element, and comments do not survive into the output', () => {
+  const { css } = sanitizeCss('a{content:"</style><script>alert(1)</script>"} /* </STYLE> secret */ b{color:red}', { base: BASE });
+  assert.ok(!/<\/style/i.test(css), css);
+  assert.ok(!/secret/.test(css), 'a comment is dropped: ' + css);
+  assert.match(css, /b\{color:red\}/);
 });
