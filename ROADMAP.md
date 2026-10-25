@@ -493,8 +493,13 @@
   Start over records the place it forgets in the feed session (the `moves` entry with `startOver`, `token`, `from`), and Undo
   restores it while the item is unchanged; after the toast closes no screen offers it (the record is only in the database). Options:
   a "Recently started over" row in the Feed picker, or a Restore in History. Measure first how often Dean misses the toast.
+- [ ] **Pages R2: highlights and notes** _(v1.396.0, plan docs/exec-plans/completed/2026-10-25-pages.md "R2 outline")_ - select text in the
+  Reader, highlight it, attach a note; anchored by text quote + position so they survive re-render; stored per user AND mirrored into
+  `item.json`; a Highlights view per item; Share with AI sends highlights only, or highlights + text.
+- [ ] **Pages later** _(v1.395.0 P13, out of scope for R1)_ - text-to-speech of the Reader (Listen from Here), iOS offline copies of
+  Pages, re-capturing a newer copy of a saved page, Feed cards for Pages (Feed phase 2).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
-  used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
+  used the feed a week or two; v1.395.0: Pages IS that store - phase 2 fills it from RSS and adds the Feed cards)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
   card. Open: build the saver or point FileTube at an existing tool's output folder (FreshRSS, Wallabag, Readeck, ArchiveBox),
   paywalls, retention ("preserved forever" against disk).

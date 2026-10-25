@@ -347,6 +347,29 @@ whatever `yt-dlp` is on the PATH keeps being used.
 
 ---
 
+## Pages (v1.395.0)
+
+Pages saves web pages and text for each account, always on (no enable flag, and it does not need
+yt-dlp). Everything a page needs is a set of files, which are the source of truth: if the database is
+lost, FileTube rebuilds the Pages index from them on the next start (or from Settings > Scan & cache >
+Rebuild Pages). Read state, positions and lists live in the database and ride the backup.
+
+| Variable | Default | What it does |
+|----------|---------|---------------|
+| `FILETUBE_PAGES_DIR` | `<DATA_DIR>/pages` | Where saved pages are stored: `<account id>/items/<year>/<date>-<title>-<id>/` holding `item.json` (details and your note), `reader.html`, `original.html`, `text.txt` and `assets/` (images, stylesheets, fonts). Deleted pages wait 30 days in `<account id>/trash/`. Set it before your first save if you want the files elsewhere. |
+
+When the server fetches a link (the Add box, the Download dialog's Page, a Shortcut that sends a link)
+it refuses private and local addresses, follows at most 5 redirects (each checked) and caps a page at
+10 MB; a page's images, stylesheets and fonts are fetched the same way, at most 300 files and 50 MB per
+page. Pages that need a login are best saved from the browser extension or the Safari Shortcut, which
+send the page exactly as you see it.
+
+**Saving from an iPhone (Shortcut) or the browser extension.** Settings > Pages makes a save-only
+token (your password is asked first; it is shown once). It can only save to Pages
+(`POST /api/pages`, header `Authorization: Bearer <token>`), is listed under Account > Devices and is
+removed there. The step-by-step Shortcut recipe is in Settings > Pages. `FILETUBE_API_TOKEN` does not
+work for Pages (it belongs to no account).
+
 ## Podcasts (v1.69.0)
 
 Podcasts is a first-class library place (like Music and Books): no enable

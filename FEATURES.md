@@ -46,6 +46,9 @@ Play music on another computer from your phone: turn on Remote control on a comp
 ### Radio
 Start a radio from a song, an album, an artist or a genre; it queues more of what fits. **On by default:** yes; it uses your own library's tags only.
 
+## Pages
+Save web pages and text to read later, kept forever as files: a clean **Reader** view (themes and text size as in Books, your place kept) and the **Original** page with its own images and styles stored locally, shown with no scripts. Each page keeps its title, author, site, dates, reading time and a note of your own. Named lists, Unread, full-text search across everything you saved, a trash that keeps deleted pages for 30 days, and **Share with AI** for one page or a whole list (your prompts, the details, the text). Save from the Pages page (a link or pasted text), the Download button (Page), the browser extension, or an iPhone Shortcut. Every account has its own Pages. **On by default:** yes, the Pages entry is always in the sidebar; its bottom-bar item is opt-in (Settings > Bottom bar). Files live under the data directory unless `FILETUBE_PAGES_DIR` says otherwise: [docs/CONFIGURATION.md](docs/CONFIGURATION.md#pages-v13950).
+
 ## Podcasts
 Subscribe to RSS feeds (private feed URLs stay in a secrets file outside the database), auto-download new episodes for offline playback, with show art, per-user progress and played state, pins and a recoverable trash. **On by default:** the Podcasts page appears once you subscribe to a show. Details: [docs/CONFIGURATION.md](docs/CONFIGURATION.md#podcasts-v1690).
 
@@ -67,12 +70,12 @@ A native, sideloadable [Roku channel](roku/README.md): sign in once, browse your
 A native iPhone and iPad app hosts the web UI and adds a bridge to the phone: a rotation lock, a hidden status bar, battery and network awareness, and offline copies of music, podcasts and videos you choose, which play without a connection. The app talks only to the FileTube server address you enter. **On by default:** it is optional and separate from the server; nothing changes for a web browser. How it works: [docs/references/ios-host.md](docs/references/ios-host.md) and [docs/references/native-bridge.md](docs/references/native-bridge.md). Privacy: [PRIVACY-IOS.md](PRIVACY-IOS.md).
 
 ### The browser extension
-A sideloadable Chromium extension (Chrome, Edge, Brave) that sends the current tab to your server's download endpoint, authenticated with an API token that only the extension's background worker holds. **On by default:** off; it needs `FILETUBE_YTDLP_ENABLED=true` on the server (see below) and `FILETUBE_API_TOKEN`. Setup: [extension/](extension/).
+A sideloadable Chromium extension (Chrome, Edge, Brave) that saves the current tab to your Pages (the page as you see it) or sends it to your server's download endpoint. Its tokens live only in the extension's background worker: a Pages token from Settings > Pages that can only save pages, and for downloads the `FILETUBE_API_TOKEN`. **On by default:** off; Save to Pages works on any server, downloads need `FILETUBE_YTDLP_ENABLED=true` (see below). Setup: [extension/](extension/).
 
 ## Subscriptions and downloads (yt-dlp) - opt-in
 
 FileTube can use [yt-dlp](https://github.com/yt-dlp/yt-dlp) to subscribe to channels on the sites it supports, download new videos into your library on a schedule, and fetch one-off URLs you paste in, with per-channel quality, length and Shorts controls.
-**On by default: no.** With `FILETUBE_YTDLP_ENABLED` unset (or anything other than `true`, `1` or `yes`) the server registers **no** `/api/ytdlp/*` or `/api/subscriptions/*` routes and the web app shows no Subscriptions page, no Download button and no related controls.
+**On by default: no.** With `FILETUBE_YTDLP_ENABLED` unset (or anything other than `true`, `1` or `yes`) the server registers **no** `/api/ytdlp/*` or `/api/subscriptions/*` routes and the web app shows no Subscriptions page and no related controls; the Download button stays, offering only **Page** (save to Pages).
 **Turn it on:** set `FILETUBE_YTDLP_ENABLED=true` in `.env` and restart. The yt-dlp program is bundled in the image either way; the switch decides whether anything uses it. The downloader engine can optionally be updated at runtime from PyPI (off by default, an admin opt-in). Everything else - cookies for members-only content, the engine channels, the download directory - is in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#optional-subscriptions-and-downloads-yt-dlp).
 A native host such as the iOS app can also hide this whole interface even on a server that has it on: the app declares whether it shows it (the `mediaFetch` capability).
 
@@ -93,7 +96,7 @@ A one-click bundle of app state (settings, accounts, watch state, library metada
 The library rescans on an interval and removes entries only for files that are truly gone (an unmounted share is never treated as a deletion). Thumbnails come from FFmpeg, and the caches are size-capped and age-swept. **Tune it:** Settings > Scan & cache.
 
 ### Transcripts and sharing with an AI
-Where a video has subtitles, you can read, copy or share the transcript, with prompts you write yourself placed in front of it. **On by default:** yes where subtitles exist. **Edit the prompts:** Settings > Transcript sharing.
+Where a video has subtitles, you can read, copy or share the transcript, with prompts you write yourself placed in front of it; the same prompts serve Pages. **On by default:** yes where subtitles exist. **Edit the prompts:** Settings > Share with AI.
 
 ### Install as an app
 FileTube installs to a phone or desktop home screen as a PWA. **On by default:** the browser offers it; nothing to enable.
