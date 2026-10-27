@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Toggle pills (v1.396.0)
+
+- [ ] v1.396.0 - (a) Desktop Music: toggle Loop, Shuffle, Autoplay and Remote control. ON is obvious (solid ground + check) and hovering an ON one stays readable.
+- [ ] v1.396.0 - (b) Play a chapter: "Loop chapter" ON looks the same.
+- [ ] v1.396.0 - (c) Home chips, and Settings > sticker picker: the picked one is inverted.
+- [ ] v1.396.0 - (d) Phone Sticker sheet skin: unchanged.
+
 ## Pages (v1.395.0)
 
 - [ ] v1.395.0 - (a) iPhone, Safari: the Shortcut (Settings > Pages) saves the open article in one tap; in Pages it has title, author, site, published and saved dates and a clean Reader; Original shows the page as you saw it, with its images.

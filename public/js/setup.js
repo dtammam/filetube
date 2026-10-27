@@ -819,7 +819,7 @@ async function renderStickerPicker() {
   try { hasCustom = (await fetch('/api/me/sticker', { method: 'GET' })).ok; } catch (_) { hasCustom = false; }
   const isActive = (kind, value) => pref.kind === kind && (kind !== 'emoji' || pref.value === value);
   // Retire R3: every sticker option is a ui-chip filter (aria-pressed; the picked one wears the
-  // chip's selected fill, never a red border): the logo and your image carry a small preview
+  // chip's inverted ON ground, never a red border): the logo and your image carry a small preview
   // before their name, an emoji preset is the emoji itself.
   const chip = (pressed, attrs, inner, label) => `<button type="button" class="ui-chip ui-chip--filter sticker-card" aria-pressed="${pressed ? 'true' : 'false'}"${label ? ` aria-label="${label}"` : ''} ${attrs}>${inner}</button>`;
   const cards = [];

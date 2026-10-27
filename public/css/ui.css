@@ -651,22 +651,44 @@ button.ui-row:focus-visible,
   cursor: pointer;
   transition: background-color var(--dur-press) var(--ease-std);
 }
-/* F13/F19: selected is ink on the neutral tonal fill, heavier - never red */
-.ui-chip--filter[aria-pressed="true"] {
-  /* UI pass S7: the tonal fill is LAYERED over the chip's own --surface-2 (a background-image
-     over the colour), not swapped for it. Swapped, the translucent fill composited over the page
-     ground and came out within 4 of the unselected chip in 2009 light (#e9e9ea vs #ededed) - an ON
-     state that does not show (the v1.284.1 class). Layered, selected is 17-28 levels off
-     unselected in every era and mode (test/unit/ui-chip-selected.test.js). */
-  background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
-  font-weight: var(--fw-semibold);
+/* v1.396.0 (Dean, 2026-10-27): an ON toggle pill reads ON. The ground is INVERTED - --ink-1 with
+   --surface-1 ink (black on white in light, white on black in dark, every era) - never red (the D2.1
+   role rule). v1.349's layered --fill-selected was a grey step off a grey ground; measured, ON, OFF and
+   hover were three shades of one grey (v1.396.0 plan, Step 0). The weight no longer changes on press
+   (the old semibold-on-ON grew the 2014/2009/2005 chips 3.06px). The toggle buttons opt in through
+   .ui-btn--toggle, not by blanket [aria-pressed]: a tonal button that swaps a LABEL (Fit / Fill, Read
+   the opening) keeps the layered look below. Test: test/unit/ui-chip-selected.test.js. */
+.ui-chip--filter[aria-pressed="true"],
+.ui-btn--toggle[aria-pressed="true"] {
+  background-color: var(--ink-1);
+  background-image: none;
+  color: var(--surface-1);
 }
-/* v1.349: a pressed tonal button (Remote control, the Pop out buttons) is selected the same way:
-   ink on --fill-selected layered over the button's own ground, never red. The weight does not change
-   (a heavier pressed weight made a button grow when it opened: the 2014 Pop out shifted 3.8px). In 2009 the
-   ground is the gloss (--btn-fill, a gradient), so the era rule below layers over it. The
-   test is test/unit/ui-btn-selected.test.js. */
-.ui-btn--tonal[aria-pressed="true"] {
+/* the chip's own hover/press set background-color at equal specificity and later: they would undo ON
+   (a light grey with white ink). On an ON chip the tint LAYERS over the inverted ground instead. */
+.ui-chip--filter[aria-pressed="true"]:active {
+  background-color: var(--ink-1);
+  background-image: linear-gradient(var(--tint-press), var(--tint-press));
+}
+@media (hover: hover) {
+  .ui-chip--filter[aria-pressed="true"]:hover {
+    background-color: var(--ink-1);
+    background-image: linear-gradient(var(--tint-hover), var(--tint-hover));
+  }
+}
+/* the check swaps in for the pill's glyph while ON: both glyphs sit in the pill, aria-pressed (the one
+   state every setter writes) shows one, so the glyph can never go stale against the colour. Same
+   box, so no width change. */
+.ui-toggle__on { display: none; }
+[aria-pressed="true"] > .ui-toggle__off,
+[aria-pressed="true"] > .ui-btn__icon > .ui-toggle__off { display: none; }
+[aria-pressed="true"] > .ui-toggle__on,
+[aria-pressed="true"] > .ui-btn__icon > .ui-toggle__on { display: block; }
+/* v1.349: a pressed tonal button that is a LABEL swap (Fit / Fill, Read the opening, the Sticker
+   stack tiles) is selected the older way: ink on --fill-selected layered over the button's own
+   ground, never red. In 2009 the ground is the gloss (--btn-fill, a gradient), so the era rule
+   below layers over it. The test is test/unit/ui-btn-selected.test.js. */
+.ui-btn--tonal[aria-pressed="true"]:not(.ui-btn--toggle) {
   background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
 }
 /* A label with an On wording: both strings sit in ONE grid cell, so the button is as wide as the
@@ -1146,8 +1168,12 @@ input.ui-switch { -webkit-appearance: none; appearance: none; }
 [data-theme="2009"] .ui-btn--tonal {
   background: var(--btn-fill);
 }
-[data-theme="2009"] .ui-btn--tonal[aria-pressed="true"] {
+[data-theme="2009"] .ui-btn--tonal[aria-pressed="true"]:not(.ui-btn--toggle) {
   background-image: linear-gradient(var(--fill-selected), var(--fill-selected)), var(--btn-fill);
+}
+/* v1.396.0: an ON toggle button in 2009 drops the gloss for the inverted ground (the border stays) */
+[data-theme="2009"] .ui-btn--toggle[aria-pressed="true"] {
+  background: var(--ink-1);
 }
 /* 2005: square corners everywhere, pills and icon buttons included */
 [data-theme="2005"] .ui-btn--pill,

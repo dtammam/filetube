@@ -453,7 +453,7 @@ const MODERN_CHIPS = [
 // MODERN_CHIP_FILTERS / resolveModernChip.
 
 // UI pass sweep S2 (F19): the Modern chips are the ui-chip filter primitive
-// (selected = aria-pressed, ink on the tonal fill - never red). Single-select:
+// (selected = aria-pressed, the inverted ground - never red). Single-select:
 // All is one of the chips here (one dimension).
 function buildModernChipRowHtml(active) {
   const a = typeof resolveModernChip === 'function' ? resolveModernChip(active) : 'all';

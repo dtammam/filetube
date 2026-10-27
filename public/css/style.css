@@ -715,7 +715,7 @@ a.sidebar-item {
   font-weight: normal;
 }
 /* UI pass sweep S2 (F19, D4.5): the library's ONE filter chip row - ui-chip
-   filter chips (32px pills, --surface-2, selected = ink on --fill-selected,
+   filter chips (32px pills, --surface-2, selected = the inverted --ink-1 ground,
    never red) in one horizontally scrolling row, before a fixed trailing group
    of ui-btn icon tools. Replaces the v1.45-v1.190 .format-toggle / .btn pill
    recipe (two or three wrapping rows on a phone). The modern home's chip row
@@ -2631,7 +2631,7 @@ select {
 .theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-choice-year { color: var(--ink-2); }
 /* v1.238 -> retire R3: the player-sticker picker (Settings > Mobile player). Every option is
-   a ui-chip filter (the picked one wears the chip's selected fill); the logo and your image
+   a ui-chip filter (the picked one wears the chip's inverted ON ground); the logo and your image
    show a small preview before their name, an emoji preset is the emoji. */
 .sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .sticker-card { gap: var(--space-3); }
@@ -11280,7 +11280,11 @@ a.tv-continue-card { text-decoration: none; }
 .mms-ss-root .mms-ss__strip, .mms-ss-root .mms-ss__chips{ display:flex; gap:var(--space-3); padding:0 var(--inset); overflow-x:auto; }
 .mms-ss-root .mms-ss__strip .ui-chip, .mms-ss-root .mms-ss__chips .ui-chip{ flex:none; }
 .mms-ss-root .mms-ss__chips--wrap{ flex-wrap:wrap; overflow-x:visible; padding:0; }
-.mms-ss-root .ui-chip--filter[aria-pressed="true"]{ color:var(--sticker-accent); }
+/* v1.396.0: the Sticker sheet keeps its own ON look (accent ink on the layered tonal fill, semibold):
+   ui.css inverts every other ON toggle pill, so this scope restores the v1.388.0 paint. */
+.mms-ss-root .ui-chip--filter[aria-pressed="true"]{ background-color:var(--surface-2); background-image:linear-gradient(var(--fill-selected), var(--fill-selected)); color:var(--sticker-accent); font-weight:var(--fw-semibold); }
+.mms-ss-root .ui-chip--filter[aria-pressed="true"]:active{ background-color:var(--tint-press); }
+@media (hover: hover){ .mms-ss-root .ui-chip--filter[aria-pressed="true"]:hover{ background-color:var(--tint-hover); } }
 .mms-ss-root .mms-ss__note{ margin:0; padding:0 var(--inset); font:var(--t-footnote); color:var(--ink-2); }
 .mms-ss-root .mms-ss__h{ padding:0 var(--inset); font:var(--t-footnote); color:var(--ink-2); }
 .mms-ss-root .mms-ss__pages, .mms-ss-root .mms-ss__groups{ display:flex; flex-direction:column; gap:var(--space-8); }

@@ -3748,5 +3748,11 @@
     "date": "2026-10-25",
     "title": "Security updates for two built-in libraries",
     "intent": "Pages arrives in this version (see 1.395.0). It also updates two libraries FileTube relies on to versions that close newly reported ways to overload a server with a specially built request; nothing changes in how you use the app."
+  },
+  {
+    "version": "1.396.0",
+    "date": "2026-10-27",
+    "title": "A switched-on button now looks switched on",
+    "intent": "Loop, Shuffle, Autoplay, Remote control and the Pop out buttons, the filter chips on Home, and the sticker picker in Settings now turn solid dark (or solid light in dark mode) with a check mark when they are on, so you can tell at a glance, in every look. Hovering an on button keeps it readable, and nothing changes size when you switch it. The phone Sticker sheet keeps its own look."
   }
 ]

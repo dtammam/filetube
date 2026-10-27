@@ -22,11 +22,11 @@ test('music.html actually carries the Loop + Autoplay toggles in the toolbar (th
   assert.match(html, /id="music-autoplay-btn"[^>]*aria-pressed=/, 'the Autoplay toggle is in music.html');
   // v1.284.1 -> UI pass S7 (D8.8; plan step 0 risky conversion): the ON state must READ as
   // selected - and red is no longer a selected colour. The toggles are ui-chip filter chips: ON is
-  // ink on the tonal --fill-selected, LAYERED over the chip's ground, and it must still show in 2009
-  // (v1.284.1's bug: an ON painted under the 2009 gloss). test/unit/ui-chip-selected.test.js
-  // measures the ON-vs-OFF step in every era x mode and that no rule re-grounds a chip (a gloss
-  // would hide the layer); here: the toggles are those chips and no red ON rule survives.
-  for (const id of ['music-loop-btn', 'music-autoplay-btn']) {
+  // INVERTED (v1.396.0: an --ink-1 ground under --surface-1 ink, the check glyph in place of the
+  // pill's own), and it must still show in 2009 (v1.284.1's bug: an ON painted under the 2009 gloss).
+  // test/unit/ui-chip-selected.test.js measures the ON-vs-OFF step in every era x mode and that no
+  // rule re-grounds a chip; here: the toggles are those chips and no red ON rule survives.
+  for (const id of ['music-loop-btn', 'music-shufflemode-btn', 'music-autoplay-btn']) {
     assert.match(html, new RegExp('<button class="ui-chip ui-chip--filter music-mode-btn" id="' + id + '"'), id + ' is a filter chip');
   }
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');

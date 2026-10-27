@@ -64,8 +64,9 @@ cascade, loaded in this order by every shell:
   `--hit`, `--icon-sm/md/lg`, `--r-xs/sm/md/lg/pill`, `--av-*`,
   `--row-*`, `--inset`); motion (`--dur-fast`, `--dur-slow`,
   `--ease-ui`) and the `--z-*` ladder. Red is brand, primary action,
-  progress, danger and the unread indicator ONLY; a selected state is ink
-  on `--fill-selected`.
+  progress, danger and the unread indicator ONLY; an ON toggle pill is
+  inverted (`--surface-1` ink on an `--ink-1` ground, v1.396.0) and a
+  selected row is ink on `--fill-selected`.
 - `public/css/ui.css` - the primitives (`ui-btn`, `ui-row`, `ui-list`,
   `ui-sheet` (menus and dialogs are sheets), `ui-field`, `ui-select`,
   `ui-switch`, `ui-segmented`, `ui-chip`, `ui-avatar`, `ui-thumb`,

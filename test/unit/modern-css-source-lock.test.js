@@ -28,14 +28,14 @@ test('the flat grid: 3-up on desktop, 4-up on wide, 1-up on phones', () => {
 
 // UI pass sweep S2 (F19, AC12): the Modern chips are the ui-chip filter primitive
 // in the shared .library-chips row - the pill and the selected state are ui.css's.
-test('the filter chips are ui-chip filter pills; the selected chip is ink on the tonal fill, never red', () => {
+test('the filter chips are ui-chip filter pills; the selected chip is the inverted ground, never red', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(main, /<button type="button" class="ui-chip ui-chip--filter" aria-pressed="\$\{on\}" data-chip="\$\{c\.filter\}">/);
   assert.match(main, /<div class="modern-chip-row library-chips" role="group"/);
   const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
   assert.match(ui, /\.ui-chip--filter \{[^}]*border-radius:\s*var\(--r-pill\)/, 'chips are pills');
-  // UI pass S7: the tonal fill is LAYERED over the chip ground (ui-chip-selected.test.js measures that it shows)
-  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\] \{[^}]*background-image:\s*linear-gradient\(var\(--fill-selected\), var\(--fill-selected\)\)/, 'the selected chip');
+  // v1.396.0: the selected chip is the INVERTED ground (ui-chip-selected.test.js measures that it shows)
+  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\],\s*\.ui-btn--toggle\[aria-pressed="true"\] \{[^}]*background-color:\s*var\(--ink-1\)/, 'the selected chip');
 });
 
 test('the mobile avatar bar is hidden on desktop', () => {
