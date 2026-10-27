@@ -67,7 +67,7 @@
   b.appendChild(bar);
 
   // ---- chips ----
-  const c = section('Chips', 'ui-chip: filter (selected = ink on the tonal fill, never red), meta (not a button), count.');
+  const c = section('Chips', 'ui-chip: filter (selected = inverted ground with --surface-1 ink, never red), meta (not a button), count.');
   row(c, [
     ui.chip({ kind: 'filter', label: 'All', selected: true }),
     ui.chip({ kind: 'filter', label: 'Videos' }),

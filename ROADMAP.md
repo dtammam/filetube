@@ -890,6 +890,19 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.396.0 - A switched-on toggle pill looks switched on (2026-10-27)
+
+- Dean (2026-10-27): on desktop Music you could not tell whether Loop, Autoplay, Shuffle or Remote control was on. Measured
+  cause: ON was `--fill-selected` (16% / 32% grey) layered over the pill's own `--surface-2`, and hover was the same grey
+  family: three shades of one grey. ON is now INVERTED (`--surface-1` ink on an `--ink-1` ground, never red) on every
+  `.ui-chip--filter` (Music Loop / Shuffle / Autoplay, Home filter chips, Settings sticker picker) and on the three
+  `.ui-btn--toggle` buttons (Remote control, Music + Podcasts Pop out), with the pill's glyph swapping to a check through
+  `aria-pressed` alone (CSS, so a setter can never leave it stale). Hover / press keep the inverted ground (the tint layers
+  over it). Measured, headless, 4 eras x 2 modes: 0 pill changes width (the chip's semibold-on-ON, which grew 2014 / 2009 /
+  2005 chips 3.06px, was dropped). The phone Sticker sheet keeps its accent look; label-swap tonal buttons (Fit / Fill, Read
+  the opening, the sticker tiles) keep the v1.349 layered look (`:not(.ui-btn--toggle)`). Guards: ui-chip-selected, ui-btn-selected,
+  ui-contrast (ON ink on the inverted ground and its hover / press tint, AA, every era / mode).
+
 ### v1.395.1 - Security updates for two built-in libraries; Pages reaches the image (2026-10-25)
 
 - v1.395.0's tag failed its dependency audit on two high advisories: GHSA-27r3-jxmh-p828 (body-parser, under express: a
