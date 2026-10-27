@@ -3,7 +3,7 @@ plan: toggle-pills
 harness: v2 · standard
 branch: feat/v1.396.0-toggle-pills
 anchor: outcome
-status: Gate closed - APPROVED r2 @1545b014 (adversary + qa)
+status: Shipped v1.396.0
 next: builder - Node 22 full suite, plan-complete, release PR, ask Dean to merge
 design: Approved 2026-10-27 @d54d43b5 (Dean picked A + C off the rendered candidate sheet)
 gate: APPROVED r2 @1545b014 (adversary + qa)
@@ -148,9 +148,11 @@ authorizes the merge.
   - **R4 vs "semibold on ON stays":** the two conflict. Measured, the semibold grew the chips 3.06px in three eras, so R4 wins and the weight no longer changes on press (the inversion carries ON). The Sticker sheet exemption keeps its semibold (it is the v1.388.0 look, untouched).
   - **R5 mechanism:** one mechanism, but CSS, not `data-icon-on` + `setPressed`. Every setter writes `aria-pressed` directly (music.js reflectPlaybackModes / paintRemote / updatePopoutBtn, podcasts.js updatePopoutBtn, main.js chip switch); none calls `ui.setPressed`. Both glyphs sit in the pill and `[aria-pressed="true"]` shows the check, so the glyph cannot go stale against the colour and no setter needed a change. Classes `ui-toggle__off` / `ui-toggle__on`.
 - Before/after sheet sent to Dean: yes, 2026-10-27, before the gate (Music toolbar with Remote + Shuffle ON, Home chips with Videos ON; 4 eras x light/dark; BEFORE and AFTER images; Dean has not objected).
-- Suites (22.23.1 / 24.20.0): Node 24.20.0 `npm run test:unit` at 1545b014: tests 10161, pass 10160, fail 0 (1 not a pass: skipped/todo, see output). Node 22.23.1: the pre-commit unit run at 1545b014 passed (see the full `npm test` line below).
+- Suites (22.23.1 / 24.20.0): Node 24.20.0 `npm run test:unit` at 1545b014: tests 10161, pass 10160, fail 0 (skipped 1). Node 22.23.1 `npm run test:unit` at 1545b014: tests 10161, pass 10160, fail 0, skipped 1 (same 1 skip on both).
 - Gate verdicts:
   - Gate: CHANGES r1 @6a8d27aa — qa (stale ON-look comments/test title: music.html:175, style.css:718+2634, main.js:456, setup.js:822, tokens.css:26, modern-css-source-lock title, library-toolbar.test.js:41,95; W4 sheet + dual-Node suites not yet recorded)
   - Gate: CHANGES r1 @6a8d27aa — adversary (product measured clean; two surviving test mutants: ui-chip-selected no-weight-change guard and toggle-button re-ground guard only read ui.css/chips; see report)
   - Gate: APPROVED r2 @1545b014 — adversary
   - Gate: APPROVED r2 @1545b014 — qa (W1 stale comments/titles fixed, no stale ON-look descriptions remain; new guard tests pass; Node 24 suite result to be recorded by Architect)
+
+- Close-out binding (gate APPROVED r2 @1545b014): `git diff --name-only 1545b014..HEAD` = docs/exec-plans/** only (plan evidence + the plan move); package.json / package-lock.json untouched in that range (the 1.396.0 bump is in 6a8d27aa, which both seats reviewed).
