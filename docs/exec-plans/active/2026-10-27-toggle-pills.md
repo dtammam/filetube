@@ -3,10 +3,10 @@ plan: toggle-pills
 harness: v2 · standard
 branch: feat/v1.396.0-toggle-pills
 anchor: outcome
-status: Building - W1-W3 done, W4 sheet next
-next: builder - W4 before/after sheet to Dean, full suites, gate
+status: In review - gate r1 CHANGES fixed, r2 delta next
+next: builder - dual-Node full suites, r2 delta re-confirmation (adversary + qa), then release PR
 design: Approved 2026-10-27 @d54d43b5 (Dean picked A + C off the rendered candidate sheet)
-gate: pending
+gate: r1 CHANGES (adversary + qa), r2 pending
 builder: standard
 ---
 
@@ -147,6 +147,8 @@ authorizes the merge.
 - Rulings flagged (the plan said flag, don't silently change):
   - **R4 vs "semibold on ON stays":** the two conflict. Measured, the semibold grew the chips 3.06px in three eras, so R4 wins and the weight no longer changes on press (the inversion carries ON). The Sticker sheet exemption keeps its semibold (it is the v1.388.0 look, untouched).
   - **R5 mechanism:** one mechanism, but CSS, not `data-icon-on` + `setPressed`. Every setter writes `aria-pressed` directly (music.js reflectPlaybackModes / paintRemote / updatePopoutBtn, podcasts.js updatePopoutBtn, main.js chip switch); none calls `ui.setPressed`. Both glyphs sit in the pill and `[aria-pressed="true"]` shows the check, so the glyph cannot go stale against the colour and no setter needed a change. Classes `ui-toggle__off` / `ui-toggle__on`.
-- Before/after sheet sent to Dean:
+- Before/after sheet sent to Dean: yes, 2026-10-27, before the gate (Music toolbar with Remote + Shuffle ON, Home chips with Videos ON; 4 eras x light/dark; BEFORE and AFTER images; Dean has not objected).
 - Suites (22.23.1 / 24.20.0):
 - Gate verdicts:
+  - Gate: CHANGES r1 @6a8d27aa — qa (stale ON-look comments/test title: music.html:175, style.css:718+2634, main.js:456, setup.js:822, tokens.css:26, modern-css-source-lock title, library-toolbar.test.js:41,95; W4 sheet + dual-Node suites not yet recorded)
+  - Gate: CHANGES r1 @6a8d27aa — adversary (product measured clean; two surviving test mutants: ui-chip-selected no-weight-change guard and toggle-button re-ground guard only read ui.css/chips; see report)

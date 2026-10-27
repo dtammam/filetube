@@ -715,7 +715,7 @@ a.sidebar-item {
   font-weight: normal;
 }
 /* UI pass sweep S2 (F19, D4.5): the library's ONE filter chip row - ui-chip
-   filter chips (32px pills, --surface-2, selected = ink on --fill-selected,
+   filter chips (32px pills, --surface-2, selected = the inverted --ink-1 ground,
    never red) in one horizontally scrolling row, before a fixed trailing group
    of ui-btn icon tools. Replaces the v1.45-v1.190 .format-toggle / .btn pill
    recipe (two or three wrapping rows on a phone). The modern home's chip row
@@ -2631,7 +2631,7 @@ select {
 .theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-choice-year { color: var(--ink-2); }
 /* v1.238 -> retire R3: the player-sticker picker (Settings > Mobile player). Every option is
-   a ui-chip filter (the picked one wears the chip's selected fill); the logo and your image
+   a ui-chip filter (the picked one wears the chip's inverted ON ground); the logo and your image
    show a small preview before their name, an emoji preset is the emoji. */
 .sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .sticker-card { gap: var(--space-3); }

@@ -23,7 +23,7 @@
       themes, z ladder...), moved here verbatim from style.css.
 
    Role use (plan D2.1): red is brand, primary action, progress, danger and the
-   unread indicator ONLY; selected state is ink on --fill-selected. --accent is the
+   unread indicator ONLY; an ON toggle pill is inverted (--surface-1 ink on --ink-1); a selected row is ink on --fill-selected. --accent is the
    red for TEXT and icons; --accent-fill is the red a button is FILLED with (white
    text on it). test/unit/ui-contrast.test.js holds every text/background pair a
    primitive uses to WCAG AA, in every era and mode. */

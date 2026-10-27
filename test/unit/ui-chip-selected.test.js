@@ -66,6 +66,15 @@ test('the ON chip is the inverted ground (never red, never a weight change), and
   const regrounds = all.filter((r) => /ui-chip--filter|music-mode-btn/.test(r.sel) && !allowed.has(norm(r.sel))
     && /(?:^|[;\s])background(?:-image|-color)?\s*:/.test(r.body));
   // the one sanctioned exception: the phone Sticker sheet keeps its own ON look (v1.388.0)
+  // R4 / the toggle buttons: no stylesheet rule may re-weight, re-pad or repaint a PRESSED chip or toggle button
+  // (a pressed font-weight grew the chips 3.06px; a repaint under white ink is unreadable) - the Sticker sheet
+  // exemption is the one sanctioned scope.
+  const pressedRules = all.filter((r) => /aria-pressed="true"/.test(r.sel) && /ui-chip--filter|music-mode-btn|ui-btn--toggle|music-remote-btn|music-popout-btn|podcast-popout-btn/.test(r.sel) && !/^\.mms-ss-root /.test(norm(r.sel)));
+  assert.ok(pressedRules.length >= 3, 'precondition: the pressed chip / toggle rules were found');
+  for (const r of pressedRules) assert.doesNotMatch(r.body, /font-weight|(?:^|[;\s])padding|letter-spacing/, norm(r.sel) + ' must not change the pill\'s width');
+  const toggleRepaints = all.filter((r) => !/:not\(\.ui-btn--toggle\)/.test(r.sel) && /ui-btn--toggle|music-remote-btn|music-popout-btn|podcast-popout-btn/.test(r.sel) && /aria-pressed="true"/.test(r.sel)
+    && /(?:^|[;\s])background(?:-image|-color)?\s*:/.test(r.body) && norm(r.sel) !== norm(on.sel) && norm(r.sel) !== '[data-theme="2009"] .ui-btn--toggle[aria-pressed="true"]');
+  assert.deepStrictEqual(toggleRepaints.map((r) => norm(r.sel)), [], 'no other rule repaints an ON toggle button');
   assert.deepStrictEqual(regrounds.map((r) => norm(r.sel)).filter((s) => !/^\.mms-ss-root \.ui-chip--filter\[aria-pressed="true"\](:active|:hover)?$/.test(s)), [], 'no other rule sets a chip\'s background');
 });
 

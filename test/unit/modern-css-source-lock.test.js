@@ -28,7 +28,7 @@ test('the flat grid: 3-up on desktop, 4-up on wide, 1-up on phones', () => {
 
 // UI pass sweep S2 (F19, AC12): the Modern chips are the ui-chip filter primitive
 // in the shared .library-chips row - the pill and the selected state are ui.css's.
-test('the filter chips are ui-chip filter pills; the selected chip is ink on the tonal fill, never red', () => {
+test('the filter chips are ui-chip filter pills; the selected chip is the inverted ground, never red', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(main, /<button type="button" class="ui-chip ui-chip--filter" aria-pressed="\$\{on\}" data-chip="\$\{c\.filter\}">/);
   assert.match(main, /<div class="modern-chip-row library-chips" role="group"/);

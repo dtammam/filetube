@@ -38,7 +38,7 @@ const { cssRules } = require('../helpers/stylesheets');
 
 // UI pass sweep S2 (F19, AC12 conversion of the v1.188/v1.190 pill-recipe lock):
 // the toolbar's filters are ui-chip filter chips (the primitive owns 32px pills,
-// --surface-2, selected = ink on --fill-selected, never red, hover gated) in ONE
+// --surface-2, selected = the inverted --ink-1 ground, never red, hover gated) in ONE
 // horizontally scrolling row, and the trailing tools are ui-btn icons.
 test('sweep S2 (F19): the library toolbar is one chip row - .library-chips scrolls, never wraps; the tools never shrink', () => {
   const rules = cssRules(STYLE_CSS);
@@ -92,7 +92,7 @@ test('v1.189.0 the pill look extends to the music / podcasts toolbars, tokens on
     for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--sm', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
   }
   for (const id of ['music-loop-btn', 'music-autoplay-btn']) {
-    assert.match(bar, new RegExp(`<button class="ui-chip ui-chip--filter music-mode-btn" id="${id}"[^>]*aria-pressed="false"`), `#${id} is a filter chip (its ON state is the chip's selected fill)`);
+    assert.match(bar, new RegExp(`<button class="ui-chip ui-chip--filter music-mode-btn" id="${id}"[^>]*aria-pressed="false"`), `#${id} is a filter chip (its ON state is the chip's inverted ground)`);
   }
   assert.match(bar, /<span class="ui-select music-sort"><select id="music-sort-select" class="ui-select__native"/, 'the sort is the ui-select field');
   assert.doesNotMatch(bar, /class="btn\b|class="[^"]*\sbtn\b|btn-sm/, 'no legacy .btn control left in the music toolbar');
