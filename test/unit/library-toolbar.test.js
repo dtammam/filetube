@@ -51,10 +51,10 @@ test('sweep S2 (F19): the library toolbar is one chip row - .library-chips scrol
   assert.match(rule('.library-tools'), /flex:\s*none/, 'the trailing tools keep their size');
   // No bespoke chip/pill recipe survives on the toolbar (the primitive is the look).
   assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.section-actions \.btn(?![\w-])|\.format-toggle-btn|\.modern-chip(?![\w-])/, 'the v1.188 pill recipe and .modern-chip are gone');
-  // The primitive itself: selected is ink on the tonal fill, never red (F13/F19).
+  // The primitive itself: selected is the inverted ground (--ink-1 under --surface-1 ink), never red (F13/F19; v1.396.0).
   const UI = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
-  const sel = cssRules(UI).find((x) => x.sel === '.ui-chip--filter[aria-pressed="true"]');
-  assert.ok(sel && /--fill-selected/.test(sel.body) && !/--accent/.test(sel.body));
+  const sel = cssRules(UI).find((x) => /^\.ui-chip--filter\[aria-pressed="true"\]/.test(x.sel.replace(/\s+/g, ' ')));
+  assert.ok(sel && /background-color:\s*var\(--ink-1\)/.test(sel.body) && !/--accent/.test(sel.body));
 });
 
 test('sweep S2: the toolbar markup is one row - the chip host, then ui-btn icon tools (sort, shuffle, rescan, view)', () => {

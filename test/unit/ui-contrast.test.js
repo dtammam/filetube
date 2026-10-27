@@ -74,6 +74,9 @@ const PAIRS = [
   ['--ink-link', '--surface-0', 4.5], ['--ink-link', '--surface-1', 4.5],
   ['--ink-on-accent', '--accent-fill', 4.5],
   ['--ink-1', '--fill-selected', 4.5, '--surface-0'], ['--ink-1', '--fill-selected', 4.5, '--surface-1'],
+  // v1.396.0: an ON toggle pill is --surface-1 ink on an --ink-1 ground, and its hover / press tint is
+  // layered over that ground (ui-chip-selected.test.js)
+  ['--surface-1', '--ink-1', 4.5], ['--surface-1', '--tint-hover', 4.5, '--ink-1'], ['--surface-1', '--tint-press', 4.5, '--ink-1'],
   // non-text: the unread dot / count badge, the focus ring, a filled primary button's shape
   ...SURFACES.map((bg) => ['--indicator', bg, 3]),
   ['--focus-ring', '--surface-0', 3], ['--focus-ring', '--surface-1', 3],

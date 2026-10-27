@@ -3,8 +3,8 @@ plan: toggle-pills
 harness: v2 · standard
 branch: feat/v1.396.0-toggle-pills
 anchor: outcome
-status: Approved - ready to build
-next: builder - cut the branch from main @d54d43b5, Step 0 (measure the ON/OFF/hover paints + widths today), then W1
+status: Building - W1-W3 done, W4 sheet next
+next: builder - W4 before/after sheet to Dean, full suites, gate
 design: Approved 2026-10-27 @d54d43b5 (Dean picked A + C off the rendered candidate sheet)
 gate: pending
 builder: standard
@@ -130,9 +130,23 @@ authorizes the merge.
 
 ## Evidence (builder fills)
 
-- Step 0 numbers (before):
-- After numbers + widths:
-- Swap/toggle audit (R1):
+- Step 0 numbers (before; headless Chromium, real ui.css/style.css/tokens.css, the real markup pulled from music.html / podcasts.html, 4 eras x light/dark; probe = scratchpad probe.js, run on a `git archive` of the plan commit):
+  - ON paint today: background-color is the pill's own OFF ground (2021 light #e5e5ea, 2014 #f5f5f5, 2009 #ededed / gloss, 2005 #ececec; dark #2c2c2e, #2a2a2a, #201d19, #1a1a1a) with a `linear-gradient(rgba(120,120,128,.16|.32))` layer on top; ink unchanged. Hover on an OFF or ON chip is `rgba(120,120,128,.08|.14)` (the same grey family). The three states are shades of one grey.
+  - **Width today (R4):** Loop / Shuffle / Autoplay / Home chips GROW on press in 2014, 2009 and 2005, +3.06px (73.16 -> 76.22, 66.56 -> 69.66, 98.48 -> 103.89 ...) from the semibold-on-ON rule; 2021 is flat (system font). 24 of 80 pill/era/mode rows changed width. The buttons (Remote, both Pop outs) do not change width.
+- After numbers + widths (same probe, W1+W2 tree):
+  - ON ground = `--ink-1`, ink = `--surface-1` for every chip and every `.ui-btn--toggle`, all 4 eras x 2 modes (e.g. 2021 light rgb(0,0,0) / rgb(255,255,255); 2014 light rgb(51,51,51) / white; 2009 dark rgb(237,237,237) / rgb(25,22,18); 2005 dark rgb(232,232,232) / rgb(17,17,17)). 2009 buttons: gloss gone (background-image none).
+  - Hover and press on an ON chip: ground stays `--ink-1`, the tint is layered as a background-image, ink unchanged (R3). The buttons' `::after` tint layers over the inverted ground the same way.
+  - Width: **0 rows changed** OFF vs ON vs hover vs press (the chip's semibold-on-ON was dropped; see Rulings flagged below).
+  - Visible glyph ON = `#i-check` for Loop, Shuffle, Autoplay, Remote control, both Pop out buttons (probe reads the visible `<use>`). Home chips and sticker cards have no icon of their own; they invert only.
+  - Unchanged, byte-identical probe record before vs after: the feed Fit label-swap (`swapFit`) and a chip inside `.mms-ss-root` (`stickerSheet`), in every era and mode.
+- Swap/toggle audit (R1): every `ui-btn--tonal` + `aria-pressed` site.
+  - TOGGLE (got `ui-btn--toggle`): music.html `#music-remote-btn`, `#music-popout-btn`; podcasts.html `#podcast-popout-btn`.
+  - SWAP (keeps the v1.349 look, excluded by `:not(.ui-btn--toggle)`): feed.js:1652 "Read the opening / Hide the opening"; feed.js:1814 "Fit / Fill" (pressed = fit); skin-surface.js:2482 `stickerTile` stack tiles (also under `.mms-ss-root`).
+  - Not affected (variant secondary / plain, not tonal): pages.js Mark read, podcasts.js Pin + Pause checks, books.js Pin shelf, watch.js Like / Pin / push bell, ui-kit.js demos, main.js "Show in Music".
+  - Nothing unclassifiable; no stop rule hit.
+- Rulings flagged (the plan said flag, don't silently change):
+  - **R4 vs "semibold on ON stays":** the two conflict. Measured, the semibold grew the chips 3.06px in three eras, so R4 wins and the weight no longer changes on press (the inversion carries ON). The Sticker sheet exemption keeps its semibold (it is the v1.388.0 look, untouched).
+  - **R5 mechanism:** one mechanism, but CSS, not `data-icon-on` + `setPressed`. Every setter writes `aria-pressed` directly (music.js reflectPlaybackModes / paintRemote / updatePopoutBtn, podcasts.js updatePopoutBtn, main.js chip switch); none calls `ui.setPressed`. Both glyphs sit in the pill and `[aria-pressed="true"]` shows the check, so the glyph cannot go stale against the colour and no setter needed a change. Classes `ui-toggle__off` / `ui-toggle__on`.
 - Before/after sheet sent to Dean:
 - Suites (22.23.1 / 24.20.0):
 - Gate verdicts:
