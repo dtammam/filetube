@@ -578,6 +578,33 @@ test('v1.398.0 S1: Listen -> Watch on the SAME id - watch.js\'s BARE early-adopt
   }
 });
 
+test('v1.398.0 S1 (gate r2 adversary A-r2-W1): after native LOST its queue (the rev-0 idle snapshot) the owned Item is remembered from the claim, so Listen -> Watch still hands back: both watch.js calls, then one audio.stop, src /video/<id>, the proxy gone, no audio.load after the full load', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1');
+    r.fake.emit(r.snap({ positionSec: 120, durationSec: 600 }));
+    await settle(30);
+    r.fake.emit({ v: 1, type: 'audioState', rev: 0, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(30);
+    assert.strictEqual(r.na.currentItem(), null, 'the live snapshot holds nothing');
+    assert.strictEqual(r.na.ownedKind(), 'video', 'but the claimed Item is remembered');
+    r.player.load('vid1', { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+    await settle(60);
+    assert.deepStrictEqual(r.fake.of('audio.stop'), [], 'the bare call adopts');
+    const loadsBeforeFull = r.fake.of('audio.load').length;
+    r.player.load('vid1', { id: 'vid1', type: 'video', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+    await settle(120);
+    assert.strictEqual(r.fake.of('audio.stop').length, 1, 'handed back: native stopped');
+    assert.strictEqual(r.el().getAttribute('src'), '/video/vid1');
+    assert.strictEqual(r.own('currentTime'), false, 'the proxy is gone');
+    assert.strictEqual(r.na.active(), false);
+    assert.strictEqual(r.na.ownedKind(), null);
+    assert.strictEqual(r.fake.of('audio.load').length, loadsBeforeFull, 'no audio.load after the full load');
+    assert.ok(Math.abs(r.el().currentTime - 120) < 0.3, 'the last known position, kept through the lost-queue snapshot (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
 test('v1.398.0 S1 (V3, gate r1 A-W1): a LIBRARY AUDIO file native plays as a track Item, then opened on the watch page (both watch.js calls): the proxy stays on the watch page and native plays on, exactly as in v1.397.0 - on a nativeAudio-only host AND with nativeVideoAudio', async () => {
   const AUD = { id: 'aud1', source: 'library', title: 'Talk', artist: 'Sp', album: '', albumKey: '', durationSec: 90, streamSrc: '/video/aud1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/aud1' };
   for (const host of [{ capabilities: ['nativeAudio'] }, VIDEO_CAPS]) {

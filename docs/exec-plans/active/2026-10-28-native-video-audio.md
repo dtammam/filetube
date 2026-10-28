@@ -14,8 +14,9 @@ builder: extreme
 
 **Re-scoped 2026-10-28 (gate r1 qa W4):** the plan below was written for a BACKGROUND HANDOFF of a playing video (V2a, V7, V8); the
 iOS Root's spike failed (Evidence, "The spike"), Dean chose a native video surface for the next plan, and v1.398.0 ships the parts
-that hold in every option: the contract (W1), the server (W2) and Listen rows (V2b, V10). Every handoff sentence below is marked
-superseded where it stands; the Evidence is the record of what shipped.
+that hold in every option: the contract (W1), the server (W2) and Listen rows (V2b, V10). The rulings, the "What Dean will see" bullets,
+the contract bullet and the W3 / W4 / "Not in scope" bullets are marked superseded where they stand; the Seams, Step 0, the Gate
+brief and the census read as the process history they are; the Evidence is the record of what shipped.
 
 Kickoff 2026-10-28 (FileTube Root, Opus). **Builder: Extreme (Fable).** The pick: this rewires the battle-won background-audio
 handoff in the player core (player.js), widens device and media token auth, and depends on a device-only behavior. That's
@@ -347,10 +348,13 @@ background handoff and go with the next plan.
   `playListenItem` / `buildListenChapterTracks` carry `hasThumbnail` from `/api/videos/:id`; `rowFromNativeItem` maps a `video` Item
   to a Listen row (the `listen` marker, the /video stream, /thumbnail art, /api/progress, a clip Item as its chapter row) so a fresh
   Music page adopts native's queue with Listen rows in it (S8).
-- **player.js (S1):** `load()` treats a same-id load that carries no `nativeQueue` while native owns the id (the watch page re-opening
-  a Listen row: Listen -> Watch) as a FRESH web load, not an adopt (`isNativeHandBackLoad`), carrying the proxy's position and paused
-  state into the resume (`nativeHandBackCarry` -> `loadBaseHandoff`): native is stopped by the video branch's claim, the element gets
-  `/video/<id>`, plays at native's position only if native was playing. The background-audio path (the sidecar, `attemptBackgroundAudioHandoff`,
+- **player.js (S1; the rule as of the r2 fix, gate r1 A-W1 + r2 A-r2-W1):** `load()` treats a same-id load as a FRESH web load, not
+  an adopt (`isNativeHandBackLoad`), only when native owns the id AS A `video` ITEM (the kind remembered at the claim, never read
+  from the live snapshot), the load DESCRIBES the media (a `type` string: the watch page's full load; its bare early-adopt call stays
+  an adopt of the proxy) and carries no `nativeQueue` (the Music view's own re-load is a FOLLOW); a track Item (library audio) keeps
+  the proxy on the watch page as in v1.397.0. The hand-back carries the proxy's position and paused state into the resume
+  (`nativeHandBackCarry` -> `loadBaseHandoff`): native is stopped by the video branch's claim, the element gets `/video/<id>`, plays
+  at native's position only if native was playing. The background-audio path (the sidecar, `attemptBackgroundAudioHandoff`,
   `handleForegroundSwapBack`, the prep in `setupForMedia`) is untouched: with the capability a backgrounded video takes the v1.397.0
   sidecar, byte for byte (bound by the two SUPERSEDED tests in native-video-audio-contract.test.js).
 - **Not built (superseded):** V2a, V7, V8, the handoff half of V9, S3, S4, S5 (the adopt case needs nothing now), S7. The
@@ -519,7 +523,7 @@ background handoff and go with the next plan.
   video WITHOUT art and two chapter Items, re-sends it (a shuffle around the playing TRACK) and asserts the rebuilt video Item has no
   artworkSrc (A17) and the chapter Items keep their clips under the file id; with a chapter Item playing, `getCurrentMeta().albumKey`
   is the file (A22) and the poster the file's thumbnail. A21 (`owns()` of any id) is equivalent, as the seat says.
-- **qa W1 (ios-host.md says the handoff ships):** FIXED: lines 47-49 and the v1.398.0 addendum now say what shipped, name the failed
+- **qa W1 (ios-host.md says the handoff ships):** FIXED: lines 47-50 and the v1.398.0 addendum now say what shipped, name the failed
   spike and point at native-bridge.md 3 "Not built". **qa W2 (the schema description):** FIXED, text only (a `video` Item is a Listen
   row; the handoff "designed and NOT built"; tvEpisode reserved); the schema sha goes to the Root with W5 (fields unchanged: no
   re-freeze). **qa W3 (host-adapter.js comment):** FIXED. **qa W4 (the plan's own prose):** FIXED: a re-scope paragraph under the
@@ -534,3 +538,86 @@ background handoff and go with the next plan.
   warnings are pre-existing in common.js, untouched.
 - **Mutant round on the fixed tree** (scratchpad mutants.js, 29 run against the working tree in a sandbox byte-compared to its copy):
   27 KILLED, M2 masked (defence in depth), M6 equivalent.
+
+### Gate (round 2)
+
+- Gate: APPROVED r2 @37c97c05 - security-brief
+  - Could NOT run (no Bash on this seat): git diff 1503b29f..37c97c05, the suites. "Verified" = traced in the working tree at 37c97c05.
+    I could not byte-compare the server files to 1503b29f; what I did: re-read the two places my r1 trace rests on and re-counted the
+    plan's markers. lib/auth/device-scope.js:50-72 (the three V5 entries, MEDIA_SCOPE, MEDIA_FILE_KINDS) and lib/auth/gate.js:403-428
+    (mediaAuth) read line for line as at r1; the v1.398 markers in lib/ and server.js are still exactly the two files of r1
+    (device-scope.js x2, media-token.js x1); no r1-fix marker (A-W1, A-S1, qa W5) appears in lib/**, server.js or host-adapter.js's
+    code; the plan's "Gate r1 fixes" block names no server file. Consistent with the coordinator's statement that the delta touches no
+    server file; I treat the server surface as untouched on that basis, not on a diff I ran.
+  - r1 findings: none to re-verify (r1 carried INFO notes only, no change asked). qa S5 / my INFO: the W2 Evidence now names the
+    /thumbnail placeholder as the pre-existing oracle it is (plan line 530) - a disclosure, as asked.
+  - Client delta, trust-boundary glance, VERIFIED:
+    - player.js:1145-1149 isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind): pure; `ownedKind` is read at :10899-10901 from
+      nativeAudioApi().currentItem().kind (native-audio.js:177, the Item at native's index in the LAST ACCEPTED snapshot, whose kind
+      is enum-checked by host-adapter.js audioItemFields :80 before the event is delivered). It is compared to the literal 'video' and
+      decides only adopt vs fresh web load; the fresh load's src is the web's own '/video/' + encodeURIComponent(id) for the id the
+      PAGE asked for (the watch URL), never a value from the event. `data.type` comes from the page's own load call. nativeHandBackCarry
+      (:1150-1153) copies a finite positive number and a boolean from the proxy. A forged snapshot (same-origin script, already full
+      account control) can at most flip adopt/fresh for the user's own open page. Nothing new crosses to the server.
+    - native-audio.js:94-96: a Listen chapter row with no positive duration returns null (the load stays on the web). A pure refusal;
+      it removes an Item shape from what the web posts, adds none, and touches no URL, token or server call.
+    - host-adapter.js: the audioItemOk rules (:56-66) are unchanged; the delta there is a comment. The schema's audioItem DESCRIPTION
+      changed text only; the kind / progress.route enums and the src / artworkSrc prefix rules read as at r1 (native-bridge.md:121-128).
+  - Nothing NEW introduced by the fix round on the security surface. No CRITICAL / WARNING / SUGGESTION. Approval bound to 37c97c05.
+    Tree after this write: this plan doc only.
+
+- Gate: APPROVED r2 @37c97c05 - qa
+  - Delta reviewed: `git diff 1503b29f..37c97c05` (10 files, +327 / -47), the fix commit message, the "Gate r1 fixes" block, every new comment and test title. HEAD = 37c97c05ce8bf01f990b587ff45bcc6dfdd0bab4.
+  - r1 W1 (ios-host.md): FIXED AS PRESCRIBED. Lines 47-50 and the addendum (heading "a video played as audio goes native; the background handoff does not") now say what shipped, name the spike's failure and point at native-bridge.md 3 "Not built"; every sentence re-read against the tree is true.
+  - r1 W2 (the schema description): FIXED AS PRESCRIBED, text only; "a background handoff of a playing video was designed and NOT built", "tvEpisode kind is reserved", the clip sentence no longer names a handoff Item; the enums and fields are byte-identical to 1503b29f (no re-freeze).
+  - r1 W3 (host-adapter.js:47-51 comment): FIXED AS PRESCRIBED.
+  - r1 W4 (the plan's prose): FIXED AS PRESCRIBED: the title, a re-scope paragraph, the two "What Dean will see" handoff bullets, the W1 contract bullet, the W3 and W4 bullets and "Not in scope" (now "chapters as clips on the WATCH page ... a Listen row of a chaptered video IS its file plus clip (S2, built)") are marked or qualified.
+  - r1 W5 (M6 mis-classified): FIXED DIFFERENTLY (the adversary's A-S1 option), evaluated and accepted: native-audio.js:94-96 refuses a Listen row with a `chapterStartSec` and no positive duration, so the WHOLE Listen load of a video whose duration the server reports as 0 stays on the web (readProvider's one-null-row rule), as in v1.397.0. Stricter than my key-binding prescription and it also closes the adversary's "whole file from 0 under a ::c id" roll; the cost (such a video never goes native at all) is stated in the test title and the Evidence. After it, every Listen Item with a `::c` id the builder accepts carries a clip, so M6's two arms agree on every accepted input: the re-classification "equivalent" now holds. Bound: native-audio-items (null for duration 0 and for no duration; a plain row with duration 0 keys under the file id), native-audio-web "a chaptered video whose duration the server reports as 0" (no audio.load, src /video/vid3); M29 KILLED (log).
+  - r1 S1 / S2 / S5: FIXED as recorded (native-bridge.md 3 "the flattening hands it the track entries after it"; V6 and the contract bullet say `audioError { error: 'other' }` / `audioError.error`; the W2 Evidence names `/thumbnail/<unknown>` as the pre-existing 200 placeholder). S3 / S4 / S6 disclosed, not changed: accepted.
+  - Adversary A-W1 fix, re-derived from the code: player.js:1145-1149 `isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind)` requires `ownedKind === 'video'`, a string `data.type` and no `nativeQueue`; load() (10900-10901) feeds `nativeAudioApi().currentItem()`'s kind (the inert api returns null -> never; the live api's `currentItem` reads the snapshot claim() sets synchronously, native-audio.js:177 / 402). watch.js:1622 (the bare early-adopt call) carries no `type`; watch.js:1801 spreads `mediaData` (the /api/videos/:id payload: `type: 'video'`); the seeded pre-load (1664) runs only for 'defer' / 'reparent', never for a same-id adopt. So the early call keeps the proxy, the full load is the hand-back, and a track Item never hands back (V3 byte-identity for library audio on the watch page restored). Bound: native-audio-web "S1" (both calls, in order: no stop after the first; after the second one audio.stop, src, poster, lock-screen title, plain-video flavor, position, play only if native was playing), "S1 (V3, gate r1 A-W1)" (library audio, both hosts), the pure S1 test; M27 / M28 KILLED (log). A-S2 bindings (S8 poster; "S8 (A17 / A22 / the clip round trip)") read as claimed.
+  - **WARNING W-r2-1 (a sentence the fix round left stale, LESSONS 12 "re-check fix-round edits for NEW lies"): Evidence "W3 as built" line 350-352, `player.js (S1)`:** "`load()` treats a same-id load that carries no `nativeQueue` while native owns the id ... as a FRESH web load" - that is the r1 rule. At 37c97c05 a same-id load with no `nativeQueue` and no `type` (watch.js's bare early-adopt call), or one while native plays a `track` Item (library audio), is an ADOPT of the proxy (player.js:1145-1149). Scenario: a reader of the W3 paragraph (the next plan's kickoff, which must design the watch page's hand-back for the native video surface) takes the r1 rule and designs a bare-call hand-back the adversary just measured as wrong. The "Gate r1 fixes" block 60 lines below states the true rule, so the doc disagrees with itself. **Safe to ship disclosed:** the code is correct and bound (M27 / M28), player.js's own comment is true, and the release commit edits this plan anyway (`plan-complete.js`): fold the one-sentence re-true into it ("a same-id load that DESCRIBES the media (a `type`), carries no `nativeQueue`, while native plays the id as a `video` Item").
+  - SUGGESTION S-r2-1 (a count the artifact does not back): "Mutant round on the fixed tree ... 29 run ... 27 KILLED, M2 masked, M6 equivalent". The scratchpad mutants.js holds 29 entries and OVERWRITES mutants.log on every run (`fs.writeFileSync`, line 75); the surviving log (Oct 28 20:52) is a 3-mutant run: M27, M28, M29 KILLED and nothing else, so the 26-mutant re-run on the fixed tree (M6's "survives as EQUIVALENT" included) is the builder's word, not an artifact. Arithmetic is consistent (24 + 3 = 27) and the Adversary's r1 re-run confirmed the 26 at 1503b29f. Re-run `node mutants.js` with no arguments once, or say in Evidence what the log holds.
+  - SUGGESTION S-r2-2: the re-scope paragraph (line 17) says "Every handoff sentence below is marked superseded where it stands"; the Seams list (lines 82-87 `attemptBackgroundAudioHandoff ... the ONE handoff point`), Step 0's red-first bullet (141), the Gate brief (189 "background, return ... mid-handoff") and the Step 0 census (228-230) still describe the handoff design unmarked. They are process history, not shipping claims, and the paragraph frames them; soften to "the rulings, 'What Dean will see', the contract bullet, W3 / W4 and Not in scope are marked". Nit: "Gate r1 fixes" says ios-host.md "lines 47-49"; the bullet is 47-50.
+  - Lying-text re-hunt on the delta, otherwise clean: the native-audio.js:94-95 comment, the player.js:1141-1144 comment, the host-adapter comment, the schema description, ios-host.md, native-bridge.md 3, the five new / renamed test titles and the "Gate r1 fixes" block each match the code they describe (the W-r2-1 sentence is the one exception).
+  - Security (standing): the delta touches no lib/ file; no new logger, no new echo, no shell, no dependency; the hand-back change narrows a client branch. No new surface.
+  - Instruments (Node 22.23.1, verbatim counts, this tree):
+    - `git diff 1503b29f..37c97c05 | grep '^+' | grep -c '<the em dash character>'` = 0
+    - `npm run lint`: 6 problems (0 errors, 6 warnings), all public/js/common.js no-unused-vars (pre-existing)
+    - `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json", TOTAL 3142
+    - `node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)"
+    - test/unit/native-video-audio-contract.test.js: tests 6, pass 6, fail 0
+    - test/unit/native-audio-web.test.js: tests 29, pass 29, fail 0
+    - test/unit/native-audio-items.test.js: tests 7, pass 7, fail 0
+    - test/unit/native-bridge-audio.test.js: tests 7, pass 7, fail 0
+    - test/unit/exec-plans-census.test.js: tests 3, pass 3, fail 0
+    - test/integration/device-scope-census.test.js: tests 4, pass 4, fail 0
+    - test/integration/media-token.test.js: tests 9, pass 9, fail 0
+    - `.harness/lib/check-markers.sh docs/exec-plans/active`: "check-markers: clean (docs/exec-plans/active)", exit 0
+    - Not run: the full suites.
+  - Approval bound to 37c97c05. `git status --porcelain` after this block: ` M docs/exec-plans/active/2026-10-28-native-video-audio.md` only; no untracked files.
+- Gate: CHANGES r2 @37c97c05 - adversary
+  - Delta reviewed: `git diff 1503b29f..37c97c05` (10 files), against the tree in a fresh `git archive 37c97c05` sandbox (scratchpad adv2-sandbox, byte-compared to adv2-pristine after the mutant round: "identical"); probes against adv2-pristine. HEAD = 37c97c05ce8bf01f990b587ff45bcc6dfdd0bab4.
+  - Instruments (verbatim, Node 22.23.1): the r1 targeted set (9 files) = `# tests 93 / # pass 93 / # fail 0 / # skipped 0`. `npx eslint` on the six changed code / test files = exit 0, 0 problems. My r2 mutant round (adv2-mutants.js / adv2-mutants.log): 18 run, 17 KILLED, 1 SURVIVED. Re-run from r1: A1, A6, A11, A17, A22 KILLED (A17 and A22 by the new "S8 (gate r1 adversary A-S2 ...)" test; A6 by the rewritten S1); A5 SURVIVED again - RECLASSIFIED EQUIVALENT, not a test gap: a web-built video Item always carries `progress.route === '/api/progress'`, so the `video ||` term of rowFromNativeItem's `lib` is redundant on every real input (the Evidence's "bound by the poster assert" is not a kill; harmless). New: N1 the kind gate removed (a track Item hands back) KILLED by "S1 (V3, gate r1 A-W1)" + the pure S1 test; N2 the typed-load gate removed KILLED by the rewritten "S1" + the pure test; N3 the zero-span guard removed KILLED (items + "A-S1 = qa W5" web test); N4 player.js passing 'video' instead of the owned Item's kind KILLED by "S1 (V3 ...)"; N5 the guard widened to library-audio chapter rows KILLED by the v1.397.0 items test (the out-of-scope shape is pinned). The builder's M6-equivalence claim holds by construction now: every Listen `::c` Item that reaches the key line carries a clip, a plain row's id is the file id.
+  - **r1 A-W1: FIXED AS PRESCRIBED (both halves).** Probe T1-r2 (adv-probes/p4.test.js, native playing and paused at 120 s, then watch.js's two calls in order): after the early bare call `{ src: null, proxy: true, active: true, stops: 0, meta.title: "A talk" }` (an adopt of the proxy); after the full load `{ poster: "/thumbnail/vid1", src: "/video/vid1", proxy: false, active: false, stops: 1, ms: "A talk", t: 120.13 }`, order `["post:audio.stop","src=/video/vid1","proto.play"]` playing and `["post:audio.stop","src=/video/vid1"]` paused. Probe T2-r2 (a library audio file native plays as a track Item, both calls, on a nativeAudio-only host AND with nativeVideoAudio): `{ src: null, proxy: true, active: true, stops: 0, t: 33.2, order: [] }` on both - the v1.397.0 behaviour (adv-base T2 at r1: the same shape).
+  - **r1 A-S1: FIXED AS PRESCRIBED** (the first option). Probe T3-r2 (duration 0, three chapters): `{ currentId: "vid3::c0", loads: 0, src: "/video/vid3", proxy: false, stops: 0 }` - the whole Listen load stays on the web.
+  - **r1 A-S2: BOUND** (A17, A22 killed; A5 equivalent, above). **r1 A-S3: FIXED** (ios-host.md:47-50 and its addendum, the schema description, host-adapter.js:47-50, native-bridge.md's Up-next wording, the Evidence's S3 line now say the handoff was designed and not built; read in the delta).
+  - **WARNING A-r2-W1 (NEW in the fix: the kind gate reads `currentItem()`, which is null after native LOST its queue, so the hand-back is refused exactly when the proxy is most wrong).** native-audio.js `queue()` (line 172) prefers `snap.queue` over `posted.items`; the contract's "engine lost its queue" snapshot (`rev 0, state idle, queue []`, which onState accepts and keeps `ownedId`) makes `currentItem()` null, so player.js:10900 passes `ownedKind = null` and `isNativeHandBackLoad` returns false for the watch page's full load. Probe T10-r2 (a native Listen row at 120 s, the rev-0 idle snapshot, then both watch.js calls): `T10-before { currentItem: null, owns: true, active: true }`; after the full load `{ src: null, proxy: true, active: true, stops: 0, poster: "/thumbnail/vid1", order: ["post:audio.load"] }` - the watch page keeps the src-less proxy (a black, never-loading picture), the adopt's play re-assert posted `audio.load` of the Listen row (proxyPlay's lost-queue re-send), so NATIVE plays the sound under the watch page; the user's own play tap posts another `audio.load` (`newNativeLoads: 1`, `["video:vid1"]`, `src: null`). Nothing on that page can take the video back; at 1503b29f the same sequence handed back (owns(id) alone). Control T11-r2 (native still `loading`, no snapshot yet): `currentItem()` reads `posted` -> 'video' -> hands back (`src: "/video/vid1"`, stops 1). Prescription: the owned kind must not depend on the live snapshot - native-audio.js remembers the Item it claimed (`ownedItem = want` in claim(), cleared in stop()) and exposes it (`ownedItem()` / `ownedKind()`), and player.js reads that instead of `currentItem()` (or `currentItem()` falls back to `posted.items[posted.index]` when the snapshot's queue is empty); bind it with the T10 sequence: rev-0 idle, then the two watch.js calls, assert one `audio.stop`, src `/video/<id>`, the proxy gone, no `audio.load` posted by the adopt.
+  - Verified and clean in the delta: the typed-load gate admits every full watch.js / Feed / TV load (all carry `type`) and refuses only the bare early call (the contract test enumerates it); the zero-span guard applies to Listen rows only (N5: the library-audio chapter shape stays v1.397.0 by test); V9 ordering on the hand-back unchanged (T1-r2 order); no other reader of `currentItem()` changed; the three new tests execute the real two-call sequence (not a lookalike) and go red under N1 / N2 / N4.
+  - Tree after this write: `git status --porcelain` = ` M docs/exec-plans/active/2026-10-28-native-video-audio.md` (the r1 blocks, the security-brief's r2 and this block); no untracked files; adv2-* sandboxes, adv-probes/p4.test.js + p4.out, adv2-mutants.js/.log/.out in the session scratchpad.
+
+### Gate r2 fixes (the commit after 37c97c05)
+
+- **adversary A-r2-W1 (NEW in the r1 fix: the kind gate read `currentItem()`, null after native's lost-queue snapshot, so Listen ->
+  Watch was refused exactly then and the watch page sat on a src-less proxy while native re-played the sound):** FIXED AS PRESCRIBED
+  (the first option). native-audio.js remembers the Item it claimed (`ownedItem = want` in both claim branches, cleared in `stop()` and
+  on a refused load) and exposes `ownedKind()` (null on the inert api); player.js `load()` reads it instead of the live snapshot.
+  Test: native-audio-web "S1 (gate r2 adversary A-r2-W1)" = the T10 sequence (a native Listen row at 120 s, the rev-0 idle snapshot:
+  `currentItem()` null, `ownedKind()` 'video'; the bare call adopts; the full load: one audio.stop, src `/video/vid1`, the proxy gone,
+  no audio.load after it, the position kept through the lost-queue snapshot). Mutant M30 (`ownedKind()` reads the live snapshot
+  again): see below.
+- **qa W-r2-1 (the W3 Evidence's player.js sentence stated the r1 rule):** re-trued above (the W3 as-built bullet now states the rule
+  as of this fix). **qa S-r2-1:** mutants.log re-generated by a full run against 37c97c05 (below). **qa S-r2-2:** the re-scope
+  paragraph softened; the ios-host.md line range corrected.
+- **adversary A5:** reclassified EQUIVALENT by the seat (a web-built video Item always carries `/api/progress`), accepted.
+- **Mutants on the r2 tree** (scratchpad mutants2.js, a sandbox of 37c97c05 plus this commit's files, byte-compared after the run:
+  identical): M30 (the owned kind read from the live snapshot again) KILLED by the T10 test (1 red); controls M16, M27, M28 KILLED.

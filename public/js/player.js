@@ -10897,8 +10897,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.398.0 (S1): the watch page re-opening a Listen row native plays is a fresh WEB load, not an adopt (the element is the
     // src-less proxy); the proxy's position and paused state ride into the resume below (handBack).
     var nativeApiNow = nativeAudioApi();
-    var ownedItem = (nativeApiNow && typeof nativeApiNow.currentItem === 'function') ? nativeApiNow.currentItem() : null;
-    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedItem ? ownedItem.kind : null);
+    // the kind of the Item native plays for OUR load, remembered at the claim (gate r2 adversary A-r2-W1: the live snapshot's
+    // queue is empty after native lost its queue, so a snapshot read would refuse the hand-back exactly then)
+    var ownedKind = (nativeApiNow && typeof nativeApiNow.ownedKind === 'function') ? nativeApiNow.ownedKind() : null;
+    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind);
     if (handBack) adopt = false;
     if (adopt) {
       placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data); // v1.382.0 (gate r1, C1): every load
