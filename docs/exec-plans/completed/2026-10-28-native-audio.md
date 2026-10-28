@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.397.0-native-audio
 anchor: spec
 status: Shipped v1.397.0
-next: release - the suites at release, the no-ff merge tag, the PR, CI, Dean's merge, the tag's Publish run, the relay to the iOS Root
+next: the PR, CI, Dean's merge, the tag's Publish run, the relay to the iOS Root
 design: Approved 2026-10-28 (Dean's rulings via the Root; the contract drafted with the SANDYJAR iOS Dev Root)
 gate: closed r3 - adversary, qa, security-brief APPROVED @cc4e0a30
 builder: extreme
@@ -335,7 +335,15 @@ Dean authorizes the merge. After the tag's Publish run is green, the FileTube Ro
   not in the known-flakes list yet).
 - **Node 24.20.0 full suite at 6d21a601 + the census fix:** 13007 tests, 12997 pass, 0 fail, 10 skipped (548.8 s).
 - **Suites before the gate (the tree of the next commit):** Node 22.23.1 `npm test`: 13007 tests, 12997 pass, 0 fail, 10 skipped (532.2 s); Node 24.20.0 `npm test`: 13007 tests, 12997 pass, 0 fail, 10 skipped (548.8 s).
-- Suites at release (22.23.1 / 24.20.0):
+- **Suites at release (2a7ed24b, the release bookkeeping tree):** Node 22.23.1 `npm test`: 13023 tests, 13013 pass, 0 fail, 10 skipped
+  (560.2 s); Node 24.20.0 `npm test`: 13023 tests, 13013 pass, 0 fail, 10 skipped (552.1 s).
+- **The close-out binding (RELEASING.md step 1):** `git diff --name-only cc4e0a30..2a7ed24b` = ROADMAP.md,
+  docs/exec-plans/completed/2026-10-28-native-audio.md, docs/references/ios-host.md, docs/releases.json, package-lock.json,
+  package.json, public/js/host-adapter.js, public/js/native-audio.js, public/js/player.js, test/integration/media-token.test.js,
+  test/unit/native-audio-contract.test.js, test/unit/native-audio-web.test.js, test/unit/native-bridge-audio.test.js. The
+  package files differ by their three version lines only; the seven code / test files by ONE comment line each (the plan's path,
+  active/ -> completed/): `git diff cc4e0a30..2a7ed24b -- public/js test | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -v '^[+-]\s*//' | wc -l`
+  = 0. No seat re-check (Dean's ruling, 2026-10-12).
 - Gate verdicts:
   - Gate: APPROVED r3 @cc4e0a30 - security-brief
     - Could NOT run (no Bash on this seat): the suites, `git diff`. "Verified" = traced in the working tree at cc4e0a30.
