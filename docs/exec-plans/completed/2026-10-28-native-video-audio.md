@@ -3,10 +3,10 @@ plan: native-video-audio
 harness: v2 · full
 branch: feat/v1.398.0-native-video-audio
 anchor: spec
-status: Building (re-scoped 2026-10-28: Listen rows only; the background handoff is superseded)
-next: W4 guards (mutants on the committed W3), the full gate, the release
+status: Shipped v1.398.0
+next: the PR, CI, Dean's merge, the tag's Publish run, the relay to the iOS Root
 design: Approved 2026-10-28 (Dean picked "Native audio" for video over a full native player and the web-only fix)
-gate: not started
+gate: closed r3 - adversary, qa, security-brief APPROVED @978e92b2
 builder: extreme
 ---
 
@@ -621,3 +621,73 @@ background handoff and go with the next plan.
 - **adversary A5:** reclassified EQUIVALENT by the seat (a web-built video Item always carries `/api/progress`), accepted.
 - **Mutants on the r2 tree** (scratchpad mutants2.js, a sandbox of 37c97c05 plus this commit's files, byte-compared after the run:
   identical): M30 (the owned kind read from the live snapshot again) KILLED by the T10 test (1 red); controls M16, M27, M28 KILLED.
+
+### Gate (round 3)
+
+- Gate: APPROVED r3 @978e92b2 - security-brief
+  - Could NOT run (no Bash on this seat): git diff 37c97c05..978e92b2, the suites. "Verified" = traced in the working tree at 978e92b2.
+    The same re-read as at r2, no byte-compare: lib/auth/device-scope.js:50-72 and lib/auth/gate.js:403-428 (mediaAuth) read line for
+    line as at r1 and r2; the v1.398 markers in lib/ and server.js are still exactly device-scope.js x2 and media-token.js x1; the
+    strings `ownedKind` / `978e92b2` appear nowhere in lib/**, server.js or host-adapter.js (the one `r3` hit in lib/music/radio.js:26
+    is an older plan's "gate r3" comment, pre-existing). The plan's "Gate r2 fixes" block names no server file. Consistent with the
+    coordinator's statement; the server surface is treated as untouched on that basis, not on a diff I ran.
+  - r1 / r2 findings: none to re-verify (INFO notes only, no change asked at either round).
+  - Client delta, trust-boundary glance, VERIFIED: native-audio.js:153 `ownedItem` is set at :487 and :493 to `want`, which is
+    `q.items[...]` from readProvider() (:471-479), the Items the WEB built from its own load descriptor (itemFromDescriptor, :73-105;
+    the kind is the literal 'video' / 'track' / 'podcastEpisode' the web chose at :81), and is cleared at :512 (a refused load) and
+    :521 (stop). `ownedKind()` (:531) returns that Item's kind only while `ownedId` is set; the inert api answers null (:140).
+    player.js:10902-10903 reads it and compares to the literal 'video' (:1146) to pick adopt vs fresh web load. So the kind now comes
+    from the web's own data, no longer from a host event: the r2 boundary (a schema-sanitised snapshot could flip adopt/fresh) is
+    narrower, not wider. The fresh load's src is still the web's '/video/' + encodeURIComponent(id) for the id the page asked for;
+    nothing from native reaches a URL, a POST body or the server through this change. host-adapter.js is not in the delta.
+  - Nothing NEW introduced on the security surface. No CRITICAL / WARNING / SUGGESTION. Approval bound to 978e92b2. Tree after this
+    write: this plan doc only.
+
+- Gate: APPROVED r3 @978e92b2 - qa
+  - Delta reviewed: `git diff 37c97c05..978e92b2` (4 files, +133 / -15: native-audio.js, player.js, native-audio-web.test.js, this plan), the commit message, the "Gate r2 fixes" block, the re-trued W3 bullet, the softened re-scope paragraph. HEAD = 978e92b2e0a2e54dd6f3fc8e5472dbaf690cf795.
+  - r2 W-r2-1 (the W3 Evidence's player.js sentence stated the r1 rule): FIXED AS PRESCRIBED. The bullet (lines 351-357) now states the rule as of this fix: a `video` Item remembered at the claim, a typed load, no `nativeQueue`, a track Item keeps the proxy. Re-derived against player.js:1145-1149 + 10900-10903 and native-audio.js:487 / 493 / 531: true.
+  - r2 S-r2-1 (the mutant count had no artifact): FIXED. scratchpad mutants.log is now a full run (Oct 28 21:08): 29 lines, 27 KILLED, M2 SURVIVED (masked), M6 SURVIVED (equivalent) - the Evidence's "27 KILLED, M2 masked, M6 equivalent" is now measured. mutants2.log (the r2-fix round): M16, M27, M28, M30 KILLED, as the "Gate r2 fixes" block says.
+  - r2 S-r2-2: FIXED (the re-scope paragraph names which sections are marked and which read as process history; "lines 47-50").
+  - Adversary A-r2-W1 fix, re-derived from the code: native-audio.js keeps `ownedItem` (line 153), sets it in BOTH claim branches (the follow at 487, the fresh claim at 493), clears it in `stop()` (521) and on a refused load (512; `release()` routes through `stop()` when owned), and exposes `ownedKind()` (531: `(ownedId && ownedItem) ? ownedItem.kind : null`); the inert api returns null (140). player.js:10900-10903 reads `ownedKind()` instead of `currentItem()`, so the lost-queue snapshot (`rev 0, idle, queue []`, which empties `currentItem()`) no longer refuses the hand-back. Bound by native-audio-web "S1 (gate r2 adversary A-r2-W1)" (the T10 sequence: `currentItem()` null, `ownedKind()` 'video', the bare call adopts, the full load: one audio.stop, src /video/vid1, the proxy gone, `ownedKind()` null after, no audio.load after the full load, the position kept); M30 KILLED (mutants2.log). No other reader of `currentItem()` changed.
+  - Lying-text re-hunt on the delta, clean: the `ownedItem` comment (153: "never read from the live snapshot, which is empty after a lost queue"), the `ownedKind()` comment (531), the player.js comment (10900-10901), the new test title, the "Gate r2 fixes" block and the re-trued W3 bullet each match the code they describe.
+  - Security (standing): no lib/ file in the delta; a client-side remembered field read by one pure predicate; no new logger, echo, shell or dependency. No new surface.
+  - Instruments (Node 22.23.1, verbatim counts, this tree):
+    - `git diff 37c97c05..978e92b2 | grep '^+' | grep -c '<the em dash character>'` = 0
+    - `npm run lint`: 6 problems (0 errors, 6 warnings), all public/js/common.js (pre-existing)
+    - `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json"
+    - `node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)"
+    - test/unit/native-video-audio-contract.test.js: tests 6, pass 6, fail 0
+    - test/unit/native-audio-web.test.js: tests 30, pass 30, fail 0
+    - test/unit/native-audio-items.test.js: tests 7, pass 7, fail 0
+    - test/unit/native-bridge-audio.test.js: tests 7, pass 7, fail 0
+    - test/unit/exec-plans-census.test.js: tests 3, pass 3, fail 0
+    - test/integration/device-scope-census.test.js: tests 4, pass 4, fail 0
+    - test/integration/media-token.test.js: tests 9, pass 9, fail 0
+    - `.harness/lib/check-markers.sh docs/exec-plans/active`: "check-markers: clean (docs/exec-plans/active)", exit 0
+    - Not run: the full suites.
+  - No CRITICAL / WARNING / SUGGESTION. Approval bound to 978e92b2. `git status --porcelain` after this block: ` M docs/exec-plans/active/2026-10-28-native-video-audio.md` only; no untracked files.
+- Gate: APPROVED r3 @978e92b2 - adversary
+  - Delta reviewed: `git diff 37c97c05..978e92b2` (4 files: native-audio.js `ownedItem` set in both claim branches, cleared in stop() and on a refused load, `ownedKind()` exposed (null on the inert api); player.js load() reads `ownedKind()`; one new native-audio-web test; the plan). A fresh `git archive 978e92b2` sandbox (scratchpad adv3-sandbox, byte-compared to adv3-pristine after the mutant round: "identical"); probes against adv3-pristine. HEAD = 978e92b2e0a2e54dd6f3fc8e5472dbaf690cf795.
+  - Instruments (verbatim, Node 22.23.1): the targeted set (9 files) = `# tests 94 / # pass 94 / # fail 0 / # skipped 0`. `npx eslint` on native-audio.js, player.js, native-audio-web.test.js = exit 0, 0 problems. Mutant round on the owned-kind source (adv3-mutants.js / adv3-mutants.log): 8 run, 3 KILLED, 5 SURVIVED. KILLED: O1 `ownedItem` set in the FOLLOW branch only (a fresh / jump claim leaves it null) <- the rewritten "S1" + "S1 (gate r2 adversary A-r2-W1)"; O6 `ownedKind()` reading the live snapshot (the r2 bug) <- "S1 (gate r2 ...)"; O8 player.js back to `currentItem()` <- the same. SURVIVED and EQUIVALENT by the consumer's own guard (each checked on its path): O3 not cleared in stop() and O4 not cleared on a refused load (`ownedKind()` requires `ownedId`, which both paths null); O7 `ownedKind()` ignoring `ownedId` (every path that nulls `ownedId` nulls `ownedItem` too, and `isNativeHandBackLoad` also requires `owns(id)`); O5 cleared at `beginLoad()` (load() reads `ownedKind()` at 10902 BEFORE `nativeAudioBeginLoad()` at 10968, and the claim that follows re-sets it). SURVIVED on CORRECT code, a binding gap: **O2** `ownedItem` set in the FRESH branch only - every test stays green although an adopt follow (a fresh Music page taking native's Listen row) would then leave `ownedItem` null and an advance follow (native moving from a track to the Listen video, onIndex) would leave it the stale TRACK Item, so Listen -> Watch after either would refuse the hand-back (the A-r2-W1 stuck proxy again). The TREE is right on both: probe T12 (adopt a `[track, video]` queue at index 1, then watch.js's two calls) = `{ followed: "adopt", ownedKind: "video" }` then `afterFull { src: "/video/vid1", proxy: false, active: false, ownedKind: null, stops: 1, loads: 0, t: 44.25 }`; probe T13 (native advances to the track: `ownedKind: "track"`; Prev = one jump back: `ownedKind: "video"`; then the two calls) = `afterFull { src: "/video/vid1", proxy: false, stops: 1 }`.
+  - **r2 A-r2-W1: FIXED AS PRESCRIBED** (the first option). Probe T10-r2 re-run (a native Listen row at 120 s, the rev-0 idle snapshot, both watch.js calls): `T10-before { currentItem: null, owns: true }`; `afterFull { src: "/video/vid1", proxy: false, active: false, stops: 1, poster: "/thumbnail/vid1", ms: "A talk", t: 120, order: ["post:audio.stop","src=/video/vid1","proto.play"] }`, the user's play tap posts NO native load (`newNativeLoads: 0`, src stays /video/vid1). Controls unchanged: T1-r2 (playing / paused: the bare call adopts, the full load hands back with the poster and title, order stop -> src -> play, no play when paused), T2-r2 (library audio as a track Item keeps the proxy on both hosts, `stops: 0`), T11-r2 (native still loading: hands back), T3-r2 (duration 0: the whole load on the web). New drift probes: T14 lost queue -> the proxy's play re-sends (`loads: 2`, `ownedKind: "video"`) -> the two calls hand back (`stops: 1`); T15 close() while native plays a Listen row: `{ ownedKind: null, active: false, owns: false, stops: 1, state: "closed" }`. `ownedItem` tracks `ownedId` on every path I drove: fresh claim, jump, adopt follow, advance follow, lost-queue re-send, refused load (by reading: both nulled), stop / release / close.
+  - WARNING A-r3-W1 (disclosed, safe to ship: the behaviour is measured correct, the gap is a missing binding) - mutant O2 above. Prescription (a test-only follow-up, or in the release commit): adopt a queue with a video Item playing (the S8 fixture), then issue watch.js's two calls and assert one `audio.stop`, src `/video/<id>`, the proxy gone; and the advance variant (native moves from a track to the Listen video, then the two calls). If it lands in a new commit, re-engage for a one-probe r4; at 978e92b2 the tree ships as measured.
+  - Verified and clean in the delta: no other reader of `ownedItem` / `ownedKind`; the inert api returns null (a browser / a host without nativeAudio: `handBack` false, byte-identical); the kind for a chaptered Listen row is 'video' for every `::c` Item; the follow branch's `want` is the Item at the caller's index (or found by id), never the snapshot's.
+  - Tree after this write: `git status --porcelain` = ` M docs/exec-plans/active/2026-10-28-native-video-audio.md` (every seat's blocks); no untracked files; adv3-* sandboxes, adv-probes/p4-p6.test.js + p45-r3.out, adv3-mutants.js/.log/.out in the session scratchpad.
+
+### Close-out
+
+- Gate closed: adversary, qa and security-brief APPROVED r3 @978e92b2 (Dean chose the quick round 3 over shipping on the evidence,
+  2026-10-28). The adversary's r3 WARNING A-r3-W1 is a disclosed test-only gap (mutant O2; the tree measured correct on both of its
+  scenarios): recorded in ROADMAP Planned as a test follow-up, not applied (the tree must not move past the approval).
+- The commits after 978e92b2 are release bookkeeping only (the version fields, docs/releases.json, ROADMAP.md, docs/DEVICE-CHECKS.md,
+  the LESSONS section 8 line, this plan's move to completed/, docs/references/ios-host.md's link to it, and the comment lines in
+  public/js/host-adapter.js, native-audio.js, player.js and three test headers that name the plan's path - the path update
+  RELEASING.md step 1 prescribes); bound in the next docs commit with `git diff --name-only 978e92b2..HEAD` and the release suites.
+- W5: the final schema sha is 37c97c05 (the description text; fields unchanged since W1's b44cbb91) - sent to the FileTube Root with
+  the tag.
+
+### Final verdicts (the seats' own lines above are newest first; restated here last so the marker reads the close)
+
+  - Gate: APPROVED r3 @978e92b2 - security-brief
+  - Gate: APPROVED r3 @978e92b2 - qa
+  - Gate: APPROVED r3 @978e92b2 - adversary

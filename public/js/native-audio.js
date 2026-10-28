@@ -64,7 +64,7 @@
   // contract Item, or null when it is not a music / podcast load. The views hand the SAME builder's output to the queue provider,
   // so the load and its queue cannot drift. src is always the iOS-playable file route of the FILE (a chapter row's parent);
   // artworkSrc is one of the media-token art routes (a library track's /thumbnail art is served by /albumart too).
-  // v1.398.0 (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V2b + V4 + S2 + S6): with `opts.video` (the host
+  // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V2b + V4 + S2 + S6): with `opts.video` (the host
   // announces `nativeVideoAudio`) a Listen row - a VIDEO played as audio from the watch page (`listen: true`), one row per chapter
   // for a chaptered video - is a `video` Item: the whole file's iOS-playable rendition at /api/offline/file/video/<file>, its
   // /thumbnail art (omitted when the video has none), progress at /api/progress under the file id, a chapter row as the file plus

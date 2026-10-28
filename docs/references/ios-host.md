@@ -112,7 +112,7 @@ What v1.398.0 ships: the engine of v1.397.0 accepts two more Item kinds, `video`
 plan); a Listen row (a video played as audio from Music, chapters included) plays natively like a song and tapping Watch takes the
 video back to the web player at the sound's position; the media token reaches the two video file routes and the two art routes; the
 device token posts TV progress. A video that is watched and then backgrounded keeps the v1.397.0 sidecar. The FileTube half is [the
-native-video-audio plan](../exec-plans/active/2026-10-28-native-video-audio.md); details: [native-bridge.md](native-bridge.md)
+native-video-audio plan](../exec-plans/completed/2026-10-28-native-video-audio.md); details: [native-bridge.md](native-bridge.md)
 sections 1, 3 and 5.
 
 ## Addendum 2026-10-28 (v1.397.0): the native audio engine, nine capabilities

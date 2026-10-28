@@ -491,7 +491,7 @@ test('gate r1 qa C1: a Listen row (a VIDEO played as audio from the watch page) 
   } finally { r.close(); }
 });
 
-// v1.398.0 native video audio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V2b / V10 / S1 / S6 / S8): with
+// v1.398.0 native video audio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V2b / V10 / S1 / S6 / S8): with
 // nativeVideoAudio announced beside nativeAudio, a Listen row rides into native as a video Item.
 const VIDEO_CAPS = { capabilities: ['nativeAudio', 'nativeVideoAudio'] };
 const LISTEN_ROW = { id: 'vid1', listen: true, source: 'library', title: 'A talk', artist: 'Ch', album: '', albumKey: '', durationSec: 600, streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' };

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.398.0 native video audio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md): the contract AT THE PLAYER.
+// [UNIT] v1.398.0 native video audio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md): the contract AT THE PLAYER.
 // Step 0's red-first test asked for the BACKGROUND HANDOFF (V2a / V7: a playing video that backgrounds posts audio.load with a
 // video Item and the sidecar is never played); it went red at 59245046 (1 fail, 2 pass). The iOS Root's spike then FAILED (the
 // audio session cannot be activated from a backgrounded app, OSStatus 560557684 '!int'), the stop rule fired and Dean chose a

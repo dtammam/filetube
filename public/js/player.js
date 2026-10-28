@@ -1135,7 +1135,7 @@ function nativeAudioApi() {
   return (n && n.enabled) ? n : null;
 }
 function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
-// v1.398.0 (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
+// v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
 // Gate r1 (adversary A-W1): only a load that DESCRIBES the media hands back (`data.type` is a string: the watch page's full
