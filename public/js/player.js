@@ -1126,7 +1126,7 @@ function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId, listComplete)
 // an episode streams /episode/, a track /track/; a media id is a `video` to the library and a `track` to Music, so both
 // are tried. Never for a 360 video (vr-view.js's texImage2D would be tainted by a cross-origin source) and never for a
 // book chapter (not an offline item). The URL is used ONLY as the media element's src.
-// v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md): the ONE door to the native engine.
+// v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md): the ONE door to the native engine.
 // public/js/native-audio.js claims a music / podcast load at the setupForMedia choke point (nothing is set on the element;
 // the element becomes a proxy of native's state) and every stand-down below asks nativeActive() first. With no host, or a
 // host without the capability, the api is absent or inert and every call here is a no-op (D10).
@@ -3357,7 +3357,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function setupMediaSession(id, channelName, title) {
     currentChannelName = channelName || '';
-    if (nativeActive()) { clearMediaSessionForNative(); return; } // v1.397.0: the lock screen is native's
+    if (nativeActive()) { clearMediaSessionForNative(); msTransportCleared = true; return; } // v1.397.0: the lock screen is native's
+    if (msTransportCleared) { msTransportCleared = false; registerMediaSessionTransport(); } // v1.397.0 (W-B): the web element plays again - its lock-screen transport returns
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
     try {
       // v1.38.0: prefer an explicit artUrl (a book cover) for the lock-screen
@@ -3582,23 +3583,29 @@ if (typeof module !== 'undefined' && module.exports) {
       el.currentTime = seekTime;
     }
   }
-  setMediaSessionAction('play', function () { playActiveMedia(); });
-  setMediaSessionAction('pause', function () { pauseActiveMedia(); });
-  setMediaSessionAction('seekto', function (details) {
-    if (details == null) return;
-    seekActiveMedia(details.seekTime, details.fastSeek);
-  });
-  // Reuse the EXISTING skip() (below) rather than duplicating its
-  // liveMode/clamping/progress-save behavior here. skip() itself is
-  // activeMediaElement()-aware (v1.27.0), so this needs no extra guard.
-  setMediaSessionAction('seekbackward', function (details) {
-    if (!mediaPlayer) return;
-    skip(-((details && details.seekOffset) || SKIP_SECONDS));
-  });
-  setMediaSessionAction('seekforward', function (details) {
-    if (!mediaPlayer) return;
-    skip((details && details.seekOffset) || SKIP_SECONDS);
-  });
+  // v1.397.0 (gate r1 adversary W-B): registered once at creation AND again after a native session cleared them (the first
+  // web load after native plays - setupMediaSession calls this back when the clear flag is up).
+  var msTransportCleared = false;
+  function registerMediaSessionTransport() {
+    setMediaSessionAction('play', function () { playActiveMedia(); });
+    setMediaSessionAction('pause', function () { pauseActiveMedia(); });
+    setMediaSessionAction('seekto', function (details) {
+      if (details == null) return;
+      seekActiveMedia(details.seekTime, details.fastSeek);
+    });
+    // Reuse the EXISTING skip() (below) rather than duplicating its
+    // liveMode/clamping/progress-save behavior here. skip() itself is
+    // activeMediaElement()-aware (v1.27.0), so this needs no extra guard.
+    setMediaSessionAction('seekbackward', function (details) {
+      if (!mediaPlayer) return;
+      skip(-((details && details.seekOffset) || SKIP_SECONDS));
+    });
+    setMediaSessionAction('seekforward', function (details) {
+      if (!mediaPlayer) return;
+      skip((details && details.seekOffset) || SKIP_SECONDS);
+    });
+  }
+  registerMediaSessionTransport();
   // v1.39.0: previous/next TRACK is now wireable via `setTrackNav()` (below).
   // The persistent player has no ordered-neighbor model of its own, so a caller
   // that HAS one -- read.js registers prev/next CHAPTER for book narration --
@@ -3800,6 +3807,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function releaseAudioSession() {
     stopBgKeepAlive(); // v1.161.3: a force-close/terminal teardown must stop the (silent) keep-alive too - the v1.25.x "a killed app must not keep audio alive" law
+    if (nativeActive()) return; // v1.397.0 (gate r1 adversary W-A): native keeps playing across a navigation (native-bridge.md section 6); the next page adopts it
     pauseSuppressingHandoff(mediaPlayer);
     if (bgAudioEl) {
       try { bgAudioEl.pause(); } catch (_) { /* best-effort only -- page is unloading */ }
@@ -6321,6 +6329,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function handleResumePlayback(gen, id) {
     if (gen !== loadGeneration || awaitingTranscode) return;
+    // v1.397.0: a FOLLOW (native advanced to this item on its own, or the page adopted what native already plays): native is
+    // already where it should be - no progress read, no seek, no autostart (gate r1 adversary S-A: an autostart here was the
+    // extra audio.play; a resume read would have yanked native to the stored position)
+    var naf = nativeAudioApi();
+    if (naf && typeof naf.lastClaimFollowed === 'function' && naf.lastClaimFollowed()) { savedProgress = 0; return; }
     // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): read the PER-LOAD
     // snapshot captured at load START (`loadAutoplayAdvance`), NOT the
     // module-level `autoplayAdvancePending` global -- the global is already

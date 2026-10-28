@@ -1499,6 +1499,17 @@ if (typeof module !== 'undefined' && module.exports) {
           playAt(k, { keepPosition: true, skipVerify: true }); // a FOLLOW: the choke point sees native already there and posts nothing
         },
         onAppend: function (items, source) { if (!signal.aborted) appendNativeItems(items, source); },
+        // a fresh page while native plays on (native-bridge.md section 6): the queue becomes native's Items as rows and the
+        // playing one loads as a FOLLOW (nothing posted; the dock shows it; the web's resume / autostart are skipped)
+        adopt: function (items, index) {
+          if (signal.aborted || !Array.isArray(items) || !items.length) return false;
+          var rows = [];
+          for (var k = 0; k < items.length; k++) { var r = rowFromNativeItem(items[k]); if (!r) return false; rows.push(r); }
+          var at = (index >= 0 && index < rows.length) ? index : 0;
+          queue = rows; queueCtx = null; queueCtxEncoded = ''; flatQueue = null;
+          playAt(at, { keepPosition: true, skipVerify: true });
+          return true;
+        },
         modes: function () {
           var pl = window.FileTube && window.FileTube.player;
           var loopOn = false;
@@ -4592,7 +4603,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // the provider of the WHOLE queue (the same builder, per row), which native-audio.js turns into Items. A browser, or a
         // host without nativeAudio, never reads either (the player's choke point asks native-audio.js, which is inert there).
         radioSeed: item.listen ? undefined : stationSeedFor(item),
-        nativeQueue: forQueue ? undefined : function () { return nativeQueueProvider(item, i); },
+        // A Listen row (a VIDEO played as audio from the watch page, v1.252) is not music to native: its id is a video the
+        // audio file route cannot serve (gate r1 qa C1), so it carries no queue and stays on the web element (D2).
+        listen: !!item.listen,
+        nativeQueue: (forQueue || item.listen) ? undefined : function () { return nativeQueueProvider(item, i); },
       };
       return data;
     }

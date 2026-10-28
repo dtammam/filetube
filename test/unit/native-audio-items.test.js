@@ -23,6 +23,11 @@ test('itemFromDescriptor: a native music track, a library audio file (its /thumb
   assert.strictEqual(NA.itemFromDescriptor({ id: 'f::c2', type: 'audio', title: 'x', resumeMode: 'music', chapterStartSec: 20 }).clip, undefined);
 });
 
+test('itemFromDescriptor refuses a Listen row (a video played as audio from the watch page; gate r1 qa C1)', () => {
+  assert.strictEqual(NA.itemFromDescriptor({ id: 'vid1', type: 'audio', title: 'Talk', resumeMode: 'music', listen: true, streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }), null);
+  assert.ok(NA.itemFromDescriptor({ id: 'vid1', type: 'audio', title: 'Talk', resumeMode: 'music', listen: false, streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }), 'the same row without the flag maps (library audio)');
+});
+
 test('itemFromDescriptor refuses what native does not play: a video, a book\'s audio (no resumeMode), the Feed\'s audio (resumeMode is music but it never calls this: still, a missing id or type is null)', () => {
   assert.strictEqual(NA.itemFromDescriptor({ id: 'v', type: 'video', resumeMode: 'music' }), null);
   assert.strictEqual(NA.itemFromDescriptor({ id: 'b', type: 'audio', streamSrc: '/book/b/tts/1', suppressProgress: true }), null, 'reader audio has no resumeMode');
@@ -31,9 +36,11 @@ test('itemFromDescriptor refuses what native does not play: a video, a book\'s a
   assert.strictEqual(NA.itemFromDescriptor({ id: 'x', type: 'audio', resumeMode: 'tv' }), null);
 });
 
-test('itemFromQueueEntry: a track, a podcast and an audio media entry map; a video media entry and a malformed entry do not', () => {
-  assert.deepStrictEqual(NA.itemFromQueueEntry({ uid: 'u1', mediaId: 't1', kind: 'track', item: { title: 'S', artist: 'A', album: 'B', artId: 'art', durationSec: 100 } }), { kind: 'track', id: 't1', src: '/api/offline/file/track/t1', title: 'S', artist: 'A', album: 'B', artworkSrc: '/albumart/art', durationSec: 100, progress: { route: '/api/music/progress', key: 't1' }, radioSeed: 'track:t1' });
-  assert.deepStrictEqual(NA.itemFromQueueEntry({ uid: 'u2', mediaId: 'e1', kind: 'podcast', item: { title: 'E', showName: 'Show', subId: 's1', durationSec: 50 } }), { kind: 'podcastEpisode', id: 'e1', src: '/api/offline/file/podcastEpisode/e1', title: 'E', artist: 'Show', artworkSrc: '/podcastart/s1', durationSec: 50, progress: { route: '/api/podcasts/progress', key: 'e1' } });
+test('itemFromQueueEntry: a track, a podcast and an audio media entry map (the REAL shapedQueue fields: channelName, folderName, artUrl, durationSec - lib/queue/routes.js); a video media entry and a malformed entry do not', () => {
+  assert.deepStrictEqual(NA.itemFromQueueEntry({ uid: 'u1', mediaId: 't1', kind: 'track', item: { title: 'S', name: 'S', channelName: 'A', folderName: 'B', artUrl: '/albumart/art?s=256&v=3', durationSec: 100, hasThumbnail: false } }), { kind: 'track', id: 't1', src: '/api/offline/file/track/t1', title: 'S', artist: 'A', album: 'B', artworkSrc: '/albumart/art?s=256&v=3', durationSec: 100, progress: { route: '/api/music/progress', key: 't1' }, radioSeed: 'track:t1' });
+  assert.deepStrictEqual(NA.itemFromQueueEntry({ uid: 'u2', mediaId: 'e1', kind: 'podcast', item: { title: 'E', name: 'E', channelName: 'Show', folderName: 'Show', artUrl: '/podcastart/s1', durationSec: 50, hasThumbnail: false } }), { kind: 'podcastEpisode', id: 'e1', src: '/api/offline/file/podcastEpisode/e1', title: 'E', artist: 'Show', artworkSrc: '/podcastart/s1', durationSec: 50, progress: { route: '/api/podcasts/progress', key: 'e1' } });
+  assert.strictEqual(NA.itemFromQueueEntry({ uid: 'u2b', mediaId: 'e2', kind: 'podcast', item: { title: 'E2', channelName: null, artUrl: '/thumbnail/x', durationSec: null } }).artworkSrc, undefined, 'an art URL outside the two media-token art routes is dropped');
+  assert.strictEqual(NA.itemFromQueueEntry({ uid: 'u1b', mediaId: 't9', kind: 'track', item: { title: 'T', channelName: null, folderName: null, artUrl: null, durationSec: null } }).artworkSrc, '/albumart/t9', 'a track with no served art falls back to its own id');
   assert.deepStrictEqual(NA.itemFromQueueEntry({ uid: 'u3', mediaId: 'aud', kind: 'media', item: { type: 'audio', title: 'Talk', channelName: 'Sp', duration: 90 } }), { kind: 'track', id: 'aud', src: '/api/offline/file/track/aud', title: 'Talk', artist: 'Sp', album: '', artworkSrc: '/albumart/aud', durationSec: 90, progress: { route: '/api/progress', key: 'aud' } });
   assert.strictEqual(NA.itemFromQueueEntry({ uid: 'u4', mediaId: 'v1', kind: 'media', item: { type: 'video' } }), null, 'a video stays on the web');
   assert.strictEqual(NA.itemFromQueueEntry({ uid: 'u5', kind: 'track' }), null);

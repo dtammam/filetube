@@ -163,6 +163,13 @@ test('scope: mt is accepted on GET / HEAD of the audio file route (track, podcas
   // an empty mt is still "a request carrying mt": refused, never a fall-through to the cookie
   const empty = await asCookie(kid.cookie, `/albumart/${tracks.ok.id}?mt=`);
   assert.strictEqual(empty.status, 401);
+  // the array form (?mt=a&mt=b) is "a request carrying mt" too: refused, never the cookie (gate r1 adversary S-B)
+  const arr = await asCookie(kid.cookie, `/albumart/${tracks.ok.id}?mt=${encodeURIComponent(mt)}&mt=x`);
+  assert.strictEqual(arr.status, 401);
+  // ... nor to the Shortcut's X-FileTube-Token (gate r1: the mt branch is judged before EVERY other credential, that one included)
+  const viaShortcut = await bare(withMt('/api/ytdlp/download', mt), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-FileTube-Token': 'whatever' }, body: '{}' });
+  assert.strictEqual(viaShortcut.status, 401);
+  assert.deepStrictEqual(await viaShortcut.json(), { error: 'media token not accepted here', mediaTokenScope: true });
 });
 
 test('liveness (D14): an expired token and a token that never existed answer the SAME 401 mediaTokenExpired (native re-mints); a revoked, epoch-stale (password change / Remove all) or disabled device answers 401 deviceRevoked; the next mint works again after re-pairing', async () => {

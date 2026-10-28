@@ -25,7 +25,7 @@ const CHAPTERS = [
   { id: 'f::c1', source: 'library-chapter', chapterStartSec: 30, durationSec: 65, streamSrc: '/video/f', progressEndpoint: '/api/progress', artUrl: '/thumbnail/f', title: 'Two', artist: 'Sp', album: 'Talk', albumKey: 'Sp\u001fTalk' },
 ];
 
-function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localhost/music?play=t2&ao=1', items = SONGS, progress = {} } = {}) {
+function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localhost/music?play=t2&ao=1', items = SONGS, progress = {}, queue = null } = {}) {
   const vc = new VirtualConsole();
   const errors = [];
   vc.on('jsdomError', (e) => errors.push(String((e && e.stack) || e)));
@@ -40,8 +40,8 @@ function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localho
   w.resolveAudioArtUrl = () => '/albumart/x';
   w.formatDuration = (s) => String(Math.floor(s || 0));
   w.clampPositionState = (s) => s;
-  const msActions = [];
-  w.navigator.mediaSession = { metadata: null, playbackState: 'none', setActionHandler(a, h) { msActions.push([a, h === null ? null : typeof h]); }, setPositionState() {} };
+  const msActions = [], msState = [], msPos = [];
+  w.navigator.mediaSession = { metadata: null, _pb: 'none', get playbackState() { return this._pb; }, set playbackState(v) { this._pb = v; msState.push(v); }, setActionHandler(a, h) { msActions.push([a, h === null ? null : typeof h]); }, setPositionState(p) { msPos.push(p); } };
   w.MediaMetadata = function (init) { Object.assign(this, init); };
   const calls = [];
   w.fetch = (u, init) => {
@@ -49,8 +49,9 @@ function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localho
     calls.push(method + ' ' + url);
     let body = {};
     if (/^\/api\/music\/progress\/|^\/api\/progress\//.test(url)) body = { position: progress[url.split('/').pop()] || 0 };
+    else if (/^\/api\/videos\/vid1$/.test(url)) body = { id: 'vid1', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, chapters: [] }; // the Listen row's video
     else if (url.indexOf('/api/music') === 0) body = { items, total: items.length };
-    else if (url.indexOf('/api/queue') === 0) body = { entries: [], pointerUid: null };
+    else if (url.indexOf('/api/queue') === 0) body = queue ? (typeof queue === 'function' ? queue() : queue) : { entries: [], pointerUid: null };
     else if (url.indexOf('/api/music/radio') === 0) body = { items: [] };
     return Promise.resolve({ ok: true, status: 200, json: async () => body });
   };
@@ -67,7 +68,7 @@ function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localho
   const snap = (over) => { const ld = lastLoad(); return Object.assign({ v: 1, type: 'audioState', rev: ld.rev, queue: ld.queue, index: ld.index, state: 'playing', positionSec: 0, durationSec: 100, rate: 1, modes: ld.modes, sleep: { mode: 'off' } }, over || {}); };
   const tick = (positionSec, rev) => ({ v: 1, type: 'audioTick', rev: rev === undefined ? lastLoad().rev : rev, positionSec });
   const own = (name) => Object.getOwnPropertyDescriptor(el(), name) !== undefined;
-  return { w, fake, calls, protoPlays, msActions, errors, mod, player: w.FileTube.player, na: w.FileTube.nativeAudio, el, lastLoad, snap, tick, own, slot: w.document.getElementById('player-slot'), close: () => { try { mod.destroy(); } catch (_) { /* best-effort */ } w.close(); } };
+  return { w, fake, calls, protoPlays, msActions, msState, msPos, errors, mod, player: w.FileTube.player, na: w.FileTube.nativeAudio, el, lastLoad, snap, tick, own, slot: w.document.getElementById('player-slot'), close: () => { try { mod.destroy(); } catch (_) { /* best-effort */ } w.close(); } };
 }
 
 test('the Music view\'s load goes to native: ONE audio.load with the whole album queue at the tapped index, the element has no src and is a proxy; the web\'s resume decides autoplay (audio.play after the progress read)', async () => {
@@ -169,6 +170,8 @@ test('FOLLOW: native advances (index + 1) -> the view loads that row with NO new
     assert.strictEqual(r.player.currentId, 't3');
     assert.strictEqual(r.fake.of('audio.load').length, before.loads, 'a follow posts no load');
     assert.strictEqual(r.fake.of('audio.jump').length, before.jumps, 'a follow posts no jump');
+    assert.deepStrictEqual(r.fake.of('audio.pause'), [], 'the follow\'s teardown never pauses native (beginLoad / transitioning)');
+    assert.deepStrictEqual(r.calls.filter((c) => /^GET \/api\/music\/progress\/t3/.test(c)), [], 'a follow reads no progress and seeks nothing (native is already there)');
     assert.strictEqual(r.player.getRemoteSnapshot().hasNext, false, 't3 is the last row');
     // native appended two radio picks: the web mirrors them (t3 is no longer last) and does not re-send the queue
     const ld = r.lastLoad();
@@ -185,6 +188,130 @@ test('FOLLOW: native advances (index + 1) -> the view loads that row with NO new
     assert.strictEqual(jumps[jumps.length - 1].index, 3, 'to the first pick');
     assert.strictEqual(r.player.currentId, 'r1');
     assert.strictEqual(r.fake.of('audio.load').length, before.loads, 'a pick within the known queue is a jump, not a load');
+    // gate r1 adversary S-A: a same-rev snapshot of the item we just LEFT, arriving late, is not read as "native went back"
+    const late = r.snap({ index: 2, positionSec: 41, queue: ld.queue.concat(picks) });
+    r.fake.emit(late);
+    await settle(80);
+    assert.strictEqual(r.player.currentId, 'r1', 'the late snapshot of t3 did not drag the view back');
+    r.fake.emit(r.snap({ index: 3, positionSec: 1, queue: ld.queue.concat(picks) }));
+    await settle(40);
+    assert.ok(Math.abs(r.el().currentTime - 1) < 0.3, 'the first snapshot of the jumped-to item is trusted (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('gate r1 adversary W-A: a TERMINAL pagehide (persisted false) releases the subscription but never pauses native (audio keeps playing across a navigation); a persisted one only unsubscribes', async () => {
+  const r = realm();
+  try {
+    await settle(80);
+    r.fake.emit(r.snap({ positionSec: 30 }));
+    await settle(20);
+    const PH = r.w.PageTransitionEvent || r.w.Event;
+    let ev; try { ev = new r.w.PageTransitionEvent('pagehide', { persisted: false }); } catch (_) { ev = new r.w.Event('pagehide'); Object.defineProperty(ev, 'persisted', { value: false }); }
+    r.w.dispatchEvent(ev);
+    await settle(40);
+    assert.strictEqual(r.fake.of('audio.unsubscribe').length, 1, 'the subscription is released');
+    assert.deepStrictEqual(r.fake.of('audio.pause'), [], 'never audio.pause on a navigation');
+    assert.deepStrictEqual(r.fake.of('audio.stop'), [], 'never audio.stop either');
+    assert.strictEqual(r.el().paused, false, 'the proxy still reads playing');
+    assert.ok(PH);
+  } finally { r.close(); }
+});
+
+test('gate r1 adversary W-B + W-C: under native the web writes no MediaSession playbackState or position; after the next WEB load (a video) the lock-screen transport handlers are functions again and no proxy property is left on the element', async () => {
+  const r = realm();
+  try {
+    await settle(80);
+    const pb0 = r.msState.length, pos0 = r.msPos.length;
+    r.fake.emit(r.snap({ positionSec: 30 }));
+    for (let i = 31; i < 36; i++) r.fake.emit(r.tick(i));
+    r.fake.emit(r.snap({ state: 'paused', positionSec: 36 }));
+    r.player.play(); r.player.pause();
+    await settle(80);
+    assert.strictEqual(r.msState.length, pb0, 'no playbackState write under native (play / pause events, ticks): ' + JSON.stringify(r.msState.slice(pb0)));
+    assert.strictEqual(r.msPos.length, pos0, 'no setPositionState under native');
+    const PROPS = ['currentTime', 'duration', 'paused', 'ended', 'playbackRate', 'defaultPlaybackRate', 'readyState', 'buffered', 'seeking', 'play', 'pause'];
+    assert.deepStrictEqual(PROPS.filter((k) => Object.prototype.hasOwnProperty.call(r.el(), k)), PROPS, 'all eleven proxy properties are own while native owns the load');
+    r.player.load('v1', { type: 'video', title: 'V', channelName: 'C' }, { slot: r.slot });
+    await settle(60);
+    const el = r.el();
+    assert.deepStrictEqual(PROPS.filter((k) => Object.prototype.hasOwnProperty.call(el, k)), [], 'none left after the hand-back');
+    assert.strictEqual(el.play, r.w.HTMLMediaElement.prototype.play, 'the real play() is back');
+    const last = {};
+    for (const [a, h] of r.msActions) last[a] = h;
+    for (const a of ['play', 'pause', 'seekto', 'seekbackward', 'seekforward']) assert.strictEqual(last[a], 'function', a + ' is registered again for the web element: ' + JSON.stringify(last));
+    assert.ok(r.msState.length > pb0, 'the web element\'s own playbackState writes resume');
+  } finally { r.close(); }
+});
+
+test('gate r1 adversary W-C: a solo chapter tap (a row of a chaptered file with a later chapter) under native primes no radio and never jumps at the chapter end (native ends the clip); S-B: the position never extrapolates past the clip', async () => {
+  const r = realm({ url: 'http://localhost/music?play=f%3A%3Ac1&ao=1', items: CHAPTERS });
+  try {
+    await settle(80);
+    const row = r.w.document.querySelector('.music-song-row[data-index="0"]');
+    assert.ok(row, 'the first chapter row is rendered');
+    row.click();
+    await settle(80);
+    assert.strictEqual(r.player.currentId, 'f::c0', 'the tap loaded chapter 0 (a solo select: a later chapter exists)');
+    const jumps = r.fake.of('audio.jump').length, seeks = r.fake.of('audio.seek').length;
+    r.fake.emit(r.snap({ index: 0, positionSec: 29, durationSec: 30 }));
+    for (const p of [29.5, 29.8, 29.95, 30]) { r.fake.emit(r.tick(p)); await settle(5); }
+    await settle(400);
+    assert.strictEqual(r.fake.of('audio.jump').length, jumps, 'no web jump at the solo chapter\'s end');
+    assert.strictEqual(r.fake.of('audio.seek').length, seeks, 'no web seek either');
+    assert.deepStrictEqual(r.calls.filter((c) => /\/api\/music\/radio/.test(c)), [], 'the solo exit station is never primed under native');
+    assert.ok(r.el().currentTime <= 30.0001, 'the extrapolated position is clamped to the clip end (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('gate r1 adversary S-B: a stale tick is dropped; an idle (lost-queue) native makes the next pick a LOAD, not a jump; setSleep posts the contract shapes; an ALAC row under native never prewarms /track', async () => {
+  const r = realm({ items: SONGS.map((s, i) => (i === 2 ? Object.assign({}, s, { needsTranscode: true }) : s)) });
+  try {
+    await settle(80);
+    r.fake.emit(r.snap({ positionSec: 20 }));
+    r.fake.emit({ v: 1, type: 'audioTick', rev: 0, positionSec: 90 });
+    await settle(20);
+    assert.ok(r.el().currentTime < 30, 'a rev-0 tick is stale: ' + r.el().currentTime);
+    assert.strictEqual(r.na.setSleep('minutes', 15), true);
+    assert.deepStrictEqual(r.fake.of('audio.sleep').pop(), { v: 1, type: 'audio.sleep', mode: 'minutes', minutes: 15 });
+    r.na.setSleep('endOfItem');
+    assert.deepStrictEqual(r.fake.of('audio.sleep').pop(), { v: 1, type: 'audio.sleep', mode: 'endOfItem' });
+    r.na.setSleep('off');
+    assert.deepStrictEqual(r.fake.of('audio.sleep').pop(), { v: 1, type: 'audio.sleep', mode: 'off' });
+    // native lost its queue; the user picks the ALAC row (index 2): a LOAD (native has nothing to jump within), and no /track prewarm
+    r.fake.emit({ v: 1, type: 'audioState', rev: 0, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(20);
+    const loads0 = r.fake.of('audio.load').length, jumps0 = r.fake.of('audio.jump').length;
+    r.player.next();
+    await settle(120);
+    assert.strictEqual(r.player.currentId, 't3');
+    assert.strictEqual(r.fake.of('audio.jump').length, jumps0, 'no jump into a queue native no longer holds');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0 + 1, 'the queue is re-sent');
+    assert.deepStrictEqual(r.calls.filter((c) => /^GET \/track\//.test(c)), [], 'no ALAC prewarm of /track under native');
+  } finally { r.close(); }
+});
+
+test('gate r1 adversary W-A (adoption): a fresh Music page while native already plays - the first snapshot makes the view adopt native\'s queue (its rows, the playing one as a FOLLOW): the dock shows it, nothing is posted, the web\'s resume / autostart stay silent, and the next load counts up from native\'s rev', async () => {
+  const r = realm({ url: 'http://localhost/music' });
+  try {
+    await settle(80);
+    assert.strictEqual(r.player.currentId, null, 'nothing loaded on a plain /music');
+    const queue = [1, 2, 3].map((n) => ({ kind: 'track', id: 'n' + n, src: '/api/offline/file/track/n' + n, title: 'Native ' + n, artist: 'NA', album: 'NB', artworkSrc: '/albumart/n' + n, durationSec: 120, progress: { route: '/api/music/progress', key: 'n' + n }, radioSeed: 'track:n' + n }));
+    r.fake.emit({ v: 1, type: 'audioState', rev: 5, queue, index: 1, state: 'paused', positionSec: 44, durationSec: 120, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'n2', 'the view adopted the playing item: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(r.fake.types().filter((t) => t.indexOf('audio.') === 0 && t !== 'audio.subscribe'), [], 'a follow: nothing posted (no load, no play, no seek)');
+    assert.strictEqual(r.el().paused, true, 'paused, as native reported');
+    assert.ok(Math.abs(r.el().currentTime - 44) < 0.3);
+    assert.strictEqual(r.player.getState(), 'docked', 'the mini player shows it');
+    assert.strictEqual(r.player.getRemoteSnapshot().hasNext, true, 'the queue is native\'s');
+    r.player.next();
+    await settle(100);
+    assert.strictEqual(r.fake.of('audio.jump').pop().index, 2, 'Next jumps within native\'s queue');
+    r.fake.emit({ v: 1, type: 'audioState', rev: 5, queue, index: 2, state: 'playing', positionSec: 0, durationSec: 120, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(60);
+    r.player.load('v1', { type: 'video', title: 'V' }, { slot: r.slot });
+    await settle(30);
+    assert.strictEqual(r.fake.of('audio.stop').length, 1);
   } finally { r.close(); }
 });
 
@@ -308,6 +435,84 @@ test('D10: no host - the same view load sets the stream src, posts nothing, inst
     assert.deepEqual(r.na.sleep(), { mode: 'off' });
     assert.strictEqual(r.na.syncQueue(), false);
     assert.strictEqual(r.na.setSleep('minutes', 10), false);
+  } finally { r.close(); }
+});
+
+test('gate r1 qa C1: a Listen row (a VIDEO played as audio from the watch page) stays on the web element - native is stopped, the element gets its src, nothing is claimed', async () => {
+  const r = realm({ url: 'http://localhost/music?play=vid1&listen=1', items: [{ id: 'vid1', listen: true, source: 'library', title: 'A talk', artist: 'Ch', album: '', albumKey: '', durationSec: 600, streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' }] });
+  try {
+    await settle(120);
+    assert.strictEqual(r.player.currentId, 'vid1', 'the listen row loaded: ' + JSON.stringify(r.errors));
+    assert.strictEqual(r.el().getAttribute('src'), '/video/vid1', 'the web element plays the video\'s audio, as today');
+    assert.deepStrictEqual(r.fake.of('audio.load'), [], 'never claimed: the audio file route cannot serve a video id');
+    assert.strictEqual(r.own('currentTime'), false);
+    assert.strictEqual(r.na.active(), false);
+  } finally { r.close(); }
+});
+
+const SHAPED_QUEUE = (pointerUid) => ({ pointerUid, entries: [
+  { uid: 'u-t2', mediaId: 't2', kind: 'track', item: { title: 'Song 2', name: 'Song 2', channelName: 'A', folderName: 'B', artUrl: '/albumart/art2?s=256&v=7', durationSec: 100, hasThumbnail: false } },
+  { uid: 'u-q1', mediaId: 'q1', kind: 'track', item: { title: 'Queued One', name: 'Queued One', channelName: 'QA', folderName: 'QB', artUrl: '/albumart/artq1?s=256', durationSec: 77, hasThumbnail: false } },
+  { uid: 'u-e1', mediaId: 'e1', kind: 'podcast', item: { title: 'An episode', name: 'An episode', channelName: 'The Show', folderName: 'The Show', artUrl: '/podcastart/sub1', durationSec: 1800, hasThumbnail: false } },
+  { uid: 'u-q2', mediaId: 'q2', kind: 'track', item: { title: 'Queued Two', name: 'Queued Two', channelName: 'QA', folderName: 'QB', artUrl: '/albumart/artq2?s=256', durationSec: 66, hasThumbnail: false } },
+] });
+
+test('gate r1 qa W1 + W2 (D12): the server Up-next queue in its REAL shape - the track entries after the pointer join the Item list (artist from channelName, album from folderName, the art URL as served) in one more audio.load at the same index and position; a podcast entry (another kind) is left out; the web mirrors the rows and posts the pointer when native reaches one', async () => {
+  const r = realm({ queue: SHAPED_QUEUE('u-t2') });
+  try {
+    await settle(150);
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 2, 'the view load, then the flattened queue: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(loads[1].queue.map((it) => it.id), ['t1', 't2', 't3', 'q1', 'q2'], 'the two track entries after the pointer, never the podcast');
+    assert.strictEqual(loads[1].index, 1);
+    assert.strictEqual(loads[1].rev, 2);
+    // the re-sent queue is the VIEW's (the rows it mirrored, rebuilt through its own descriptor builder), so the entry's
+    // artist / album / duration come from the real shapedQueue fields and the art is the track's own album art route
+    const q1 = loads[1].queue[3];
+    assert.deepStrictEqual({ kind: q1.kind, id: q1.id, src: q1.src, title: q1.title, artist: q1.artist, album: q1.album, durationSec: q1.durationSec, progress: q1.progress, radioSeed: q1.radioSeed }, { kind: 'track', id: 'q1', src: '/api/offline/file/track/q1', title: 'Queued One', artist: 'QA', album: 'QB', durationSec: 77, progress: { route: '/api/music/progress', key: 'q1' }, radioSeed: 'track:q1' }, 'the real shapedQueue fields');
+    assert.match(q1.artworkSrc, /^\/albumart\//);
+    assert.strictEqual(r.player.getRemoteSnapshot().hasNext, true, 'the web mirrored them: t2 has a Next beyond t3');
+    // native reaches q1: the pointer follows (POST /api/queue/pointer with ITS uid), and the view follows the item
+    r.fake.emit(r.snap({ index: 3, positionSec: 0 }));
+    await settle(120);
+    assert.ok(r.calls.includes('POST /api/queue/pointer'), 'the pointer moved: ' + JSON.stringify(r.calls.filter((c) => c.includes('queue'))));
+    assert.strictEqual(r.player.currentId, 'q1');
+  } finally { r.close(); }
+});
+
+test('gate r1 qa (suspicion 2): an engine that lost its queue reports rev 0 idle - the one older-rev snapshot the web accepts - and the next play re-sends the queue; any other older rev is still dropped', async () => {
+  const r = realm();
+  try {
+    await settle(80);
+    r.fake.emit(r.snap({ positionSec: 20 }));
+    await settle(20);
+    r.fake.emit({ v: 1, type: 'audioState', rev: 0, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(20);
+    assert.strictEqual(r.el().paused, true, 'the web learned native is idle');
+    r.player.play();
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 2, 'the queue is re-sent');
+    assert.strictEqual(loads[1].autoplay, true);
+    assert.strictEqual(loads[1].rev, 2);
+    r.fake.emit({ v: 1, type: 'audioState', rev: 0, queue: loads[0].queue, index: 1, state: 'playing', positionSec: 99, durationSec: 100, rate: 1, modes: loads[0].modes, sleep: { mode: 'off' } });
+    await settle(20);
+    assert.ok(r.el().currentTime < 90, 'a rev-0 snapshot that is NOT the lost-queue shape is dropped like any stale one (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('gate r1 qa (suspicion 1): the FIRST snapshot of a load fires loadedmetadata + durationchange on the element (the real duration arrives there), and does not ask the view to follow the item it just loaded', async () => {
+  const r = realm();
+  try {
+    await settle(80);
+    const seen = [];
+    for (const ev of ['loadedmetadata', 'durationchange']) r.el().addEventListener(ev, () => seen.push(ev));
+    const loadsBefore = r.fake.of('audio.load').length;
+    r.fake.emit(r.snap({ positionSec: 0, durationSec: 147 }));
+    await settle(60);
+    assert.ok(seen.includes('loadedmetadata') && seen.includes('durationchange'), 'the dock learned the duration: ' + JSON.stringify(seen));
+    assert.strictEqual(r.el().duration, 147);
+    assert.strictEqual(r.fake.of('audio.load').length, loadsBefore, 'no follow re-load of the item the web itself loaded');
+    assert.strictEqual(r.player.currentId, 't2');
   } finally { r.close(); }
 });
 

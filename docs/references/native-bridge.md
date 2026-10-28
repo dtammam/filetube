@@ -132,7 +132,13 @@ never carry one. **Snapshots:** the web REPLACES its view with every `audioState
 whose `rev` is older than the web's last `audio.load` is dropped. **The server Up-next queue** (`/api/queue`): when it holds entries,
 the web flattens them into the Item list it sends; a queue edit while hosted re-sends `audio.load` (rev + 1) at the current index and
 position; native stays queue-dumb. **Downloaded items:** native looks its own catalogue up by `kind` + `id` and plays the local copy;
-an Item carries no `localSrc`. With no host, or a host without `nativeAudio` (older app builds, browsers, the PWA), nothing changes at all.
+an Item carries no `localSrc`. **What stays on the web element** (the web stops native with `audio.stop` first): video, the
+Feed's cards, a book's read-aloud audio, a library item opened on the watch page, and a Listen row (a video played as audio from
+the watch page: its id is a video's, which the audio file route does not serve). **An engine that lost its queue** (the app's
+audio engine was restarted) reports `audioState { rev: 0, state: 'idle', queue: [] }`; the web accepts that one older-rev snapshot
+and re-sends its queue on the next play. **The Up-next queue:** only entries of the playing Item's kind are flattened (the bound
+view can list and follow those). With no host, or a host without `nativeAudio` (older app builds, browsers, the PWA), nothing
+changes at all.
 
 ## 4. Server side: `/api/host-info`
 

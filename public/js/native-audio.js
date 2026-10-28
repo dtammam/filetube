@@ -1,5 +1,5 @@
 'use strict';
-// v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md): the web half of the `nativeAudio`
+// v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md): the web half of the `nativeAudio`
 // capability (docs/references/native-bridge.md). Loaded on every signed-in shell right after offline.js.
 //
 // With a host that announces `nativeAudio` (the iOS app), MUSIC (native tracks, library audio, chapter rows) and PODCASTS
@@ -66,6 +66,7 @@
   // artworkSrc is one of the two media-token art routes (a library track's /thumbnail art is served by /albumart too).
   function itemFromDescriptor(d) {
     if (!d || typeof d !== 'object' || d.type !== 'audio') return null;
+    if (d.listen === true) return null; // a watch-page Listen row: a video's id, which the audio file route cannot serve (gate r1 qa C1)
     var id = d.id != null ? String(d.id) : '';
     if (!id) return null;
     var podcast = d.resumeMode === 'podcast';
@@ -91,16 +92,19 @@
     if (!podcast && typeof d.radioSeed === 'string' && d.radioSeed) item.radioSeed = d.radioSeed;
     return item;
   }
-  // An Up-next queue entry (GET /api/queue, player.js computeQueueNext) -> an Item, or null for a kind native cannot play.
+  // An Up-next queue entry (GET /api/queue as lib/queue/routes.js shapedQueue emits it: `item` = { title, name, channelName,
+  // folderName, artUrl, durationSec, hasThumbnail } for a track (channelName = artist, folderName = album) and a podcast
+  // (channelName = the show), the media item itself for a library item) -> an Item, or null for a kind native cannot play.
   function itemFromQueueEntry(e) {
     if (!e || typeof e.mediaId !== 'string' || !e.mediaId) return null;
     var it = e.item && typeof e.item === 'object' ? e.item : {};
     var id = e.mediaId;
+    var art = typeof it.artUrl === 'string' && /^\/(albumart|podcastart)\//.test(it.artUrl) ? it.artUrl : null;
     if (e.kind === 'podcast') {
-      return { kind: 'podcastEpisode', id: id, src: FILE_ROUTE + 'podcastEpisode/' + encodeURIComponent(id), title: String(it.title || ''), artist: String(it.showName || it.subtitle || ''), artworkSrc: it.subId ? '/podcastart/' + encodeURIComponent(it.subId) : undefined, durationSec: num(it.durationSec, 0) || undefined, progress: { route: '/api/podcasts/progress', key: id } };
+      return { kind: 'podcastEpisode', id: id, src: FILE_ROUTE + 'podcastEpisode/' + encodeURIComponent(id), title: String(it.title || it.name || ''), artist: String(it.channelName || it.folderName || ''), artworkSrc: art || undefined, durationSec: num(it.durationSec, 0) || undefined, progress: { route: '/api/podcasts/progress', key: id } };
     }
     if (e.kind === 'track') {
-      return { kind: 'track', id: id, src: FILE_ROUTE + 'track/' + encodeURIComponent(id), title: String(it.title || ''), artist: String(it.artist || ''), album: String(it.album || ''), artworkSrc: '/albumart/' + encodeURIComponent(it.artId || id), durationSec: num(it.durationSec, 0) || undefined, progress: { route: '/api/music/progress', key: id }, radioSeed: 'track:' + id };
+      return { kind: 'track', id: id, src: FILE_ROUTE + 'track/' + encodeURIComponent(id), title: String(it.title || it.name || ''), artist: String(it.channelName || ''), album: String(it.folderName || ''), artworkSrc: art || '/albumart/' + encodeURIComponent(id), durationSec: num(it.durationSec, 0) || undefined, progress: { route: '/api/music/progress', key: id }, radioSeed: 'track:' + id };
     }
     if ((e.kind === 'media' || !e.kind) && it.type === 'audio') {
       return { kind: 'track', id: id, src: FILE_ROUTE + 'track/' + encodeURIComponent(id), title: String(it.title || ''), artist: String(it.channelName || (it.tags && it.tags.artist) || ''), album: String((it.tags && it.tags.album) || ''), artworkSrc: '/albumart/' + encodeURIComponent(id), durationSec: num(it.duration, 0) || undefined, progress: { route: '/api/progress', key: id } };
@@ -115,7 +119,7 @@
     if (!enabled) {
       return {
         enabled: false,
-        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, active: function () { return false; },
+        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, active: function () { return false; }, lastClaimFollowed: function () { return false; },
         snapshot: function () { return null; }, position: function () { return 0; }, currentItem: function () { return null; },
         bindView: function () { return noop; }, syncQueue: function () { return false; }, modesChanged: function () { return false; },
         setSleep: function () { return false; }, sleep: function () { return { mode: 'off' }; }, onChange: function () { return noop; },
@@ -138,6 +142,10 @@
     var erroredIds = Object.create(null);
     var queueUids = Object.create(null); // index -> the Up-next entry uid the Item came from (D12: the pointer follows native)
     var seenItemKey = null;
+    var followed = false;    // the last claim was a FOLLOW (native already plays the item): the web skips its resume / autostart
+    var pendingJump = null;  // { key, at } after an audio.jump: snapshots still showing the OLD item are dropped for a moment (S-A)
+    var adoptedRev = -1;     // the snapshot rev the bound view was asked to adopt (once per rev)
+    var JUMP_FENCE_MS = 3000;
 
     function post(type, fields) { try { return host.post(type, fields); } catch (_) { return false; } }
     function fire(type) { if (!el) return; try { el.dispatchEvent(new win.Event(type)); } catch (_) { /* a listener bug never breaks the page */ } }
@@ -261,7 +269,18 @@
     // ---- snapshots ----------------------------------------------------------------------------------------------------
     function itemKey(it) { return it ? it.kind + ':' + it.id + (it.clip ? '@' + num(it.clip.startSec, 0) : '') : ''; }
     function onState(s) {
-      if (num(s.rev, -1) < rev) return; // older than the web's last load: dropped
+      // older than the web's last load: dropped - except native's "I lost my queue" (rev 0, idle, nothing queued), which no
+      // web load ever stamped (rev starts at 1): the web must learn it, so the next play re-sends the queue
+      var lostQueue = num(s.rev, -1) === 0 && s.state === 'idle' && (!Array.isArray(s.queue) || s.queue.length === 0);
+      if (num(s.rev, -1) < rev && !lostQueue) return;
+      if (pendingJump) {
+        // a jump has no sequence of its own: a same-rev snapshot of the item we just left (sent before native took the jump)
+        // must not be read as "native went back" and followed (gate r1 adversary S-A); fenced for a moment, then trusted
+        var q0 = Array.isArray(s.queue) ? s.queue : []; var c0 = q0[num(s.index, -1)];
+        if (c0 && itemKey(c0) === pendingJump.key) pendingJump = null;
+        else if (now() - pendingJump.at < JUMP_FENCE_MS) return;
+        else pendingJump = null;
+      }
       var prev = snap;
       var known = queue();
       var prevItem = currentItem();
@@ -271,7 +290,20 @@
       playIntent = false; pauseIntent = false;
       lastRate = num(s.rate, lastRate);
       if (posted && Array.isArray(s.queue) && s.queue.length) posted = { items: s.queue, index: num(s.index, posted.index) }; // the queue native holds (its appends included) is the one later loads compare against
-      if (!ownedId) { notify(); return; } // nothing of ours is loaded: the snapshot is kept for a later claim
+      if (!ownedId) {
+        // nothing of ours is loaded (a fresh page while native plays on): the bound view adopts native's queue - it loads the
+        // playing item, the choke point sees a FOLLOW, and the dock shows it (native-bridge.md section 6); once per rev
+        var live = s.state === 'playing' || s.state === 'paused' || s.state === 'loading';
+        var pl = win.FileTube && win.FileTube.player;
+        var webIdle = !pl || pl.currentId === null || pl.currentId === undefined;
+        if (live && Array.isArray(s.queue) && s.queue.length && webIdle && view && typeof view.adopt === 'function' && adoptedRev !== num(s.rev, -1)) {
+          adoptedRev = num(s.rev, -1);
+          rev = Math.max(rev, adoptedRev); // the web's next load counts up from native's
+          posted = { items: s.queue, index: num(s.index, 0) };
+          try { view.adopt(s.queue, num(s.index, 0), s.state); } catch (_) { /* the view's bug never breaks the proxy */ }
+        }
+        notify(); return;
+      }
       var cur = currentItem();
       // an append (native's radio picks, D11): the known queue is a prefix of the new one
       if (Array.isArray(s.queue) && known.length && s.queue.length > known.length && sameQueue(known, s.queue.slice(0, known.length))) {
@@ -283,7 +315,8 @@
         seenItemKey = key;
         fire('durationchange'); fire('loadedmetadata');
         var rolled = !!(prevItem && cur && prevItem.src === cur.src && prevItem.clip && cur.clip); // the next chapter of the same file: the chapter watcher moves on its own
-        if (!rolled && cur && prevItem && !sameItem(prevItem, cur)) {
+        // a FOLLOW is asked only when native moved to an item the web did not load itself (the web's own load is `ownedId`)
+        if (!rolled && cur && cur.id !== ownedId && !(prevItem && sameItem(prevItem, cur))) {
           if (queueUids[s.index]) { try { win.fetch('/api/queue/pointer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: queueUids[s.index] }), keepalive: true }).catch(function () {}); } catch (_) { /* best-effort */ } }
           if (view && typeof view.onIndex === 'function') { try { view.onIndex(s.index, cur); } catch (_) { /* never breaks the proxy */ } }
         }
@@ -346,7 +379,7 @@
       lastModes = modes();
       if (!snap || num(snap.rev, -1) < rev) { snap = { rev: rev, queue: items, index: idx, state: 'loading', positionSec: positionSec, durationSec: 0, rate: lastRate, modes: lastModes, sleep: snap ? snap.sleep : { mode: 'off' } }; }
       tick = { pos: Math.max(0, num(positionSec, 0)), at: now() };
-      seenItemKey = itemKey(items[idx]);
+      seenItemKey = null; // the first snapshot of this load fires loadedmetadata / durationchange (the real duration arrives there)
       return true;
     }
     function reload(positionSec, autoplay) {
@@ -360,9 +393,10 @@
       if (sent) flattenServerQueue(q.items, idx);
       return sent;
     }
-    // D12: the server Up-next queue. When its pointer sits on the item that just loaded, the audio-kind entries after it
-    // join the Item list (one more audio.load, rev + 1, same index and position) and the web follows the pointer as native
-    // reaches them. Native stays queue-dumb.
+    // D12: the server Up-next queue. When its pointer sits on the item that just loaded, the entries after it OF THE SAME KIND
+    // are handed to the bound view (music or podcasts), which appends them as rows; its re-registration re-sends the queue
+    // ONCE (rev + 1, same index and position) through syncQueue, and the web follows the pointer as native reaches them.
+    // Native stays queue-dumb. (Gate r1 adversary W-D: one load, only what the view holds.)
     function flattenServerQueue(items, idx) {
       var loadRev = rev;
       var cur = items[idx];
@@ -382,17 +416,20 @@
         for (var k = 0; k < items.length; k++) have[items[k].kind + ':' + items[k].id] = true;
         for (var j = at + 1; j < entries.length; j++) {
           var it = itemFromQueueEntry(entries[j]);
-          if (!it || have[it.kind + ':' + it.id]) continue;
+          // only the kind the playing Item has: the bound view (music or podcasts) can mirror and follow those; a cross-kind
+          // entry would play with no owner in the web (gate r1 qa W2) - it stays with the web's own ended cascade semantics
+          // (none under native), i.e. it is not played from here
+          if (!it || it.kind !== cur.kind || have[it.kind + ':' + it.id]) continue;
           have[it.kind + ':' + it.id] = true;
           extra.push(it); uids.push(entries[j].uid);
         }
         if (!extra.length) return;
-        var all = items.concat(extra);
-        if (view && typeof view.onAppend === 'function') { try { view.onAppend(extra, 'queue'); } catch (_) { /* never breaks the proxy */ } }
-        var q2 = readProvider();
-        var list = (q2 && sameQueue(q2.items, all)) ? q2.items : all; // the view appended them in its own shape; else the Items as built
-        if (sendLoad(list, idx, position(), playing() || playIntent)) {
-          for (var u = 0; u < uids.length; u++) queueUids[items.length + u] = uids[u];
+        if (!view || typeof view.onAppend !== 'function') return; // no view to hold them: they are not played from here
+        try { view.onAppend(extra, 'queue'); } catch (_) { /* never breaks the proxy */ }
+        syncQueue(); // a no-op when the view's own re-registration already re-sent the longer queue
+        var held = posted ? posted.items : [];
+        for (var u = 0; u < extra.length; u++) {
+          for (var h = 0; h < held.length; h++) { if (sameItem(held[h], extra[u])) { queueUids[h] = uids[u]; break; } }
         }
       });
     }
@@ -420,24 +457,29 @@
       var same = fresh && sameQueue(queue(), q.items); // the queue native holds now (radio appends included)
       if (same && cur && sameItem(cur, want)) {
         // a follow: native already plays this item (it advanced, or the view re-loaded the current one)
+        followed = true;
         ownedId = String(id); attach(target); subscribe();
         fire('durationchange');
         return true;
       }
+      followed = false;
+      pendingJump = null;
       ownedId = String(id);
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;
       if (same && fresh) {
         post('audio.jump', { index: q.index });
+        pendingJump = { key: itemKey(want), at: now() };
         posted = { items: q.items, index: q.index };
         snap.index = q.index; snap.state = 'loading'; snap.positionSec = 0; snap.durationSec = 0;
         tick = { pos: 0, at: now() };
-        seenItemKey = itemKey(want);
+        seenItemKey = null; // the first snapshot of the jumped-to item fires loadedmetadata / durationchange
         fire('emptied'); fire('durationchange');
         return true;
       }
       queueUids = Object.create(null);
+      pendingJump = null;
       if (!sendLoad(q.items, q.index, 0, false)) {
         // the adapter refused the message (a malformed Item): the web plays this one; make sure native is silent
         post('audio.stop');
@@ -450,7 +492,7 @@
     }
     function stop() {
       post('audio.stop');
-      ownedId = null; posted = null; provider = null; seenItemKey = null;
+      ownedId = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
       queueUids = Object.create(null);
       if (snap) { snap = { rev: snap.rev, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: lastRate, modes: snap.modes, sleep: { mode: 'off' } }; }
       tick = null;
@@ -503,6 +545,7 @@
     return {
       enabled: true,
       claim: claim, release: release, beginLoad: beginLoad, owns: owns, active: active,
+      lastClaimFollowed: function () { return followed; },
       snapshot: function () { return snap; }, position: position, currentItem: currentItem,
       bindView: bindView, syncQueue: syncQueue, modesChanged: modesChanged,
       setSleep: setSleep, sleep: sleep, onChange: onChange,
