@@ -278,3 +278,32 @@ Full gate, forced (auth and token surface, the player core): **adversary + qa + 
   2 pass, 1 fail: `not ok 1 - RED FIRST: a host announcing nativeAudio + nativeVideoAudio gets audio.load with a video Item when a
   playing video backgrounds, and the sidecar is never played` (`the adapter knows the capability: false !== true`); `ok 2 - CONTROL:
   a host with nativeAudio but WITHOUT nativeVideoAudio ... the sidecar plays, nothing is posted (V3)`; `ok 3 - CONTROL: no host`.
+
+### W1 + W2 (2026-10-28)
+
+- **W1 at b44cbb91** (relayed to the FileTube Root 2026-10-28, which relayed it to the SANDYJAR iOS Dev Root with the S2 clip
+  clarification and accepted it as a W1 decision). The adapter enforces V4 at the post (`audioItemOk`: src exactly
+  `/api/offline/file/<kind>/`, artworkSrc one of the four art routes, radioSeed only on a track), since the schema's mirror test
+  cannot express a cross-field rule; the schema's description states the same rules for the app.
+- **W2 large-video Range measurement** (scratchpad `measure-video-route.js`, Node 22.23.1, this box, 7 runs per cell, median time to
+  the first body byte in ms; a 1073741824 B `.mp4` library video and a 419430400 B TV episode, random bytes; the web routes with a
+  member's cookie, the offline route with that member's media token):
+
+  | route | cold GET | Range mid-file (`bytes=<half>-`) | suffix `bytes=-1048576` | statuses | Accept-Ranges / ETag / Cache-Control |
+  |---|---|---|---|---|---|
+  | `/video/:id` (web, cookie) | 3.1 | 3.8 | 3.0 (416) | 200/206/416 | - / no / - |
+  | `/api/offline/file/video/:id?mt=` | 3.1 | 3.1 | 3.1 (206) | 200/206/206 | bytes / yes / private, no-store |
+  | `/tvepisode/:id` (web, cookie) | 2.1 | 3.0 | 2.9 (416) | 200/206/416 | - / no / - |
+  | `/api/offline/file/tvEpisode/:id?mt=` | 2.9 | 3.3 | 2.9 (206) | 200/206/206 | bytes / yes / private, no-store |
+
+  Within 1 ms of the web routes on every cell (the episode's cold GET is 0.8 ms slower, its mid-file Range 0.3 ms slower; the 1 GB
+  video's mid-file Range is 0.7 ms faster), and the offline route answers a suffix Range (206) where `sendRangeable` refuses it
+  (416). Not materially slower, no Range refused: the stop rule does not fire.
+- **W2 tests:** test/integration/device-scope-census.test.js (4/4: `POST /api/tv/progress` in the expected set and the writes list;
+  MEDIA SCOPE = the five routes, the file kinds video + tvEpisode admitted, album / tvSeason refused, `/video`, `/tvepisode`,
+  `/tvposter`, `/api/tv/progress` refused), test/integration/media-token.test.js (9/9: the new V5 test - `mt` reaches a video and a
+  TV episode (full, Range, suffix Range, HEAD) and `/thumbnail` + `/tvthumb`; a restricted user's media token 404s the restricted
+  video and episode on all four routes, an unknown id answers the same; an unrestricted member's token plays them; the device
+  token posts `/api/tv/progress` (saved for that user; a hidden episode 404s); a media token never posts; the web's `/video`,
+  `/tvepisode`, `/tvposter` byte routes and every POST stay a JSON 401 for `mt`). Sibling suites (device-tokens, auth-gate-devices,
+  offline-progress, media-token unit, rbac-census, route-write-classification): 33 tests, 33 pass, 0 fail.
