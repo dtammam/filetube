@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md, Step 0 red-first):
+// [UNIT] v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md, Step 0 red-first):
 // a host announcing `nativeAudio` gets `audio.load` with the whole queue at the player.load choke point and the
 // web's media element gets NO src (native owns playback; two audio stacks never both play). With no host the
 // audio path is byte-identical: the element's src is the stream URL and nothing is posted (D10).

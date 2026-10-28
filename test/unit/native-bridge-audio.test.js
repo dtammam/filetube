@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.397.0 native audio, W1 (plan docs/exec-plans/active/2026-10-28-native-audio.md, D4): the `nativeAudio`
+// [UNIT] v1.397.0 native audio, W1 (plan docs/exec-plans/completed/2026-10-28-native-audio.md, D4): the `nativeAudio`
 // half of the bridge contract AT THE ADAPTER - every audio message is gated by the capability and validated against
 // the schema's mirror before it leaves the page, and every audio event is validated as data on the way in. The
 // conformance net (native-bridge-contract.test.js) proves the tables equal the schema; this file proves the tables

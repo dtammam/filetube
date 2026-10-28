@@ -38,7 +38,7 @@
     };
   }
   var DOWNLOAD_LENIENT = { state: 'none', error: 'other' };
-  // v1.397.0 nativeAudio (plan docs/exec-plans/active/2026-10-28-native-audio.md, D4-D7): the iOS app plays music and podcasts
+  // v1.397.0 nativeAudio (plan docs/exec-plans/completed/2026-10-28-native-audio.md, D4-D7): the iOS app plays music and podcasts
   // through a native engine. The web sends the WHOLE queue of Items in audio.load (D5) and intents after it; native echoes the
   // queue in every audioState (it may have appended radio picks itself) and the web REPLACES its view with each snapshot
   // (audioTick is a position delta). src and artworkSrc are server-relative paths native resolves and appends the media

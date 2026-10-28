@@ -453,7 +453,8 @@
   (4) A browser sleep timer (D13 scoped it to the app). (5) Security, pre-existing and now reachable from a phone too: POST
   /api/progress and POST /api/podcasts/progress check only that the item EXISTS, never the caller's visibility (a restricted
   account can write its own position under a hidden id; readable only by that account); route them through visibility the way
-  POST /api/offline/progress does (lib/offline/routes.js, "gone").
+  POST /api/offline/progress does (lib/offline/routes.js, "gone"). (6) Test-only, from gate r3: assert the lost-queue re-send's
+  positionSec in native-audio-web; a realm with Listen Control on to bind the adopt guard (music.js adopt, remoteOn).
 
 - [ ] **Real comments for Reddit and other sites** _(v1.394.0, Dean's R8)_ - v1.394.0 saves top comments for YouTube downloads only. yt-dlp has NO Reddit comment extraction (`yt_dlp/extractor/reddit.py` has no `_get_comments`), so Reddit needs FileTube's own fetch; other sites need a per-extractor check (and a cap - `--get-comments` on the any-site lane would fetch every comment).
 - [ ] **Backup restore cap vs saved comments** _(v1.394.0 gate, qa S1)_ - every bundle now carries `sourceComments` (~2-6 KB per downloaded video, 48 KB cap). Dean's instance stays under the 32 MB restore cap (~16-24 MB estimated), but ~5,000 downloaded videos with long threads would reach the ~28 MB revisit trigger. Raise the cap (Dean-approved number) or stream the restore before then.
@@ -901,6 +902,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.397.0 - Music and podcasts play through the iPhone app's own player (2026-10-28)
+
+- Dean (2026-10-28, via the iOS Root): "Native av player please. IOS only." The web view set `.playback` at launch and WebKit held
+  the audio session, so other apps' mic and audio collided with FileTube and a locked phone could pause but never resume
+  (docs/references/ios-background-audio-behavior-map.md: "The real fix is native"). The FileTube half (the iOS app's half pins
+  this tag): contract v1 gains `nativeAudio` (docs/references/native-bridge.md sections 2, 3, 5, 6; the schema is the authority):
+  the web sends the WHOLE queue of Items up front (`audio.load`) and intents after it (play, pause, seek, skip, jump, modes,
+  rate, a sleep timer, stop), subscribes for `audioState` snapshots and `audioTick` deltas, and its own media element is silenced
+  (no src) and turned into a PROXY of native's state - own-property accessors on the `#media-player` instance plus the element's
+  own events dispatched from the snapshots - so the dock, the scrubber, the now-playing panels, every skin and Listen Control
+  render from native unchanged (public/js/native-audio.js; LESSONS 12). The web owns queue ORDER, shuffle included (a change
+  re-sends the queue at the latest tick); native fetches radio itself and its picks are mirrored into the up-next list; the
+  server Up-next queue's same-kind entries join the list; a fresh Music page adopts what native plays; a video, Feed, reader,
+  watch-page or Listen-row load stops native first and plays on the web element. What stands down under native: the progress
+  saver, MediaSession (restored on the next web load), the ended cascade, both chapter loops, the chapter exit, the play tally,
+  the web's radio, the ALAC prewarm (each guarded, each mutation-bound). Native fetches with a short-lived media token in the
+  query (`?mt=`, `POST /api/devices/media-token`, 6 h, minted from the device token only, 6 a minute per device, accepted only on
+  GET/HEAD of the audio file route and the two art routes, live-revoked with the device, redacted from logs, its HMAC key
+  domain-separated from the session secret - D7, D14-D16, D18) and posts progress and plays to the same online routes the web
+  uses (the device scope gains them, D8). The sticker sheet gains a Sleep tile (Off / 15 / 30 / 45 / 60 min / End of track) only
+  while native owns playback (D13). No host, or a host without the capability: byte-identical (D10). Measured: the offline file
+  route serves online playback within 0.5 ms of /track cold and faster on a mid-file Range, and answers suffix ranges. Gate: three
+  rounds (adversary, qa, security-brief), one CRITICAL (a Listen row claimed by native) and nine WARNINGs found and closed, all
+  three APPROVED r3 @cc4e0a30. Guards: native-audio-contract (the red-first test), native-audio-web (a fake host through the real
+  player + music view + skin engine, 19), native-audio-podcasts (5), native-audio-items, native-audio-sticker-sleep,
+  native-bridge-audio, media-token unit + integration, the device-scope census, the route censuses; 25 of 26 builder mutants
+  killed plus the seats' own. Unasked follow-ups in Planned (Feed cards, adoption beyond Music, mirrored picks without albumKey, a
+  browser sleep timer, the two existence-only progress routes). Device checks: docs/DEVICE-CHECKS.md "Native audio (v1.397.0)".
 
 ### v1.396.0 - A switched-on toggle pill looks switched on (2026-10-27)
 

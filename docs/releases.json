@@ -3754,5 +3754,11 @@
     "date": "2026-10-27",
     "title": "A switched-on button now looks switched on",
     "intent": "Loop, Shuffle, Autoplay, Remote control and the Pop out buttons, the filter chips on Home, and the sticker picker in Settings now turn solid dark (or solid light in dark mode) with a check mark when they are on, so you can tell at a glance, in every look. Hovering an on button keeps it readable, and nothing changes size when you switch it. The phone Sticker sheet keeps its own look."
+  },
+  {
+    "version": "1.397.0",
+    "date": "2026-10-28",
+    "title": "Music and podcasts play through the iPhone app's own player",
+    "intent": "In the FileTube app, songs, chaptered audio and podcast episodes now play through the phone's built-in audio engine instead of the web page: the lock screen and AirPods control them reliably, a locked phone resumes after a pause, and other apps' audio behaves the way it does with any music app. The player screen looks the same, Loop keeps a chapter looping, speed carries across episodes, radio keeps going while the phone is locked, and the sticker menu gains a Sleep timer (15 to 60 minutes, or the end of the track). This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
   }
 ]

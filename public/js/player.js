@@ -1126,7 +1126,7 @@ function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId, listComplete)
 // an episode streams /episode/, a track /track/; a media id is a `video` to the library and a `track` to Music, so both
 // are tried. Never for a 360 video (vr-view.js's texImage2D would be tainted by a cross-origin source) and never for a
 // book chapter (not an offline item). The URL is used ONLY as the media element's src.
-// v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md): the ONE door to the native engine.
+// v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md): the ONE door to the native engine.
 // public/js/native-audio.js claims a music / podcast load at the setupForMedia choke point (nothing is set on the element;
 // the element becomes a proxy of native's state) and every stand-down below asks nativeActive() first. With no host, or a
 // host without the capability, the api is absent or inert and every call here is a no-op (D10).

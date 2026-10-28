@@ -1,5 +1,5 @@
 'use strict';
-// v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md): the web half of the `nativeAudio`
+// v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md): the web half of the `nativeAudio`
 // capability (docs/references/native-bridge.md). Loaded on every signed-in shell right after offline.js.
 //
 // With a host that announces `nativeAudio` (the iOS app), MUSIC (native tracks, library audio, chapter rows) and PODCASTS

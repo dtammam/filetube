@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.397.0 native audio (plan docs/exec-plans/active/2026-10-28-native-audio.md, D7 + D8 + D14): the MEDIA
+// [INTEGRATION] v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md, D7 + D8 + D14): the MEDIA
 // TOKEN over HTTP. Minted ONLY with a device token (a cookie cannot, a media token cannot); accepted ONLY on GET / HEAD of
 // the audio file route (track, podcastEpisode) and the two art routes; refused as a JSON 401 everywhere else and on every
 // POST, never a redirect, never a cookie; the user's restrictions apply; expiry and a never-existed token answer the SAME

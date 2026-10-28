@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.397.0 native audio, W3 + W4 (plan docs/exec-plans/active/2026-10-28-native-audio.md): a FAKE HOST in jsdom that
+// [UNIT] v1.397.0 native audio, W3 + W4 (plan docs/exec-plans/completed/2026-10-28-native-audio.md): a FAKE HOST in jsdom that
 // plays snapshots back through the REAL player.js + music.js + skin engine. Proves: the view's load goes to native as one
 // audio.load with the whole queue and the element gets no src; native's snapshots drive the element proxy, so the dock, the
 // scrubber and the remote snapshot render from them; every stand-down item is silent (the progress saver, the play tally, the

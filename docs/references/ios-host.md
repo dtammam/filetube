@@ -105,5 +105,5 @@ it (play, pause, seek, skip, jump, modes, rate, a sleep timer, stop), subscribes
 deltas, and drives its own silenced media element as a proxy of native's state so the dock, the now-playing panels and every skin render
 unchanged. Native fetches its media with a short-lived media token in the query (`?mt=`, `POST /api/devices/media-token`), fetches
 radio itself and posts progress and plays to the same online routes the web uses. The FileTube half is [the native-audio
-plan](../exec-plans/active/2026-10-28-native-audio.md); details and owners: [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6;
+plan](../exec-plans/completed/2026-10-28-native-audio.md); details and owners: [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6;
 the token: [offline-api.md](offline-api.md) section 8.
