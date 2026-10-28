@@ -3,9 +3,9 @@ plan: native-video-surface
 harness: v2 · full
 branch: feat/v1.399.0-native-video-surface
 anchor: spec
-status: Ready to build (W1 waits on the iOS Root's surface spike)
-next: Step 0 (census, red first); W1 freezes only after the spike result is relayed
-design: Approved 2026-10-28 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
+status: Step 0 done (census + red first); W1 waits on the spike result and the dock placement ruling
+next: W1 (the contract) once the FileTube Root relays the spike result and rules on the dock placement
+design: Approved 2026-10-28 @d6d6ecc8 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
 gate: not started
 builder: extreme
 ---
@@ -196,3 +196,119 @@ Full gate (the player core, a new bridge surface): **adversary + qa + security-b
 - (j) An app build without `nativeVideo`: everything exactly as before.
 
 ## Evidence (builder fills)
+
+### Step 0 (2026-10-28, Fable builder; line numbers at d6d6ecc8 = main 9e11ed90 + this plan)
+
+- **Spike:** not received at Step 0 (the inbox empty, no relay in the plan). Census + red first done; W1 waits. The FileTube
+  Root was asked for the result and for one placement ruling the census raised (below).
+- **Base:** S2 builds on the `video` / `tvEpisode` Item kinds frozen in v1.398.0 W1 (b44cbb91), which are not on main yet: the
+  v1.398.0 branch (fc8349f2 W1-W3 + 1503b29f W4) is merged into this branch (1103e828). The release still waits for v1.398.0
+  and re-merges origin/main first.
+- **Red first** (test/unit/native-video-surface-contract.test.js, the REAL player.js on a phone realm): `node --test` at
+  d6d6ecc8 = 3 tests, 2 pass, 1 fail: `not ok 1 - RED FIRST (S1, S2, S4): a host announcing nativeAudio + nativeVideo takes a
+  WATCH-PAGE video into native ...` (`the adapter knows the capability: expected true, actual false`); `ok 2 - CONTROL (S11):
+  a host ... WITHOUT nativeVideo keeps the watch-page video on the web element`; `ok 3 - CONTROL (S11): no host`.
+
+**Census A - every read of the video element on the video path** (player.js unless named; how the proxy satisfies it):
+
+- Already proxied since v1.397.0 (`PROXY_PROPS`): `currentTime` (currentAbsTime 3123, updateSeekVisual / fillTick / the dock
+  fill loop, the seek commit 8384, saveProgressToServer 6565, getRemoteSnapshot, the resume ladder 6332-6470), `duration`
+  (seekTotalDuration, the seek commit, the save body 6587), `paused` (togglePlayPause, updatePlayPauseUI, mountInSlot 10484 +
+  dock 10656 `wasPlaying`, handleBackgroundLifecycle 4285 `isPlaying`, ambient.js 532), `ended`, `playbackRate` /
+  `defaultPlaybackRate` (initPlaybackRate 7838 -> audio.setRate, applyPlaybackRate, hold-to-2x), `readyState` (ambient.js
+  532 / 556 / 577), `buffered`, `seeking`, `play()` / `pause()` (autoStart 6314, resumeDirectly 6282, the slot / dock re-play,
+  pauseSuppressingHandoff). Unchanged under `nativeVideo`.
+- New for video (S4): `videoWidth` / `videoHeight` 10344-10345 (the `loadedmetadata` aspect fallback + the legacy
+  `/api/videos/:id/dimensions` backfill: the proxy answers from `audioState.videoSize` and fires `loadedmetadata` / `resize`,
+  so the box settles and the backfill still runs); readVideoState 4558 (the `?debugLifecycle=1` instrument: readyState,
+  networkState, videoWidth / Height, `getVideoPlaybackQuality`, `webkitDecodedFrameCount`, `webkitPresentationMode`: read-only;
+  the frame counters read null under native - disclosed, an instrument); vr-view.js 231 `uploadFrame` (S6: a sphere never goes
+  native).
+- Fullscreen (S8): `webkitEnterFullscreen` 7878-7886 + `webkitSupportsFullscreen` 7879 (gated on `!audioItem`: MUST NOT run
+  under native - no media in the element; the fs button 8647 takes CSS fullscreen when the controls are CUSTOM
+  (`!inNativeControlsMode()`)); the NATIVE controls mode (applyControlsMode 2736: `mobile && isVideo && FULL &&
+  !mobileCustomPlayerCached`, the default OFF setting) sets the `controls` attribute 2738 so iOS draws its own strip over the
+  element: under native there is no media for iOS's strip, so the controls mode must be CUSTOM for a claimed video (W3);
+  `webkitDisplayingFullscreen` / `webkitPresentationMode` 3095 (inNativeFullscreen: false on an empty element, correct);
+  `webkitExitFullscreen` 8658 / 9313, the webkit begin / end fullscreen listeners 9291 / 9466 / 9495 (never fire);
+  `requestPictureInPicture` 8689 (the PiP row: not in scope; it must hide for a claimed video - an empty element's PiP
+  request rejects; W3).
+- Element writes: `src` 10402 / 10448 / 10457 (setupForMedia: the video branch skips every src when claimed, the transcode
+  branch too - native holds a 503 itself, v1.398.0 V6), 6252 (the transcode poll's `readySrc`: never entered), 6671 (desktop
+  live transcode: never mobile); `poster` 10431 / 10436 (MUST NOT be set for a claimed video: a poster paints an opaque image
+  in the region, S5); `style.display` 10421 (`block`, kept: the element box carries the aspect); `controls` 2738 (above);
+  `load()` / `removeAttribute('src')` 10010-10012 / 10769 (teardown: harmless on an empty element); `volume` / `muted`
+  7502-7588 / 8478-8488 / 11000 (the mute button is hidden on phones, `#player-wrapper.ff-mobile #mute-btn` style.css 4588;
+  a write on the proxy changes nothing in native - iOS volume is hardware; disclosed); `textTracks` / `ccTrack` 8723-8783 /
+  9356 / 10304 / 6656 (S7, Census D).
+- Events the proxy must dispatch (the listeners 8017-8420, 9340-9360, music/remote unchanged): play, pause, playing,
+  timeupdate, durationchange, loadedmetadata, seeked, ratechange, emptied; `resize` (new, S4, with videoSize); never ended
+  (native ends items; the web's cascade stands down as in v1.397.0, 7051), waiting / stalled / error (an `audioError` toasts),
+  volumechange.
+- Other consumers: watch.js vrElements 2511 (S6); setupAmbientMode 2876 (ambient.js samples the storyboard tile / poster
+  OFF-DOM, never the element: it reads only the proxy's paused / ended / readyState and runs as for a web video. Its glow
+  `.ambient-glow` style.css 7045 sits at z-index -1 BEHIND the stage and reaches 12% / 22% past it: with a transparent box
+  the glow would paint over the native picture - W3 clips the stage's own box out of the glow with a static evenodd
+  polygon: the glow was never visible there (an opaque black box covered it)); feed.js 1328 / 2381 (S6: the Feed binds its own
+  ended / error / timeupdate on the element and saves to `/api/feed/progress/media` 274: stays web; its descriptor is told
+  apart by `progressEndpoint`); main.js 1068 (`/preview/:id` muted clips: separate card `<video>`s, never `#media-player`);
+  read.js 282 (type audio, never video); remote.js (the Listen Control target reads the proxy as for audio).
+- Progress (S10): saveProgressToServer 6567 already returns under `nativeActive()`: holds for a claimed video since
+  `ownedId` is set (the outgoing save at close / navigation / hidden too); `POST /api/videos/:id/view` (watch.js ~1680) stays
+  the web's at open; the `/api/videos/:id/dimensions` backfill 10361 runs from the proxy's videoSize for a legacy item
+  (harmless, kept). Native posts `/api/progress` or `/api/tv/progress` (v1.398.0 V4 / V5, already on the server).
+- Background (S9): handleBackgroundLifecycle 4280 reads `!mediaPlayer.paused` - under native the proxy says playing, so
+  `shouldPauseForLifecycleEvent` (mobile video) -> attemptBackgroundAudioHandoff 3925 -> with the setting on and the status
+  ready the SIDECAR would play `/audio/:id` over native's sound. W3 makes the lifecycle branch inert for a claimed load (no
+  pause, no handoff, no save, nothing posted at hidden), and stands down handlePossibleIOSPrePauseHandoff 4078, the presync
+  3903, armBackgroundAudioSrc 3860, the prepare-audio POST + pre-arm + repoll in setupForMedia 10162-10260 (a server-side
+  ffmpeg extraction queued for nothing) and the gesture prime 4213; handleForegroundSwapBack 3395 is a no-op (the state stays
+  INLINE_VIDEO); releaseAudioSession 3808 already returns under `nativeActive()`.
+- Resume: the video ladder (handleResumePlayback 6450-6470: `/api/progress/:id`, then resolveResumeStart -> resumeDirectly /
+  autoStart / the prompt) drives `audio.seek` / `audio.play` through the proxy exactly as v1.397.0 drives audio; a TV episode
+  resumes from its descriptor (6441). `awaitingTranscode` stays false for a claimed video (the ladder runs).
+
+**Census B - every background paint behind the picture (S5)**, style.css: `.player-container` 1269
+`background-color: #000` (the letterbox black; the dock keeps it through 1318), `#player-wrapper.css-fullscreen` 4753
+`background: #000`, `body.ft-css-fullscreen` 4868 `background: #000`, `#fs-stage:fullscreen` 4461 (desktop only), `body` 296
+`background-color: var(--surface-0)` (the canvas; `.main-content` 748 paints NO background by the v1.166.1 ground contract,
+`html` paints none, `#view-root` / `.watch-player-stage` / `#player-slot` / `#media-player` / `.player-container video` paint
+none), the `poster` (Census A), `#ambient-glow` 7045 (a sibling behind the box, Census A). The `#player-wrapper { color-scheme }`
+3999 and `.player-controls` (the bar BELOW the picture inline, OVER its bottom band in CSS fullscreen) paint nothing behind it.
+The design for W3: the hole is the web's own. `html.ft-native-video` makes `body` transparent and paints the canvas on a
+document-space `body::before` layer (z-index -1, `var(--surface-0)`, the body's own transition) with an evenodd polygon hole at
+the `#media-player` box (the top corners rounded like the container's `--r-md`, the bottom corners square: the bar sits below),
+and the box's own black goes transparent; outside the hole the page is pixel-identical. Native's layer never shows outside
+the hole, so `radius` is a hint: native may round its layer to match, a square layer is equally correct.
+
+**Census C - every layout change that moves the player box** (the `video.surface` sender's triggers):
+(1) slot <-> dock: mountInSlot 10473 (into `#player-slot`, or `#fs-stage` while staged), dock 10642 (`#player-dock`,
+`position: fixed` -> `viewport` space), expand 10525, close 10696 (-> `visible: false`, then audio.stop), the dock's own
+ResizeObserver 10626; (2) CSS fullscreen: setCssFullscreen 2790 (fixed inset 0 -> `viewport`), trySidewaysFullscreen (the
+landscape auto-enter), applyCarriedImmersive, the fs button 8647; (3) rotation: resize / orientationchange 9167-9173
+(`--player-cap-h`), snapRotationDeadZone 3002 (scrollTo 0: a `document` rect is unmoved), visualViewport resize 3037; (4) the
+watch layout's own: applyMediaAspect 3276 (`--media-aspect`, `.portrait-media`), the portrait clamps 3946 / 3973 (45vh / 78vh),
+refreshPlayerHeightCap, theatre / split, the desktop sidebar, the header, the minimize drag (`is-minimize-drag` / `-snap` /
+`-settle` 1396-1405: a TRANSFORM per frame that no observer reports), the view fade, fonts and images settling above the
+box; (5) skins / eras: `--r-md` (the radius). Design for W3: one requestAnimationFrame sampler while a video is claimed and the
+document is visible (`getBoundingClientRect` of `#media-player` + the computed radius; a clean layout makes the read cheap)
+that posts `video.surface` only when the rect, space, visibility, fit or radius changed - every trigger above is covered by
+construction, one message per frame at most, none while nothing moves.
+
+**Census D - captions (S7):** the `<track id="cc-track">` src `/api/subtitles/:id` (10304; `?offset=` only in desktop
+liveMode 6656), `track.mode` hidden / disabled (8735), `activeCues` read in renderActiveCueOverlay 3293 from `cuechange`
+(8782-8783) and the `timeupdate` fallback 9356 (the load-bearing iOS path), `data.hasSubtitles` gates the CC row 10306. An
+element with no media never advances its cues. Existing parsers: lib/transcript.js `parseVttCues` (server, cue-block aware)
+and lib/subtitles.js `parseVttTimeMs`; the web has only `stripVttCueTags` / `buildCaptionOverlayText` (player.js 1908 / 1923).
+W4 ports `parseVttCues` to the client (no deps) with the server parser as the oracle in its test, fetches the same VTT, and
+feeds `renderActiveCueOverlay` a `{ activeCues }` looked up by the proxy's time from the same two paths.
+
+**The placement finding (raised with the FileTube Root before W1).** A layer BELOW the web view shows only where NOTHING in
+the web view paints. Inline (the slot) that is the hole above. In CSS fullscreen the page content under the fixed overlay would
+paint over the picture: W3 hides everything but the player subtree there (`visibility: hidden` on `.app-container`,
+`visible` on `#player-wrapper`; the header and bottom nav are hidden already), so a `viewport` rect works. In the DOCK the page
+content keeps scrolling UNDER the fixed mini player, so a below-the-web-view layer cannot show there without cutting the dock's
+rect out of the whole page per scroll frame. Options put to the Root: (a) the dock shows no picture (`visible: false`; the
+sound continues; the dock shows the thumbnail; the picture returns on expand), or (b) a contract field for `viewport`
+placements that puts the layer ABOVE the web view with touches passed through (the dock's bar sits below the picture, only the
+close button would be covered). W1 freezes after the ruling.
