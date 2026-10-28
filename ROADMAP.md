@@ -443,6 +443,11 @@
 
 ### Features
 
+- **Picture in the mini player (iOS app), unasked** _(v1.399.0 S3a, 2026-10-28)_ - under `nativeVideo` the app's player draws
+  the picture in a layer BELOW the web view, which shows only where the page paints nothing. The docked mini player is fixed
+  over page content that keeps scrolling under it, so the dock shows the video's thumbnail while the sound continues. A
+  picture there needs a layer ABOVE the web view with touches passed through (a `layer: 'above'` field on `video.surface`,
+  bridge v1 add-only; the dock's bar sits below the picture, only its close button would be covered).
 - **Native audio (v1.397.0) follow-ups, unasked:** (1) Feed song and podcast cards still play on the web element inside the app
   (the Feed plays a SLICE of a song with its own end-at logic on the element, and its podcast progress route is not one of the
   native progress routes); a Feed load stops native first. (2) After the iOS web view is reloaded while native keeps playing (a

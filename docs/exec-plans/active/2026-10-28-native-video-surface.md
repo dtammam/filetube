@@ -3,9 +3,9 @@ plan: native-video-surface
 harness: v2 · full
 branch: feat/v1.399.0-native-video-surface
 anchor: spec
-status: Step 0 done (census + red first); W1 waits on the spike result and the dock placement ruling
-next: W1 (the contract) once the FileTube Root relays the spike result and rules on the dock placement
-design: Approved 2026-10-28 @d6d6ecc8 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
+status: W1 drafted on the branch, NOT frozen (the spike was retracted 2026-10-28); idle until the redone spike is relayed
+next: freeze W1 and relay its sha when the FileTube Root relays a real spike result; (1) or (3) failing stops the plan
+design: Approved 2026-10-28 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
 gate: not started
 builder: extreme
 ---
@@ -49,6 +49,7 @@ What Dean will see on the iPhone app:
 | S1 | One native AVPlayer owns a video's sound AND picture on hosts that announce **`nativeVideo`** (a new capability, add-only in bridge v1). The web's `#media-player` loads NOTHING and becomes the v1.397.0 proxy (own-property accessors + dispatched events) for the video. | Dean 2026-10-28 |
 | S2 | Transport reuses `audio.*`: `audio.load` with a `video` / `tvEpisode` Item (the kinds frozen in v1.398.0 W1, no clip, no radioSeed), plus play, pause, seek, setRate, stop, and the subscription's audioState and audioTick. No `video.*` transport messages. | Root |
 | S3 | ONE new intent, **`video.surface`** `{ rect: {x, y, w, h}, space: 'document' \| 'viewport', visible, fit: 'contain' \| 'cover', radius }`, in CSS px. `document` rects are for the in-page player (on the watch page the document scrolls: `document.scrollingElement` is `<html>`, player.js ~5726), so native follows `webView.scrollView.contentOffset` itself with no message per scroll frame. `viewport` rects are for fixed placements (the `#player-dock` mini player, CSS fullscreen). The web sends it on any layout change of the player box, coalesced to one per animation frame. `visible: false` hides the layer; the sound is unaffected. | Root (the space split is pending the spike) |
+| S3a | **The dock shows no picture** (ruled 2026-10-28 by the FileTube Root on the builder's placement finding; Dean may overrule): a layer below the web view shows only where nothing in the web view paints, and the page keeps scrolling UNDER the fixed mini player. While docked the web sends `visible: false`, the sound continues, and the dock shows the video's thumbnail; the picture returns in the slot and in CSS fullscreen. `space: 'viewport'` is for CSS fullscreen only. A layer ABOVE the web view with touch passthrough for the mini player is ROADMAP Planned ("picture in the mini player (iOS app)"). Native notes for W1: the web clips its own hole to the box's rounded top corners, so `radius` is a hint and a square layer is correct; native never rounds the bottom corners. | FileTube Root 2026-10-28 |
 | S4 | audioState gains **`videoSize {w, h}`** (additive), the presentation size. The proxy answers `videoWidth` / `videoHeight` from it, and fires `resize` and `loadedmetadata` as an element would. | Root |
 | S5 | The web leaves the surface region TRANSPARENT: the player box and every ancestor up to the root paint no background behind the picture while `nativeVideo` owns it. The controls, captions, chapter markers and skins paint on top as today. | Root |
 | S6 | What stays on the web element under `nativeVideo` (the stand-down list, extended): a **360 / VR** video (vr-view.js reads the element into WebGL), the **Feed**, hover **previews** (`/preview/:id`), read-aloud, and anything that isn't a library `video` or a `tvEpisode`. A load of any of those stops native first (the v1.397.0 rule). | Root |
@@ -190,7 +191,8 @@ Full gate (the player core, a new bridge surface): **adversary + qa + security-b
 - (d) A voice memo or call mid-video: FileTube yields. Afterwards no other app is ducked.
 - (e) Fullscreen and rotation: no flash, no misplaced picture.
 - (f) Captions on: in sync, and they look as before.
-- (g) Navigate away (docked player), then back: the picture follows.
+- (g) Navigate away (docked player): the dock shows the thumbnail and the sound continues; tap it to expand: the picture is
+  back at the right frame (S3a).
 - (h) A 360 video, a Feed video and a preview play exactly as before.
 - (i) A TV episode resumes where it was left, and its progress is saved once.
 - (j) An app build without `nativeVideo`: everything exactly as before.
@@ -312,3 +314,19 @@ rect out of the whole page per scroll frame. Options put to the Root: (a) the do
 sound continues; the dock shows the thumbnail; the picture returns on expand), or (b) a contract field for `viewport`
 placements that puts the layer ABOVE the web view with touches passed through (the dock's bar sits below the picture, only the
 close button would be covered). W1 freezes after the ruling.
+
+### The spike and W1 (2026-10-28)
+
+- **Spike, first relay (partial, Dean by eye):** (1) the picture showed through the hole and a tap square worked as a page element;
+  (2) "locked to page" with native following contentOffset; (3) and (4) not tested (the app stuck on the spike build). The FileTube
+  Root ruled: start W1, then W2; hold W3 until (3) passes.
+- **Retracted 2026-10-28: the spike page never ran.** The iOS Root's device log holds no message from the test page, so Dean's
+  "locked to page" cannot be counted; (1), (2), (3) and (4) are all UNKNOWN. The Root's ruling: W1 stays on the branch as a DRAFT
+  (not frozen, not relayed), W2 and W3 do not start, `space: 'document'` stays pending in S3. The iOS Root redoes the spike with
+  Dean's OK and confirms page messages in its log before claiming anything.
+- **W1 draft (this commit):** schema (`nativeVideo` capability, `video.surface` with `$defs/surfaceRect`, `audioState.videoSize` via
+  `$defs/videoSize`), host-adapter.js mirror (`video.surface` under `nativeVideo`, `videoSize` an optional audioState field),
+  native-bridge.md (the row, the owners row, section 6, a "Native video (v1.399.0)" block marked DRAFT with S1-S3, S3a, S5, S8, S9,
+  the S6 stand-down list, the two native notes and the iOS Root's clamp rules), ios-host.md (the decision bullet and a v1.399.0
+  addendum). test/unit/native-bridge-contract.test.js (the schema <-> adapter mirror) passes 10/10 on the draft. The W1 contract
+  tests of their own and the red test land when W1 freezes.

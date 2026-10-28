@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -97,6 +97,15 @@
   }
   function audioQueueSpec() { return { is: 'array', req: true, max: AUDIO_QUEUE_MAX, items: { is: 'object', props: audioItemFields() } }; }
   var AUDIO_RATE = { is: 'number', min: 0.5, max: 3, req: true };
+  // v1.399.0 nativeVideo (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S3 + S4): where the picture goes, in CSS px.
+  // rect = the #media-player box; space 'document' (the in-page player: native follows the scroll itself) or 'viewport' (CSS
+  // fullscreen); visible false hides the layer (the docked mini player); fit = the element's object-fit; radius = the box's corner
+  // radius as a hint (the web's own hole is already clipped to it). Native clamps every number to the web view and rejects w / h <= 0.
+  // videoSize on audioState = the playing video's presentation size, which the element proxy answers videoWidth / videoHeight from.
+  var SURFACE_SPACES = ['document', 'viewport'];
+  var SURFACE_FITS = ['contain', 'cover'];
+  function surfaceRectSpec() { return { is: 'object', req: true, props: { x: { is: 'number', req: true }, y: { is: 'number', req: true }, w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
+  function videoSizeSpec() { return { is: 'object', props: { w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
 
   // Web to native. cap = the capability that must be announced (null = always). fields: the allowed
   // fields; req = required; a field spec is one of { is: 'string'|'number'|'object', min, max } /
@@ -136,6 +145,8 @@
     'audio.stop': { cap: 'nativeAudio', fields: {} },
     'audio.subscribe': { cap: 'nativeAudio', fields: {} },
     'audio.unsubscribe': { cap: 'nativeAudio', fields: {} },
+    // v1.399.0 nativeVideo: the ONE new intent - where the picture goes (public/js/native-audio.js sends it, coalesced per frame).
+    'video.surface': { cap: 'nativeVideo', fields: { rect: surfaceRectSpec(), space: { enum: SURFACE_SPACES.slice(), req: true }, visible: { is: 'boolean', req: true }, fit: { enum: SURFACE_FITS.slice(), req: true }, radius: { is: 'number', min: 0, req: true } } },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -184,6 +195,7 @@
         modes: audioModesSpec(true),
         sleep: { is: 'object', req: true, props: { mode: { enum: AUDIO_SLEEP_MODES.slice(), req: true }, endsAt: { is: 'number', min: 0 } } },
         error: { enum: AUDIO_ERRORS.slice() },
+        videoSize: videoSizeSpec(), // v1.399.0 nativeVideo (S4): only for a video Item; a bad one is dropped, never the snapshot
       },
     },
     audioTick: { fields: { rev: { is: 'number', min: 0, req: true }, positionSec: { is: 'number', min: 0, req: true }, bufferedSec: { is: 'number', min: 0 } } },
@@ -365,7 +377,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX, SURFACE_SPACES: SURFACE_SPACES, SURFACE_FITS: SURFACE_FITS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};
