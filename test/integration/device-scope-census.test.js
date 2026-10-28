@@ -20,10 +20,11 @@ process.env.FILETUBE_YTDLP_DOWNLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { app } = require('../../server');
-const { DEVICE_SCOPE, deviceScopeAllows } = require('../../lib/auth/device-scope');
+const { DEVICE_SCOPE, MEDIA_SCOPE, deviceScopeAllows, mediaScopeAllows } = require('../../lib/auth/device-scope');
 
-// The routes a paired phone is MEANT to reach (plan D1 + D2 + D3 + D4). A change
-// here is a product decision, reviewed with the security brief.
+// The routes a paired phone is MEANT to reach (plan D1 + D2 + D3 + D4; v1.395.0 Pages;
+// v1.397.0 native audio D7 + D8). A change here is a product decision, reviewed with the
+// security brief.
 const EXPECTED_REACHABLE = [
   'GET /api/auth/me',
   'GET /api/host-info',
@@ -42,6 +43,14 @@ const EXPECTED_REACHABLE = [
   'POST /api/offline/status',
   'POST /api/offline/progress',
   'POST /api/pages', // v1.395.0 Pages: the app's "Save to Pages" share action (D-AUTH)
+  // v1.397.0 native audio: the media-token mint (D7), radio for the native queue and the ONLINE progress /
+  // plays routes the native engine posts to with the web's own bodies (D8)
+  'POST /api/devices/media-token',
+  'GET /api/music/radio',
+  'POST /api/music/progress',
+  'POST /api/progress',
+  'POST /api/podcasts/progress',
+  'POST /api/music/plays',
 ].sort();
 
 function liveRoutes() {
@@ -79,7 +88,26 @@ test('NO DEAD PATTERN: every allowlist entry names a live route, spelled exactly
   assert.deepStrictEqual([...DEVICE_SCOPE].sort(), EXPECTED_REACHABLE, 'the allowlist and the expected set are one list');
 });
 
-test('NOTHING ELSE WRITES: the only non-GET routes in scope are the offline status check (a read by POST), the offline progress sync (plan D4) and, since v1.395.0, the app\'s "Save to Pages" (Pages D-AUTH: a paired phone may save to its user\'s own Pages)', () => {
+test('NOTHING ELSE WRITES: the only non-GET routes in scope are the offline status check (a read by POST), the offline progress sync (plan D4), since v1.395.0 the app\'s "Save to Pages" (Pages D-AUTH), and since v1.397.0 the media-token mint (writes nothing; D7) and the web\'s own progress / plays routes the native engine posts to (D8)', () => {
   const writes = DEVICE_SCOPE.filter((e) => !e.startsWith('GET '));
-  assert.deepStrictEqual(writes, ['POST /api/offline/status', 'POST /api/offline/progress', 'POST /api/pages']);
+  assert.deepStrictEqual(writes, ['POST /api/offline/status', 'POST /api/offline/progress', 'POST /api/pages', 'POST /api/devices/media-token', 'POST /api/music/progress', 'POST /api/progress', 'POST /api/podcasts/progress', 'POST /api/music/plays']);
+});
+
+// v1.397.0 (plan D7): the MEDIA token's own allowlist - three GET routes, each live, nothing else; a video's bytes are
+// never a media-token read; no method but GET / HEAD.
+test('MEDIA SCOPE: the media token reaches exactly the audio file route (track, podcastEpisode) and the two art routes, GET / HEAD only, every entry live', () => {
+  const live = new Set(liveRoutes());
+  assert.deepStrictEqual([...MEDIA_SCOPE].sort(), ['GET /albumart/:id', 'GET /api/offline/file/:kind/:id', 'GET /podcastart/:subId']);
+  assert.deepStrictEqual(MEDIA_SCOPE.filter((e) => !live.has(e)), [], 'every media-scope entry names a live route');
+  // the file route's :kind must be a native audio kind to pass, so the sample fills it with 'track' (the census question is "which
+  // live ROUTES", the kind check is bound below)
+  const reachable = liveRoutes().filter((r) => { const [m, p] = r.split(' '); return p !== '*' && p !== '/*' && mediaScopeAllows(m, sample(p.replace(':kind', 'track'))); }).sort();
+  assert.deepStrictEqual(reachable, ['GET /albumart/:id', 'GET /api/offline/file/:kind/:id', 'GET /podcastart/:subId']);
+  assert.strictEqual(mediaScopeAllows('HEAD', '/albumart/abc'), true);
+  assert.strictEqual(mediaScopeAllows('GET', '/api/offline/file/track/abc'), true);
+  assert.strictEqual(mediaScopeAllows('GET', '/api/offline/file/podcastEpisode/abc'), true);
+  assert.strictEqual(mediaScopeAllows('GET', '/api/offline/file/video/abc'), false, 'a video is never a media-token read');
+  assert.strictEqual(mediaScopeAllows('GET', '/api/offline/file/tvEpisode/abc'), false);
+  assert.strictEqual(mediaScopeAllows('POST', '/albumart/abc'), false, 'GET / HEAD only');
+  for (const p of ['/track/abc', '/episode/abc', '/video/abc', '/thumbnail/abc', '/api/auth/me', '/api/offline/manifest', '/api/music/radio', '/', '/setup.html']) assert.strictEqual(mediaScopeAllows('GET', p), false, p);
 });

@@ -299,6 +299,8 @@ const userStore = createUserStore(dbAdapter);
 // registry that ends a revoked phone's open download). The gate's Bearer branch
 // reads it; the /api/devices routes write it.
 const createDeviceStore = require('./lib/auth/devices').createDeviceStore;
+const mediaTokenLib = require('./lib/auth/media-token'); // v1.397.0: the native audio engine's `?mt=` token (sign at the mint route, redact in the audit line)
+const MEDIA_TOKEN_MINT_PER_MINUTE = 6; // v1.397.0 (D16): the per-device mint bucket; a looping native bug meets a 429, never unbounded minting
 const deviceStore = createDeviceStore(dbAdapter, { generateSecret: authCrypto.generateSecret, tokensEqual: authCrypto.tokensEqual });
 // Wave 1 of the relational-migration arc (v1.291): the per-item view counter
 // left the document model for its own table (lib/media/viewCounts.js). Every
@@ -3258,7 +3260,9 @@ function createMutationAuditMiddleware(log = null) {
       // v1.387.0: a mutation a paired phone made names the device (req.user is the account; the
       // device id says WHICH phone, so a revoke can be aimed).
       const via = req.authVia === 'device' && req.deviceId ? ` via=device:${req.deviceId}` : '';
-      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${req.originalUrl} ${res.statusCode}${incomplete} user=${who}${via}`);
+      // v1.397.0: a media token in the query is never written to a log line (a POST carrying one is refused by the gate, and
+      // still audited - redacted).
+      (log || console.log)(`[audit] ${new Date().toISOString()} ${req.method} ${mediaTokenLib.redactMediaToken(req.originalUrl)} ${res.statusCode}${incomplete} user=${who}${via}`);
     };
     res.on('finish', emit);
     res.on('close', emit);
@@ -3321,6 +3325,8 @@ authRoutes.registerRoutes(app, {
   booksDb,
   clearSessionCookie,
   deviceStore, // v1.387.0: pairing, listing and revoking the per-device tokens
+  // v1.397.0: the native engine's media token (plan D7); the mint is rate-bound per device (D16: 6 a minute, refilling one every 10 s)
+  mediaTokens: { sign: (claims) => mediaTokenLib.signMediaToken(claims, SESSION_SECRET), limiter: authGateLib.createRateLimiter({ capacity: MEDIA_TOKEN_MINT_PER_MINUTE, refillPerSec: MEDIA_TOKEN_MINT_PER_MINUTE / 60 }) },
   // The user-delete cascade drops that user's staged (un-flushed) pings before
   // the row goes, so no flush batch ever carries a vanished user_id.
   dropPendingProgressForUser,

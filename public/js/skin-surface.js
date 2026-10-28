@@ -2428,7 +2428,52 @@
     var sheetHead = null;
     var sheetPage = 'main'; // main | skins | more
     var speedOpen = false;  // the Speed strip under the grid
+    // v1.397.0 native audio (D13): the Sleep tile + strip exist ONLY while the iOS app's engine owns playback (the browser has
+    // no sleep timer and this release adds none there); a bad or absent api is "no tile", byte-identical to before.
+    var sleepOpen = false;
+    var sleepPick = null; // the minutes the user last picked on this sheet (the strip's selected chip; native reports only endsAt)
+    var SLEEP_MINUTES = [15, 30, 45, 60];
+    function nativeAudioApi() {
+      if (!inMainDoc) return null;
+      var n = (typeof window !== 'undefined' && window.FileTube) ? window.FileTube.nativeAudio : null;
+      try { return (n && n.enabled && typeof n.active === 'function' && n.active()) ? n : null; } catch (_) { return null; }
+    }
+    function sleepState() { var na = nativeAudioApi(); if (!na) return { mode: 'off' }; try { return na.sleep() || { mode: 'off' }; } catch (_) { return { mode: 'off' }; } }
+    function sleepCap(sl) {
+      if (!sl || sl.mode === 'off') return 'Off';
+      if (sl.mode === 'endOfItem') return 'End of track';
+      var left = typeof sl.endsAt === 'number' ? Math.ceil((sl.endsAt - Date.now()) / 60000) : NaN;
+      return isFinite(left) && left >= 1 ? left + ' min' : 'On';
+    }
+    function applyStickerSleep(v) {
+      var na = nativeAudioApi();
+      if (!na) return;
+      if (v === 'off') { sleepPick = null; na.setSleep('off'); return; }
+      if (v === 'end') { sleepPick = 'end'; na.setSleep('endOfItem'); return; }
+      var m = Number(v);
+      if (SLEEP_MINUTES.indexOf(m) === -1) return;
+      sleepPick = m;
+      na.setSleep('minutes', m);
+    }
+    function buildSleepStrip() {
+      var U = uiApi();
+      var sl = sleepState();
+      var strip = mk('div', 'mms-ss__strip');
+      strip.setAttribute('role', 'group');
+      strip.setAttribute('aria-label', 'Sleep timer');
+      strip.hidden = !sleepOpen;
+      var opts = [{ v: 'off', label: 'Off', on: sl.mode === 'off' }];
+      SLEEP_MINUTES.forEach(function (m) { opts.push({ v: String(m), label: m + ' min', on: sl.mode === 'minutes' && sleepPick === m }); });
+      opts.push({ v: 'end', label: 'End of track', on: sl.mode === 'endOfItem' });
+      opts.forEach(function (o) {
+        var c = U.chip({ kind: 'filter', selected: o.on, label: o.label, doc: doc });
+        c.setAttribute('data-skin-sleep', o.v);
+        strip.appendChild(c);
+      });
+      return strip;
+    }
     var offUnsub = null;    // the offline.onChange unsubscribe while the sheet is open (iOS app only)
+    var naUnsub = null;     // v1.397.0: the nativeAudio.onChange unsubscribe while the sheet is open (the Sleep cap follows native)
     var stickerReturnSel = null; // the page-1 control that opened the Skin or More page: Back returns focus to it (#281 c)
     function uiApi() { return (typeof window !== 'undefined' && window.ui) || null; }
     function sheetOpen() { return !!(sheetCtl && sheetCtl.isOpen()); }
@@ -2553,6 +2598,11 @@
       var sp = stickerTile({ glyph: (rate === 1 ? '1' : String(rate)) + '×', label: 'Speed', pressed: rate !== 1, cap: rate === 1 ? 'Normal' : (rate < 1 ? 'Slower' : 'Faster'),
         attrs: { 'data-skin-speedtoggle': '', 'aria-expanded': speedOpen ? 'true' : 'false', 'data-rate': String(rate) } });
       grid.appendChild(sp);
+      if (nativeAudioApi()) { // v1.397.0 (D13): the sleep timer, native's alone
+        var sl = sleepState();
+        grid.appendChild(stickerTile({ icon: 'dark_mode', label: 'Sleep', pressed: sl.mode !== 'off', cap: sleepCap(sl),
+          attrs: { 'data-skin-sleeptoggle': '', 'aria-expanded': sleepOpen ? 'true' : 'false' } }));
+      }
       grid.appendChild(stickerTile({ icon: 'share', label: 'Share', off: !ready || !extrasMenu.has('share'), attrs: { 'data-skin-x': 'share', 'data-skin-share': '' } }));
       grid.appendChild(downloadTile(item, ready));
       grid.appendChild(stickerTile({ icon: 'more_horiz', label: 'More', attrs: { 'data-skin-more': '' } }));
@@ -2631,6 +2681,7 @@
       body.removeAttribute('data-sm-page');
       body.appendChild(buildGrid());
       body.appendChild(buildSpeedStrip());
+      if (nativeAudioApi()) body.appendChild(buildSleepStrip()); // v1.397.0 (D13)
       var note = offlineNote();
       if (note) body.appendChild(note);
       body.appendChild((trayIsActive() || trayBodyNow()) ? buildTrayChips() : buildSkinRow());
@@ -2928,10 +2979,10 @@
       var a = null;
       try { a = doc.activeElement; } catch (_) { a = null; }
       if (!a || !host || !host.contains(a) || typeof a.getAttribute !== 'function') return null;
-      var el = a.closest ? (a.closest('[data-skin-lighting],[data-skin-speed],[data-skin-pick],[data-skin-x]') || a) : a;
-      var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick', 'data-skin-x'];
+      var el = a.closest ? (a.closest('[data-skin-lighting],[data-skin-speed],[data-skin-sleep],[data-skin-pick],[data-skin-x]') || a) : a;
+      var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-sleep', 'data-skin-pick', 'data-skin-x'];
       for (var i = 0; i < valued.length; i++) { var v = el.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
-      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-more', 'data-skin-speedtoggle', 'data-skin-home', 'data-skin-watchback',
+      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-more', 'data-skin-speedtoggle', 'data-skin-sleeptoggle', 'data-skin-home', 'data-skin-watchback',
         'data-skin-channel', 'data-skin-chapters', 'data-skin-tray', 'data-skin-radio', 'data-skin-offline', 'data-skin-extras-back', 'data-skin-search'];
       for (var j = 0; j < flags.length; j++) { var f = a.closest ? a.closest('[' + flags[j] + ']') : null; if (f) return '[' + flags[j] + ']'; }
       return null;
@@ -2977,6 +3028,7 @@
       try { var FI = window.FTIcons; if (FI && typeof FI.inject === 'function') FI.inject(undefined, doc); } catch (_) { /* the main document already carries the sprite */ } // a pop-out document has no sprite of its own
       sheetPage = 'main';
       speedOpen = false;
+      sleepOpen = false;
       stickerReturnSel = null;
       extrasLoadDone = false;
       var body = mk('div', 'mms-ss');
@@ -2988,6 +3040,7 @@
         onClosing: function () {
           if (sheetCtl === ctl) { sheetCtl = null; sheetBody = null; sheetHead = null; }
           if (offUnsub) { try { offUnsub(); } catch (_) { /* gone */ } offUnsub = null; }
+          if (naUnsub) { try { naUnsub(); } catch (_) { /* gone */ } naUnsub = null; }
           extrasMenu.cancelPending(); // a late item never lands on a closed sheet
           var btn = panel.querySelector('[data-skin-sticker]');
           if (btn) btn.setAttribute('aria-expanded', 'false');
@@ -3007,6 +3060,8 @@
       if (sbtn) sbtn.setAttribute('aria-expanded', 'true');
       var off = offlineApi();
       if (off && typeof off.onChange === 'function') offUnsub = off.onChange(function () { if (sheetOpen() && sheetPage === 'main') redrawDownloadTile(); });
+      var naNow = nativeAudioApi(); // v1.397.0 (D13): a sleep change native reports (it fired, it was armed elsewhere) redraws the tile
+      if (naNow && typeof naNow.onChange === 'function') naUnsub = naNow.onChange(function () { if (sheetOpen() && sheetPage === 'main') refreshStickerMenu(); });
       if (extrasEligible()) extrasMenu.load().then(function () { extrasLoadDone = true; });
       else extrasLoadDone = true;
     }
@@ -3130,9 +3185,12 @@
       }
       var xact = t.closest('[data-skin-x]');
       if (xact) { extrasMenu.handleAction(xact.getAttribute('data-skin-x'), xact); return; }
-      if (t.closest('[data-skin-speedtoggle]')) { speedOpen = !speedOpen; refreshStickerMenu('[data-skin-speedtoggle]'); return; }
+      if (t.closest('[data-skin-speedtoggle]')) { speedOpen = !speedOpen; sleepOpen = false; refreshStickerMenu('[data-skin-speedtoggle]'); return; }
       var spOpt = t.closest('[data-skin-speed]');
       if (spOpt) { applyStickerSpeed(spOpt.getAttribute('data-skin-speed')); speedOpen = false; refreshStickerMenu('[data-skin-speedtoggle]'); return; }
+      if (t.closest('[data-skin-sleeptoggle]')) { sleepOpen = !sleepOpen; speedOpen = false; refreshStickerMenu('[data-skin-sleeptoggle]'); return; } // v1.397.0 (D13)
+      var slOpt = t.closest('[data-skin-sleep]');
+      if (slOpt) { applyStickerSleep(slOpt.getAttribute('data-skin-sleep')); sleepOpen = false; refreshStickerMenu('[data-skin-sleeptoggle]'); return; }
       if (t.closest('[data-skin-loop]')) { toggleStickerLoop(); refreshStickerMenu(); return; }
       // v1.257: the tray toggle - the shell tears this window down and reopens at the
       // new dims, so no re-render here (this document is about to die).

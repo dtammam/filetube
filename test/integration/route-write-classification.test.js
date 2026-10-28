@@ -97,6 +97,7 @@ const CLASSIFICATION = {
   'POST /api/pages/rebuild': 'admin', // v1.395.0 Pages: rebuild the index from the files (requireAdmin FIRST)
   'POST /api/devices': 'personal', // v1.387.0 offline D1: pair the caller's OWN phone (cookie + the account password; a device token is 403); proven in device-tokens.test.js
   'DELETE /api/devices/:id': 'personal', // v1.387.0 offline D1: revoke the caller's OWN phone (another user's id is a 404)
+  'POST /api/devices/media-token': 'personal', // v1.397.0 native audio D7: the caller's OWN phone mints its short-lived media token (device token only; a cookie is 403, a media token is refused by the gate; 6 a minute per device); proven in media-token.test.js
   'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
   'DELETE /api/me/avatar': 'personal',
   'POST /api/me/sticker': 'personal', // v1.238: self-service custom player sticker (own state, no by-id write)
@@ -395,6 +396,7 @@ const VISIBILITY = {
   'POST /api/pages/rebuild': na('the Pages index of every user, rebuilt from the files on disk; admin-only, no item addressed'), // v1.395.0
   'POST /api/devices': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'DELETE /api/devices/:id': 'personal', // v1.387.0: the caller's own phone; no library item addressed
+  'POST /api/devices/media-token': 'personal', // v1.397.0: the caller's own phone's media token; no library item addressed (the token itself reaches only the audio byte and art routes, each applying the account's visibility - proven in media-token.test.js)
   'POST /api/me/avatar': 'personal',
   'DELETE /api/me/avatar': 'personal',
   'POST /api/me/sticker': 'personal', // v1.238: own decoration; no per-item visibility decision applies

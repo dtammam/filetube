@@ -5,6 +5,20 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Native audio (v1.397.0; after the iOS app build that pins this tag)
+
+- [ ] v1.397.0 - (a) Play an album, lock the phone, pause and resume from the lock screen and AirPods; the lock screen shows the song, its art and the album.
+- [ ] v1.397.0 - (b) Start a voice memo or take a call mid-song: FileTube yields, then resumes or stays paused as iOS decides.
+- [ ] v1.397.0 - (c) Pause FileTube: another app's audio is no longer ducked.
+- [ ] v1.397.0 - (d) Loop chapter on a chaptered file (Loop on while a chapter row plays): the chapter repeats; Loop off: the next chapter follows and the Click LCD advances.
+- [ ] v1.397.0 - (e) A podcast at 1.5x from the sticker sheet's Speed; the speed survives the next episode.
+- [ ] v1.397.0 - (f) Sticker sheet > Sleep > 15 min: the tile says "15 min" (counting down on reopen); the timer fires while locked and the tile reads Off afterwards. "End of track" pauses at the end of the song.
+- [ ] v1.397.0 - (g) Radio keeps going for 10+ songs while locked, and the up-next list shows the songs native added when you unlock.
+- [ ] v1.397.0 - (h) A downloaded track plays from the phone in airplane mode (native plays its own copy; the dock still moves).
+- [ ] v1.397.0 - (i) An older app build (no nativeAudio) plays exactly as before (the web element, the web lock screen).
+- [ ] v1.397.0 - (j) Shuffle on mid-album: the song keeps playing without a restart; Next plays a shuffled row. Tap a row in the up-next list: it plays (an audio.jump, no reload).
+- [ ] v1.397.0 - (k) Play a video while music plays: the music stops at once (no two sounds); go back to Music and tap a song: it plays natively again.
+
 ## Toggle pills (v1.396.0)
 
 - [ ] v1.396.0 - (a) Desktop Music: toggle Loop, Shuffle, Autoplay and Remote control. ON is obvious (solid ground + check) and hovering an ON one stays readable.
