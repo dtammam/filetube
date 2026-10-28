@@ -182,8 +182,14 @@ replayed stamp can move by the request latency). Not synced in this release: mus
 
 `GET /track/:id`, `/episode/:id`, `/video/:id`, `/tvepisode/:id` (the web player's byte routes, for playing online from the
 server), `/albumart/:id`, `/thumbnail/:id`, `/tvthumb/:id`, `/tvposter/:showId`, `/podcastart/:subId`,
-`/api/subtitles/:id`, plus `GET /api/auth/me` and `GET /api/host-info`. Everything else is `403`. Every one applies this
-account's restrictions exactly as a browser session does (a kid's phone cannot fetch a hidden file's bytes or art).
+`/api/subtitles/:id`, plus `GET /api/auth/me` and `GET /api/host-info`. Since v1.397.0 (native audio) also `GET /api/music/radio`
+(the native queue's radio picks, the same query the web sends: `seed`, `count`, `exclude`, `queued`, `widen`; the station-seed rate
+limit applies to a phone too), `POST /api/music/progress`, `POST /api/progress`, `POST /api/podcasts/progress` and `POST /api/music/plays`
+(the SAME online routes the web posts to, with the web's bodies: `{ id, position | timestamp, duration }`, `{ id, timestamp, duration }`,
+`{ episodeId, position, duration }`, `{ events: [{ id, kind: 'play' | 'skip' | 'finish' }] }`; a hidden track is a neutral 404), and
+`POST /api/devices/media-token` (section 8). Everything else is `403` (`POST /api/music/resume`, the web's own record of what was
+opened, included). Every one applies this account's restrictions exactly as a browser session does (a kid's phone cannot fetch a
+hidden file's bytes or art, count a play on it, or get it as a radio pick).
 
 ## Telling the web an add failed
 
@@ -201,3 +207,46 @@ item reports `failed` itself). Contract: docs/references/native-bridge.md sectio
   (suggestions only). A restored backup keeps any far-future stamp it carried and blocks offline sync for that item until the
   next online write.
 - TV has no subtitle sidecar route; music play counts are not synced; books are not offline items.
+
+## 8. The media token (native audio, v1.397.0)
+
+The native audio engine (AVPlayer) fetches audio bytes and artwork itself and cannot send the web view's cookies or a
+custom header on an `AVURLAsset`, so it carries a short-lived MEDIA token in the query. The contract native builds the URLs
+against is docs/references/native-bridge.md (the `nativeAudio` capability: an Item's `src` and `artworkSrc` are
+server-relative paths).
+
+`POST /api/devices/media-token` (device token ONLY: `Authorization: Bearer ftd_...`, platform `ios`; no body)
+
+- `200 { "token": "ftm_...", "expiresAt": "2026-10-28T09:00:00.000Z" }` (`Cache-Control: no-store`). The token lives about
+  6 hours and is bound to this account, this device row and the account's device epoch; nothing is stored on the server, so
+  there is nothing to list or revoke on its own: it dies with the device.
+- `401 { "error": "device token revoked", "deviceRevoked": true }`: the device token is unknown, revoked, epoch-stale (a
+  password change, "Remove all devices"), the account is disabled or deleted, or the device was unused for 180 days. Nothing
+  is minted. This is the answer native keys on: AVPlayer sees only the STATUS of a failed byte or art request, so on ANY
+  `401` there native calls this route and lets its answer decide (a `200` = a fresh token, rebuild the URLs and retry; a
+  `401 deviceRevoked` = surface `revoked`, as for a download).
+- `403 { "error": "device token required" }`: a cookie session (the web view) can never mint one; `401 { "error": "media
+  token not accepted here", "mediaTokenScope": true }`: a media token can never mint one (the gate refuses `mt` on a POST).
+- `429 { "error": "too many attempts", "retryAfterSec": n }`: more than 6 mints in a minute from ONE device (a token
+  bucket per device row, refilling one every 10 seconds); a sibling device is untouched. A native bug that loops
+  mint -> rebuild -> 401 must back off by `retryAfterSec`.
+
+Using it: append `mt=<token>` to the query of the Item's `src` or `artworkSrc` (`/api/offline/file/track/<id>?mt=...`,
+`/albumart/<id>?s=600&mt=...`). It is accepted ONLY on `GET` / `HEAD` of `/api/offline/file/track/:id`,
+`/api/offline/file/podcastEpisode/:id`, `/albumart/:id` and `/podcastart/:subId`, with this account's restrictions exactly as a
+browser session (a hidden track or show is a neutral `404`). Anywhere else (a video's bytes, `/track`, the manifest, any API),
+or with any other method, a request carrying `mt` is `401 { "error": "media token not accepted here", "mediaTokenScope": true }`
+whatever else it carries: it never falls through to a cookie, never redirects (a `Location` would echo it) and never sets a
+cookie. Do not send `Authorization` with it; do not follow a redirect to another origin with it (the server sends none).
+
+The byte and art routes' own `401` bodies (for the web and the logs; native only needs the status):
+
+| Body | Meaning |
+|---|---|
+| `{ "error": "media token expired", "mediaTokenExpired": true }` | the token's 6 hours are over, OR the token never existed (a forgery, a garbage value, a device token in the query): the two answer the SAME, so a bad token learns nothing. Re-mint. |
+| `{ "error": "device token revoked", "deviceRevoked": true }` | the token is genuine but its device row is gone, epoch-stale, or the account is disabled or deleted. The mint answers the same. |
+
+Revocation is live for the token's open streams too: a device removed, "Remove all devices", a password change, a disable or
+a delete ENDS any byte request the media token has open at that moment (the stream closes short), like a device-token
+download. Expiry does not cut an open stream (the token was checked when the request started; a 6 h stream is a
+`Range` request's lifetime, not the token's). The token is never written to a log line (`mt=[redacted]`).

@@ -155,7 +155,7 @@ test('the token authenticates as the USER: /api/auth/me is the kid; the kid\'s r
 
 test('scope: a valid token is 403 on everything outside the allowlist (lists, writes, pairing, Settings, the shell); an unknown ftd_ is 401 deviceRevoked and never falls to a cookie; a non-ftd_ Bearer is ignored', async () => {
   const { token } = await pairOk(kid.cookie, KID_PASSWORD);
-  for (const [method, p] of [['GET', '/api/videos'], ['GET', '/api/music'], ['GET', '/api/devices'], ['POST', '/api/devices'], ['DELETE', '/api/devices/1'], ['GET', '/api/users'], ['POST', '/api/progress'], ['GET', '/'], ['GET', '/setup.html'], ['GET', '/js/main.js'], ['GET', '/api/admin/backup'], ['GET', '/api/prefs'], ['GET', '/api/progress/opn']]) {
+  for (const [method, p] of [['GET', '/api/videos'], ['GET', '/api/music'], ['GET', '/api/devices'], ['POST', '/api/devices'], ['DELETE', '/api/devices/1'], ['GET', '/api/users'], ['POST', '/api/music/resume'], ['GET', '/'], ['GET', '/setup.html'], ['GET', '/js/main.js'], ['GET', '/api/admin/backup'], ['GET', '/api/prefs'], ['GET', '/api/progress/opn']]) {
     const r = await asToken(token, p, { method, headers: method === 'POST' ? { 'Content-Type': 'application/json' } : {}, body: method === 'POST' ? '{}' : undefined });
     assert.strictEqual(r.status, 403, `${method} ${p}`);
     assert.deepStrictEqual(await r.json(), { error: 'not available to devices' });

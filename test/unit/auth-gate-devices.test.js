@@ -175,7 +175,7 @@ test('revocation: epoch mismatch, a disabled user, a missing user and 180 days u
 
 test('scope: a VALID token on a route outside the allowlist is 403 (not 401, not through), with no req.user and no tracking', () => {
   const { g, devices } = build();
-  for (const [method, path] of [['GET', '/api/devices'], ['POST', '/api/devices'], ['GET', '/api/videos'], ['POST', '/api/progress'], ['GET', '/'], ['DELETE', '/api/videos/x'], ['GET', '/js/main.js'], ['GET', '/login']]) {
+  for (const [method, path] of [['GET', '/api/devices'], ['POST', '/api/devices'], ['GET', '/api/videos'], ['POST', '/api/music/resume'], ['GET', '/'], ['DELETE', '/api/videos/x'], ['GET', '/js/main.js'], ['GET', '/login']]) {
     const r = run(g, { method, path, authorization: 'Bearer ftd_live' });
     assert.strictEqual(r.nexted, false, method + ' ' + path);
     assert.strictEqual(r.res._status, 403, method + ' ' + path);

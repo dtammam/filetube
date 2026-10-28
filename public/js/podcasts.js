@@ -148,6 +148,48 @@
   function init(root) {
     controller = new AbortController();
     var signal = controller.signal;
+    // v1.397.0 native audio: native-audio.js asks this view to FOLLOW native (it advanced to the next episode) and for the
+    // modes it sends (podcasts: play on to the next episode, never shuffled, Loop from the shared ft-loop); unbound with the view.
+    var NA = window.FileTube && window.FileTube.nativeAudio;
+    if (NA && NA.enabled && typeof NA.bindView === 'function') {
+      var unbindNative = NA.bindView({
+        onIndex: function (idx, item) {
+          if (!item || typeof item.id !== 'string' || signal.aborted) return;
+          var k = (idx >= 0 && idx < playable.length && playable[idx] && playable[idx].id === item.id) ? idx : -1;
+          if (k < 0) { for (var j = 0; j < playable.length; j++) { if (playable[j] && playable[j].id === item.id) { k = j; break; } } }
+          if (k >= 0) playAt(k, { keepPosition: true }); // a FOLLOW: the choke point sees native already there and posts nothing
+        },
+        // podcasts get no radio appends; the server Up-next queue's PODCAST entries after the playing episode (D12, same kind
+        // only) join the playable list as rows so the panel lists them and native's advance into one is followed
+        onAppend: function (items) {
+          if (signal.aborted || !Array.isArray(items) || !items.length) return;
+          var rows = [];
+          for (var k = 0; k < items.length; k++) {
+            var it = items[k];
+            if (!it || it.kind !== 'podcastEpisode' || typeof it.id !== 'string') continue;
+            var m = /^\/podcastart\/([^/?#]+)/.exec(typeof it.artworkSrc === 'string' ? it.artworkSrc : '');
+            var subId = m ? decodeURIComponent(m[1]) : ((currentShow && currentShow.id) || '');
+            rows.push({ id: it.id, title: it.title || '', subId: subId, showName: it.artist || (currentShow && currentShow.name) || '', status: 'downloaded', durationSec: Number(it.durationSec) || 0, pubDateMs: 0, description: '' });
+          }
+          var have = {};
+          for (var q = 0; q < playable.length; q++) have[playable[q].id] = true;
+          rows = rows.filter(function (r) { return !have[r.id]; });
+          if (!rows.length) return;
+          playable = playable.concat(rows);
+          var reIdx = -1;
+          for (var j = 0; j < playable.length; j++) { if (playable[j].id === playingId) { reIdx = j; break; } }
+          if (reIdx >= 0) registerTrackNav(reIdx);
+          updateNowPlayingPanel();
+        },
+        modes: function () {
+          var pl = window.FileTube && window.FileTube.player;
+          var loopOn = false;
+          try { loopOn = !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { loopOn = false; }
+          return { autoplay: true, shuffle: false, loop: loopOn ? 'one' : 'off' };
+        },
+      });
+      signal.addEventListener('abort', function () { try { unbindNative(); } catch (_) { /* gone */ } });
+    }
     var extrasEpisodeDeleteBusy = false; // UI pass S7: one Extras delete confirm (or its request) at a time
     // v1.376.0 W2: the episode kebab's Watch later label reads this membership (fresh per mount).
     if (typeof window.fetchWatchLaterIds === 'function') window.fetchWatchLaterIds(true);
@@ -1084,6 +1126,41 @@
       updateNowPlayingPanel();
     }
 
+    // The player.load descriptor for one playable episode. forQueue (v1.397.0): the row is one of the native queue's Items
+    // (public/js/native-audio.js turns the same builder's output into Items, so the load and its queue cannot drift).
+    function episodeLoadData(ep, i, forQueue) {
+      var showName = ep.showName || currentShow.name;
+      var artSubId = ep.subId || currentShow.id;
+      return {
+        id: ep.id, // v1.397.0: the native queue needs the row's id on the descriptor
+        type: 'audio',
+        title: ep.title,
+        channelName: showName,
+        folderName: showName,
+        duration: ep.durationSec || 0,
+        artUrl: '/podcastart/' + encodeURIComponent(artSubId),
+        streamSrc: '/episode/' + ep.id,
+        progressEndpoint: '/api/podcasts/progress',
+        resumeMode: 'podcast',
+        subId: artSubId, // v1.105: so player.getCurrentMeta can expose the show id for the re-init reseed
+        autoAdvanceViaTrackNav: true,
+        // v1.71 T7: tapping the docked player opens the expanded
+        // now-playing view in ONE gesture (Dean's ruling) - the ?nowplaying
+        // param tells this controller's init to expand into #player-slot.
+        readerHref: '/podcasts?nowplaying=1',
+        // v1.397.0 native audio (D5): the whole playable list as descriptors (the show's downloaded episodes in list order)
+        // with this episode's index; a browser, or a host without nativeAudio, never reads it.
+        nativeQueue: forQueue ? undefined : function () {
+          var items = [];
+          var idx = (i >= 0 && i < playable.length && playable[i] === ep) ? i : -1;
+          if (idx < 0) { for (var k = 0; k < playable.length; k++) { if (playable[k] && playable[k].id === ep.id) { idx = k; break; } } }
+          var rows = idx >= 0 ? playable : [ep];
+          for (var r = 0; r < rows.length; r++) items.push(episodeLoadData(rows[r], r, true));
+          return { items: items, index: idx >= 0 ? idx : 0 };
+        },
+      };
+    }
+
     // `opts.keepPosition` = a NAV step (next/prev) - keep the player where it is.
     // Omitted (a fresh SELECT: an episode tap, up-next tap, continue) - expand.
     function playAt(i, opts) {
@@ -1103,23 +1180,7 @@
       // still exists.
       var showName = ep.showName || currentShow.name;
       var artSubId = ep.subId || currentShow.id;
-      var data = {
-        type: 'audio',
-        title: ep.title,
-        channelName: showName,
-        folderName: showName,
-        duration: ep.durationSec || 0,
-        artUrl: '/podcastart/' + encodeURIComponent(artSubId),
-        streamSrc: '/episode/' + ep.id,
-        progressEndpoint: '/api/podcasts/progress',
-        resumeMode: 'podcast',
-        subId: artSubId, // v1.105: so player.getCurrentMeta can expose the show id for the re-init reseed
-        autoAdvanceViaTrackNav: true,
-        // v1.71 T7: tapping the docked player opens the expanded
-        // now-playing view in ONE gesture (Dean's ruling) - the ?nowplaying
-        // param tells this controller's init to expand into #player-slot.
-        readerHref: '/podcasts?nowplaying=1',
-      };
+      var data = episodeLoadData(ep, i, false);
       playingId = ep.id;
       // v1.105: the metadata the now-playing panel renders (episode title, show,
       // date, description) - kept here at play time; re-seeded from the live

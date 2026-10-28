@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -38,6 +38,41 @@
     };
   }
   var DOWNLOAD_LENIENT = { state: 'none', error: 'other' };
+  // v1.397.0 nativeAudio (plan docs/exec-plans/completed/2026-10-28-native-audio.md, D4-D7): the iOS app plays music and podcasts
+  // through a native engine. The web sends the WHOLE queue of Items in audio.load (D5) and intents after it; native echoes the
+  // queue in every audioState (it may have appended radio picks itself) and the web REPLACES its view with each snapshot
+  // (audioTick is a position delta). src and artworkSrc are server-relative paths native resolves and appends the media
+  // token to (D7). clip = one chapter of a file (clip-relative time, D6). progress.route is the ONLINE route native posts
+  // to with the web's own body (D8). public/js/native-audio.js owns the ONE subscription and every post.
+  var AUDIO_KINDS = ['track', 'podcastEpisode'];
+  var AUDIO_PROGRESS_ROUTES = ['/api/music/progress', '/api/progress', '/api/podcasts/progress'];
+  var AUDIO_STATES = ['idle', 'loading', 'playing', 'paused', 'ended', 'failed'];
+  var AUDIO_ERRORS = ['network', 'notPlayable', 'revoked', 'notOnServer', 'other'];
+  var AUDIO_LOOP = ['off', 'one'];
+  var AUDIO_SLEEP_MODES = ['off', 'minutes', 'endOfItem'];
+  var AUDIO_QUEUE_MAX = 2000;
+  function audioItemFields() {
+    return {
+      kind: { enum: AUDIO_KINDS.slice(), req: true },
+      id: { is: 'string', min: 1, max: 512, req: true },
+      src: { is: 'string', min: 1, max: 2048, req: true },
+      title: { is: 'string', max: 1024, req: true },
+      artist: { is: 'string', max: 1024 },
+      album: { is: 'string', max: 1024 },
+      artworkSrc: { is: 'string', min: 1, max: 2048 },
+      durationSec: { is: 'number', min: 0 },
+      clip: { is: 'object', props: { startSec: { is: 'number', min: 0, req: true }, endSec: { is: 'number', min: 0, req: true } } },
+      progress: { is: 'object', req: true, props: { route: { enum: AUDIO_PROGRESS_ROUTES.slice(), req: true }, key: { is: 'string', min: 1, max: 512, req: true } } },
+      radioSeed: { is: 'string', min: 1, max: 512 },
+    };
+  }
+  function audioModesSpec(req) {
+    var o = { is: 'object', props: { autoplay: { is: 'boolean', req: true }, shuffle: { is: 'boolean', req: true }, loop: { enum: AUDIO_LOOP.slice(), req: true } } };
+    if (req) o.req = true;
+    return o;
+  }
+  function audioQueueSpec() { return { is: 'array', req: true, max: AUDIO_QUEUE_MAX, items: { is: 'object', props: audioItemFields() } }; }
+  var AUDIO_RATE = { is: 'number', min: 0.5, max: 3, req: true };
 
   // Web to native. cap = the capability that must be announced (null = always). fields: the allowed
   // fields; req = required; a field spec is one of { is: 'string'|'number'|'object', min, max } /
@@ -63,6 +98,20 @@
     'downloads.subscribe': { cap: 'downloads', fields: {} },
     'downloads.unsubscribe': { cap: 'downloads', fields: {} },
     'downloads.show': { cap: 'downloads', fields: {} },
+    // v1.397.0 nativeAudio: the whole queue up front, then intents. positionSec and audio.seek are clip-relative for a clip Item.
+    'audio.load': { cap: 'nativeAudio', fields: { queue: audioQueueSpec(), index: { is: 'number', min: 0, req: true }, positionSec: { is: 'number', min: 0, req: true }, autoplay: { is: 'boolean', req: true }, modes: audioModesSpec(true), rate: AUDIO_RATE, rev: { is: 'number', min: 0, req: true } } },
+    'audio.play': { cap: 'nativeAudio', fields: {} },
+    'audio.pause': { cap: 'nativeAudio', fields: {} },
+    'audio.seek': { cap: 'nativeAudio', fields: { positionSec: { is: 'number', min: 0, req: true } } },
+    'audio.skip': { cap: 'nativeAudio', fields: { to: { enum: ['next', 'previous'], req: true } } },
+    'audio.jump': { cap: 'nativeAudio', fields: { index: { is: 'number', min: 0, req: true } } },
+    'audio.setModes': { cap: 'nativeAudio', fields: { modes: audioModesSpec(true) } },
+    'audio.setRate': { cap: 'nativeAudio', fields: { rate: AUDIO_RATE } },
+    // minutes is required when mode is 'minutes' (native-audio.js never posts one without it; the flat table cannot say so).
+    'audio.sleep': { cap: 'nativeAudio', fields: { mode: { enum: AUDIO_SLEEP_MODES.slice(), req: true }, minutes: { is: 'number', min: 1, max: 720 } } },
+    'audio.stop': { cap: 'nativeAudio', fields: {} },
+    'audio.subscribe': { cap: 'nativeAudio', fields: {} },
+    'audio.unsubscribe': { cap: 'nativeAudio', fields: {} },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -94,6 +143,27 @@
     // `download` event). id is the id the web sent; an unknown error reads as 'other', an unknown kind drops the event.
     downloadsAddFailed: { lenient: { error: 'other' }, fields: { kind: { enum: DOWNLOAD_KINDS.slice(), req: true }, id: { is: 'string', min: 1, max: 512, req: true }, error: { enum: DOWNLOAD_ERRORS.slice(), req: true } } },
     downloadsSnapshot: { fields: { items: { is: 'array', req: true, max: 10000, items: { is: 'object', props: downloadItemFields(), lenient: DOWNLOAD_LENIENT } } } },
+    // v1.397.0 nativeAudio: a full snapshot on subscribe and on every real change (the web REPLACES its view; a rev older than
+    // the web's last audio.load is dropped by native-audio.js), a small tick about once a second while playing, and an item
+    // that failed. An unknown error reads as 'other'; an unknown state drops the snapshot (a required enum, like battery.state).
+    audioState: {
+      lenient: { error: 'other' },
+      fields: {
+        rev: { is: 'number', min: 0, req: true },
+        queue: audioQueueSpec(),
+        index: { is: 'number', min: 0, req: true },
+        state: { enum: AUDIO_STATES.slice(), req: true },
+        positionSec: { is: 'number', min: 0, req: true },
+        durationSec: { is: 'number', min: 0, req: true },
+        bufferedSec: { is: 'number', min: 0 },
+        rate: AUDIO_RATE,
+        modes: audioModesSpec(true),
+        sleep: { is: 'object', req: true, props: { mode: { enum: AUDIO_SLEEP_MODES.slice(), req: true }, endsAt: { is: 'number', min: 0 } } },
+        error: { enum: AUDIO_ERRORS.slice() },
+      },
+    },
+    audioTick: { fields: { rev: { is: 'number', min: 0, req: true }, positionSec: { is: 'number', min: 0, req: true }, bufferedSec: { is: 'number', min: 0 } } },
+    audioError: { lenient: { error: 'other' }, fields: { id: { is: 'string', min: 1, max: 512, req: true }, error: { enum: AUDIO_ERRORS.slice(), req: true } } },
   };
 
   function fieldOk(spec, v) {
@@ -104,9 +174,18 @@
     if (spec.is === 'string') return typeof v === 'string' && (spec.min === undefined || v.length >= spec.min) && (spec.max === undefined || v.length <= spec.max);
     if (spec.is === 'boolean') return typeof v === 'boolean';
     if (spec.is === 'object') return !!v && typeof v === 'object' && (!spec.props || fieldsOk(spec.props, v));
-    // An array field: the length cap decides the field; its ELEMENTS are sanitized one by one in `sanitize` (a bad
-    // element is dropped, never the whole event), so here only the shape and the cap are judged.
-    if (spec.is === 'array') return Array.isArray(v) && (spec.max === undefined || v.length <= spec.max);
+    // An array field: the length cap decides the field. On the way IN its ELEMENTS are sanitized one by one in `sanitize`
+    // first (a bad element is dropped, never the whole event), so by the time this runs every element fits; on the way
+    // OUT (a web-to-native message) nothing pre-cleans them, so each object element is judged against its props here and
+    // one bad element drops the whole message (v1.397.0: a queue Item the web built wrong is never posted, and never
+    // silently removed either - that would shift every index).
+    if (spec.is === 'array') {
+      if (!Array.isArray(v) || (spec.max !== undefined && v.length > spec.max)) return false;
+      if (spec.items && spec.items.props) {
+        for (var ai = 0; ai < v.length; ai++) { if (!fieldOk(spec.items, v[ai])) return false; }
+      }
+      return true;
+    }
     return false;
   }
   function fieldsOk(fields, obj) {
@@ -261,7 +340,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};
