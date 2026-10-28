@@ -5,7 +5,9 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 const mt = require('../../lib/auth/media-token');
+const authCrypto = require('../../lib/auth/crypto');
 
 const SECRET = 's'.repeat(48);
 const CLAIMS = { uid: 7, did: 3, de: 2 };
@@ -40,11 +42,36 @@ test('parse NEVER throws on hostile input and refuses every malformed shape', ()
   for (const b of bad) assert.strictEqual(mt.parseMediaToken(b, SECRET), null, JSON.stringify(b));
   assert.strictEqual(mt.parseMediaToken(token, ''), null, 'no secret: refused');
   // a correctly signed payload with wrong claim types is still refused
-  const forge = (obj) => { const p = Buffer.from(JSON.stringify(obj)).toString('base64url'); const m = require('node:crypto').createHmac('sha256', SECRET).update(p).digest('base64url'); return 'ftm_' + p + '.' + m; };
+  const forge = (obj) => { const p = Buffer.from(JSON.stringify(obj)).toString('base64url'); const m = crypto.createHmac('sha256', mt.mediaKey(SECRET)).update(p).digest('base64url'); return 'ftm_' + p + '.' + m; };
   for (const o of [{ uid: '7', did: 3, de: 2, iat: 1, exp: 2 }, { uid: 7, did: 3, de: 2, iat: 1 }, { uid: 7, did: -3, de: 2, iat: 1, exp: 2 }, { uid: 7, did: 3, de: 2.5, iat: 1, exp: 2 }, [1, 2], 'str', null]) {
     assert.strictEqual(mt.parseMediaToken(forge(o), SECRET), null, JSON.stringify(o));
   }
   assert.strictEqual(mt.parseMediaToken(forge({ uid: 7, did: 3, de: 2, iat: 1, exp: 2 }), SECRET) !== null, true, 'the control: a well-formed forge with the right secret parses (expiry is the gate\'s call)');
+});
+
+test('D18 domain separation: a media token never verifies as a SESSION (its prefix stripped, a tv forged in) and a session never parses as a media token; the key is HMAC(secret, "filetube media token v1"), not the raw secret', () => {
+  const now = 1_000_000;
+  // a media-shaped payload carrying everything verifySession wants (uid, tv, iat, exp) and mac'd with the MEDIA key: not a session
+  const payload = Buffer.from(JSON.stringify({ uid: 7, did: 3, de: 2, tv: 0, iat: now, exp: now + 3600 })).toString('base64url');
+  const mediaMac = crypto.createHmac('sha256', mt.mediaKey(SECRET)).update(payload).digest('base64url');
+  assert.strictEqual(authCrypto.verifySession(payload + '.' + mediaMac, SECRET, { nowSeconds: now }), null, 'a media mac is not a session mac');
+  // the control that pins the mutant: the SAME payload mac'd with the raw secret WOULD be a session (what D18 forbids)
+  const rawMac = crypto.createHmac('sha256', SECRET).update(payload).digest('base64url');
+  assert.ok(authCrypto.verifySession(payload + '.' + rawMac, SECRET, { nowSeconds: now }), 'the control: with the raw secret the forgery verifies, so the derived key is what keeps it out');
+  assert.notStrictEqual(mediaMac, rawMac);
+  // a real media token with its prefix stripped is not a session (no tv AND the wrong key)
+  const { token } = mt.signMediaToken(CLAIMS, SECRET, { nowSeconds: now });
+  assert.strictEqual(authCrypto.verifySession(token.slice(4), SECRET, { nowSeconds: now }), null);
+  // the reverse: a session token with the media prefix is not a media token (session-shaped claims, the wrong key)
+  const session = authCrypto.signSession({ uid: 7, tv: 0 }, SECRET, { nowSeconds: now });
+  assert.strictEqual(mt.parseMediaToken('ftm_' + session, SECRET), null);
+  // and a session-shaped payload mac'd with the raw secret but carrying did/de does not parse as a media token either
+  const sPayload = Buffer.from(JSON.stringify({ uid: 7, did: 3, de: 2, iat: now, exp: now + 3600 })).toString('base64url');
+  assert.strictEqual(mt.parseMediaToken('ftm_' + sPayload + '.' + crypto.createHmac('sha256', SECRET).update(sPayload).digest('base64url'), SECRET), null);
+  // the derivation is the documented one and is stable per secret
+  assert.deepStrictEqual(mt.mediaKey(SECRET), crypto.createHmac('sha256', SECRET).update('filetube media token v1').digest());
+  assert.strictEqual(mt.KEY_DOMAIN, 'filetube media token v1');
+  assert.strictEqual(mt.mediaKey(''), null);
 });
 
 test('redactMediaToken: every mt= value goes, wherever it sits; other params and token-free URLs are untouched', () => {
