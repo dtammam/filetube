@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.397.0-native-audio
 anchor: spec
 status: Approved - ready to build
-next: W1 - the contract (Step 0 done: census + measurement in Evidence, red test written)
+next: W2 - the server (media token, mt on the audio byte and art routes, redaction, DEVICE_SCOPE widening); W1 contract committed, relay its sha
 design: Approved 2026-10-28 (Dean's rulings via the Root; the contract drafted with the SANDYJAR iOS Dev Root)
 gate: pending
 builder: extreme

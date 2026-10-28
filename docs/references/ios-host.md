@@ -40,14 +40,17 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
 - **Spin one keeps the web player.** The app turns on background audio for the existing web player (iOS keeps a web view
   alive while it plays media). A native audio engine is a later, separate step, taken only if the in-app web player still
   has gaps that matter.
-- **If a native audio engine comes, native owns playback while hosted.** The custom web controls stay exactly as they are (custom
-  UI, native engine underneath, as the big video apps do it). The web sends intents (play this queue from this index, seek, next);
-  native holds the queue, fetches the next radio pick itself (iOS suspends a web view's JavaScript in the background) and sends
-  back full state snapshots; the web's own media element is silenced so two audio stacks never fight over the lock screen.
+- **The native audio engine (built in v1.397.0, the `nativeAudio` capability): native owns playback while hosted.** The custom web
+  controls stay exactly as they are (custom UI, native engine underneath, as the big video apps do it). The web sends intents (play
+  this queue from this index, seek, next); native holds the queue, fetches the next radio pick itself (iOS suspends a web view's
+  JavaScript in the background) and sends back full state snapshots; the web's own media element is silenced so two audio stacks
+  never fight over the lock screen. Music and podcasts only; video stays on the web player (Dean, 2026-10-28).
 - **Offline is native-only.** Service workers are effectively unavailable in a `WKWebView` whose server address the user types
   (Apple allows them only for at most 10 domains fixed at build time). Offline becomes a native Downloads page and the native
   player, never "the web UI, offline".
-- **Native media requests use a media token**, not the web view's cookies (AVPlayer snapshots cookies once), when they come.
+- **Native media requests use a media token**, not the web view's cookies (AVPlayer snapshots cookies once): built in v1.397.0 as a
+  short-lived `?mt=` query token minted from the device token, accepted only on the audio byte and art routes
+  ([offline-api.md](offline-api.md) section 8).
 - **For Dean first, public-ready later.** Distribution starts as free Xcode installs, then internal TestFlight (no App Review).
   An App Store build is its own decision later and would need: the `mediaFetch` capability gate (v1.391.0: the web shows its
   server-side downloader UI only when there is no host or the host announces `mediaFetch`, so the store build leaves it out;
@@ -92,3 +95,15 @@ files, the catalogue and every download's state, fetches the manifest itself wit
 album or season add reports its members with `parentKind` + `parentId`. The server half is [the offline-server
 plan](../exec-plans/completed/2026-10-11-offline-server.md); the design is [ios-offline.md](ios-offline.md). Details and owners:
 [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6.
+
+## Addendum 2026-10-28 (v1.397.0): the native audio engine, nine capabilities
+
+Contract v1 (add-only) grows from eight capabilities to nine: `nativeAudio`. Dean (2026-10-28): "Native av player please. IOS only."
+Music (native tracks, library audio, chapter rows as clip Items) and podcasts play through the app's own AVPlayer engine, which owns the
+audio session and the lock screen; video stays on the web player. The web sends the whole queue up front (`audio.load`) and intents after
+it (play, pause, seek, skip, jump, modes, rate, a sleep timer, stop), subscribes for full `audioState` snapshots plus `audioTick`
+deltas, and drives its own silenced media element as a proxy of native's state so the dock, the now-playing panels and every skin render
+unchanged. Native fetches its media with a short-lived media token in the query (`?mt=`, `POST /api/devices/media-token`), fetches
+radio itself and posts progress and plays to the same online routes the web uses. The FileTube half is [the native-audio
+plan](../exec-plans/active/2026-10-28-native-audio.md); details and owners: [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6;
+the token: [offline-api.md](offline-api.md) section 8.

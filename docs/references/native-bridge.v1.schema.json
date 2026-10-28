@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio"] }
         }
       }
     },
@@ -49,8 +49,50 @@
         { "properties": { "type": { "const": "downloads.remove" }, "kind": { "enum": ["track", "album", "podcastEpisode", "video", "tvEpisode", "tvSeason"] }, "id": { "type": "string", "minLength": 1, "maxLength": 512 } }, "required": ["kind", "id"] },
         { "properties": { "type": { "const": "downloads.subscribe" } } },
         { "properties": { "type": { "const": "downloads.unsubscribe" } } },
-        { "properties": { "type": { "const": "downloads.show" } } }
+        { "properties": { "type": { "const": "downloads.show" } } },
+        { "properties": { "type": { "const": "audio.load" }, "queue": { "type": "array", "maxItems": 2000, "items": { "$ref": "#/$defs/audioItem" } }, "index": { "type": "number", "minimum": 0 }, "positionSec": { "type": "number", "minimum": 0 }, "autoplay": { "type": "boolean" }, "modes": { "$ref": "#/$defs/audioModes" }, "rate": { "type": "number", "minimum": 0.5, "maximum": 3 }, "rev": { "type": "number", "minimum": 0 } }, "required": ["queue", "index", "positionSec", "autoplay", "modes", "rate", "rev"] },
+        { "properties": { "type": { "const": "audio.play" } } },
+        { "properties": { "type": { "const": "audio.pause" } } },
+        { "properties": { "type": { "const": "audio.seek" }, "positionSec": { "type": "number", "minimum": 0 } }, "required": ["positionSec"] },
+        { "properties": { "type": { "const": "audio.skip" }, "to": { "enum": ["next", "previous"] } }, "required": ["to"] },
+        { "properties": { "type": { "const": "audio.jump" }, "index": { "type": "number", "minimum": 0 } }, "required": ["index"] },
+        { "properties": { "type": { "const": "audio.setModes" }, "modes": { "$ref": "#/$defs/audioModes" } }, "required": ["modes"] },
+        { "properties": { "type": { "const": "audio.setRate" }, "rate": { "type": "number", "minimum": 0.5, "maximum": 3 } }, "required": ["rate"] },
+        { "properties": { "type": { "const": "audio.sleep" }, "mode": { "enum": ["off", "minutes", "endOfItem"] }, "minutes": { "type": "number", "minimum": 1, "maximum": 720 } }, "required": ["mode"] },
+        { "properties": { "type": { "const": "audio.stop" } } },
+        { "properties": { "type": { "const": "audio.subscribe" } } },
+        { "properties": { "type": { "const": "audio.unsubscribe" } } }
       ]
+    },
+    "audioItem": {
+      "description": "v1.397.0 nativeAudio: one queue ITEM the web sends in audio.load and native echoes in every audioState. kind: a music track (a native track, a library audio file shown in Music, or one chapter of a chaptered file) or a podcast episode. src and artworkSrc are SERVER-RELATIVE paths native resolves against the configured origin and appends the media token (?mt=) to: src is the iOS-playable file route /api/offline/file/<kind>/<id> (never /track, which 503s while an ALAC rendition transcodes), artworkSrc one of /albumart/<id> or /podcastart/<subId>. clip (file seconds) marks one chapter of a file: positionSec, durationSec and seek are CLIP-RELATIVE, native ends the item at clip.endSec and Loop 'one' loops the clip. progress names the ONLINE route native POSTs plays and positions to (the same body the web sends; key is the id the web would save under: a chapter saves under its parent file id with FILE-absolute seconds) and radioSeed the seed native asks GET /api/music/radio with when 2 or fewer items are left (podcasts never carry one).",
+      "type": "object",
+      "required": ["kind", "id", "src", "title", "progress"],
+      "properties": {
+        "kind": { "enum": ["track", "podcastEpisode"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "src": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "title": { "type": "string", "maxLength": 1024 },
+        "artist": { "type": "string", "maxLength": 1024 },
+        "album": { "type": "string", "maxLength": 1024 },
+        "artworkSrc": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "durationSec": { "type": "number", "minimum": 0 },
+        "clip": { "type": "object", "required": ["startSec", "endSec"], "properties": { "startSec": { "type": "number", "minimum": 0 }, "endSec": { "type": "number", "minimum": 0 } } },
+        "progress": { "type": "object", "required": ["route", "key"], "properties": { "route": { "enum": ["/api/music/progress", "/api/progress", "/api/podcasts/progress"] }, "key": { "type": "string", "minLength": 1, "maxLength": 512 } } },
+        "radioSeed": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "audioModes": {
+      "description": "v1.397.0 nativeAudio: the playback modes the web owns and native applies. loop 'one' repeats the current item (for a clip item: the chapter, D6); shuffle and autoplay are the web's Shuffle and Autoplay toggles (the web sends its queue in play order and mirrors native's radio appends, so native stays queue-dumb; autoplay off = stop at the end of the queue, no radio).",
+      "type": "object",
+      "required": ["autoplay", "shuffle", "loop"],
+      "properties": { "autoplay": { "type": "boolean" }, "shuffle": { "type": "boolean" }, "loop": { "enum": ["off", "one"] } }
+    },
+    "audioSleep": {
+      "description": "v1.397.0 nativeAudio: the sleep timer as native reports it. endsAt is epoch ms (only with mode 'minutes').",
+      "type": "object",
+      "required": ["mode"],
+      "properties": { "mode": { "enum": ["off", "minutes", "endOfItem"] }, "endsAt": { "type": "number", "minimum": 0 } }
     },
     "downloadItem": {
       "description": "One downloaded (or downloading) ITEM as native reports it: the fields of a 'download' event and of each 'downloadsSnapshot' element. kind is always a single-item kind; an album or season add reports its members, each carrying parentKind + parentId (FileTube Root ruling, 2026-10-11). state 'none' = not on the phone (removed, gone, cancelled). error only with 'failed'; localSrc only with 'done' (an opaque URL the web uses ONLY as a media element src). progress 0..1.",
@@ -123,6 +165,40 @@
             "items": { "type": "array", "maxItems": 10000, "items": { "$ref": "#/$defs/downloadItem" } }
           },
           "required": ["items"]
+        },
+        {
+          "properties": {
+            "type": { "const": "audioState" },
+            "rev": { "type": "number", "minimum": 0 },
+            "queue": { "type": "array", "maxItems": 2000, "items": { "$ref": "#/$defs/audioItem" } },
+            "index": { "type": "number", "minimum": 0 },
+            "state": { "enum": ["idle", "loading", "playing", "paused", "ended", "failed"] },
+            "positionSec": { "type": "number", "minimum": 0 },
+            "durationSec": { "type": "number", "minimum": 0 },
+            "bufferedSec": { "type": "number", "minimum": 0 },
+            "rate": { "type": "number", "minimum": 0.5, "maximum": 3 },
+            "modes": { "$ref": "#/$defs/audioModes" },
+            "sleep": { "$ref": "#/$defs/audioSleep" },
+            "error": { "enum": ["network", "notPlayable", "revoked", "notOnServer", "other"] }
+          },
+          "required": ["rev", "queue", "index", "state", "positionSec", "durationSec", "rate", "modes", "sleep"]
+        },
+        {
+          "properties": {
+            "type": { "const": "audioTick" },
+            "rev": { "type": "number", "minimum": 0 },
+            "positionSec": { "type": "number", "minimum": 0 },
+            "bufferedSec": { "type": "number", "minimum": 0 }
+          },
+          "required": ["rev", "positionSec"]
+        },
+        {
+          "properties": {
+            "type": { "const": "audioError" },
+            "id": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "error": { "enum": ["network", "notPlayable", "revoked", "notOnServer", "other"] }
+          },
+          "required": ["id", "error"]
         }
       ]
     },
