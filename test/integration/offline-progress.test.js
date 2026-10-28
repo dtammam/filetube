@@ -391,14 +391,18 @@ test('no presence is announced for an offline replay, even when the body carries
   assert.deepStrictEqual(mixed.body.results.map((x) => [x.kind, x.applied ? 'applied' : x.reason]), [['tvEpisode', 'applied'], [undefined, 'invalid'], ['video', 'gone'], ['track', 'applied'], ['podcastEpisode', 'applied'], ['video', 'older']]);
 });
 
-test('a device token syncs its own positions (the ONE write in its scope); the audit line is a mutation of the kid', async () => {
+test('a device token syncs its own positions (its offline write; since v1.397.0 the online progress routes are in scope too, the web\'s resume record is not); the audit line is a mutation of the kid', async () => {
   const r = await sync([ev('video', 'v1', 30, Date.now())], { headers: { Cookie: '', Authorization: `Bearer ${kidToken}` } });
   assert.strictEqual(r.status, 200);
   assert.strictEqual(r.body.results[0].applied, true);
   assert.strictEqual(userStore.getOneProgress(kid.user.id, 'v1').timestamp, 30, 'written under the TOKEN\'s user');
   assert.notStrictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 30, 'never under another user');
-  const other = await fetch(`${base}/api/progress`, { method: 'POST', headers: { Cookie: '', Authorization: `Bearer ${kidToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'v1', timestamp: 1, duration: 100 }) });
-  assert.strictEqual(other.status, 403, 'the online progress route stays outside the token\'s scope');
+  // v1.397.0 (native audio D8): the online progress routes JOINED the device scope (the native engine posts to them with the
+  // web's bodies); the web's own resume record did not.
+  const online = await fetch(`${base}/api/progress`, { method: 'POST', headers: { Cookie: '', Authorization: `Bearer ${kidToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'v1', timestamp: 1, duration: 100 }) });
+  assert.strictEqual(online.status, 200, 'the online progress route is in the token\'s scope since v1.397.0 (D8)');
+  const other = await fetch(`${base}/api/music/resume`, { method: 'POST', headers: { Cookie: '', Authorization: `Bearer ${kidToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ lastTrackId: 'x', position: 0 }) });
+  assert.strictEqual(other.status, 403, 'the web\'s own resume record stays outside the token\'s scope');
 });
 
 test('the snapshot-to-commit GAP, order E (gate r1 adversary CRITICAL): the sync is queued behind a busy chain, THEN the coalescer snapshots an OLDER buffered ping and queues its commit behind the sync; the handler flushes first, so the older ping commits ahead and the newer offline position stands (media and music)', async () => {

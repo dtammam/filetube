@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.397.0-native-audio
 anchor: spec
 status: Approved - ready to build
-next: W2 - the server (media token, mt on the audio byte and art routes, redaction, DEVICE_SCOPE widening); W1 contract committed, relay its sha
+next: W3 - the web adapter (native-audio.js, the player.load choke point, the element-instance proxy, the stand-down list); W1 + W2 committed and relayed
 design: Approved 2026-10-28 (Dean's rulings via the Root; the contract drafted with the SANDYJAR iOS Dev Root)
 gate: pending
 builder: extreme
@@ -47,6 +47,10 @@ fetches the next radio pick itself, the web's element is silenced, and native re
 | D11 | Snapshots: a full `audioState` on subscribe and on every real change, plus a small `audioTick` about every 1 s while playing. | iOS Root |
 | D12 | **The server Up-next queue** (`/api/queue`, which the web's autoplay consults): when it holds entries, the web flattens them into the Item list it sends. A queue edit while hosted re-sends `audio.load` (rev+1) at the current index and position. Native stays queue-dumb. | Root |
 | D13 | **Sleep timer UI** shows only when `nativeAudio` is announced: the browser has no sleep timer today, and this plan doesn't add one. | Root |
+| D14 | **The `mt` refusal bodies tell native which recovery to take** (added 2026-10-28 during W2): `401 { error: 'media token expired', mediaTokenExpired: true }` for an expired token AND for a token that never existed (the same answer, no oracle beyond what deviceAuth allows); `401 { error: 'device token revoked', deviceRevoked: true }` when the token's device is revoked, epoch-stale or disabled (mid-stream the open response simply ends). | iOS Root via the Root |
+| D15 | **Native re-mints on ANY byte / art 401 and the mint's answer decides** (AVPlayer sees only the status of a failed request): `POST /api/devices/media-token` sits behind deviceAuth, so a revoked, epoch-stale, disabled-user or expired device answers `401 deviceRevoked` and mints nothing (tested per case). The byte-route bodies of D14 stay distinct for the web and the logs. | iOS Root via the Root |
+| D16 | **The mint is rate-bound per device**: 6 a minute (a token bucket per device row refilling one every 10 s), `429 { error: 'too many attempts', retryAfterSec }` past it; a sibling device is untouched. Media tokens are stateless (an HMAC over `{ uid, did, de, iat, exp }` with the session secret, prefix `ftm_`), so nothing is stored and nothing needs pruning. | Root (the number is the builder's call) |
+| D17 | **The web owns queue ORDER, shuffle included; native never reorders.** A shuffle toggle or a queue edit re-sends `audio.load` with rev + 1, the CURRENT index and `positionSec` read from the latest `audioState` / `audioTick`, never a stale value (native treats a load whose `queue[index]` has the playing item's kind and id as seamless, with no restart unless the position differs by more than 2 s). | iOS Root via the Root |
 
 ## The contract (nativeAudio, bridge v1, add-only)
 
@@ -278,6 +282,6 @@ Dean authorizes the merge. After the tag's Publish run is green, the FileTube Ro
 - **Red-first test:** test/unit/native-audio-contract.test.js at 09d0cda6 + this plan: `not ok 1 - RED FIRST: a host announcing
   nativeAudio gets audio.load with the whole queue and the element gets NO src` (`the adapter knows the capability: false !== true`);
   `ok 2 - CONTROL: no host ...` and `ok 3 - CONTROL: a host WITHOUT nativeAudio ...` (1 fail, 2 pass; the file is committed with W1).
-- Contract relay (sha):
+- Contract relay (sha): W1 71188ea7 sent to the FileTube Root 2026-10-28 (relayed to the SANDYJAR iOS Dev Root, the media-token shape marked provisional); W2 (the token's final shape, D14-D16) sent with the W2 sha below.
 - Suites (22.23.1 / 24.20.0):
 - Gate verdicts:
