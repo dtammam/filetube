@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.397.0-native-audio
 anchor: spec
 status: Approved - ready to build
-next: builder - cut the branch from main, Step 0 (the seam census + measure the offline file route online), then W1
+next: W1 - the contract (Step 0 done: census + measurement in Evidence, red test written)
 design: Approved 2026-10-28 (Dean's rulings via the Root; the contract drafted with the SANDYJAR iOS Dev Root)
 gate: pending
 builder: extreme
@@ -219,9 +219,65 @@ Dean authorizes the merge. After the tag's Publish run is green, the FileTube Ro
 
 ## Evidence (builder fills)
 
-- Step 0 census:
-- Step 0 offline-file-route measurements:
-- Red-first test:
+### Step 0 (2026-10-28, Fable builder; line numbers at 09d0cda6)
+
+- **Census: every `player.load` caller, and whether it carries `type: 'audio'`.**
+  - music.js:4611 `loadTrack` - always audio (`resumeMode: 'music'`; native tracks, library audio, chapter rows `<id>::c<n>`). NATIVE.
+  - podcasts.js:1139 `playAt` - always audio (`resumeMode: 'podcast'`). NATIVE.
+  - feed.js:1327 (song cards) and feed.js:2380 (every card kind; podcast cards are audio) - the Feed plays a SLICE of a song and binds its
+    own end-at listeners on the element (feed.js:1328, 2381-2400) and its podcast route `/api/feed/progress/podcast` is not in the contract's
+    `progress.route` enum. A seam the plan did not name: the Feed stays on the web element (a screen-on, swipe-driven surface), and a Feed
+    load while native holds a queue posts `audio.stop`. Recorded in ROADMAP Planned as an unasked follow-up.
+  - read.js:282 `loadReaderAudio` - a book's synthesized audio (`/book/:id/tts/...`, a synthetic id, `suppressProgress`). Not music or a
+    podcast (D2): stays on the web element; stops native.
+  - watch.js:1622 / 1664 / 1801 (a library item; `mediaData.type` can be `'audio'` when a library audio file is opened on the watch page,
+    watch.js:2574) and watch.js:4345 / 4765 (TV episodes). Not the Music surface: stay on the web element; stop native.
+  - The rule the adapter applies (W3): native claims a load only when `host.has('nativeAudio')`, `data.type === 'audio'` AND the caller
+    supplies the whole queue (`data.nativeQueue()`, the `playedSec` function-on-data precedent), which only music.js and podcasts.js do.
+    Every other load (audio or video) while native holds a queue posts `audio.stop` first. No host or no capability: byte-identical (D10).
+- **Census: direct media-element reads on the audio path** (`.currentTime|.paused|.duration|.playbackRate|.ended|.buffered|.readyState`):
+  player.js 87 (incl. video-only paths; the audio-relevant ones: `updateSeekVisual` 7379 / `fillTick` 7393 / `startFillLoop` 7412,
+  `updatePlayPauseUI` 7082, `togglePlayPause` 7090, `playActiveMedia` / `pauseActiveMedia` / `seekActiveMedia` 3513-3556,
+  `currentAbsTime` 3106, `getRemoteSnapshot` 10937, `getCurrentTime` 10962, `saveProgressToServer` 6535, the chapter loop 7006-7034,
+  `applyPlaybackRate` 7479, `setupMediaSession` 3346 + `updatePositionState`); music.js 16 (all through `hostCtl('media-player')`:
+  1046, 1328 playCountTick, 1899-1942 buildSkinCtx, 2160-2186 chapter watcher, 2271-2294 enforceChapterLoop, 2345-2347 enforceChapterExit,
+  2420 ended rewind hold, 4643-4645 seekAdoptedChapter, 5581-5583 enforceFlatSegmentEnd); podcasts.js 3 (260-265 podcastSkinCtx, a raw
+  getElementById - and the raw `hostCtl` at podcasts.js:277); remote.js 1 (the Listen Control target, `MEDIA_EVENTS` 134 + reads in
+  createTarget); skin-surface.js 19 `hostCtl(...)` reads (2319-4093; `applyStickerSpeed` 2377 WRITES `playbackRate` + `defaultPlaybackRate`
+  there, `liveRate` 2404 reads it); feed.js 7 (the Feed stays web). Element LISTENERS that the proxy's synthetic events must reach:
+  player.js 7983-8175 + 8108-8160, music.js `ensureSkinReflect` 2119 + 1328, podcasts.js 362, remote.js 134.
+  Design consequence (W3): the proxy IS the shared element - native-audio.js installs own-property accessors on the `#media-player`
+  INSTANCE (currentTime, duration, paused, ended, playbackRate, play, pause, ...) while native owns the load and removes them on hand-back,
+  so every reader above and every listener works unchanged (one seam, no 100-site sweep); the stand-down items get an explicit guard each.
+- **Census: every URL logger / echo (for `mt`).** server.js:3261 `[audit] ... ${req.originalUrl}` (mutating methods only, so a GET never
+  reaches it; still redacted: a POST carrying `?mt=` is refused AND logged); lib/auth/gate.js:394 `loginTarget(req.originalUrl)` echoes the
+  full query into a `Location: /login?next=...` for an HTML-accepting denial (so a denied `mt` request must never redirect: JSON 401);
+  Express's finalhandler prints only the pathname; there is no morgan / request logger; the `console.error('Error in GET ...', err)` sites
+  (lib/offline/routes.js:425, 429 and siblings) print the error, never the URL. Client side: none.
+- **Other seams the census found (added to the plan, not skipped):** (1) a library audio track's art is `/thumbnail/<id>` on the web
+  (music.js:1927, server.js:4301 "served via /albumart/:id -> thumbnail fallback"): the adapter builds `artworkSrc` as `/albumart/<id>`
+  so the two `mt` art routes cover every Item; (2) a chapter Item's file duration is not on the row - the proxy derives it as the largest
+  `clip.endSec` among the queue's Items sharing the same `src` (the last chapter ends at the file end, libraryAudio.js:206-215);
+  (3) the server Up-next queue entry shape for D12: `{ uid, mediaId, kind: 'media'|'podcast'|'track', item? }` (player.js:1597
+  computeQueueNext, common.js:4856 queueEntryHref) - only audio-kind entries after the pointer are flattened, and the web posts
+  `/api/queue/pointer` when native reaches one; (4) `resolveOfflineLocalSrc` (player.js:1129) is skipped under native (D9: native plays
+  its own copy); (5) music.js's own radio extension `maybeExtendQueueForAutoplay` (4947) stands down too (native fetches radio), and
+  the web mirrors native's appended picks from each `audioState.queue`.
+- **Step 0 offline-file-route measurements** (scratchpad `measure-offline-route.js`, Node 22.23.1, this box, 7 runs per cell, median
+  time to the first body byte in ms; a 209715200 B `.flac` native track and a 62914560 B podcast `.mp3`, random bytes; cookie session):
+
+  | route | cold GET | Range mid-file (`bytes=<half>-`) | suffix `bytes=-1048576` | statuses | Accept-Ranges / ETag / Cache-Control |
+  |---|---|---|---|---|---|
+  | `/track/:id` (web) | 1.8 | 3.0 | 2.6 (416) | 200/206/416 | - / no / - |
+  | `/api/offline/file/track/:id` | 2.2 | 2.6 | 2.6 (206) | 200/206/206 | bytes / yes / private, no-store |
+  | `/episode/:id` (web) | 1.3 | 2.2 | 1.9 (416) | 200/206/416 | - / no / - |
+  | `/api/offline/file/podcastEpisode/:id` | 1.8 | 2.0 | 2.1 (206) | 200/206/206 | bytes / yes / private, no-store |
+
+  The offline route is within 0.5 ms of the web routes on a cold GET, faster on the mid-file Range, and answers a suffix Range (206)
+  where `sendRangeable` refuses it (416). Not materially slower, no Range refused: the stop rule does not fire.
+- **Red-first test:** test/unit/native-audio-contract.test.js at 09d0cda6 + this plan: `not ok 1 - RED FIRST: a host announcing
+  nativeAudio gets audio.load with the whole queue and the element gets NO src` (`the adapter knows the capability: false !== true`);
+  `ok 2 - CONTROL: no host ...` and `ok 3 - CONTROL: a host WITHOUT nativeAudio ...` (1 fail, 2 pass; the file is committed with W1).
 - Contract relay (sha):
 - Suites (22.23.1 / 24.20.0):
 - Gate verdicts:
