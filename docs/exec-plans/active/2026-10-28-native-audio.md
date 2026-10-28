@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.397.0-native-audio
 anchor: spec
 status: Approved - ready to build
-next: W3 - the web adapter (native-audio.js, the player.load choke point, the element-instance proxy, the stand-down list); W1 + W2 committed and relayed
+next: W5 - the look (fake-host screenshots), the dual-Node suites, the gate (adversary + qa + security-brief), then release
 design: Approved 2026-10-28 (Dean's rulings via the Root; the contract drafted with the SANDYJAR iOS Dev Root)
 gate: pending
 builder: extreme
@@ -280,9 +280,59 @@ Dean authorizes the merge. After the tag's Publish run is green, the FileTube Ro
 
   The offline route is within 0.5 ms of the web routes on a cold GET, faster on the mid-file Range, and answers a suffix Range (206)
   where `sendRangeable` refuses it (416). Not materially slower, no Range refused: the stop rule does not fire.
+- **W3 / W4 as built (6d21a601):**
+  - public/js/native-audio.js (new): `claim(el, id, data)` at player.js setupForMedia (the audio branch sets no src when it returns
+    true; the video branch calls it too so a video load stops native); `itemFromDescriptor` maps the views' own load descriptors to
+    Items (music.js `trackLoadData`, podcasts.js `episodeLoadData`, each supplying `data.nativeQueue()` = the whole queue as the
+    same descriptors); the proxy is the `#media-player` INSTANCE (own-property accessors installed on claim, removed on release);
+    `audio.load` goes out with `autoplay: false` and the web's own resume logic (handleResumePlayback: the progress read, then
+    seek + play) drives `audio.seek` / `audio.play` through the proxy, so the browser's resume rules apply unchanged; a load of
+    an item native already plays is a FOLLOW (no post), a different row of the same queue an `audio.jump`, anything else a new
+    `audio.load` (rev + 1); `syncQueue` (D17) re-sends on a queue-order change at the latest tick; `modesChanged` posts
+    `audio.setModes` only when a load did not already carry them; the server Up-next queue is flattened after each load (D12)
+    and `/api/queue/pointer` posted when native reaches one of its entries; an idle native (its engine lost the queue) is re-sent
+    on the next play; the position between ticks is extrapolated at the rate while playing (the dock's rAF fill loop and the
+    skins read 60 times a second).
+  - Stand-downs, each guarded on `nativeActive()` / `nativeOn()`: player.js saveProgressToServer, setupMediaSession (+
+    clearMediaSessionForNative: metadata null, playbackState none, every action handler null), setMediaSessionAction,
+    setPlaybackState, updatePositionState, runEndedCompletionCascade, enforceChapterLoop; music.js enforceChapterLoop,
+    enforceChapterExit, enforceFlatSegmentEnd, maybeExtendQueueForAutoplay, primeSoloExitStation, playCountBegin /
+    playCountTick, the ALAC prewarm (`needsTranscode && !nativeApi()`). `/api/music/resume` stays a web post.
+  - The plan's "add podcasts' hostCtl hook": satisfied by design rather than a hook - podcasts.js reads the element by id and
+    the element IS the proxy, so its reads (260-265) and its skin reflect listeners (362) route through native with no change.
+  - D13: skin-surface.js Sleep tile + strip (Off / 15 / 30 / 45 / 60 min / End of track) only while native owns playback.
+  - Tests (W4): test/unit/native-audio-contract.test.js (the red test, now green, 3), native-audio-web.test.js (the fake-host
+    harness through the real player + music view + skin engine: the load, snapshots -> proxy / dock / scrubber / remote snapshot,
+    every stand-down silent + close(), follow / jump / radio mirror, D17 shuffle re-send + stale rev, intents + idle re-send +
+    a video load, chapter clips + the chapter loop silent, D10 no host, an older app build: 9), native-audio-items.test.js (5),
+    native-audio-sticker-sleep.test.js (2), native-bridge-audio.test.js (6), media-token unit (5) + integration (8), the scope
+    census (4), device-tokens (9), auth-gate-devices, offline-progress.
 - **Red-first test:** test/unit/native-audio-contract.test.js at 09d0cda6 + this plan: `not ok 1 - RED FIRST: a host announcing
   nativeAudio gets audio.load with the whole queue and the element gets NO src` (`the adapter knows the capability: false !== true`);
   `ok 2 - CONTROL: no host ...` and `ok 3 - CONTROL: a host WITHOUT nativeAudio ...` (1 fail, 2 pass; the file is committed with W1).
 - Contract relay (sha): W1 71188ea7 sent to the FileTube Root 2026-10-28 (relayed to the SANDYJAR iOS Dev Root, the media-token shape marked provisional); W2 (the token's final shape, D14-D16) sent with the W2 sha below.
-- Suites (22.23.1 / 24.20.0):
+- **Mutant round (W4, a /tmp git-archive sandbox of 6d21a601 + the two test files of the next commit; scratchpad mutants.js, 26
+  mutants, each run against the tests that claim to bind it):** 25 killed by name, 1 SURVIVED and documented as MASKED - M13
+  (lib/auth/gate.js mediaAuth `row.epoch !== parsed.de` removed) is covered by the user-epoch check on the next line
+  (`user.deviceEpoch !== parsed.de`; a row is stamped with the user's epoch at issue, so the two agree on every real token);
+  M13d (BOTH epoch checks removed) is killed 5 tests red (the password-change case, rows present, epoch behind). Killed: M1
+  saveProgressToServer guard, M2 setupMediaSession guard, M3 setMediaSessionAction null (round 1 survived: the clear at the
+  next setup masked it; a mid-load assertion on the prev / next handlers now kills it), M6 music enforceChapterLoop, M7
+  maybeExtendQueueForAutoplay, M8 both play-tally guards (each alone is masked by the other: begin ends the tally, tick
+  releases it), M9 the audio branch always sets src (the red-first test), M10 stale rev accepted, M11 syncQueue always
+  re-sends, M12 media scope check, M13b expiry, M13c devices.track (the mid-stream test), M14 the mint's cookie refusal,
+  M15 the mint limiter (round 1: an ambiguous anchor - the pairing route has the same line; re-anchored, killed), M16 media
+  key = raw secret (D18), M17 audit redaction, M18 the Sleep tile without the api, M19 registerTrackNav syncQueue, M20 the
+  video branch no longer stops native, M21 the adapter capability dropped, M22 close() no longer releases, M23 a clip seek
+  posted file-absolute, M24 radio dropped from DEVICE_SCOPE, M25 D14 expired answers deviceRevoked. Equivalent (not run,
+  documented): the player's runEndedCompletionCascade and enforceChapterLoop guards - the proxy never dispatches 'ended' and
+  no music row arms the dock's chapterLoop, so neither path runs under native (the guards are defence in depth).
+- **Node 22 full suite at 6d21a601 (before the census fix):** 13007 tests, 12990 pass, 4 fail, 13 skipped - 3 = the route
+  censuses for the new POST /api/devices/media-token (rbac-census EXPECTED_ROUTE_COUNT 320 -> 321, route-write-classification
+  CLASSIFICATION + VISIBILITY 'personal'; fixed in the next commit), 1 = test/unit/pocket-skins-menu.test.js "Cider and Nordic
+  rows never preview" (`'Nordic' !== 'Search'`; 19 / 19 alone, twice in the sticker batch: a load flake under the full suite,
+  not in the known-flakes list yet).
+- **Node 24.20.0 full suite at 6d21a601 + the census fix:** 13007 tests, 12997 pass, 0 fail, 10 skipped (548.8 s).
+- **Suites before the gate (the tree of the next commit):** Node 22.23.1 `npm test`: 13007 tests, 12997 pass, 0 fail, 10 skipped (532.2 s); Node 24.20.0 `npm test`: 13007 tests, 12997 pass, 0 fail, 10 skipped (548.8 s).
+- Suites at release (22.23.1 / 24.20.0):
 - Gate verdicts:

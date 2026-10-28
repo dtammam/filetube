@@ -443,6 +443,14 @@
 
 ### Features
 
+- **Native audio (v1.397.0) follow-ups, unasked:** (1) Feed song and podcast cards still play on the web element inside the app
+  (the Feed plays a SLICE of a song with its own end-at logic on the element, and its podcast progress route is not one of the
+  native progress routes); a Feed load stops native first. (2) After the iOS web view is reloaded while native keeps playing (a
+  WKWebView process termination), the dock does not adopt native's queue until a row is tapped; the native engine plays on.
+  (3) Radio picks native appends are mirrored into the music queue from their Items (title, artist, album, art), without the
+  server row's albumKey / artId, so "Playing from <album>" and the album drill are unavailable on those rows until they load.
+  (4) A browser sleep timer (D13 scoped it to the app).
+
 - [ ] **Real comments for Reddit and other sites** _(v1.394.0, Dean's R8)_ - v1.394.0 saves top comments for YouTube downloads only. yt-dlp has NO Reddit comment extraction (`yt_dlp/extractor/reddit.py` has no `_get_comments`), so Reddit needs FileTube's own fetch; other sites need a per-extractor check (and a cap - `--get-comments` on the any-site lane would fetch every comment).
 - [ ] **Backup restore cap vs saved comments** _(v1.394.0 gate, qa S1)_ - every bundle now carries `sourceComments` (~2-6 KB per downloaded video, 48 KB cap). Dean's instance stays under the 32 MB restore cap (~16-24 MB estimated), but ~5,000 downloaded videos with long threads would reach the ~28 MB revisit trigger. Raise the cap (Dean-approved number) or stream the restore before then.
 - [ ] **External search with quick download** _(Dean, 2026-10-13, via the FileTube Root)_ - a basic in-app search of outside

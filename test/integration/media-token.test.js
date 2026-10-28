@@ -236,6 +236,22 @@ test('D15: the mint sits behind deviceAuth - a revoked, epoch-stale, disabled-us
   assert.strictEqual(r4.status, 401);
   assert.deepStrictEqual(await r4.json(), { error: 'device token revoked', deviceRevoked: true }, 'expired device token');
   assert.strictEqual(deviceStore.byId(d.id), null, 'the dead row was pruned at the gate');
+  // epoch-stale with the ROW STILL THERE: a password change bumps device_epoch and leaves the rows (devices.js: never the
+  // login re-hash), so this is the one case that binds the epoch comparison itself (Remove all deletes the rows as well)
+  const e = await pairOk(kid.cookie, KID_PASSWORD, 'Stale-row');
+  const mtE = (await mintOk(e.token)).token;
+  assert.strictEqual((await bare(withMt(`/api/offline/file/track/${tracks.ok.id}`, mtE))).status, 200);
+  assert.strictEqual((await asCookie(admin.cookie, `/api/users/${kid.user.id}/password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'kid-password-2' }) })).status, 200);
+  assert.ok(deviceStore.byId(e.id), 'the row is still there');
+  assert.notStrictEqual(deviceStore.byId(e.id).epoch, userStore.getById(kid.user.id).deviceEpoch, 'but its epoch is behind the user\'s');
+  const rE = await bare(withMt(`/api/offline/file/track/${tracks.ok.id}`, mtE));
+  assert.strictEqual(rE.status, 401);
+  assert.deepStrictEqual(await rE.json(), { error: 'device token revoked', deviceRevoked: true }, 'epoch-stale media token, row present');
+  const rE2 = await asToken(e.token, '/api/devices/media-token', { method: 'POST' });
+  assert.strictEqual(rE2.status, 401);
+  assert.deepStrictEqual(await rE2.json(), { error: 'device token revoked', deviceRevoked: true }, 'epoch-stale device token, row present: no mint');
+  userStore.updatePassword(kid.user.id, await authCrypto.hashPassword(KID_PASSWORD)); // the re-hash path: leaves the epoch alone (the tests below pair with the original password)
+  kid = __mintTestSession({ username: 'kid', role: 'member' });
   // "mints NOTHING" is bound by the exact bodies above (each deepStrictEqual admits no token field)
 });
 

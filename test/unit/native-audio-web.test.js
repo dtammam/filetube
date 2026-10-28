@@ -128,6 +128,12 @@ test('stand-down: no progress POST, no plays POST, no web radio fetch at the las
     await settle(80);
     r.fake.emit(r.snap({ positionSec: 30 }));
     await settle(30);
+    // BETWEEN loads (the view's registerTrackNav ran after the load, the next load has not cleared anything yet): no web
+    // lock-screen handler may be live - setMediaSessionAction itself must null it, not only the clear at the next setup
+    const midLoad = {};
+    for (const [a, h] of r.msActions) midLoad[a] = h;
+    assert.strictEqual(midLoad.previoustrack, null, 'previoustrack after registerTrackNav under native: ' + JSON.stringify(midLoad));
+    assert.strictEqual(midLoad.nexttrack, null, 'nexttrack after registerTrackNav under native');
     for (let i = 31; i < 40; i++) r.fake.emit(r.tick(i));
     // native advances to the LAST track: the web follows; its own radio extension must stay silent
     r.fake.emit(r.snap({ index: 2, positionSec: 0 }));
