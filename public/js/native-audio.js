@@ -91,6 +91,9 @@
     else if (podcast && typeof d.subId === 'string' && d.subId) item.artworkSrc = '/podcastart/' + encodeURIComponent(d.subId);
     else if (!podcast) item.artworkSrc = '/albumart/' + encodeURIComponent(base);
     var dur = num(d.duration, 0);
+    // gate r1 (adversary A-S1 = qa W5): a chapter row with no known span (a video whose duration the server does not know yet, its
+    // last chapter) would be "the whole file from 0" under a chapter id - the load stays on the web, as in v1.397.0
+    if (listen && typeof d.chapterStartSec === 'number' && !(dur > 0)) return null;
     if (dur > 0) item.durationSec = dur;
     if (typeof d.chapterStartSec === 'number' && isFinite(d.chapterStartSec) && d.chapterStartSec >= 0 && dur > 0) {
       item.clip = { startSec: d.chapterStartSec, endSec: d.chapterStartSec + dur };

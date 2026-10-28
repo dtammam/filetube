@@ -36,6 +36,11 @@ test('itemFromDescriptor refuses a Listen row (a video played as audio from the 
   assert.strictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { hasThumbnail: true }), { video: true }).artworkSrc, '/thumbnail/vid1');
   // S2: a chaptered video's Listen row is the file plus clip, saving under the file id (the D6 semantics)
   assert.deepStrictEqual(NA.itemFromDescriptor({ id: 'vid1::c1', type: 'audio', title: 'Two', channelName: 'Ch', album: 'Talk', duration: 65, resumeMode: 'music', listen: true, chapterStartSec: 30, baseMediaId: 'vid1', streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' }, { video: true }), { kind: 'video', id: 'vid1::c1', src: '/api/offline/file/video/vid1', title: 'Two', artist: 'Ch', album: 'Talk', artworkSrc: '/thumbnail/vid1', durationSec: 65, clip: { startSec: 30, endSec: 95 }, progress: { route: '/api/progress', key: 'vid1' } });
+  // gate r1 (adversary A-S1 = qa W5): a chapter row with NO known span (the last chapter of a video whose duration the server
+  // reports as 0) is refused, so the whole Listen load stays on the web; a PLAIN Listen row with an unknown duration still maps
+  assert.strictEqual(NA.itemFromDescriptor({ id: 'vid1::c1', type: 'audio', title: 'Two', resumeMode: 'music', listen: true, chapterStartSec: 30, baseMediaId: 'vid1', duration: 0, streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }, { video: true }), null);
+  assert.strictEqual(NA.itemFromDescriptor({ id: 'vid1::c1', type: 'audio', title: 'Two', resumeMode: 'music', listen: true, chapterStartSec: 30, baseMediaId: 'vid1', streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }, { video: true }), null, 'no duration at all');
+  assert.deepStrictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { duration: 0 }), { video: true }).progress, { route: '/api/progress', key: 'vid1' }, 'a plain row: the key is the file id');
   // the progress route is always /api/progress for a video, whatever the descriptor says
   assert.strictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { progressEndpoint: '/api/music/progress' }), { video: true }).progress.route, '/api/progress');
   // a track is untouched by opts.video
