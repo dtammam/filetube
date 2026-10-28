@@ -17,7 +17,7 @@ const read = (f) => fs.readFileSync(path.join(REPO, 'public', 'js', f), 'utf8');
 const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 const EPISODES = [1, 2, 3].map((n) => ({ id: 'e' + n, title: 'Episode ' + n, subId: 'sub1', showName: 'The Show', status: 'downloaded', durationSec: 1800 + n, pubDateMs: n, description: '' }));
 
-function realm({ host = { capabilities: ['nativeAudio'] } } = {}) {
+function realm({ host = { capabilities: ['nativeAudio'] }, progress = {}, queue = null } = {}) {
   const vc = new VirtualConsole();
   const errors = [];
   vc.on('jsdomError', (e) => errors.push(String((e && e.stack) || e)));
@@ -46,9 +46,9 @@ function realm({ host = { capabilities: ['nativeAudio'] } } = {}) {
     let body = {};
     if (/^\/api\/podcasts\/episodes\/e\d$/.test(url)) body = EPISODES.find((e) => url.endsWith(e.id));
     else if (/^\/api\/podcasts\/shows\/sub1\/episodes/.test(url)) body = { show: { id: 'sub1', name: 'The Show' }, episodes: EPISODES };
-    else if (/^\/api\/podcasts\/progress\//.test(url)) body = { position: 0 };
+    else if (/^\/api\/podcasts\/progress\//.test(url)) body = { position: progress[url.split('/').pop()] || 0 };
     else if (url.indexOf('/api/podcasts/pins') === 0) body = [];
-    else if (url.indexOf('/api/queue') === 0) body = { entries: [], pointerUid: null };
+    else if (url.indexOf('/api/queue') === 0) body = queue || { entries: [], pointerUid: null };
     return Promise.resolve({ ok: true, status: 200, json: async () => body });
   };
   const fake = host ? installFakeHost(w, host) : null;
@@ -98,6 +98,43 @@ test('podcasts FOLLOW native\'s advance (no load, no jump, no pause), and the us
     assert.deepStrictEqual(r.fake.of('audio.jump').pop(), { v: 1, type: 'audio.jump', index: 1 });
     assert.strictEqual(r.player.currentId, 'e2');
     assert.deepStrictEqual(r.calls.filter((c) => /^POST \/api\/podcasts\/progress/.test(c)), [], 'no web progress POST under native');
+  } finally { r.close(); }
+});
+
+test('gate r2 qa W-r2-1: native advances to an episode with a saved place - the web follows, READS the place and seeks native there (the browser\'s podcast resume rule), with no autostart', async () => {
+  const r = realm({ progress: { e3: 1200 } });
+  try {
+    await settle(200);
+    r.fake.emit(r.snap({ positionSec: 100 }));
+    await settle(30);
+    const plays = r.fake.of('audio.play').length;
+    r.fake.emit(r.snap({ index: 2, positionSec: 0 }));
+    await settle(200);
+    assert.strictEqual(r.player.currentId, 'e3');
+    assert.ok(r.calls.includes('GET /api/podcasts/progress/e3'), 'the place is read');
+    assert.deepStrictEqual(r.fake.of('audio.seek').pop(), { v: 1, type: 'audio.seek', positionSec: 1200 }, 'native is sent to the saved place');
+    assert.strictEqual(r.fake.of('audio.play').length, plays, 'no redundant audio.play');
+  } finally { r.close(); }
+});
+
+test('gate r2 qa W-r2-2 (D12 for podcasts): the server Up-next queue\'s podcast entries after the playing episode join the playable list (one more audio.load), a track entry is left out, and native\'s advance into one is followed with the pointer posted', async () => {
+  const r = realm({ queue: { pointerUid: 'u-e2', entries: [
+    { uid: 'u-e2', mediaId: 'e2', kind: 'podcast', item: { title: 'Episode 2', name: 'Episode 2', channelName: 'The Show', folderName: 'The Show', artUrl: '/podcastart/sub1', durationSec: 1802, hasThumbnail: false } },
+    { uid: 'u-t1', mediaId: 't1', kind: 'track', item: { title: 'A song', name: 'A song', channelName: 'A', folderName: 'B', artUrl: '/albumart/t1', durationSec: 100, hasThumbnail: false } },
+    { uid: 'u-e9', mediaId: 'e9', kind: 'podcast', item: { title: 'Episode 9', name: 'Episode 9', channelName: 'Other Show', folderName: 'Other Show', artUrl: '/podcastart/sub9', durationSec: 900, hasThumbnail: false } },
+  ] } });
+  try {
+    await settle(250);
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 2, 'the view load, then the flattened queue: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(loads[1].queue.map((it) => it.id), ['e1', 'e2', 'e3', 'e9'], 'the podcast entry after the pointer, never the track');
+    assert.strictEqual(loads[1].index, 1);
+    const e9 = loads[1].queue[3];
+    assert.deepStrictEqual({ kind: e9.kind, src: e9.src, title: e9.title, artist: e9.artist, artworkSrc: e9.artworkSrc, durationSec: e9.durationSec, progress: e9.progress }, { kind: 'podcastEpisode', src: '/api/offline/file/podcastEpisode/e9', title: 'Episode 9', artist: 'Other Show', artworkSrc: '/podcastart/sub9', durationSec: 900, progress: { route: '/api/podcasts/progress', key: 'e9' } });
+    r.fake.emit(r.snap({ index: 3, positionSec: 0 }));
+    await settle(200);
+    assert.strictEqual(r.player.currentId, 'e9', 'followed into the queued episode');
+    assert.ok(r.calls.includes('POST /api/queue/pointer'), 'the pointer moved');
   } finally { r.close(); }
 });
 

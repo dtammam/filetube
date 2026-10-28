@@ -446,7 +446,8 @@
 - **Native audio (v1.397.0) follow-ups, unasked:** (1) Feed song and podcast cards still play on the web element inside the app
   (the Feed plays a SLICE of a song with its own end-at logic on the element, and its podcast progress route is not one of the
   native progress routes); a Feed load stops native first. (2) After the iOS web view is reloaded while native keeps playing (a
-  WKWebView process termination), the dock does not adopt native's queue until a row is tapped; the native engine plays on.
+  WKWebView process termination), only a fresh MUSIC page adopts native's queue (the dock shows it); the Podcasts page and
+  every other page leave the dock empty until a row is tapped; the native engine plays on.
   (3) The radio picks native appends are mirrored into the music queue from their Items (title, artist, album, art) without the
   server row's albumKey / artId, so "Playing from <album>" and the album drill are unavailable on those rows until they load.
   (4) A browser sleep timer (D13 scoped it to the app). (5) Security, pre-existing and now reachable from a phone too: POST

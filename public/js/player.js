@@ -6312,6 +6312,8 @@ if (typeof module !== 'undefined' && module.exports) {
     return 'tap ' + (ua ? (ua.hasBeenActive ? 'had' : 'never') : 'n/a') + ' · page ' + since + 'ms';
   }
   function autoStart() {
+    var naf = nativeAudioApi();
+    if (naf && typeof naf.lastClaimFollowed === 'function' && naf.lastClaimFollowed()) return; // v1.397.0: a follow - native already plays (an audio.play here was the redundant intent)
     var gen = loadGeneration;
     var p;
     notePlayVia('autostart'); // v1.362.2 (D5)
@@ -6329,11 +6331,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function handleResumePlayback(gen, id) {
     if (gen !== loadGeneration || awaitingTranscode) return;
-    // v1.397.0: a FOLLOW (native advanced to this item on its own, or the page adopted what native already plays): native is
-    // already where it should be - no progress read, no seek, no autostart (gate r1 adversary S-A: an autostart here was the
-    // extra audio.play; a resume read would have yanked native to the stored position)
+    // v1.397.0: an ADOPTION follow (a fresh page took what native already plays, where it is): no progress read, no seek, no
+    // autostart. Native's own ADVANCE follow keeps the browser's resume rule below (the read, then the seek through the proxy
+    // when the rule says resume - a podcast picks up where it was, a long track too) and skips only the autostart (autoStart):
+    // native is already playing (gate r1 adversary S-A, gate r2 qa W-r2-1).
     var naf = nativeAudioApi();
-    if (naf && typeof naf.lastClaimFollowed === 'function' && naf.lastClaimFollowed()) { savedProgress = 0; return; }
+    if (naf && typeof naf.lastClaimFollowed === 'function' && naf.lastClaimFollowed() === 'adopt') { savedProgress = 0; return; }
     // Bug-fix (v1.17.0 two-reviewer gate, FR-4b leak): read the PER-LOAD
     // snapshot captured at load START (`loadAutoplayAdvance`), NOT the
     // module-level `autoplayAdvancePending` global -- the global is already

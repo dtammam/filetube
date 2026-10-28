@@ -142,8 +142,9 @@
     var erroredIds = Object.create(null);
     var queueUids = Object.create(null); // index -> the Up-next entry uid the Item came from (D12: the pointer follows native)
     var seenItemKey = null;
-    var followed = false;    // the last claim was a FOLLOW (native already plays the item): the web skips its resume / autostart
-    var pendingJump = null;  // { key, at } after an audio.jump: snapshots still showing the OLD item are dropped for a moment (S-A)
+    var followed = false;    // the last claim was a FOLLOW: 'adopt' (a fresh page took what native plays) | 'advance' (native moved on itself) | false
+    var adopting = false;    // true while the bound view's adopt() runs (its load's claim is the 'adopt' follow)
+    var pendingJump = null;  // { key, left, at } after an audio.jump: snapshots still showing the item LEFT are dropped for a moment (S-A)
     var adoptedRev = -1;     // the snapshot rev the bound view was asked to adopt (once per rev)
     var JUMP_FENCE_MS = 3000;
 
@@ -276,9 +277,12 @@
       if (pendingJump) {
         // a jump has no sequence of its own: a same-rev snapshot of the item we just left (sent before native took the jump)
         // must not be read as "native went back" and followed (gate r1 adversary S-A); fenced for a moment, then trusted
+        // (the 3 s bound covers a native that refused or skipped the jumped-to item: its later snapshot of another item is
+        // then followed as usual)
         var q0 = Array.isArray(s.queue) ? s.queue : []; var c0 = q0[num(s.index, -1)];
-        if (c0 && itemKey(c0) === pendingJump.key) pendingJump = null;
-        else if (now() - pendingJump.at < JUMP_FENCE_MS) return;
+        var shown = c0 ? itemKey(c0) : '';
+        if (shown === pendingJump.key || shown !== pendingJump.left) pendingJump = null; // the target, or ANY other item (native refused or skipped it, gate r2 adversary W-r2-A): trusted at once
+        else if (now() - pendingJump.at < JUMP_FENCE_MS) return; // the item we left, still shown: the pre-jump snapshot
         else pendingJump = null;
       }
       var prev = snap;
@@ -286,7 +290,7 @@
       var prevItem = currentItem();
       var wasPlaying = playing();
       snap = s;
-      tick = { pos: num(s.positionSec, 0), at: now() };
+      if (!lostQueue) tick = { pos: num(s.positionSec, 0), at: now() }; // a lost queue keeps the last known position: the re-send resumes there (r2-S3)
       playIntent = false; pauseIntent = false;
       lastRate = num(s.rate, lastRate);
       if (posted && Array.isArray(s.queue) && s.queue.length) posted = { items: s.queue, index: num(s.index, posted.index) }; // the queue native holds (its appends included) is the one later loads compare against
@@ -300,7 +304,9 @@
           adoptedRev = num(s.rev, -1);
           rev = Math.max(rev, adoptedRev); // the web's next load counts up from native's
           posted = { items: s.queue, index: num(s.index, 0) };
+          adopting = true;
           try { view.adopt(s.queue, num(s.index, 0), s.state); } catch (_) { /* the view's bug never breaks the proxy */ }
+          adopting = false;
         }
         notify(); return;
       }
@@ -330,6 +336,7 @@
     }
     function onTick(t) {
       if (num(t.rev, -1) < rev || !snap) return;
+      if (pendingJump && now() - pendingJump.at < JUMP_FENCE_MS) return; // an old-item tick before native took the jump (r2-S2)
       tick = { pos: num(t.positionSec, 0), at: now() };
       if (typeof t.bufferedSec === 'number') snap.bufferedSec = t.bufferedSec;
       if (ownedId) fire('timeupdate');
@@ -456,8 +463,8 @@
       var fresh = !!(snap && num(snap.rev, -1) >= rev && snap.state !== 'idle');
       var same = fresh && sameQueue(queue(), q.items); // the queue native holds now (radio appends included)
       if (same && cur && sameItem(cur, want)) {
-        // a follow: native already plays this item (it advanced, or the view re-loaded the current one)
-        followed = true;
+        // a follow: native already plays this item (it advanced, or the view re-loaded the current one, or the page adopted it)
+        followed = adopting ? 'adopt' : 'advance';
         ownedId = String(id); attach(target); subscribe();
         fire('durationchange');
         return true;
@@ -470,7 +477,7 @@
       playIntent = false; pauseIntent = false;
       if (same && fresh) {
         post('audio.jump', { index: q.index });
-        pendingJump = { key: itemKey(want), at: now() };
+        pendingJump = { key: itemKey(want), left: itemKey(cur), at: now() };
         posted = { items: q.items, index: q.index };
         snap.index = q.index; snap.state = 'loading'; snap.positionSec = 0; snap.durationSec = 0;
         tick = { pos: 0, at: now() };

@@ -162,8 +162,9 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 ## 6. Release of held capabilities
 
 Like `orientation` and `battery`, `statusBar` (hidden), `network` (subscribed), `downloads` (subscribed) and the `nativeAudio`
-SUBSCRIPTION (never the playback: audio keeps playing across a navigation and the next page re-subscribes and adopts the snapshot) are
-released by the host on every main-frame navigation commit and when the web view goes away. A page restored from the back-forward cache runs no
+SUBSCRIPTION (never the playback: audio keeps playing across a navigation; the next page re-subscribes, and a fresh MUSIC page adopts
+the snapshot - its queue becomes native's and the dock shows the playing item; the Podcasts page and every other shell only
+re-subscribe) are released by the host on every main-frame navigation commit and when the web view goes away. A page restored from the back-forward cache runs no
 scripts, so on a persisted `pageshow` the web re-sends whatever it currently wants (orientation lock, battery and network
 subscriptions, status bar hidden, the downloads subscription - whose answer, a fresh `downloadsSnapshot`, replaces the web's map - and the
 audio subscription, whose answer, a fresh `audioState`, replaces the web's view);

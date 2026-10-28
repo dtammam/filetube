@@ -159,7 +159,28 @@
           if (k < 0) { for (var j = 0; j < playable.length; j++) { if (playable[j] && playable[j].id === item.id) { k = j; break; } } }
           if (k >= 0) playAt(k, { keepPosition: true }); // a FOLLOW: the choke point sees native already there and posts nothing
         },
-        onAppend: function () { /* podcasts never get appends (no radio); an Up-next entry of another kind is native's alone */ },
+        // podcasts get no radio appends; the server Up-next queue's PODCAST entries after the playing episode (D12, same kind
+        // only) join the playable list as rows so the panel lists them and native's advance into one is followed
+        onAppend: function (items) {
+          if (signal.aborted || !Array.isArray(items) || !items.length) return;
+          var rows = [];
+          for (var k = 0; k < items.length; k++) {
+            var it = items[k];
+            if (!it || it.kind !== 'podcastEpisode' || typeof it.id !== 'string') continue;
+            var m = /^\/podcastart\/([^/?#]+)/.exec(typeof it.artworkSrc === 'string' ? it.artworkSrc : '');
+            var subId = m ? decodeURIComponent(m[1]) : ((currentShow && currentShow.id) || '');
+            rows.push({ id: it.id, title: it.title || '', subId: subId, showName: it.artist || (currentShow && currentShow.name) || '', status: 'downloaded', durationSec: Number(it.durationSec) || 0, pubDateMs: 0, description: '' });
+          }
+          var have = {};
+          for (var q = 0; q < playable.length; q++) have[playable[q].id] = true;
+          rows = rows.filter(function (r) { return !have[r.id]; });
+          if (!rows.length) return;
+          playable = playable.concat(rows);
+          var reIdx = -1;
+          for (var j = 0; j < playable.length; j++) { if (playable[j].id === playingId) { reIdx = j; break; } }
+          if (reIdx >= 0) registerTrackNav(reIdx);
+          updateNowPlayingPanel();
+        },
         modes: function () {
           var pl = window.FileTube && window.FileTube.player;
           var loopOn = false;

@@ -1502,7 +1502,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // a fresh page while native plays on (native-bridge.md section 6): the queue becomes native's Items as rows and the
         // playing one loads as a FOLLOW (nothing posted; the dock shows it; the web's resume / autostart are skipped)
         adopt: function (items, index) {
-          if (signal.aborted || !Array.isArray(items) || !items.length) return false;
+          if (signal.aborted || remoteOn() || !Array.isArray(items) || !items.length) return false; // never while this phone drives a PC (r2-S1)
           var rows = [];
           for (var k = 0; k < items.length; k++) { var r = rowFromNativeItem(items[k]); if (!r) return false; rows.push(r); }
           var at = (index >= 0 && index < rows.length) ? index : 0;
