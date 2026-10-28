@@ -1135,6 +1135,22 @@ function nativeAudioApi() {
   return (n && n.enabled) ? n : null;
 }
 function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
+// v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
+// to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
+// proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
+// Gate r1 (adversary A-W1): only a load that DESCRIBES the media hands back (`data.type` is a string: the watch page's full
+// load; its bare early-adopt call carries no type and stays an adopt of the proxy until the metadata arrives), and only when the
+// Item native plays is a `video` (a Listen row): a library AUDIO file native plays as a track Item keeps the proxy on the watch
+// page, exactly as in v1.397.0 (V3 byte-identity for a v0.14.0 build).
+function isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind) {
+  if (!adopt || !nativeOwnsId || ownedKind !== 'video') return false;
+  if (!data || typeof data.type !== 'string') return false;
+  return typeof data.nativeQueue !== 'function';
+}
+function nativeHandBackCarry(t, paused) {
+  if (typeof t !== 'number' || !isFinite(t) || t <= 0) return null;
+  return { t: t, paused: paused === true };
+}
 
 function resolveOfflineLocalSrc(id, data, off) {
   if (!off || !off.enabled || !data || typeof off.localSrcFor !== 'function') return null;
@@ -2164,6 +2180,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // video's `::c` current id must match its base-id queue entry, or it never advances.
     queuePointerMatchesPlaying,
     isAdoptLoad,
+    isNativeHandBackLoad, // v1.398.0 (S1)
+    nativeHandBackCarry,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     resolveExplicitStart, // v1.352 L1: &t= on a watch link
     applyAdoptFlavor, placeFloorAllows, validPlaceFloor, nextPlaceFloor, placeFloorSaveId, // v1.382.0: the Feed's From the beginning floor
@@ -10876,6 +10894,14 @@ if (typeof module !== 'undefined' && module.exports) {
     var options = opts || {};
     if (!ensureHost()) return false;
     var adopt = isAdoptLoad(currentId, id, state);
+    // v1.398.0 (S1): the watch page re-opening a Listen row native plays is a fresh WEB load, not an adopt (the element is the
+    // src-less proxy); the proxy's position and paused state ride into the resume below (handBack).
+    var nativeApiNow = nativeAudioApi();
+    // the kind of the Item native plays for OUR load, remembered at the claim (gate r2 adversary A-r2-W1: the live snapshot's
+    // queue is empty after native lost its queue, so a snapshot read would refuse the hand-back exactly then)
+    var ownedKind = (nativeApiNow && typeof nativeApiNow.ownedKind === 'function') ? nativeApiNow.ownedKind() : null;
+    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind);
+    if (handBack) adopt = false;
     if (adopt) {
       placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data); // v1.382.0 (gate r1, C1): every load
       // v1.40.0: an adopt reuses the loaded media untouched, but the BROWSE
@@ -10939,6 +10965,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadImmersiveCarry = options.dock ? null : capturedImmersiveCarry.value;
     immersiveCarryPending = capturedImmersiveCarry.nextPending;
     loadBaseHandoff = resolveBaseHandoff(currentId, id, mediaPlayer ? mediaPlayer.currentTime : null, mediaPlayer ? mediaPlayer.paused : true, liveMode);
+    if (handBack && mediaPlayer) loadBaseHandoff = nativeHandBackCarry(mediaPlayer.currentTime, mediaPlayer.paused); // v1.398.0 (S1): read from the proxy, before the teardown hands the element back
     loadStartAt = (data && typeof data.startAt === 'number') ? data.startAt : null;
     appliedStartAt = loadStartAt;
     nativeAudioBeginLoad(); // v1.397.0: the teardown's pause / saves below never post to native (claim or a web load ends the window)

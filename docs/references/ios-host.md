@@ -44,7 +44,10 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
   controls stay exactly as they are (custom UI, native engine underneath, as the big video apps do it). The web sends intents (play
   this queue from this index, seek, next); native holds the queue, fetches the next radio pick itself (iOS suspends a web view's
   JavaScript in the background) and sends back full state snapshots; the web's own media element is silenced so two audio stacks
-  never fight over the lock screen. Music and podcasts only; video stays on the web player (Dean, 2026-10-28).
+  never fight over the lock screen. Music and podcasts (Dean, 2026-10-28); since v1.398.0 (`nativeVideoAudio`) a video played as
+  AUDIO from Music (a Listen row) too - its picture stays the web player's. A video that is watched and then backgrounded keeps the
+  web player's sidecar: the engine cannot be started from the background (the v1.398.0 spike), so the next step is a native video
+  surface.
 - **Offline is native-only.** Service workers are effectively unavailable in a `WKWebView` whose server address the user types
   (Apple allows them only for at most 10 domains fixed at build time). Offline becomes a native Downloads page and the native
   player, never "the web UI, offline".
@@ -95,6 +98,22 @@ files, the catalogue and every download's state, fetches the manifest itself wit
 album or season add reports its members with `parentKind` + `parentId`. The server half is [the offline-server
 plan](../exec-plans/completed/2026-10-11-offline-server.md); the design is [ios-offline.md](ios-offline.md). Details and owners:
 [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6.
+
+## Addendum 2026-10-28 (v1.398.0): a video played as audio goes native; the background handoff does not, ten capabilities
+
+Contract v1 (add-only) grows from nine capabilities to ten: `nativeVideoAudio`. Dean (2026-10-28, via the iOS Root): "what is needed
+for the video to be treated this way - video audio"; he picked the native engine over a full native video player and over a web-only
+audio-session fix. The first design handed a PLAYING video's sound to the engine when the app went to the background. The iOS Root's
+spike on Dean's iPhone 15 Pro showed iOS refuses it: the page's message reaches the app, but the audio session cannot be activated
+from an app already in the background (OSStatus 560557684 '!int'), and pre-activating at willResignActive does not help; so that
+handoff was NOT built ([native-bridge.md](native-bridge.md) section 3, "Not built: the background handoff"), and Dean chose a native
+video SURFACE (one native player for sound and picture, drawn where the video sits, the web's controls on top) as the next plan.
+What v1.398.0 ships: the engine of v1.397.0 accepts two more Item kinds, `video` and `tvEpisode` (the latter reserved for the next
+plan); a Listen row (a video played as audio from Music, chapters included) plays natively like a song and tapping Watch takes the
+video back to the web player at the sound's position; the media token reaches the two video file routes and the two art routes; the
+device token posts TV progress. A video that is watched and then backgrounded keeps the v1.397.0 sidecar. The FileTube half is [the
+native-video-audio plan](../exec-plans/completed/2026-10-28-native-video-audio.md); details: [native-bridge.md](native-bridge.md)
+sections 1, 3 and 5.
 
 ## Addendum 2026-10-28 (v1.397.0): the native audio engine, nine capabilities
 
