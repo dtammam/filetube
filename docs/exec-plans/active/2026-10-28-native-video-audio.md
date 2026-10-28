@@ -347,3 +347,26 @@ background handoff and go with the next plan.
   (V2b through the real `/music?play=<id>&listen=1` path with the dock and the proxy, S2 chapter rows + the roll, S1 both ways
   (playing / paused), S8 adoption, V10 D12 family, V6 audioError; 25), native-audio-items (the Item and `sameFamily`; 7),
   native-bridge-audio (W1; 7). The older "gate r1 qa C1" Listen test stays as the no-capability control (byte-identical).
+
+### W4 guards (the commit after fc8349f2)
+
+- **Mutant round** (scratchpad `mutants.js` / `mutants.log`; a `git archive` sandbox of fc8349f2 plus the two test files of this
+  commit, restored from a pristine copy after each mutant and byte-compared at the end: identical; each mutant run against the tests
+  that claim to bind it): 26 run, 24 KILLED by name, 2 survived and classified. Killed: M1 the `opts.video` gate (a Listen row built
+  without the capability), M3 a Listen row as a `track` Item, M4 art for a video with no thumbnail (S6), M5 the progress route not
+  forced to `/api/progress`, M7 a radioSeed on a video Item, M8 `sameFamily` back to strict equality (V10), M9 the D12 filter by kind,
+  M10 `readProvider` never passing the capability, M11 the api hiding `videoAudio` from music.js, M12 a video Item not adoptable as a
+  row (S8), M13 the adopted row losing the `listen` marker (bound by "a Listen session is never shuffled around": the toggle re-sends
+  nothing), M14 the hand-back staying an adopt (S1), M15 the position not carried (S1), M16 the Music view's own same-id re-load
+  taken back to the web (S1, the other direction), M17 / M18 / M19 the adapter's V4 rules (src prefix, radioSeed, art prefixes), M20 /
+  M21 / M22 the V5 scope entries (video kind, `/thumbnail`, `POST /api/tv/progress`), M23 the paused state not carried (S1), M24 the
+  capability assumed from `nativeAudio` alone (V3), M25 / M26 `hasThumbnail` not carried (S6). SURVIVED: M2 music.js's own
+  `nativeQueue` gate for a Listen row alone (masked by M1's builder check, the same defence-in-depth pair as v1.397.0's B24; M1 + M2
+  together die with M1's tests); M6 the progress key `(clip || listen) ? base : id` reduced to `clip ? base : id` - EQUIVALENT: a
+  plain Listen row's id IS the file id (no `::c`), so every real input gives the same key.
+- **Guards per ruling (W4):** V2b (native-video-audio-contract "V2b", native-audio-web "V2b" through the real `?listen=1` path), V3 +
+  V11 (the contract file's controls; the older "gate r1 qa C1" web test; M24), V4 (native-bridge-audio; M17-M19), V5 (the census +
+  media-token tests; M20-M22), V6 (native-audio-web "V6": `audioError other` -> one "Could not play this" toast, nothing posted or
+  re-loaded by the web), V9's Listen half (native-audio-web "intents ... a video load stops native"; S1 both directions), V10
+  (native-audio-web "V10 (D12 family)", "S8", native-audio-items `sameFamily`), the byte-identity of the sidecar path with the
+  capability (the two SUPERSEDED tests). No screenshots: nothing on screen changes (W5).

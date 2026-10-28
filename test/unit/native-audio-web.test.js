@@ -575,6 +575,9 @@ test('v1.398.0 S8 (adoption): a fresh Music page while native plays a queue hold
     const queue = [
       { kind: 'track', id: 'n1', src: '/api/offline/file/track/n1', title: 'Native 1', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n1', durationSec: 120, progress: { route: '/api/music/progress', key: 'n1' }, radioSeed: 'track:n1' },
       { kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/vid1', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } },
+      // two tracks AFTER the playing one, so the shuffle toggle below has rows to reorder (the re-send is what binds the row kind)
+      { kind: 'track', id: 'n3', src: '/api/offline/file/track/n3', title: 'Native 3', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n3', durationSec: 120, progress: { route: '/api/music/progress', key: 'n3' }, radioSeed: 'track:n3' },
+      { kind: 'track', id: 'n4', src: '/api/offline/file/track/n4', title: 'Native 4', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n4', durationSec: 120, progress: { route: '/api/music/progress', key: 'n4' }, radioSeed: 'track:n4' },
     ];
     r.fake.emit({ v: 1, type: 'audioState', rev: 3, queue, index: 1, state: 'playing', positionSec: 44, durationSec: 600, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
     await settle(150);
@@ -583,10 +586,36 @@ test('v1.398.0 S8 (adoption): a fresh Music page while native plays a queue hold
     assert.strictEqual(r.el().getAttribute('src'), null);
     assert.ok(Math.abs(r.el().currentTime - 44) < 0.3);
     assert.strictEqual(r.player.getRemoteSnapshot().hasPrev, true, 'the track before it is a row too');
-    const meta = r.player.getCurrentMeta ? r.player.getCurrentMeta() : null;
-    if (meta) assert.strictEqual(meta.title, 'A talk');
-    // the adopted Listen row carries the listen marker: music.js shows the Watch way back for it
-    assert.strictEqual(typeof r.mod.watchBackVisible === 'function' ? r.mod.watchBackVisible() : true, true);
+    // the adopted row IS a Listen row (the listen marker, S8): music.js never shuffles AROUND a playing Listen row
+    // (shufflePlayingIndex excludes it), so a shuffle toggle posts the modes and re-sends NOTHING - with the marker dropped the
+    // tail would be reordered and a new audio.load would go out (and the row would ride as a 'track' on the audio route)
+    r.w.fisherYatesShuffle = (arr) => arr.slice().reverse();
+    const loads0 = r.fake.of('audio.load').length;
+    r.w.document.getElementById('music-shufflemode-btn').click();
+    await settle(80);
+    assert.deepStrictEqual(r.errors, [], 'no script error on the toggle');
+    assert.strictEqual(r.fake.of('audio.setModes').pop().modes.shuffle, true, 'the mode reached native');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0, 'no re-send: a Listen session is never shuffled around');
+    assert.deepStrictEqual(r.fake.of('audio.load').map((l) => l.queue.map((it) => it.kind + ':' + it.id)), [], 'and so no Item for the Listen row was ever rebuilt as a track');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S1 (the other direction): the Music view re-loading the SAME row native owns (a re-tap, a keepPosition follow) stays native - no audio.stop, no src, the proxy stays; only a load WITHOUT a nativeQueue (the watch page) takes it back', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1');
+    r.fake.emit(r.snap({ positionSec: 33, durationSec: 600 }));
+    await settle(30);
+    const stops0 = r.fake.of('audio.stop').length, loads0 = r.fake.of('audio.load').length;
+    const d = { id: 'vid1', type: 'audio', title: 'A talk', channelName: 'Ch', album: '', duration: 600, artUrl: '/thumbnail/vid1', streamSrc: '/video/vid1', progressEndpoint: '/api/progress', resumeMode: 'music', listen: true, hasThumbnail: true };
+    r.player.load('vid1', Object.assign({}, d, { nativeQueue: () => ({ items: [d], index: 0 }) }), { slot: r.slot });
+    await settle(80);
+    assert.strictEqual(r.fake.of('audio.stop').length, stops0, 'native not stopped');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0, 'no re-load');
+    assert.strictEqual(r.el().getAttribute('src'), null, 'still native\'s');
+    assert.ok(r.own('currentTime'), 'the proxy stays');
+    assert.ok(Math.abs(r.el().currentTime - 33) < 0.5, 'where native is (' + r.el().currentTime + ')');
   } finally { r.close(); }
 });
 
