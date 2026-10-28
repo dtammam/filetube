@@ -3,8 +3,8 @@ plan: native-video-audio
 harness: v2 · full
 branch: feat/v1.398.0-native-video-audio
 anchor: spec
-status: Ready to build
-next: Step 0 (census, the iOS Root's background-start spike result, red first)
+status: Building (re-scoped 2026-10-28: Listen rows only; the background handoff is superseded)
+next: W4 guards (mutants on the committed W3), the full gate, the release
 design: Approved 2026-10-28 (Dean picked "Native audio" for video over a full native player and the web-only fix)
 gate: not started
 builder: extreme
@@ -47,14 +47,14 @@ What Dean will see:
 | # | Ruling | Source |
 |---|---|---|
 | V1 | Video's AUDIO goes native through the existing `audio.*` engine. No native video player, no PiP, no new `video.*` messages. | Dean 2026-10-28 |
-| V2 | Two entry points. (a) THE BACKGROUND HANDOFF: exactly where `attemptBackgroundAudioHandoff` hands a video to the `bgAudioEl` sidecar today, with the same eligibility (Background audio setting on, mobile, playing or the iOS pre-pause candidate, not native fullscreen or PiP), it hands to native instead. (b) LISTEN ROWS: a Listen row (`item.listen`, a video played as audio) loads into native as a `video` Item. Everything else on the stand-down list stays on the web (Feed, read-aloud, a watch-page item while it's on screen). | Root, from V1 |
+| V2 | Two entry points. (a) THE BACKGROUND HANDOFF: exactly where `attemptBackgroundAudioHandoff` hands a video to the `bgAudioEl` sidecar today, with the same eligibility (Background audio setting on, mobile, playing or the iOS pre-pause candidate, not native fullscreen or PiP), it hands to native instead. (b) LISTEN ROWS: a Listen row (`item.listen`, a video played as audio) loads into native as a `video` Item. Everything else on the stand-down list stays on the web (Feed, read-aloud, a watch-page item while it's on screen). **(a) superseded 2026-10-28, (b) built:** the spike failed (the session cannot be activated from a backgrounded app, OSStatus 560557684 '!int'); Dean chose a native video surface, the next plan. v1.398.0 ships (b) only. | Root, from V1 |
 | V3 | A new capability **`nativeVideoAudio`**, add-only in bridge v1. The app announces it, alongside `nativeAudio`, only when its engine accepts the two new kinds. Without it, the web is byte-identical to v1.397.0: the sidecar, and Listen rows on the web element. v0.14.0 builds announce `nativeAudio` only and never see a video Item. | Root + iOS Root |
-| V4 | The Item gains two kinds, `video` and `tvEpisode`, with fixed prefixes. **src**: exactly `/api/offline/file/video/<id>` or `/api/offline/file/tvEpisode/<id>` (the iOS-playable rendition the downloads already use). **artworkSrc**: `/thumbnail/<id>` (only when the item has a thumbnail, otherwise omitted) or `/tvthumb/<id>`. **progress**: `{ route: '/api/progress', key: <video id> }` or `{ route: '/api/tv/progress', key: <episode id> }`, the same `{id, timestamp, duration}` body native posts today. No `radioSeed`, no plays, no `clip`: a handoff Item is the whole file, and a video's chapters stay a web concept. | Root |
+| V4 | The Item gains two kinds, `video` and `tvEpisode`, with fixed prefixes. **src**: exactly `/api/offline/file/video/<id>` or `/api/offline/file/tvEpisode/<id>` (the iOS-playable rendition the downloads already use). **artworkSrc**: `/thumbnail/<id>` (only when the item has a thumbnail, otherwise omitted) or `/tvthumb/<id>`. **progress**: `{ route: '/api/progress', key: <video id> }` or `{ route: '/api/tv/progress', key: <episode id> }`, the same `{id, timestamp, duration}` body native posts today. No `radioSeed`, no plays, no `clip`: a handoff Item is the whole file, and a video's chapters stay a web concept. **Built for `video` (a Listen row) only; `tvEpisode`, `/tvthumb` and `/api/tv/progress` stay in the contract and the server for the next plan (no web code sends them).** | Root |
 | V5 | Server. The media token's file kinds (`MEDIA_FILE_KINDS`) gain `video` and `tvEpisode`. `MEDIA_SCOPE` gains `GET /thumbnail/:id` and `GET /tvthumb/:id`. `DEVICE_SCOPE` gains `POST /api/tv/progress` (`POST /api/progress` is already in). RBAC is as for a browser: a restricted user's phone still 404s a restricted video on every one of these routes. | Root |
 | V6 | A 503 + Retry-After (a transcode building) on a video src: native holds the Item in `loading` and retries, honoring Retry-After capped at 30 s per wait and **120 s in total**, then emits `audioError { kind: 'other' }`. Never `network` (that copy says "No connection"). On any audioError during a handoff, the web leaves its element paused at the handoff position, so the return resumes from there. | Root (the iOS Root proposed the hold-and-retry) |
-| V7 | The handoff out. The web pauses its element (`pauseSuppressingHandoff`), then in the same task, with no await, posts `audio.load { queue: [item], index: 0, positionSec: <file seconds now>, autoplay: true, modes: { autoplay: false, shuffle: false, loop: 'off' }, rate: <the element's rate clamped to 0.5-3>, rev: <last + 1> }`. A video paused when the app backgrounds sends nothing (as today, where the sidecar never starts for a paused video). The iOS pre-pause candidate counts as playing. | Root |
-| V8 | The return (the moment `handleForegroundSwapBack` runs today). Position = the newest of the last `audioState.positionSec` and `audioTick.positionSec`. Playing = native's state was `playing` or `loading`. The web posts `audio.stop`, seeks its element, and plays it only if native was playing (Dean's reopen rule, 2026-09-24). An item that ended in the background returns at its end, paused, never at 0:00. The subscription already delivers state and ticks: on a fresh `audio.subscribe` after a pagehide, native sends one full `audioState` at once (native-bridge.md 2), and the web needs nothing more. | Root |
-| V9 | One engine at a time. Native never plays while the web element plays: the pause comes before the post (V7), and `audio.stop` before the element plays (V8). A web video load while native holds a handoff or Listen Item stops native first (the v1.397.0 stand-down rule, unchanged). | Root |
+| V7 | The handoff out. The web pauses its element (`pauseSuppressingHandoff`), then in the same task, with no await, posts `audio.load { queue: [item], index: 0, positionSec: <file seconds now>, autoplay: true, modes: { autoplay: false, shuffle: false, loop: 'off' }, rate: <the element's rate clamped to 0.5-3>, rev: <last + 1> }`. A video paused when the app backgrounds sends nothing (as today, where the sidecar never starts for a paused video). The iOS pre-pause candidate counts as playing. **Superseded 2026-10-28:** the spike failed (the session cannot be activated from a backgrounded app, OSStatus 560557684 '!int'); Dean chose a native video surface, the next plan. Not built here. | Root |
+| V8 | The return (the moment `handleForegroundSwapBack` runs today). Position = the newest of the last `audioState.positionSec` and `audioTick.positionSec`. Playing = native's state was `playing` or `loading`. The web posts `audio.stop`, seeks its element, and plays it only if native was playing (Dean's reopen rule, 2026-09-24). An item that ended in the background returns at its end, paused, never at 0:00. The subscription already delivers state and ticks: on a fresh `audio.subscribe` after a pagehide, native sends one full `audioState` at once (native-bridge.md 2), and the web needs nothing more. **Superseded 2026-10-28:** the spike failed (the session cannot be activated from a backgrounded app, OSStatus 560557684 '!int'); Dean chose a native video surface, the next plan. Not built here. | Root |
+| V9 | One engine at a time. Native never plays while the web element plays: the pause comes before the post (V7), and `audio.stop` before the element plays (V8). A web video load while native holds a handoff or Listen Item stops native first (the v1.397.0 stand-down rule, unchanged). **The handoff half superseded 2026-10-28** (the spike failed; the next plan); the Listen half is built: a web video load while native plays a Listen Item stops native first. | Root |
 | V10 | Listen rows in a Music queue ride as `video` Items next to `track` Items: the D12 "only the playing Item's kind is flattened" rule becomes "a Music queue flattens `track` and Listen `video` Items together". Podcasts are unchanged. Radio asks only from a `track` Item's seed. | Root |
 | V11 | Browsers, the PWA, desktop and the v0.14.0 app: inert, byte-identical (V3). | Root |
 
@@ -200,15 +200,13 @@ Full gate, forced (auth and token surface, the player core): **adversary + qa + 
 
 ## Device checks (after the iOS app build that pins this tag; add to docs/DEVICE-CHECKS.md)
 
-- (a) Play a video, lock the phone: the sound continues. Pause and resume from the lock screen and from AirPods.
-- (b) Unlock and return: the video is at the sound's position, playing only if the sound was playing.
-- (c) Same as (a)-(b) with a TV episode.
-- (d) Mid-video in the background, start a voice memo: FileTube yields. Stop it: no other app's audio is left ducked.
-- (e) Let a short video end in the background, then return: it's at the end and paused, not at 0:00.
-- (f) A Listen row from Music plays and resumes from the lock screen like a song; its position is saved.
-- (g) Background audio setting OFF: a video pauses when the app backgrounds, as today.
+Cut 2026-10-28 to what v1.398.0 ships (the FileTube Root's re-scope after the failed spike): (a)-(e) and (g) belonged to the
+background handoff and go with the next plan.
+
+- (f) A Listen row from Music (a video played as audio; a chaptered one too) plays and resumes from the lock screen like a song;
+  its position is saved; tap "Watch" and the video opens where the sound was, playing only if the sound was playing.
 - (h) A restricted account's phone: a restricted video never plays as sound by any route.
-- (i) An app build without `nativeVideoAudio` (v0.14.0): video's sound behaves exactly as on v1.397.0.
+- (i) An app build without `nativeVideoAudio` (v0.14.0): a Listen row and a backgrounded video behave exactly as on v1.397.0.
 
 ## Evidence (builder fills)
 
@@ -307,3 +305,45 @@ Full gate, forced (auth and token surface, the player core): **adversary + qa + 
   token posts `/api/tv/progress` (saved for that user; a hidden episode 404s); a media token never posts; the web's `/video`,
   `/tvepisode`, `/tvposter` byte routes and every POST stay a JSON 401 for `mt`). Sibling suites (device-tokens, auth-gate-devices,
   offline-progress, media-token unit, rbac-census, route-write-classification): 33 tests, 33 pass, 0 fail.
+
+### The spike (relayed by the FileTube Root 2026-10-28, after W2): FAILED - the Step 0 stop rule fired
+
+- On Dean's iPhone 15 Pro (the iOS Root): the ordering is willResignActive, then didEnterBackground; WebKit pauses the video
+  50-200 ms later while the page still reports visible, and `visibilitychange -> hidden` follows 5-15 ms after that. The page's
+  message reaches the app every time, but the audio session cannot be activated from it (OSStatus 560557684 '!int', cannot
+  interrupt others), and pre-activating at willResignActive does not help: AVPlayer never leaves waiting / paused.
+- Consequence: the background handoff as planned (V2a, V7, V8: a web-triggered native start at the lifecycle event) cannot work.
+  The Root is taking the design question to Dean (native audio from the first frame with a muted web picture, or a full native
+  player). The Root's interim direction to the builder: do not build V2a / V7 / V8, leave player.js's background-audio path
+  untouched, do not release; the Listen-row half (V2b, V10, the chaptered clip rows) holds in every option and may be built
+  behind `nativeVideoAudio` - put to Dean below (the stop rule's own step) before any W3 code.
+- **Dean's ruling (AskUserQuestion, 2026-10-28): "Build the Listen-row half now."** W3 is narrowed to V2b + V10 (a Listen row,
+  chapters included, plays natively like a song, behind `nativeVideoAudio`, with S1, S2, S6 and S8), its W4 guards and the V3
+  byte-identity. V2a / V7 / V8 (the background handoff) are NOT built: player.js's background-audio path stays untouched; with the
+  capability a backgrounded video still takes the v1.397.0 sidecar. No release until the Root re-freezes the handoff design with Dean.
+
+### W3 as built (the Listen-row half; the commit after 6a1fa67f)
+
+- **native-audio.js:** `itemFromDescriptor(d, opts)` builds a `video` Item for a Listen row only with `opts.video` (the host announces
+  `nativeVideoAudio`; `readProvider` passes it): src `/api/offline/file/video/<file>`, `/thumbnail/<file>` art unless `hasThumbnail`
+  is false (S6), progress `/api/progress` under the file id, a chapter row as the file plus `clip` (S2), never a radioSeed; without
+  it a Listen row is null as in v1.397.0 (the whole load stays on the web element). `sameFamily` (V10): the Up-next flattening hands
+  the Music view `track` and `video` entries of one family. The api exposes `videoAudio` (false on the inert api).
+- **music.js:** `trackLoadData` supplies the queue provider for a Listen row only when `nativeVideoOn()` and carries `hasThumbnail`;
+  `playListenItem` / `buildListenChapterTracks` carry `hasThumbnail` from `/api/videos/:id`; `rowFromNativeItem` maps a `video` Item
+  to a Listen row (the `listen` marker, the /video stream, /thumbnail art, /api/progress, a clip Item as its chapter row) so a fresh
+  Music page adopts native's queue with Listen rows in it (S8).
+- **player.js (S1):** `load()` treats a same-id load that carries no `nativeQueue` while native owns the id (the watch page re-opening
+  a Listen row: Listen -> Watch) as a FRESH web load, not an adopt (`isNativeHandBackLoad`), carrying the proxy's position and paused
+  state into the resume (`nativeHandBackCarry` -> `loadBaseHandoff`): native is stopped by the video branch's claim, the element gets
+  `/video/<id>`, plays at native's position only if native was playing. The background-audio path (the sidecar, `attemptBackgroundAudioHandoff`,
+  `handleForegroundSwapBack`, the prep in `setupForMedia`) is untouched: with the capability a backgrounded video takes the v1.397.0
+  sidecar, byte for byte (bound by the two SUPERSEDED tests in native-video-audio-contract.test.js).
+- **Not built (superseded):** V2a, V7, V8, the handoff half of V9, S3, S4, S5 (the adopt case needs nothing now), S7. The
+  `tvEpisode` kind, `/tvthumb`, `/api/tv/progress` stay in the contract and the server (W1 + W2, add-only) for the next plan; no web
+  code sends a `tvEpisode` Item.
+- **Tests:** test/unit/native-video-audio-contract.test.js (the red-first file, rewritten to the shipped scope: V2b through the real
+  player on a phone realm, V3 and V11 controls, the two SUPERSEDED sidecar controls, the pure S1 helpers; 6), native-audio-web
+  (V2b through the real `/music?play=<id>&listen=1` path with the dock and the proxy, S2 chapter rows + the roll, S1 both ways
+  (playing / paused), S8 adoption, V10 D12 family, V6 audioError; 25), native-audio-items (the Item and `sameFamily`; 7),
+  native-bridge-audio (W1; 7). The older "gate r1 qa C1" Listen test stays as the no-capability control (byte-identical).
