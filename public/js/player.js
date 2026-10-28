@@ -1126,6 +1126,16 @@ function resolveAutoplayAdvanceTarget(nextId, orderedIds, endedId, listComplete)
 // an episode streams /episode/, a track /track/; a media id is a `video` to the library and a `track` to Music, so both
 // are tried. Never for a 360 video (vr-view.js's texImage2D would be tainted by a cross-origin source) and never for a
 // book chapter (not an offline item). The URL is used ONLY as the media element's src.
+// v1.397.0 native audio (plan docs/exec-plans/completed/2026-10-28-native-audio.md): the ONE door to the native engine.
+// public/js/native-audio.js claims a music / podcast load at the setupForMedia choke point (nothing is set on the element;
+// the element becomes a proxy of native's state) and every stand-down below asks nativeActive() first. With no host, or a
+// host without the capability, the api is absent or inert and every call here is a no-op (D10).
+function nativeAudioApi() {
+  var n = (typeof window !== 'undefined' && window.FileTube) ? window.FileTube.nativeAudio : null;
+  return (n && n.enabled) ? n : null;
+}
+function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
+
 function resolveOfflineLocalSrc(id, data, off) {
   if (!off || !off.enabled || !data || typeof off.localSrcFor !== 'function') return null;
   if (typeof data.projection === 'string' && data.projection !== '' && data.projection !== 'flat') return null;
@@ -3327,11 +3337,13 @@ if (typeof module !== 'undefined' && module.exports) {
   // background should still keep the lock-screen surface accurate).
   function setPlaybackState(playbackState) {
     if (!('mediaSession' in navigator)) return;
+    if (nativeActive()) return; // v1.397.0
     try { navigator.mediaSession.playbackState = playbackState; } catch (_) {}
   }
 
   function updatePositionState(force) {
     if (liveMode) return; // relative-to-restart position would mislead the scrubber
+    if (nativeActive()) return; // v1.397.0: native's now-playing card carries the position
     if (!('mediaSession' in navigator) || !('setPositionState' in navigator.mediaSession)) return;
     var now = Date.now();
     if (!force && now - lastPositionSync < POSITION_SYNC_MS) return;
@@ -3345,6 +3357,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function setupMediaSession(id, channelName, title) {
     currentChannelName = channelName || '';
+    if (nativeActive()) { clearMediaSessionForNative(); return; } // v1.397.0: the lock screen is native's
     if (!('mediaSession' in navigator) || typeof MediaMetadata === 'undefined') return;
     try {
       // v1.38.0: prefer an explicit artUrl (a book cover) for the lock-screen
@@ -3476,6 +3489,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // registering.
   function setMediaSessionAction(action, handler) {
     if (!('mediaSession' in navigator) || typeof navigator.mediaSession.setActionHandler !== 'function') return;
+    if (nativeActive()) handler = null; // v1.397.0: no web lock-screen handler while native owns playback
     // v1.131 (CarPlay pause diagnostics): record every MediaSession action
     // ARRIVAL (a no-op unless the ?debugLifecycle=1 flag is on) BEFORE the
     // real handler runs - whether the car/lock screen actually sent 'pause'
@@ -6534,6 +6548,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // request shape/behavior.
   function saveProgressToServer(time, opts) {
     if (!currentId) return;
+    if (nativeActive()) return; // v1.397.0 (D8): native posts positions and plays itself to the same routes
     // v1.38.3: a book-TTS item is not a db.metadata media item -- its id is
     // synthetic and its progress is the reader's own (/api/books/:id/progress).
     // Never write /api/progress rows for it.
@@ -7003,6 +7018,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function enforceChapterLoop() {
+    if (nativeActive()) return; // v1.397.0: a clip Item loops in native (loop 'one')
     if (!chapterLoop) return;
     if (liveMode) {
       if (currentAbsTime() >= chapterLoop.end) startLiveStream(chapterLoop.start, true);
@@ -7016,6 +7032,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function runEndedCompletionCascade(el, opts) {
+    if (nativeActive()) return; // v1.397.0: native ends items and advances the queue itself (the proxy never fires 'ended')
     var backgrounded = !!(opts && opts.backgrounded);
     // v1.41.12: an armed CHAPTER loop outranks everything below -- including
     // the whole-item loop toggle and autoplay-next (looping one album track
@@ -7498,6 +7515,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function setLoop(on) {
     try { localStorage.setItem(LOOP_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* storage disabled/full -- best-effort only */ }
+    nativeAudioModesChanged(); // v1.397.0: Loop is one of native's modes
   }
 
   // Browser-only feature-detect (not `node:test`-covered -- see the inbox/
@@ -10041,9 +10059,30 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   var playingLocal = false; // this load plays the phone's copy: no transcode fetch / poll, no background-audio sidecar handoff
+  // v1.397.0: the setupForMedia choke point hands an audio load with a queue to native (true) or keeps the web element.
+  function nativeAudioClaim(id, data) {
+    var n = nativeAudioApi();
+    if (!n) return false;
+    try { return !!n.claim(mediaPlayer, id, data); } catch (_) { return false; }
+  }
+  function nativeAudioBeginLoad() { var n = nativeAudioApi(); if (n) { try { n.beginLoad(); } catch (_) { /* inert */ } } }
+  function nativeAudioRelease() { var n = nativeAudioApi(); if (n) { try { n.release(); } catch (_) { /* inert */ } } }
+  function nativeAudioModesChanged() { var n = nativeAudioApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
+  // Under native the lock screen is native's: the web view's own MediaSession must carry nothing (two now-playing cards
+  // would fight), so the metadata, the playback state and every action handler the web ever set are cleared.
+  function clearMediaSessionForNative() {
+    if (!('mediaSession' in navigator)) return;
+    try { navigator.mediaSession.metadata = null; } catch (_) { /* unsupported */ }
+    try { navigator.mediaSession.playbackState = 'none'; } catch (_) { /* unsupported */ }
+    if (typeof navigator.mediaSession.setActionHandler !== 'function') return;
+    var actions = ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack', 'stop'];
+    for (var i = 0; i < actions.length; i++) { try { navigator.mediaSession.setActionHandler(actions[i], null); } catch (_) { /* action unsupported */ } }
+  }
+
   function setupForMedia(id, data) {
     var gen = loadGeneration;
     var streamUrl = '/video/' + id;
+    var nativeClaimed = false;
     playingLocal = false;
     var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
     if (localSrc) {
@@ -10341,7 +10380,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.38.0: a book-TTS item's id has no db.metadata thumbnail; use its
       // explicit artUrl (book cover) as the poster instead of a 404 /thumbnail.
       mediaPlayer.poster = (typeof data.artUrl === 'string' && data.artUrl) ? data.artUrl : ('/thumbnail/' + id);
-      mediaPlayer.src = streamUrl;
+      // v1.397.0 native audio: a music / podcast load that carries its queue is native's; the element stays EMPTY (no src, so
+      // it can never play) and proxies native's state. Any other audio load keeps the web element (and stops native).
+      nativeClaimed = nativeAudioClaim(id, data);
+      if (!nativeClaimed) mediaPlayer.src = streamUrl;
 
       if (AUDIO_PLAYER_MODE === 'background') {
         // v1.38.0: an explicit artUrl (a book cover, /bookcover/:id) wins over
@@ -10359,6 +10401,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (audioVisualFolder) audioVisualFolder.textContent = data.folderName || '';
       }
     } else {
+      nativeAudioClaim(id, data); // v1.397.0: a video load is never native's; native goes silent (audio.stop) before the web plays
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
 
@@ -10638,6 +10681,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.339 R1 (T-C3): the closing item's final position, FIRST (see saveOutgoingPosition).
     // Marked 'paused' like the pause save it replaces: a closed player is not playing.
     saveOutgoingPosition({ presenceState: 'paused' });
+    nativeAudioRelease(); // v1.397.0: closing the player ends native playback (audio.stop) and hands the element back
     placeFloor = null; // v1.382.0: the floor ends with the player (after its last save, which it still guarded)
     // v1.138 gate S1 (both seats, defensive - no reachable trigger was
     // constructed): a close while staged must not leave the browser
@@ -10881,6 +10925,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadBaseHandoff = resolveBaseHandoff(currentId, id, mediaPlayer ? mediaPlayer.currentTime : null, mediaPlayer ? mediaPlayer.paused : true, liveMode);
     loadStartAt = (data && typeof data.startAt === 'number') ? data.startAt : null;
     appliedStartAt = loadStartAt;
+    nativeAudioBeginLoad(); // v1.397.0: the teardown's pause / saves below never post to native (claim or a web load ends the window)
     teardownMediaState({ preserveImmersive: loadImmersiveCarry });
     // v1.382.0 (gate r1, C1): AFTER the teardown - its outgoing save of the previous item is still guarded by that item's floor
     placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data);

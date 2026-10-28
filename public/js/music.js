@@ -1261,6 +1261,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // scope like activeListenId (QA gate W1: the first cut declared these inside init(),
   // so a dock round-trip forgot the session's played tracks and the picker repeated
   // 20-minute-old songs). The storage helpers are stateless and live here with them.
+  // v1.397.0 native audio: is the iOS app's engine playing the current load? (module level: the play tally lives up here)
+  function musicNativeOwned() { var n = window.FileTube && window.FileTube.nativeAudio; return !!(n && n.enabled && n.active()); }
   var AUTOPLAY_STORAGE_KEY = 'ft-music-autoplay';
   function autoplayEnabled() {
     // Default ON (Dean's ruling 4): only an explicit '0' disables.
@@ -1350,6 +1352,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // A new segment is heard: close the previous one (a skip when it was left early), open this one.
   // A listen video (a watchable item in Music's clothes) is not a music track: nothing is counted.
   function playCountBegin(item, list) {
+    if (musicNativeOwned()) { playCountEnd(); return; } // v1.397.0 (D8): native reports plays itself; the web's open tally ends here
     if (playCount && item && playCount.id === item.id) return; // the same segment (a reflect of the roll the tally already made)
     // the same FILE LOAD rolling to another of its chapters keeps the load's chapter list and its done map
     var sameLoad = !!(playCount && playCount.chapters && item && item.source === 'library-chapter' && playCount.chapters.some(function (c) { return c.id === item.id; }));
@@ -1400,6 +1403,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function playCountTick(t, dur) {
     var pc = playCount;
     if (!pc || !isFinite(t)) return;
+    if (musicNativeOwned()) { playCountRelease(); return; } // v1.397.0: a proxy tick is not the web element playing
     var P = window.FileTube && window.FileTube.player;
     var playerId = P && typeof P.currentId === 'string' ? P.currentId : null;
     if (playerId !== null && playCountBaseId(playerId) !== playCountBaseId(pc.id)) { playCountRelease(); return; }
@@ -1482,6 +1486,28 @@ if (typeof module !== 'undefined' && module.exports) {
     controller = new AbortController();
     var signal = controller.signal;
     straightToPlayerPending = false; // v1.244: a fresh view never inherits a prior init's cover flag
+    // v1.397.0 native audio: this view is the one native-audio.js asks to FOLLOW native (it advanced to another item), to
+    // mirror its appends and for the modes it sends; unbound with the view.
+    var NA = window.FileTube && window.FileTube.nativeAudio;
+    if (NA && NA.enabled && typeof NA.bindView === 'function') {
+      var unbindNative = NA.bindView({
+        onIndex: function (idx, item) {
+          if (!item || typeof item.id !== 'string') return;
+          var k = (idx >= 0 && idx < queue.length && queue[idx] && queue[idx].id === item.id) ? idx : -1;
+          if (k < 0) { for (var j = 0; j < queue.length; j++) { if (queue[j] && queue[j].id === item.id) { k = j; break; } } }
+          if (k < 0 || signal.aborted) return;
+          playAt(k, { keepPosition: true, skipVerify: true }); // a FOLLOW: the choke point sees native already there and posts nothing
+        },
+        onAppend: function (items, source) { if (!signal.aborted) appendNativeItems(items, source); },
+        modes: function () {
+          var pl = window.FileTube && window.FileTube.player;
+          var loopOn = false;
+          try { loopOn = !!(pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()); } catch (_) { loopOn = false; }
+          return { autoplay: autoplayEnabled(), shuffle: shuffleEnabled(), loop: loopOn ? 'one' : 'off' };
+        },
+      });
+      signal.addEventListener('abort', function () { try { unbindNative(); } catch (_) { /* gone */ } });
+    }
 
     var content = root.querySelector('#music-content');
     // v1.273 write-RBAC (QA WARNING-3): the same capability derivation the watch page
@@ -1789,6 +1815,26 @@ if (typeof module !== 'undefined' && module.exports) {
     function hostCtl(id) {
       if (remoteOn()) { var v = remoteCtl(id); if (v) return v; }
       return document.getElementById(id);
+    }
+    // ---- v1.397.0 NATIVE AUDIO (the iOS app's engine; public/js/native-audio.js) -------------------------------------
+    // While native owns the current load the element is a proxy of native's state, so every reader above keeps working; what
+    // STANDS DOWN here is everything native does itself: the play tally, the radio extension, the chapter loop / exit / flat
+    // end (a clip Item ends and loops in native). nativeOn() is false in every browser and in an app build without the
+    // capability (D10), so none of these guards changes a thing there.
+    function nativeApi() { var n = window.FileTube && window.FileTube.nativeAudio; return (n && n.enabled) ? n : null; }
+    function nativeOn() { var n = nativeApi(); return !!(n && n.active()); }
+    function nativeModesChanged() { var n = nativeApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
+    function nativeSyncQueue() { var n = nativeApi(); if (n) { try { n.syncQueue(); } catch (_) { /* inert */ } } }
+    // A native Item (a radio pick native appended, or an Up-next entry) -> a queue row the panels and skins can list. A
+    // chapter Item is a 'library-chapter' row of its parent file; a library audio Item a 'library' row.
+    function rowFromNativeItem(it) {
+      if (!it || it.kind !== 'track' || typeof it.id !== 'string') return null;
+      var base = (it.progress && typeof it.progress.key === 'string' && it.progress.key) ? it.progress.key : it.id;
+      var isChapter = !!(it.clip && typeof it.clip.startSec === 'number');
+      var lib = isChapter || (it.progress && it.progress.route === '/api/progress');
+      var row = { id: it.id, title: it.title || '', artist: it.artist || '', album: it.album || '', albumKey: '', durationSec: isChapter ? Math.max(0, (Number(it.clip.endSec) || 0) - (Number(it.clip.startSec) || 0)) : (Number(it.durationSec) || 0), artUrl: typeof it.artworkSrc === 'string' ? it.artworkSrc : '' };
+      if (lib) { row.source = isChapter ? 'library-chapter' : 'library'; row.streamSrc = '/video/' + encodeURIComponent(base); row.progressEndpoint = '/api/progress'; if (isChapter) row.chapterStartSec = Number(it.clip.startSec) || 0; }
+      return row;
     }
     // v1.353: the speaker's player volume as this device shows it (the controller holds a level the
     // wheel just set until the PC reports it back); null when the PC never reported one (or cannot set
@@ -2258,6 +2304,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // crossing clause below can tell a normal playback step from a scrub jump.
     var lastLoopTime = -1;
     function enforceChapterLoop() {
+      if (nativeOn()) return; // v1.397.0: a clip Item loops in native (loop 'one')
       if (!chapterViewId) return;
       // v1.250: the live-scrub state lives in the shared engine now - ask whichever surface exists.
       // Returning HERE freezes lastLoopTime for the whole drag (so a FAR forward scrub's stale
@@ -2326,6 +2373,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     var EXIT_MAX_STEP = 4; // a normal playback step; a seek/scrub jumps far more (mirrors LOOP_MAX_STEP)
     function enforceChapterExit() {
+      if (nativeOn()) return; // v1.397.0: native ends a clip Item at clip.endSec and advances itself
       if (enforceFlatSegmentEnd()) return; // gate r1 K4: a flat menu list's queue owns its boundaries
       if (!soloChapterExitId) return;
       // mid-scrub: freeze lastExitTime (return before updating it) so the post-release far-delta tick
@@ -4500,22 +4548,14 @@ if (typeof module !== 'undefined' && module.exports) {
     var playGen = 0; // guards against a stale prewarm poll clobbering a newer tap
     var playSelectGen = 0; // v1.207: guards the album-drill select against a newer fast tap (the wrong-track race)
 
-    function loadTrack(item, i, opts) {
+    // The player.load descriptor for a queue row. forQueue (v1.397.0): the row is one of the native queue's Items, so the
+    // per-load handoff reads (the live element's paused state, the chapter resume) are skipped.
+    function trackLoadData(item, i, opts, forQueue) {
       opts = opts || {};
-      playingArtMemo = { id: item && item.id, artId: musicArtId(item), artV: musicArtV(item) }; // v1.339 L1: survives a view re-init (v1.376.0: with its version)
-      // Wave G: a PROJECTED library-audio track (source 'library') streams the
-      // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
-      // progress to the MEDIA store - so it carries its OWN routes, which we
-      // prefer over the /track,/albumart,/api/music/progress music defaults.
-      // resumeMode stays 'music' (the smart-resume, no "Resume at..." prompt, and
-      // the music now-playing panel) - the read then hits progressEndpoint
-      // (/api/progress), unifying the resume position with the feed side.
-      // v1.221: a CHAPTER-track (source 'library-chapter') is a library track too
-      // - it uses the same media routes (streamSrc /video/<file>), plus a
-      // chapterStartSec seek offset the player honours on load.
       var isChapter = item.source === 'library-chapter';
       var isLib = item.source === 'library' || isChapter;
       var data = {
+        id: item.id, // v1.397.0: the native queue needs the row's id on the descriptor (player.load gets it separately)
         type: 'audio',
         title: item.title,
         channelName: item.artist || '',
@@ -4535,8 +4575,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // (opts.handoffFrom) seeks to the live playhead instead (chapterStartFor).
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
-        chapterResumeSec: isChapter ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: a saved place near its end -> the chapter head
-        startPaused: isChapter ? handoffPaused(opts, window.FileTube && window.FileTube.player, hostCtl('media-player')) : undefined, // Dean: a paused Watch stays paused on Listen
+        chapterResumeSec: (isChapter && !forQueue) ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: a saved place near its end -> the chapter head
+        startPaused: (isChapter && !forQueue) ? handoffPaused(opts, window.FileTube && window.FileTube.player, hostCtl('media-player')) : undefined, // Dean: a paused Watch stays paused on Listen
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
@@ -4548,7 +4588,40 @@ if (typeof module !== 'undefined' && module.exports) {
         // consuming it (stripNowPlayingParam), so the bar never already shows the
         // target and the router's same-URL no-op never swallows the dock-tap.
         readerHref: '/music?nowplaying=1',
+        // v1.397.0 native audio (D4/D5): the radio seed native asks GET /api/music/radio with, and - on the LOADED row only -
+        // the provider of the WHOLE queue (the same builder, per row), which native-audio.js turns into Items. A browser, or a
+        // host without nativeAudio, never reads either (the player's choke point asks native-audio.js, which is inert there).
+        radioSeed: item.listen ? undefined : stationSeedFor(item),
+        nativeQueue: forQueue ? undefined : function () { return nativeQueueProvider(item, i); },
       };
+      return data;
+    }
+    // v1.397.0: the whole queue as descriptors, in PLAY order (shuffle included: the web owns the order, D17), with the loaded
+    // row's index (by identity, then by id).
+    function nativeQueueProvider(item, i) {
+      var idx = (i >= 0 && i < queue.length && queue[i] === item) ? i : -1;
+      if (idx < 0) { for (var k = 0; k < queue.length; k++) { if (queue[k] && queue[k].id === item.id) { idx = k; break; } } }
+      var rows = idx >= 0 ? queue : [item];
+      var items = [];
+      for (var r = 0; r < rows.length; r++) items.push(trackLoadData(rows[r], r, {}, true));
+      return { items: items, index: idx >= 0 ? idx : 0 };
+    }
+
+    function loadTrack(item, i, opts) {
+      opts = opts || {};
+      playingArtMemo = { id: item && item.id, artId: musicArtId(item), artV: musicArtV(item) }; // v1.339 L1: survives a view re-init (v1.376.0: with its version)
+      // Wave G: a PROJECTED library-audio track (source 'library') streams the
+      // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
+      // progress to the MEDIA store - so it carries its OWN routes, which we
+      // prefer over the /track,/albumart,/api/music/progress music defaults.
+      // resumeMode stays 'music' (the smart-resume, no "Resume at..." prompt, and
+      // the music now-playing panel) - the read then hits progressEndpoint
+      // (/api/progress), unifying the resume position with the feed side.
+      // v1.221: a CHAPTER-track (source 'library-chapter') is a library track too
+      // - it uses the same media routes (streamSrc /video/<file>), plus a
+      // chapterStartSec seek offset the player honours on load.
+      var data = trackLoadData(item, i, opts, false);
+      var isChapter = item.source === 'library-chapter'; // the chapter-view baseline and the solo-exit arm below key on it
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
       playCountBegin(item, queue); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally; the file's chapters ride along so the tally rolls them itself; the listeners are bound by ensureChapterReflect, once per element)
@@ -4678,7 +4751,30 @@ if (typeof module !== 'undefined' && module.exports) {
       // the last track STARTS, not at 'ended') keeps the extension VISIBLE in the
       // up-next (Dean's ruling: a queue you can see and skip, never an invisible
       // station) and means onNext exists by the time the ended-advance asks.
+      nativeSyncQueue(); // v1.397.0: the queue native holds follows every re-registration (a no-op when it already matches)
       maybeExtendQueueForAutoplay(i);
+    }
+    // v1.397.0: native appended Items (its radio picks, 'radio'; the server Up-next entries, 'queue'): the rows join the queue
+    // the way maybeExtendQueueForAutoplay appends a batch, so the up-next list, the skins and Prev / Next see them.
+    function appendNativeItems(items, source) {
+      var rows = [];
+      for (var k = 0; k < items.length; k++) { var r = rowFromNativeItem(items[k]); if (r) rows.push(r); }
+      if (!rows.length) return;
+      var have = {};
+      for (var q = 0; q < queue.length; q++) have[queue[q].id] = true;
+      rows = rows.filter(function (r) { return !have[r.id]; });
+      if (!rows.length) return;
+      if (source === 'radio') markAutoplayPicks(rows);
+      var wasFlat = (flatQueue === queue);
+      var preAppend = queue;
+      queue = queue.concat(rows);
+      if (wasFlat) flatQueue = queue;
+      shuffleCarry(preAppend);
+      if (shuffleBase && shuffledQueue === queue) shuffleBase = shuffleBase.concat(rows);
+      var reIdx = -1;
+      for (var j = 0; j < queue.length; j++) { if (queue[j] && queue[j].id === playingId) { reIdx = j; break; } }
+      if (reIdx >= 0) registerTrackNav(reIdx);
+      updateNowPlayingPanel();
     }
 
     // ---- v1.254 ENDLESS AUTOPLAY, v1.368.0 RADIO -------------------------------------------
@@ -4753,6 +4849,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!on) retractAutoplayPicks();
       else if (navIndex >= 0 && navIndex === queue.length - 1) registerTrackNav(navIndex);
       reflectPlaybackModes();
+      nativeModesChanged(); nativeSyncQueue(); // v1.397.0: Autoplay is one of native's modes; a retract changed the queue
     }
     // ---- v1.368.0 SHUFFLE MODE (R5, R16) ---------------------------------------------------
     // ON: the songs AFTER the playing one play in random order (Fisher-Yates); the playing song and
@@ -4839,6 +4936,7 @@ if (typeof module !== 'undefined' && module.exports) {
       setShuffleEnabled(on);
       if (reconcileShuffle(navIndex) && navIndex >= 0) registerTrackNav(navIndex);
       reflectPlaybackModes();
+      nativeModesChanged(); nativeSyncQueue(); // v1.397.0 (D17): the web owns the order, shuffle included; native gets the new order
     }
 
     // v1.378.0 (D10-D12): the NAME of the named station the queue plays, else '' - a station: seed
@@ -4933,6 +5031,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the shared file audibly bleeds into the next chapter. Guarded so a superseding play (a newer
     // chapter tap, a non-chapter load, or a view teardown) drops the stale picks.
     function primeSoloExitStation(item) {
+      if (nativeOn()) return; // v1.397.0: no solo-exit station under native (it ends the clip and plays on)
       if (!item || item.listen || !autoplayEnabled()) return; // listen-mode excluded; no station without autoplay
       // No in-flight guard: a rapid re-tap (chapter A then B) must be able to prime B even while A's
       // fetch is still out. Concurrent fetches are cheap and best-effort; the forId staleness check
@@ -4945,6 +5044,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }, function () { /* best-effort */ });
     }
     async function maybeExtendQueueForAutoplay(i) {
+      if (nativeOn()) return; // v1.397.0 (D11): native fetches radio itself; its picks come back in audioState.queue (appendNativeItems)
       if (i < 0 || i !== queue.length - 1) return;   // only the LAST track arms it
       if (!autoplayEnabled()) return;
       var cur = queue[i];
@@ -5146,7 +5246,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // so it ends the album's list mode (a flat Songs/Genres/playlist list keeps K4's).
       if (opts && opts.soloChapter && flatAlbum && flatQueue === queue) flatQueue = null;
       if (!(opts && opts.skipVerify) && verifyChapterFileThenPlay(item, opts)) return; // #269: a remote edit to a listed file
-      if (item.needsTranscode) { prewarmThenLoad(item, i, playGen, opts); return; }
+      if (item.needsTranscode && !nativeApi()) { prewarmThenLoad(item, i, playGen, opts); return; } // v1.397.0: native plays the original (ALAC, FLAC) through the offline file route; no /track prewarm
       setStatus('');
       loadTrack(item, i, opts);
     }
@@ -5565,6 +5665,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var flatAlbum = false;  // v1.331: that list is an ALBUM level (a solo select in it ends the list mode)
     var lastFlatTime = -1;
     function enforceFlatSegmentEnd() {
+      if (nativeOn()) return true; // v1.397.0: native owns the segment boundary
       if (!flatQueue || flatQueue !== queue || !chapterViewId) return false;
       if ((inTabEngine && inTabEngine.isScrubbing()) || (popoutShell && popoutShell.isScrubbing())) return true;
       var pl = window.FileTube && window.FileTube.player;
