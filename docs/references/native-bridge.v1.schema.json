@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio"] }
         }
       }
     },
@@ -65,11 +65,11 @@
       ]
     },
     "audioItem": {
-      "description": "v1.397.0 nativeAudio: one queue ITEM the web sends in audio.load and native echoes in every audioState. kind: a music track (a native track, a library audio file shown in Music, or one chapter of a chaptered file) or a podcast episode. src and artworkSrc are SERVER-RELATIVE paths native resolves against the configured origin and appends the media token (?mt=) to: src is the iOS-playable file route /api/offline/file/<kind>/<id> (never /track, which 503s while an ALAC rendition transcodes), artworkSrc one of /albumart/<id> or /podcastart/<subId>. clip (file seconds) marks one chapter of a file: positionSec, durationSec and seek are CLIP-RELATIVE, native ends the item at clip.endSec and Loop 'one' loops the clip. progress names the ONLINE route native POSTs plays and positions to (the same body the web sends; key is the id the web would save under: a chapter saves under its parent file id with FILE-absolute seconds) and radioSeed the seed native asks GET /api/music/radio with when 2 or fewer items are left (podcasts never carry one).",
+      "description": "v1.397.0 nativeAudio: one queue ITEM the web sends in audio.load and native echoes in every audioState. kind: a music track (a native track, a library audio file shown in Music, or one chapter of a chaptered file), a podcast episode, or - v1.398.0, only when the host also announces nativeVideoAudio - a library video or a TV episode played as SOUND (the background handoff of a playing video, or a Listen row). src and artworkSrc are SERVER-RELATIVE paths native resolves against the configured origin and appends the media token (?mt=) to. src is EXACTLY the iOS-playable file route of the Item's kind: /api/offline/file/track/<id>, /api/offline/file/podcastEpisode/<id>, /api/offline/file/video/<id> or /api/offline/file/tvEpisode/<id> (never /track, /video or /tvepisode; the app validates the prefix against this fixed list and refuses anything else). artworkSrc is one of /albumart/<id> (track), /podcastart/<subId> (podcastEpisode), /thumbnail/<id> (video; omitted when the video has no thumbnail) or /tvthumb/<id> (tvEpisode). clip (file seconds) marks one chapter of a file: positionSec, durationSec and seek are CLIP-RELATIVE, native ends the item at clip.endSec and Loop 'one' loops the clip; a track's chapter row and a Listen row of a chaptered video carry one; a background-handoff Item never does (it is the whole file; a video's on-screen chapters stay a web concept). progress names the ONLINE route native POSTs plays and positions to with the same { id, timestamp | position, duration } body the web sends: /api/music/progress or /api/progress for a track, /api/podcasts/progress for an episode, /api/progress for a video, /api/tv/progress for a TV episode; key is the id the web would save under (a chapter or a Listen row saves under its parent file id with FILE-absolute seconds). radioSeed is the seed native asks GET /api/music/radio with when 2 or fewer items are left: only a track carries one (never a podcast, a video or a TV episode).",
       "type": "object",
       "required": ["kind", "id", "src", "title", "progress"],
       "properties": {
-        "kind": { "enum": ["track", "podcastEpisode"] },
+        "kind": { "enum": ["track", "podcastEpisode", "video", "tvEpisode"] },
         "id": { "type": "string", "minLength": 1, "maxLength": 512 },
         "src": { "type": "string", "minLength": 1, "maxLength": 2048 },
         "title": { "type": "string", "maxLength": 1024 },
@@ -78,7 +78,7 @@
         "artworkSrc": { "type": "string", "minLength": 1, "maxLength": 2048 },
         "durationSec": { "type": "number", "minimum": 0 },
         "clip": { "type": "object", "required": ["startSec", "endSec"], "properties": { "startSec": { "type": "number", "minimum": 0 }, "endSec": { "type": "number", "minimum": 0 } } },
-        "progress": { "type": "object", "required": ["route", "key"], "properties": { "route": { "enum": ["/api/music/progress", "/api/progress", "/api/podcasts/progress"] }, "key": { "type": "string", "minLength": 1, "maxLength": 512 } } },
+        "progress": { "type": "object", "required": ["route", "key"], "properties": { "route": { "enum": ["/api/music/progress", "/api/progress", "/api/podcasts/progress", "/api/tv/progress"] }, "key": { "type": "string", "minLength": 1, "maxLength": 512 } } },
         "radioSeed": { "type": "string", "minLength": 1, "maxLength": 512 }
       }
     },

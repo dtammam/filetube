@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -115,30 +115,59 @@ the state. The web shows the reason (a toast once, and on the item's menu or pil
 it), a snapshot, or pagehide. A container whose members exist keeps rolling up from them; the failure never hides real progress.
 
 **Native audio (v1.397.0).** With `nativeAudio` announced, the app plays MUSIC (native tracks, library audio shown in Music, and
-one chapter of a chaptered file as a `clip` Item) and PODCASTS through its own engine; video stays on the web player. The web sends
+one chapter of a chaptered file as a `clip` Item) and PODCASTS through its own engine; a video's picture stays on the web player (its
+SOUND can move to the engine too since v1.398.0, below). The web sends
 intents and renders native's snapshots; its own media element is silenced (no `src`), so two audio stacks never both play. **Item**
-`{ kind: 'track' | 'podcastEpisode', id, src, title, artist?, album?, artworkSrc?, durationSec?, clip?: { startSec, endSec }, progress: { route, key }, radioSeed? }`:
+`{ kind: 'track' | 'podcastEpisode' | 'video' | 'tvEpisode', id, src, title, artist?, album?, artworkSrc?, durationSec?, clip?: { startSec, endSec }, progress: { route, key }, radioSeed? }`
+(the two video kinds only with `nativeVideoAudio`, v1.398.0):
 `src` and `artworkSrc` are server-relative paths native resolves against the configured origin and appends its media token to
 (`?mt=`, minted from the device token at `POST /api/devices/media-token`, docs/references/offline-api.md section 8); `src` is
-always the iOS-playable file route `/api/offline/file/<kind>/<id>` (never `/track`, which 503s while an ALAC rendition transcodes), and
-`artworkSrc` one of `/albumart/<id>` or `/podcastart/<subId>`. A chapter row (`<id>::c<n>`) is its parent file plus `clip` in FILE
+EXACTLY the iOS-playable file route of the Item's kind, `/api/offline/file/<kind>/<id>` (never `/track`, which 503s while an ALAC rendition
+transcodes, never `/video` or `/tvepisode`; the app checks the prefix against this fixed list), and
+`artworkSrc` one of `/albumart/<id>` (track), `/podcastart/<subId>` (podcastEpisode), `/thumbnail/<id>` (video, omitted when it has no
+thumbnail) or `/tvthumb/<id>` (tvEpisode). A chapter row (`<id>::c<n>`) is its parent file plus `clip` in FILE
 seconds; for it `positionSec`, `durationSec` and `audio.seek` are CLIP-relative, native ends the item at `clip.endSec`, and
 `loop: 'one'` loops the clip. `progress` names the ONLINE route native POSTs positions and plays to with the same body the web sends
-(`/api/music/progress`, `/api/progress` for library audio, `/api/podcasts/progress`; `key` is the id the web would save under: a chapter
+(`/api/music/progress`, `/api/progress` for library audio and for a video, `/api/podcasts/progress`, `/api/tv/progress` for a TV episode;
+`key` is the id the web would save under: a chapter
 saves under its parent file id with FILE-absolute seconds); native retries a failed POST once, then drops it. `radioSeed` is the seed
 native asks `GET /api/music/radio` with (mirroring music.js fetchAutoplayPicks: ask when 2 or fewer items are left, send `exclude` and
-`queued`, ask once more with `widen=1` when a batch kept nothing, drop ids already queued, and append the picks to its queue); podcasts
-never carry one. **Snapshots:** the web REPLACES its view with every `audioState` and reads `audioTick` as a position delta; a snapshot
+`queued`, ask once more with `widen=1` when a batch kept nothing, drop ids already queued, and append the picks to its queue); only a
+`track` carries one (never a podcast, a video or a TV episode). **Snapshots:** the web REPLACES its view with every `audioState` and reads `audioTick` as a position delta; a snapshot
 whose `rev` is older than the web's last `audio.load` is dropped. **The server Up-next queue** (`/api/queue`): when it holds entries,
 the web flattens them into the Item list it sends; a queue edit while hosted re-sends `audio.load` (rev + 1) at the current index and
 position; native stays queue-dumb. **Downloaded items:** native looks its own catalogue up by `kind` + `id` and plays the local copy;
-an Item carries no `localSrc`. **What stays on the web element** (the web stops native with `audio.stop` first): video, the
-Feed's cards, a book's read-aloud audio, a library item opened on the watch page, and a Listen row (a video played as audio from
-the watch page: its id is a video's, which the audio file route does not serve). **An engine that lost its queue** (the app's
+an Item carries no `localSrc`. **What stays on the web element** (the web stops native with `audio.stop` first): a video on
+screen, the Feed's cards, a book's read-aloud audio, a library item opened on the watch page, and - without `nativeVideoAudio` - a
+Listen row (a video played as audio from the watch page: its id is a video's, which the audio file route does not serve; with the
+capability it is a `video` Item, below). **An engine that lost its queue** (the app's
 audio engine was restarted) reports `audioState { rev: 0, state: 'idle', queue: [] }`; the web accepts that one older-rev snapshot
 and re-sends its queue on the next play. **The Up-next queue:** only entries of the playing Item's kind are flattened (the bound
-view can list and follow those). With no host, or a host without `nativeAudio` (older app builds, browsers, the PWA), nothing
-changes at all.
+view can list and follow those; with `nativeVideoAudio` the Music view holds `track` and Listen `video` Items together). With no host, or a
+host without `nativeAudio` (older app builds, browsers, the PWA), nothing changes at all.
+
+**Video audio (v1.398.0).** A host that announces `nativeVideoAudio` beside `nativeAudio` accepts the two video kinds; without it (a
+v0.14.0 build) the web never sends a `video` or `tvEpisode` Item and a backgrounded video keeps the v1.397.0 sidecar, byte for byte.
+Two entry points, nothing else: **(a) the background handoff** - exactly where the web hands a playing video to its hidden `<audio>`
+sidecar today (the Background audio setting on, a phone, playing or iOS's pre-pause candidate, not native fullscreen or PiP), it hands
+to native instead: the web PAUSES its own element, then in the same task, with no await, posts `audio.load { queue: [the one Item],
+index: 0, positionSec: <file seconds now>, autoplay: true, modes: { autoplay: false, shuffle: false, loop: 'off' }, rate: <the
+element's rate, 0.5-3>, rev: <last + 1> }`; a video that is paused when the app backgrounds sends nothing. The handoff Item is the
+WHOLE file (no `clip`, no `radioSeed`); its `src` is `/api/offline/file/video/<id>` or `/api/offline/file/tvEpisode/<id>` (the
+iOS-playable rendition the downloads already use), its art `/thumbnail/<id>` (only with a thumbnail) or `/tvthumb/<id>`, its progress
+`{ route: '/api/progress', key: <video id> }` or `{ route: '/api/tv/progress', key: <episode id> }`. **(b) a Listen row** (a video played
+as audio from the watch page) loads into native as a `video` Item like a song; a chaptered video's Listen rows are its file plus `clip`,
+exactly as a chaptered audio file's rows are. **A transcode still building** (the file route answers 503 + `Retry-After`) : native holds the
+Item in `loading` and retries, honouring `Retry-After` capped at 30 s per wait and 120 s in total, then sends `audioError { error: 'other' }`
+(never `network`: that copy says "No connection"). On any `audioError` during a handoff the web leaves its element paused at the handoff
+position, so the return resumes from there. **The return** (the app is foregrounded): the web takes position = the newest of the last
+`audioState.positionSec` and `audioTick.positionSec`, playing = native's state was `playing` or `loading`, posts `audio.stop`, seeks its
+element and plays it only if native was playing (a lock-screen or AirPods pause stays paused; an item that ended in the background
+returns at its end, paused, never at 0:00). The subscription already delivers the state and the ticks: the web needs nothing more and
+asks nothing. **One engine at a time:** native never plays while the web element plays - the pause comes before the post, and
+`audio.stop` before the element plays; a web video load while native holds a handoff or a Listen Item stops native first (the
+stand-down rule above). No new intent, no new event, no new `audioError` value; the web's video player on screen (chapters, scrubbing,
+subtitles, the skins) is unchanged.
 
 ## 4. Server side: `/api/host-info`
 
@@ -158,6 +187,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | network | native | the web only displays it |
 | downloads | native owns the files and the state; the web asks and displays | public/js/offline.js holds the ONE subscription per page and the `{kind:id -> state}` map (v1.387.0) |
 | nativeAudio | native owns playback (the engine, the audio session, the lock screen, the queue it was sent, radio appends, progress posts); the web sends intents and renders snapshots | public/js/native-audio.js holds the ONE subscription per page, builds the Items and drives the shared media element as a proxy of native's state (v1.397.0) |
+| nativeVideoAudio | a pure widening of nativeAudio: the engine also accepts a video or a TV episode as SOUND; the web decides WHEN (the background handoff, a Listen row) and takes the picture back on return | the web's `<video>` stays the page's element through a handoff (no proxy: the page is hidden); a Listen row is proxied like a track (v1.398.0) |
 
 ## 6. Release of held capabilities
 

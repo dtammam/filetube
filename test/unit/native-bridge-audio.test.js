@@ -57,10 +57,10 @@ test('audio.load: the whole queue, index, position, autoplay, modes, rate and re
   win.close();
 });
 
-test('audio.load: every Item needs kind, id, src, title and progress; clip needs both bounds; progress.route is one of the three online routes', () => {
+test('audio.load: every Item needs kind, id, src, title and progress; clip needs both bounds; progress.route is one of the four online routes', () => {
   const { win, fake, host } = realm(['nativeAudio']);
   const ok = (it) => host.post('audio.load', load({ queue: [it] }));
-  assert.strictEqual(ok(item('a', { kind: 'video' })), false, 'kind is track | podcastEpisode');
+  assert.strictEqual(ok(item('a', { kind: 'book' })), false, 'kind is track | podcastEpisode | video | tvEpisode');
   assert.strictEqual(ok(item('a', { kind: 'podcastEpisode', src: '/api/offline/file/podcastEpisode/a', progress: { route: '/api/podcasts/progress', key: 'a' } })), true);
   assert.strictEqual(ok(Object.assign(item('a'), { src: undefined })), false, 'src required');
   assert.strictEqual(ok(Object.assign(item('a'), { title: undefined })), false, 'title required');
@@ -72,6 +72,39 @@ test('audio.load: every Item needs kind, id, src, title and progress; clip needs
   assert.strictEqual(ok(item('a', { durationSec: -1 })), false, 'durationSec >= 0');
   assert.strictEqual(ok(item('a', { id: '' })), false, 'id 1..512');
   assert.strictEqual(fake.of('audio.load').length, 2);
+  win.close();
+});
+
+// v1.398.0 (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, W1 + V4): the two video kinds, and the Item rules the
+// schema states and the adapter enforces so a wrong Item never leaves the page - src is EXACTLY the kind's own file route,
+// artworkSrc one of the four art routes, radioSeed only on a track. (The capability itself gates nothing at the adapter - a host
+// announces it beside nativeAudio - native-audio.js decides when to BUILD a video Item; see native-video-audio-contract.test.js.)
+test('v1.398.0 audio.load: a video Item and a tvEpisode Item validate; a video Item with a /track src, a radioSeed, an art route off the list, or a src of another kind is refused (V4)', () => {
+  const { win, fake, host } = realm(['nativeAudio', 'nativeVideoAudio']);
+  const ok = (it) => host.post('audio.load', load({ queue: [it] }));
+  const video = (extra) => Object.assign({ kind: 'video', id: 'v1', src: '/api/offline/file/video/v1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/v1', durationSec: 600, progress: { route: '/api/progress', key: 'v1' } }, extra || {});
+  const tv = (extra) => Object.assign({ kind: 'tvEpisode', id: 'e1', src: '/api/offline/file/tvEpisode/e1', title: 'Pilot', artist: 'The Show', artworkSrc: '/tvthumb/e1', durationSec: 2600, progress: { route: '/api/tv/progress', key: 'e1' } }, extra || {});
+  assert.strictEqual(ok(video()), true, 'a video Item passes');
+  assert.strictEqual(ok(tv()), true, 'a tvEpisode Item passes');
+  assert.strictEqual(ok(video({ artworkSrc: undefined })), true, 'a video with no thumbnail omits artworkSrc');
+  assert.strictEqual(ok(video({ clip: { startSec: 30, endSec: 95 } })), true, 'a Listen row of a chaptered video carries clip (the D6 semantics)');
+  assert.deepStrictEqual(fake.of('audio.load').map((m) => m.queue[0].kind), ['video', 'tvEpisode', 'video', 'video']);
+  assert.strictEqual(ok(video({ src: '/api/offline/file/track/v1' })), false, 'a video Item never rides the audio file route');
+  assert.strictEqual(ok(video({ src: '/video/v1' })), false, 'never the web byte route');
+  assert.strictEqual(ok(tv({ src: '/api/offline/file/video/e1' })), false, 'a tvEpisode never rides the video route');
+  assert.strictEqual(ok(video({ radioSeed: 'track:v1' })), false, 'no radio from a video');
+  assert.strictEqual(ok(tv({ radioSeed: 'track:e1' })), false, 'no radio from a TV episode');
+  assert.strictEqual(ok(item('p', { kind: 'podcastEpisode', src: '/api/offline/file/podcastEpisode/p', progress: { route: '/api/podcasts/progress', key: 'p' }, radioSeed: 'track:p' })), false, 'no radio from a podcast either');
+  assert.strictEqual(ok(video({ artworkSrc: '/albumart/v1?x=1' })), true, 'any of the four art routes is accepted (the kind mapping is the web\'s)');
+  assert.strictEqual(ok(video({ artworkSrc: 'https://evil.example/x.png' })), false, 'an art URL off the four routes never leaves');
+  assert.strictEqual(ok(video({ artworkSrc: '/api/offline/file/video/v1' })), false, 'the file route is not an art route');
+  assert.strictEqual(ok(item('a', { src: '/api/offline/file/video/a' })), false, 'a track never rides the video route (the rule binds every kind)');
+  assert.strictEqual(ok(video({ progress: { route: '/api/tv/progress', key: 'v1' } })), true, 'the progress route enum is per contract, not per kind (the web picks the right one)');
+  assert.strictEqual(fake.of('audio.load').length, 6);
+  // an older app build: the kinds are refused by nothing at the adapter (add-only; native-audio.js never builds them there)
+  const old = realm(['nativeAudio']);
+  assert.strictEqual(old.host.has('nativeVideoAudio'), false);
+  old.win.close();
   win.close();
 });
 

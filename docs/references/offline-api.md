@@ -186,8 +186,9 @@ server), `/albumart/:id`, `/thumbnail/:id`, `/tvthumb/:id`, `/tvposter/:showId`,
 (the native queue's radio picks, the same query the web sends: `seed`, `count`, `exclude`, `queued`, `widen`; the station-seed rate
 limit applies to a phone too), `POST /api/music/progress`, `POST /api/progress`, `POST /api/podcasts/progress` and `POST /api/music/plays`
 (the SAME online routes the web posts to, with the web's bodies: `{ id, position | timestamp, duration }`, `{ id, timestamp, duration }`,
-`{ episodeId, position, duration }`, `{ events: [{ id, kind: 'play' | 'skip' | 'finish' }] }`; a hidden track is a neutral 404), and
-`POST /api/devices/media-token` (section 8). Everything else is `403` (`POST /api/music/resume`, the web's own record of what was
+`{ episodeId, position, duration }`, `{ events: [{ id, kind: 'play' | 'skip' | 'finish' }] }`; a hidden track is a neutral 404),
+`POST /api/devices/media-token` (section 8), and since v1.398.0 (native video audio) `POST /api/tv/progress` (`{ id, timestamp, duration }`,
+the TV episode's own progress route; a hidden episode is a neutral 404). Everything else is `403` (`POST /api/music/resume`, the web's own record of what was
 opened, included). Every one applies this account's restrictions exactly as a browser session does (a kid's phone cannot fetch a
 hidden file's bytes or art, count a play on it, or get it as a radio pick).
 
@@ -233,8 +234,11 @@ server-relative paths).
 
 Using it: append `mt=<token>` to the query of the Item's `src` or `artworkSrc` (`/api/offline/file/track/<id>?mt=...`,
 `/albumart/<id>?s=600&mt=...`). It is accepted ONLY on `GET` / `HEAD` of `/api/offline/file/track/:id`,
-`/api/offline/file/podcastEpisode/:id`, `/albumart/:id` and `/podcastart/:subId`, with this account's restrictions exactly as a
-browser session (a hidden track or show is a neutral `404`). Anywhere else (a video's bytes, `/track`, the manifest, any API),
+`/api/offline/file/podcastEpisode/:id`, `/albumart/:id` and `/podcastart/:subId`, and since v1.398.0 (native video audio: the
+`nativeVideoAudio` capability) also `/api/offline/file/video/:id`, `/api/offline/file/tvEpisode/:id`, `/thumbnail/:id` and
+`/tvthumb/:id`, with this account's restrictions exactly as a
+browser session (a hidden track, show, video or episode is a neutral `404`). Anywhere else (`/video`, `/tvepisode`, `/track`, the
+manifest, any API),
 or with any other method, a request carrying `mt` is `401 { "error": "media token not accepted here", "mediaTokenScope": true }`
 whatever else it carries: it never falls through to a cookie, never redirects (a `Location` would echo it) and never sets a
 cookie. Do not send `Authorization` with it; do not follow a redirect to another origin with it (the server sends none).

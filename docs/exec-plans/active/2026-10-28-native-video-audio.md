@@ -211,3 +211,70 @@ Full gate, forced (auth and token surface, the player core): **adversary + qa + 
 - (i) An app build without `nativeVideoAudio` (v0.14.0): video's sound behaves exactly as on v1.397.0.
 
 ## Evidence (builder fills)
+
+### Step 0 (2026-10-28, Fable builder; line numbers at 59245046 = main 9e11ed90 + this plan)
+
+- **Spike:** not received at Step 0 (the FileTube Root idle, no relay in the plan or the inbox). W1 + W2 proceed; W3 waits for it.
+- **Census: every reader and writer of `bgAudioEl` / `bgAudioState` in player.js (150 matching lines; `grep -n 'bgAudioEl\|bgAudioState'`),
+  by function, with what the native path must satisfy.** Pure helpers 300-470 (`shouldPauseForLifecycleEvent`, `BG_AUDIO_STATES`,
+  `nextBackgroundAudioState`, `shouldHandOffToBackgroundAudio`, `shouldPresyncBgAudio`, `isFreshPrePauseCandidate`): REUSED, the
+  native handoff drives the same states (INLINE_VIDEO -> HANDING_OFF -> BACKGROUND_AUDIO -> INLINE_VIDEO). `activeMediaElement` 3110:
+  returns `bgAudioEl` in the two background states; under a native handoff no web element plays, so it must return `mediaPlayer`
+  (every sidecar listener at 8090-8121 is guarded on `activeMediaElement() === bgAudioEl` or the BACKGROUND_AUDIO state and stays
+  silent; the keep-alive 5106-5138 starts only from the sidecar's play() success). `handleForegroundSwapBack` 3395: THE return (V8).
+  `releaseBackgroundAudioElement` 3444 / `releaseAudioSession` 3808 (already returns under `nativeActive()`). `armBackgroundAudioSrc`
+  3860, `presyncBackgroundAudioPosition` 3903, `primeBackgroundAudioElement` 4213 and the prepare-audio POST + pre-arm in
+  `setupForMedia` 10162-10260: the SIDECAR's own prep (a server-side /audio extraction, a muted prime play on a second element, a
+  periodic range request): skipped for a video native will take (the sidecar is never the background element there; see seam S4).
+  `attemptBackgroundAudioHandoff` 3925: the ONE handoff point (V2a, V7). `bgAudioSkipReason` 4027, `handlePossibleIOSPrePauseHandoff`
+  4078 (the INLINE_VIDEO gate), `handleBackgroundLifecycle` 4280-4345 (state diagnostics, the candidate consumer): unchanged. The
+  MediaSession action detail 3509-3514, `recordDiagnosticPauseEvent` 4510, `mediaPlayDetail` 4575, the lock-audio timing log
+  4914-5002: diagnostics, read-only (the timing log is sidecar-specific and records an idle sidecar under native; disclosed, not
+  changed). `teardownMediaState` 9900-9910 and `close` 10777-10790: reset the machine and the sidecar; the native handoff is ended
+  by native-audio.js `claim()` / `release()` (a web video load or a close stops native first, V9). `setupForMedia` 10133-10134
+  (`bgAudioStatusKnown` from the descriptor) and 10062 (the status repoll): the sidecar's readiness, which the native eligibility
+  does not read (V2a lists the setting, mobile, playing or the candidate, not native fullscreen or PiP).
+- **Census: every place a video's sound can play on iOS other than the two entry points.** (a) the web `<video>` on screen (the
+  watch page, a TV episode, the Feed's cards, a same-id Watch -> Listen adopt); (b) the sidecar (replaced under the capability for an
+  eligible video; kept for the rest, seam S3); (c) the keep-alive silent loop (only after a sidecar success: never under native);
+  (d) native fullscreen / PiP (iOS sustains it; `shouldPauseForLifecycleEvent` excludes it from any handoff); (e) a book's read-aloud
+  and library audio opened on the watch page (`type: 'audio'`: lifecycle-exempt, never a handoff); (f) Listen Control drives a PC's
+  player, not the phone's. No other writer of `mediaPlayer.src` or of a second element (the v1.397.0 gate's sweep holds at this sha).
+- **Census: every hard-coded use of the two audio kinds.** Server: lib/auth/device-scope.js `MEDIA_FILE_KINDS` (the one list the gate
+  reads through `mediaScopeAllows`; gate.js:392 and lib/auth/media-token.js:15 describe it in comments), docs/references/offline-api.md
+  section 8 (the route list), test/integration/device-scope-census.test.js (MEDIA SCOPE) and media-token.test.js (the video refusals).
+  Nothing else on the server names the two audio kinds for the token (lib/offline/routes.js `SINGLE_KINDS` already holds video and
+  tvEpisode; `RESOLVERS.video` / `.tvEpisode` and `decideFile` serve them for the device token today). Web: host-adapter.js
+  `AUDIO_KINDS` + `AUDIO_PROGRESS_ROUTES` (the schema mirror), native-audio.js `PROGRESS_ROUTES`, `itemFromDescriptor` (`track` /
+  `podcastEpisode` from `resumeMode`) and `itemFromQueueEntry`, music.js `rowFromNativeItem` (`kind !== 'track'` -> null),
+  podcasts.js `onAppend` (podcast Items only), native-bridge.md section 3's Item line, the schema's `audioItem.kind`, and the tests
+  native-bridge-audio ("kind is track | podcastEpisode") and native-audio-items (the Listen refusal).
+- **Seams the census found that the plan does not name (added here, not skipped):**
+  - S1 Listen -> Watch on the SAME id: player.js `load()`'s ADOPT branch (`isAdoptLoad`, ~10822) keeps the element as it is; with a
+    Listen row native owns, the element is the src-less proxy, so the watch page would show nothing. An adopt of an id native owns
+    by a load that carries no `nativeQueue` (the watch page) must be a FRESH web load that carries the position and the paused state
+    (`resolveBaseHandoff` covers only `<id>::c<n>` -> `<id>`; the same-id case needs the same carry from the proxy, LESSONS 5 v1.344.2).
+  - S2 A chaptered Listen video's `::c` rows: V4's "no clip" is the HANDOFF Item's rule ("a handoff Item is the whole file"); a Listen
+    chapter row rides as a `video` Item WITH `clip` (the D6 semantics a chaptered audio file's rows already use: positionSec and seek
+    clip-relative, native ends the item at `clip.endSec`, progress under the file id in file seconds). No-clip rows of one file would be
+    indistinguishable to native (every row the whole file from 0). Stated in the contract (W1) and relayed with it, before W3.
+  - S3 The Feed's video cards save through `/api/feed/progress/media` (a forward-only slice route, not a contract route) and play a
+    SLICE with end-at listeners on the element: no `video` Item can be built for them, so they keep today's sidecar path unchanged
+    with or without the capability (the Feed is a screen-on, swipe-driven surface; v1.397.0 census). Disclosed in ROADMAP.
+  - S4 With the capability, a natively-eligible video skips the sidecar's prep in `setupForMedia` (the prepare-audio POST that queues
+    a server-side ffmpeg extraction, the pre-arm, the gesture prime): the setting read stays (it still decides), the sidecar stays
+    for S3's items. Without the capability: byte-identical (V3).
+  - S5 A same-id Watch -> Listen adopt (a plain video, no chapters) stays on the web element on screen (today's "never moves" rule,
+    Dean 2026-09-29); its background goes native through V2a; a fresh Listen load (a deep link, a chaptered video's `::c` rows) claims
+    native (V2b).
+  - S6 V4's "artworkSrc only when the item has a thumbnail": the Listen row carries `hasThumbnail` from `/api/videos/:id` (music.js
+    `playListenItem` / `buildListenChapterTracks` -> `trackLoadData`); a handoff reads `currentData.hasThumbnail` (the watch payload).
+  - S7 The return after an item ENDED in the background does not run the sidecar's deferred autoplay-next
+    (`pendingAutoplayNextOnForeground`, set only by the sidecar's ended cascade): V8 returns at the end, paused.
+  - S8 V10: music.js `rowFromNativeItem` (a fresh Music page adopting native's queue) maps a `video` Item to a Listen row, and
+    native-audio.js `flattenServerQueue`'s "only the playing Item's kind" filter becomes a family rule (Music: `track` + Listen
+    `video`; Podcasts: `podcastEpisode`).
+- **Red first** (test/unit/native-video-audio-contract.test.js at 59245046, the file committed with W1): `node --test` = 3 tests,
+  2 pass, 1 fail: `not ok 1 - RED FIRST: a host announcing nativeAudio + nativeVideoAudio gets audio.load with a video Item when a
+  playing video backgrounds, and the sidecar is never played` (`the adapter knows the capability: false !== true`); `ok 2 - CONTROL:
+  a host with nativeAudio but WITHOUT nativeVideoAudio ... the sidecar plays, nothing is posted (V3)`; `ok 3 - CONTROL: no host`.
