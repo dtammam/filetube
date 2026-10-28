@@ -17,12 +17,13 @@ const DATA_DIR = process.env.DATA_DIR;
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, updateDatabase, userStore, deviceStore, musicDb, podcastsDb, __mintTestSession, createMutationAuditMiddleware } = require('../../server');
+const { app, updateDatabase, userStore, deviceStore, musicDb, podcastsDb, tvDb, __mintTestSession, createMutationAuditMiddleware } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const authCrypto = require('../../lib/auth/crypto');
 const musicStore = require('../../lib/music/store');
 const podcastStore = require('../../lib/podcasts/store');
+const tvStore = require('../../lib/tv/store');
 const mediaTokenLib = require('../../lib/auth/media-token');
 
 let server, base, auth, kid, admin;
@@ -70,9 +71,23 @@ before(async () => {
     settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
     metadata: {
       aud: { id: 'aud', title: 'Talk', filePath: aud, folderName: 'Talks', rootFolder: lib, type: 'audio', ext: '.m4a', codec: 'aac', duration: 90, size: 19, addedAt: 1, hasThumbnail: false, tags: { artist: 'Speaker', album: 'Talks' } },
-      vid: { id: 'vid', title: 'Cartoon', filePath: f('Kids/cartoon.mp4', 'VIDEO-BYTES'), folderName: 'Kids', rootFolder: lib, type: 'video', ext: '.mp4', codec: 'h264', audioCodec: 'aac', duration: 100, size: 11, addedAt: 1 },
+      vid: { id: 'vid', title: 'Cartoon', filePath: f('Kids/cartoon.mp4', 'VIDEO-BYTES'), folderName: 'Kids', rootFolder: lib, type: 'video', ext: '.mp4', codec: 'h264', audioCodec: 'aac', duration: 100, size: 11, addedAt: 1, hasThumbnail: false },
+      // v1.398.0: a video the kid may not see (a path restriction below) - every video route must 404 it for the media token
+      hidvid: { id: 'hidvid', title: 'Grown-up film', filePath: f('Kids/Blocked/film.mp4', 'HIDDEN-VIDEO'), folderName: 'Blocked', rootFolder: lib, type: 'video', ext: '.mp4', codec: 'h264', audioCodec: 'aac', duration: 100, size: 12, addedAt: 1, hasThumbnail: false },
     },
   });
+  // v1.398.0: two TV episodes, one under a path the kid may not see
+  const tvRoot = path.join(DATA_DIR, 'tv');
+  const e1 = f('../tv/Kids Show/Season 1/Kids Show S01E01 - Hello.mp4', 'TV-BYTES-E1');
+  const blk = f('../tv/Adult Show/Season 1/Adult Show S01E01 - Pilot.mp4', 'TV-BYTES-BLK');
+  await updateDatabase(() => tvDb.mutate((db) => {
+    const ns = tvStore.ensureTv(db); ns.folders = [tvRoot];
+    ns.episodes = {
+      e1: { id: 'e1', filePath: e1, rootFolder: tvRoot, showId: 'sh', showPath: path.join(tvRoot, 'Kids Show'), showName: 'Kids Show', seasonNum: 1, episodeNum: 1, title: 'Hello', ext: '.mp4', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 1 },
+      blk: { id: 'blk', filePath: blk, rootFolder: tvRoot, showId: 'sb', showPath: path.join(tvRoot, 'Adult Show'), showName: 'Adult Show', seasonNum: 1, episodeNum: 1, title: 'Pilot', ext: '.mp4', codec: 'h264', audioCodec: 'aac', durationSec: 100, addedAt: 2 },
+    };
+    return true;
+  }));
   tracks = {
     ok: mkTrack('Music/Floyd/Wall/01 Mother.flac', 'FLAC-BYTES-OK', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Mother', trackNo: 1, codec: 'flac' }),
     hidden: mkTrack('Music/Blocked/Wall/03 Bricks.flac', 'FLAC-BYTES-HIDDEN', { artist: 'Pink Floyd', albumArtist: 'Pink Floyd', album: 'The Wall', title: 'Bricks', trackNo: 3, codec: 'flac' }),
@@ -103,7 +118,7 @@ before(async () => {
   const k0 = __mintTestSession({ username: 'kid', role: 'member' });
   userStore.updatePassword(k0.user.id, await authCrypto.hashPassword(KID_PASSWORD));
   kid = __mintTestSession({ username: 'kid', role: 'member' });
-  userStore.setRestrictions(kid.user.id, [{ kind: 'show', value: HIDDEN_SUB }, { kind: 'path', value: path.join(lib, 'Music', 'Blocked') }]);
+  userStore.setRestrictions(kid.user.id, [{ kind: 'show', value: HIDDEN_SUB }, { kind: 'path', value: path.join(lib, 'Music', 'Blocked') }, { kind: 'path', value: path.join(lib, 'Kids', 'Blocked') }, { kind: 'path', value: path.join(DATA_DIR, 'tv', 'Adult Show') }]);
 });
 after(() => { auth.restore(); server.close(); });
 
@@ -147,8 +162,8 @@ test('scope: mt is accepted on GET / HEAD of the audio file route (track, podcas
   assert.strictEqual((await bare(withMt(`/albumart/${tracks.hidden.id}`, mt))).status, 404);
   assert.strictEqual((await bare(withMt(`/api/offline/file/podcastEpisode/${epHidden}`, mt))).status, 404);
   assert.strictEqual((await bare(withMt(`/podcastart/${HIDDEN_SUB}`, mt))).status, 404);
-  // outside the scope: a JSON 401 for everything, a video's bytes included
-  for (const [method, p] of [['GET', '/api/offline/file/video/vid'], ['GET', `/track/${tracks.ok.id}`], ['GET', `/episode/${epOk}`], ['GET', '/video/vid'], ['GET', '/thumbnail/vid'], ['GET', '/api/auth/me'], ['GET', '/api/offline/manifest?kind=track&id=x'], ['GET', '/api/music'], ['GET', '/api/music/radio?seed=track:x'], ['GET', '/'], ['GET', '/setup.html'], ['GET', '/api/devices'], ['POST', '/api/music/progress'], ['POST', '/api/progress'], ['POST', '/api/podcasts/progress'], ['POST', '/api/music/plays'], ['POST', '/api/offline/progress'], ['POST', '/api/devices'], ['POST', `/api/offline/file/track/${tracks.ok.id}`], ['DELETE', '/api/devices/1']]) {
+  // outside the scope: a JSON 401 for everything, the web's own byte routes (/video, /tvepisode) and the show poster included
+  for (const [method, p] of [['GET', '/api/offline/file/album/x'], ['GET', '/api/offline/file/tvSeason/x'], ['GET', `/track/${tracks.ok.id}`], ['GET', `/episode/${epOk}`], ['GET', '/video/vid'], ['GET', '/tvepisode/e1'], ['GET', '/tvposter/sh'], ['GET', '/api/auth/me'], ['GET', '/api/offline/manifest?kind=track&id=x'], ['GET', '/api/music'], ['GET', '/api/music/radio?seed=track:x'], ['GET', '/'], ['GET', '/setup.html'], ['GET', '/api/devices'], ['POST', '/api/music/progress'], ['POST', '/api/progress'], ['POST', '/api/tv/progress'], ['POST', '/api/podcasts/progress'], ['POST', '/api/music/plays'], ['POST', '/api/offline/progress'], ['POST', '/api/devices'], ['POST', `/api/offline/file/track/${tracks.ok.id}`], ['POST', '/api/offline/file/video/vid'], ['POST', '/thumbnail/vid'], ['DELETE', '/api/devices/1']]) {
     const r = await bare(withMt(p, mt), { method, headers: { Accept: 'text/html,application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}) }, body: method === 'POST' ? '{}' : undefined });
     assert.strictEqual(r.status, 401, `${method} ${p}`);
     assert.deepStrictEqual(await r.json(), { error: 'media token not accepted here', mediaTokenScope: true }, `${method} ${p}`);
@@ -170,6 +185,61 @@ test('scope: mt is accepted on GET / HEAD of the audio file route (track, podcas
   const viaShortcut = await bare(withMt('/api/ytdlp/download', mt), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-FileTube-Token': 'whatever' }, body: '{}' });
   assert.strictEqual(viaShortcut.status, 401);
   assert.deepStrictEqual(await viaShortcut.json(), { error: 'media token not accepted here', mediaTokenScope: true });
+});
+
+// v1.398.0 native video audio (plan V5, W2 + W4 token tests): the media token reaches a video's and a TV episode's iOS-playable
+// file and the two art routes, as the USER; a restricted video / episode is a neutral 404 on every one of the four routes; the
+// web's own byte routes stay refused (the loop above). The device token posts TV progress with the web's body.
+test('V5: mt reaches /api/offline/file/video and /tvEpisode (full, Range and HEAD) and /thumbnail + /tvthumb; a restricted user\'s media token 404s a restricted video and episode on all four routes; the device token posts /api/tv/progress (a hidden episode 404s)', async () => {
+  const { token } = await pairOk(kid.cookie, KID_PASSWORD, 'Video');
+  const mt = (await mintOk(token)).token;
+  const v = await bare(withMt('/api/offline/file/video/vid', mt));
+  assert.strictEqual(v.status, 200);
+  assert.strictEqual(await v.text(), 'VIDEO-BYTES');
+  assert.strictEqual(v.headers.get('set-cookie'), null);
+  const vr = await bare(withMt('/api/offline/file/video/vid', mt), { headers: { Range: 'bytes=6-' } });
+  assert.strictEqual(vr.status, 206, 'a Range on the video');
+  assert.strictEqual(await vr.text(), 'BYTES');
+  assert.strictEqual((await bare(withMt('/api/offline/file/video/vid', mt), { method: 'HEAD' })).status, 200);
+  const e = await bare(withMt('/api/offline/file/tvEpisode/e1', mt));
+  assert.strictEqual(e.status, 200);
+  assert.strictEqual(await e.text(), 'TV-BYTES-E1');
+  const er = await bare(withMt('/api/offline/file/tvEpisode/e1', mt), { headers: { Range: 'bytes=-2' } });
+  assert.strictEqual(er.status, 206, 'a suffix Range on the episode');
+  assert.strictEqual(await er.text(), 'E1');
+  const th = await bare(withMt('/thumbnail/vid', mt));
+  assert.strictEqual(th.status, 200, 'the video\'s art (the placeholder here: no thumbnail file)');
+  assert.strictEqual(th.headers.get('set-cookie'), null);
+  assert.strictEqual((await bare(withMt('/tvthumb/e1', mt))).status, 200, 'the episode\'s art (the placeholder here)');
+  // the restricted video and episode: a neutral 404 on every one of the four routes (the existence oracle is closed)
+  for (const p of ['/api/offline/file/video/hidvid', '/thumbnail/hidvid', '/api/offline/file/tvEpisode/blk', '/tvthumb/blk']) {
+    const r = await bare(withMt(p, mt));
+    assert.strictEqual(r.status, 404, p);
+  }
+  // an unknown id answers the same 404 as a hidden one
+  assert.strictEqual((await bare(withMt('/api/offline/file/video/nope', mt))).status, 404);
+  assert.strictEqual((await bare(withMt('/tvthumb/nope', mt))).status, 404);
+  // an unrestricted member's own token sees them (the restriction is the kid's, not the route's)
+  const t0 = __mintTestSession({ username: 'teen', role: 'member' });
+  userStore.updatePassword(t0.user.id, await authCrypto.hashPassword('teen-password-1'));
+  const teen = __mintTestSession({ username: 'teen', role: 'member' });
+  const teenPair = await asCookie(teen.cookie, '/api/devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Teen phone', platform: 'ios', password: 'teen-password-1' }) });
+  assert.strictEqual(teenPair.status, 201);
+  const tmt = (await mintOk((await teenPair.json()).token)).token;
+  assert.strictEqual((await bare(withMt('/api/offline/file/video/hidvid', tmt))).status, 200, 'the teen\'s phone plays it');
+  assert.strictEqual((await bare(withMt('/thumbnail/hidvid', tmt))).status, 200);
+  assert.strictEqual((await bare(withMt('/api/offline/file/tvEpisode/blk', tmt))).status, 200);
+  assert.strictEqual((await bare(withMt('/tvthumb/blk', tmt))).status, 200);
+  // the device token posts TV progress with the web's body; a hidden episode is a neutral 404; a media token never posts
+  const post = (p, body) => asToken(token, p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const ok = await post('/api/tv/progress', { id: 'e1', timestamp: 42, duration: 100 });
+  assert.strictEqual(ok.status, 200);
+  assert.deepStrictEqual(await ok.json(), { success: true });
+  assert.deepStrictEqual(userStore.getOneTvProgress(kid.user.id, 'e1') && { position: userStore.getOneTvProgress(kid.user.id, 'e1').position }, { position: 42 }, 'saved for the kid');
+  assert.strictEqual((await post('/api/tv/progress', { id: 'blk', timestamp: 42, duration: 100 })).status, 404, 'a hidden episode');
+  assert.strictEqual((await post('/api/progress', { id: 'hidvid', timestamp: 1, duration: 100 })).status, 200, 'DISCLOSED (ROADMAP Planned 5, v1.397.0): /api/progress is existence-only for a hidden video, as for the kid\'s browser');
+  const byMt = await bare(withMt('/api/tv/progress', mt), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'e1', timestamp: 1, duration: 100 }) });
+  assert.strictEqual(byMt.status, 401);
 });
 
 test('liveness (D14): an expired token and a token that never existed answer the SAME 401 mediaTokenExpired (native re-mints); a revoked, epoch-stale (password change / Remove all) or disabled device answers 401 deviceRevoked; the next mint works again after re-pairing', async () => {

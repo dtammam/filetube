@@ -23,9 +23,34 @@ test('itemFromDescriptor: a native music track, a library audio file (its /thumb
   assert.strictEqual(NA.itemFromDescriptor({ id: 'f::c2', type: 'audio', title: 'x', resumeMode: 'music', chapterStartSec: 20 }).clip, undefined);
 });
 
-test('itemFromDescriptor refuses a Listen row (a video played as audio from the watch page; gate r1 qa C1)', () => {
-  assert.strictEqual(NA.itemFromDescriptor({ id: 'vid1', type: 'audio', title: 'Talk', resumeMode: 'music', listen: true, streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }), null);
+test('itemFromDescriptor refuses a Listen row (a video played as audio from the watch page; gate r1 qa C1) unless the host takes a video\'s sound (v1.398.0 V2b: opts.video)', () => {
+  const listen = { id: 'vid1', type: 'audio', title: 'Talk', channelName: 'Ch', album: '', duration: 600, resumeMode: 'music', listen: true, streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' };
+  assert.strictEqual(NA.itemFromDescriptor(listen), null, 'no opts: v1.397.0');
+  assert.strictEqual(NA.itemFromDescriptor(listen, {}), null);
+  assert.strictEqual(NA.itemFromDescriptor(listen, { video: false }), null);
   assert.ok(NA.itemFromDescriptor({ id: 'vid1', type: 'audio', title: 'Talk', resumeMode: 'music', listen: false, streamSrc: '/video/vid1', progressEndpoint: '/api/progress' }), 'the same row without the flag maps (library audio)');
+  // V4: a video Item - the file's iOS-playable rendition, /thumbnail art, /api/progress under the file id, no radioSeed
+  assert.deepStrictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { radioSeed: 'track:vid1' }), { video: true }), { kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'Talk', artist: 'Ch', artworkSrc: '/thumbnail/vid1', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } });
+  // S6: a video with no thumbnail omits the art; an unknown hasThumbnail (an older payload) keeps it
+  assert.strictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { hasThumbnail: false }), { video: true }).artworkSrc, undefined);
+  assert.strictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { hasThumbnail: true }), { video: true }).artworkSrc, '/thumbnail/vid1');
+  // S2: a chaptered video's Listen row is the file plus clip, saving under the file id (the D6 semantics)
+  assert.deepStrictEqual(NA.itemFromDescriptor({ id: 'vid1::c1', type: 'audio', title: 'Two', channelName: 'Ch', album: 'Talk', duration: 65, resumeMode: 'music', listen: true, chapterStartSec: 30, baseMediaId: 'vid1', streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' }, { video: true }), { kind: 'video', id: 'vid1::c1', src: '/api/offline/file/video/vid1', title: 'Two', artist: 'Ch', album: 'Talk', artworkSrc: '/thumbnail/vid1', durationSec: 65, clip: { startSec: 30, endSec: 95 }, progress: { route: '/api/progress', key: 'vid1' } });
+  // the progress route is always /api/progress for a video, whatever the descriptor says
+  assert.strictEqual(NA.itemFromDescriptor(Object.assign({}, listen, { progressEndpoint: '/api/music/progress' }), { video: true }).progress.route, '/api/progress');
+  // a track is untouched by opts.video
+  assert.strictEqual(NA.itemFromDescriptor({ id: 't1', type: 'audio', title: 'S', resumeMode: 'music', radioSeed: 'track:t1' }, { video: true }).kind, 'track');
+});
+
+test('sameFamily (V10): track and video are one family (the Music view holds both); a podcast episode is its own; unknowns never match', () => {
+  assert.strictEqual(NA.sameFamily('track', 'video'), true);
+  assert.strictEqual(NA.sameFamily('video', 'track'), true);
+  assert.strictEqual(NA.sameFamily('track', 'track'), true);
+  assert.strictEqual(NA.sameFamily('podcastEpisode', 'podcastEpisode'), true);
+  assert.strictEqual(NA.sameFamily('podcastEpisode', 'track'), false);
+  assert.strictEqual(NA.sameFamily('video', 'podcastEpisode'), false);
+  assert.strictEqual(NA.sameFamily('tvEpisode', 'video'), false, 'a TV episode is never a Music row');
+  assert.strictEqual(NA.sameFamily(undefined, 'track'), false);
 });
 
 test('itemFromDescriptor refuses what native does not play: a video, a book\'s audio (no resumeMode), the Feed\'s audio (resumeMode is music but it never calls this: still, a missing id or type is null)', () => {

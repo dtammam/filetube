@@ -27,7 +27,7 @@ const CHAPTERS = [
   { id: 's9', title: 'After', artist: 'Sp', album: 'Talk', albumKey: 'Sp\u001fTalk', durationSec: 100 },
 ];
 
-function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localhost/music?play=t2&ao=1', items = SONGS, progress = {}, queue = null } = {}) {
+function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localhost/music?play=t2&ao=1', items = SONGS, progress = {}, queue = null, videos = null } = {}) {
   const vc = new VirtualConsole();
   const errors = [];
   vc.on('jsdomError', (e) => errors.push(String((e && e.stack) || e)));
@@ -51,7 +51,7 @@ function realm({ host = { capabilities: ['nativeAudio'] }, url = 'http://localho
     calls.push(method + ' ' + url);
     let body = {};
     if (/^\/api\/music\/progress\/|^\/api\/progress\//.test(url)) body = { position: progress[url.split('/').pop()] || 0 };
-    else if (/^\/api\/videos\/vid1$/.test(url)) body = { id: 'vid1', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, chapters: [] }; // the Listen row's video
+    else if (/^\/api\/videos\/([^/?]+)$/.test(url)) { const vid = decodeURIComponent(/^\/api\/videos\/([^/?]+)$/.exec(url)[1]); body = (videos && videos[vid]) || { id: 'vid1', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, chapters: [] }; } // the Listen row's video
     else if (url.indexOf('/api/music') === 0) body = { items, total: items.length };
     else if (url.indexOf('/api/queue') === 0) body = queue ? (typeof queue === 'function' ? queue() : queue) : { entries: [], pointerUid: null };
     else if (url.indexOf('/api/music/radio') === 0) body = { items: [] };
@@ -488,6 +488,172 @@ test('gate r1 qa C1: a Listen row (a VIDEO played as audio from the watch page) 
     assert.deepStrictEqual(r.fake.of('audio.load'), [], 'never claimed: the audio file route cannot serve a video id');
     assert.strictEqual(r.own('currentTime'), false);
     assert.strictEqual(r.na.active(), false);
+  } finally { r.close(); }
+});
+
+// v1.398.0 native video audio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V2b / V10 / S1 / S6 / S8): with
+// nativeVideoAudio announced beside nativeAudio, a Listen row rides into native as a video Item.
+const VIDEO_CAPS = { capabilities: ['nativeAudio', 'nativeVideoAudio'] };
+const LISTEN_ROW = { id: 'vid1', listen: true, source: 'library', title: 'A talk', artist: 'Ch', album: '', albumKey: '', durationSec: 600, streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' };
+
+test('v1.398.0 V2b: with nativeVideoAudio a Listen row (the REAL /music?play=<id>&listen=1 path) loads into native as ONE video Item - the file route, /thumbnail art, /api/progress under the video id, no radioSeed - the element is the proxy, the Watch way back stays, and a snapshot drives the dock as for a song', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW], videos: { vid1: { id: 'vid1', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, chapters: [] } } });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1', 'the listen row loaded: ' + JSON.stringify(r.errors));
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 1, 'one audio.load');
+    assert.deepStrictEqual(loads[0].queue, [{ kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/vid1', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } }]);
+    assert.strictEqual(loads[0].index, 0);
+    assert.strictEqual(r.el().getAttribute('src'), null, 'no src: native plays it');
+    assert.ok(r.own('currentTime') && r.own('paused'), 'the proxy, exactly as for a track');
+    assert.strictEqual(r.na.active(), true);
+    assert.deepStrictEqual(r.protoPlays, [], 'the real element never plays');
+    r.fake.emit(r.snap({ positionSec: 120, durationSec: 600 }));
+    await settle(60);
+    assert.ok(Math.abs(r.el().currentTime - 120) < 0.3, 'the snapshot drives the proxy (' + r.el().currentTime + ')');
+    assert.strictEqual(r.el().duration, 600);
+    assert.strictEqual(r.w.document.getElementById('pp-btn').getAttribute('aria-pressed'), 'true', 'the dock shows Pause');
+    // no play tally for a Listen row (music.js: a listen video is not a song), no web progress POST (native posts)
+    for (const p of [130, 140, 150]) { r.fake.emit(r.tick(p)); await settle(5); }
+    await settle(40);
+    assert.deepStrictEqual(r.calls.filter((c) => /^POST \/api\/(music\/plays|progress|music\/progress)/.test(c)), [], 'nothing posted by the web');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S2: a CHAPTERED video\'s Listen rows ride as video Items with clip (the file route once, /api/progress under the file id), the proxy shows file-absolute time, and native rolling to the next chapter is a FOLLOW with no new load', async () => {
+  const video = { id: 'vid2', title: 'A long talk', channelName: 'Ch', folderName: 'Ch', duration: 95, hasThumbnail: false, chapters: [{ startTime: 0, title: 'One' }, { startTime: 30, title: 'Two' }] };
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid2&listen=1', items: [], videos: { vid2: video } });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid2::c0', 'the first chapter row loaded: ' + JSON.stringify(r.errors));
+    const ld = r.lastLoad();
+    assert.deepStrictEqual(ld.queue.map((it) => it.id), ['vid2::c0', 'vid2::c1']);
+    assert.deepStrictEqual(ld.queue[1], { kind: 'video', id: 'vid2::c1', src: '/api/offline/file/video/vid2', title: 'Two', artist: 'Ch', album: 'A long talk', durationSec: 65, clip: { startSec: 30, endSec: 95 }, progress: { route: '/api/progress', key: 'vid2' } }, 'the file plus clip, no art (hasThumbnail false, S6), saving under the file');
+    assert.strictEqual(ld.index, 0);
+    r.fake.emit(r.snap({ positionSec: 10, durationSec: 30 }));
+    await settle(40);
+    assert.ok(Math.abs(r.el().currentTime - 10) < 0.3);
+    assert.strictEqual(r.el().duration, 95, 'the file ends where its last chapter ends');
+    // native rolls into chapter two: the chapter watcher moves on its own (a roll), no load, no jump
+    const before = r.fake.of('audio.load').length;
+    r.fake.emit(r.snap({ index: 1, positionSec: 2, durationSec: 65 }));
+    await settle(120);
+    assert.strictEqual(r.fake.of('audio.load').length, before, 'no new load');
+    assert.deepStrictEqual(r.fake.of('audio.jump'), [], 'no jump');
+    assert.ok(Math.abs(r.el().currentTime - 32) < 0.3, 'file-absolute: 30 + 2 (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S1: Listen -> Watch on the SAME id - the watch page\'s adopt-shaped load while native plays the Listen row is a fresh WEB load: audio.stop, the element gets /video/<id>, the proxy is gone, and the video resumes at native\'s position (playing) or sits there (paused)', async () => {
+  for (const paused of [false, true]) {
+    const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+    try {
+      await settle(150);
+      assert.strictEqual(r.player.currentId, 'vid1');
+      r.fake.emit(r.snap({ state: paused ? 'paused' : 'playing', positionSec: 120, durationSec: 600 }));
+      await settle(40);
+      const proto0 = r.protoPlays.length, calls0 = r.calls.length;
+      // watch.js initWatch's early adopt call for the same id (resumeMode null etc. claim the plain-video flavor; no nativeQueue)
+      r.player.load('vid1', { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+      await settle(120);
+      assert.strictEqual(r.fake.of('audio.stop').length, 1, 'native stopped first (V9)');
+      assert.strictEqual(r.el().getAttribute('src'), '/video/vid1', 'the web element plays the video');
+      assert.strictEqual(r.own('currentTime'), false, 'the proxy is gone');
+      assert.strictEqual(r.na.active(), false);
+      assert.ok(Math.abs(r.el().currentTime - 120) < 0.3, 'at native\'s position (' + r.el().currentTime + ')');
+      assert.strictEqual(r.protoPlays.length - proto0 > 0, !paused, paused ? 'paused stays paused' : 'playing resumes');
+      assert.deepStrictEqual(r.calls.slice(calls0).filter((c) => /^GET \/api\/progress\//.test(c)), [], 'no saved-place read on the hand-back: the live position wins');
+    } finally { r.close(); }
+  }
+});
+
+test('v1.398.0 S8 (adoption): a fresh Music page while native plays a queue holding a video Item adopts it as a Listen row (the Watch way back, /video stream, /thumbnail art) beside the tracks, and the playing one loads as a FOLLOW', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music' });
+  try {
+    await settle(80);
+    const queue = [
+      { kind: 'track', id: 'n1', src: '/api/offline/file/track/n1', title: 'Native 1', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n1', durationSec: 120, progress: { route: '/api/music/progress', key: 'n1' }, radioSeed: 'track:n1' },
+      { kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/vid1', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } },
+      // two tracks AFTER the playing one, so the shuffle toggle below has rows to reorder (the re-send is what binds the row kind)
+      { kind: 'track', id: 'n3', src: '/api/offline/file/track/n3', title: 'Native 3', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n3', durationSec: 120, progress: { route: '/api/music/progress', key: 'n3' }, radioSeed: 'track:n3' },
+      { kind: 'track', id: 'n4', src: '/api/offline/file/track/n4', title: 'Native 4', artist: 'NA', album: 'NB', artworkSrc: '/albumart/n4', durationSec: 120, progress: { route: '/api/music/progress', key: 'n4' }, radioSeed: 'track:n4' },
+    ];
+    r.fake.emit({ v: 1, type: 'audioState', rev: 3, queue, index: 1, state: 'playing', positionSec: 44, durationSec: 600, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1', 'the view adopted the playing video Item: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(r.fake.types().filter((t) => t.indexOf('audio.') === 0 && t !== 'audio.subscribe'), [], 'a follow: nothing posted');
+    assert.strictEqual(r.el().getAttribute('src'), null);
+    assert.ok(Math.abs(r.el().currentTime - 44) < 0.3);
+    assert.strictEqual(r.player.getRemoteSnapshot().hasPrev, true, 'the track before it is a row too');
+    // the adopted row IS a Listen row (the listen marker, S8): music.js never shuffles AROUND a playing Listen row
+    // (shufflePlayingIndex excludes it), so a shuffle toggle posts the modes and re-sends NOTHING - with the marker dropped the
+    // tail would be reordered and a new audio.load would go out (and the row would ride as a 'track' on the audio route)
+    r.w.fisherYatesShuffle = (arr) => arr.slice().reverse();
+    const loads0 = r.fake.of('audio.load').length;
+    r.w.document.getElementById('music-shufflemode-btn').click();
+    await settle(80);
+    assert.deepStrictEqual(r.errors, [], 'no script error on the toggle');
+    assert.strictEqual(r.fake.of('audio.setModes').pop().modes.shuffle, true, 'the mode reached native');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0, 'no re-send: a Listen session is never shuffled around');
+    assert.deepStrictEqual(r.fake.of('audio.load').map((l) => l.queue.map((it) => it.kind + ':' + it.id)), [], 'and so no Item for the Listen row was ever rebuilt as a track');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S1 (the other direction): the Music view re-loading the SAME row native owns (a re-tap, a keepPosition follow) stays native - no audio.stop, no src, the proxy stays; only a load WITHOUT a nativeQueue (the watch page) takes it back', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1');
+    r.fake.emit(r.snap({ positionSec: 33, durationSec: 600 }));
+    await settle(30);
+    const stops0 = r.fake.of('audio.stop').length, loads0 = r.fake.of('audio.load').length;
+    const d = { id: 'vid1', type: 'audio', title: 'A talk', channelName: 'Ch', album: '', duration: 600, artUrl: '/thumbnail/vid1', streamSrc: '/video/vid1', progressEndpoint: '/api/progress', resumeMode: 'music', listen: true, hasThumbnail: true };
+    r.player.load('vid1', Object.assign({}, d, { nativeQueue: () => ({ items: [d], index: 0 }) }), { slot: r.slot });
+    await settle(80);
+    assert.strictEqual(r.fake.of('audio.stop').length, stops0, 'native not stopped');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0, 'no re-load');
+    assert.strictEqual(r.el().getAttribute('src'), null, 'still native\'s');
+    assert.ok(r.own('currentTime'), 'the proxy stays');
+    assert.ok(Math.abs(r.el().currentTime - 33) < 0.5, 'where native is (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 V10 (D12 family): with the Up-next pointer on a Listen row, the TRACK entries after it join the Music queue (one more audio.load), a podcast entry is left out', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW], queue: { pointerUid: 'u-v', entries: [
+    { uid: 'u-v', mediaId: 'vid1', kind: 'media', item: { type: 'video', title: 'A talk' } },
+    { uid: 'u-q1', mediaId: 'q1', kind: 'track', item: { title: 'Queued One', name: 'Queued One', channelName: 'QA', folderName: 'QB', artUrl: '/albumart/artq1?s=256', durationSec: 77, hasThumbnail: false } },
+    { uid: 'u-e1', mediaId: 'e1', kind: 'podcast', item: { title: 'An episode', channelName: 'The Show', folderName: 'The Show', artUrl: '/podcastart/sub1', durationSec: 1800 } },
+  ] } });
+  try {
+    await settle(200);
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 2, 'the Listen load, then the flattened queue: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(loads[1].queue.map((it) => it.kind + ':' + it.id), ['video:vid1', 'track:q1'], 'the track after the pointer rides beside the Listen video Item; the podcast does not');
+    assert.strictEqual(loads[1].index, 0);
+    assert.strictEqual(r.player.getRemoteSnapshot().hasNext, true);
+  } finally { r.close(); }
+});
+
+test('v1.398.0 V6: a transcode still building is NATIVE\'s wait (503 + Retry-After, held in loading and retried there); the web sees only the end of it - audioError other -> the "Could not play this" toast once, the Listen row stays claimed and nothing is posted or loaded by the web', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1');
+    const toasts = [];
+    r.w.ui = Object.assign(r.w.ui || {}, { toast: (msg, opts) => toasts.push([msg, opts && opts.kind]) });
+    r.fake.emit(r.snap({ state: 'loading', positionSec: 0, durationSec: 0 }));
+    await settle(30);
+    assert.strictEqual(r.el().readyState, 1, 'loading: not ready yet');
+    const posted0 = r.fake.posts.length, loads0 = r.fake.of('audio.load').length;
+    r.fake.emit({ v: 1, type: 'audioError', id: 'vid1', error: 'other' });
+    r.fake.emit(r.snap({ state: 'failed', error: 'other', positionSec: 0, durationSec: 0 }));
+    await settle(60);
+    assert.deepStrictEqual(toasts, [['Could not play this', 'error']], 'one toast, the other copy (never "No connection")');
+    assert.strictEqual(r.fake.posts.length, posted0, 'the web posts nothing back');
+    assert.strictEqual(r.fake.of('audio.load').length, loads0, 'no re-load from the web: native did the retrying');
+    assert.strictEqual(r.na.active(), true, 'still native\'s (a tap on the row would reload)');
+    assert.strictEqual(r.el().getAttribute('src'), null);
   } finally { r.close(); }
 });
 

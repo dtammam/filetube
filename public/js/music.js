@@ -538,6 +538,7 @@ function buildListenChapterTracks(v) {
       durationSec: span,
       source: 'library-chapter',
       listen: true,
+      hasThumbnail: v.hasThumbnail === true || v.hasThumbnail === false ? v.hasThumbnail : undefined, // v1.398.0 (S6): the native Item's art only when the video has one
       streamSrc: '/video/' + encodeURIComponent(v.id), // the ONE file; the ::c id never reaches the byte route
       artUrl: '/thumbnail/' + encodeURIComponent(v.id),
       progressEndpoint: '/api/progress',
@@ -1834,17 +1835,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // capability (D10), so none of these guards changes a thing there.
     function nativeApi() { var n = window.FileTube && window.FileTube.nativeAudio; return (n && n.enabled) ? n : null; }
     function nativeOn() { var n = nativeApi(); return !!(n && n.active()); }
+    function nativeVideoOn() { var n = nativeApi(); return !!(n && n.videoAudio === true); } // v1.398.0: the engine takes a Listen row (a video's sound)
     function nativeModesChanged() { var n = nativeApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
     function nativeSyncQueue() { var n = nativeApi(); if (n) { try { n.syncQueue(); } catch (_) { /* inert */ } } }
-    // A native Item (a radio pick native appended, or an Up-next entry) -> a queue row the panels and skins can list. A
-    // chapter Item is a 'library-chapter' row of its parent file; a library audio Item a 'library' row.
+    // A native Item (a radio pick native appended, an Up-next entry, or - on a fresh page - the queue native plays) -> a queue
+    // row the panels and skins can list. A chapter Item is a 'library-chapter' row of its parent file; a library audio Item a
+    // 'library' row. v1.398.0 (V10, S8): a `video` Item (a Listen row native plays, the host announcing nativeVideoAudio) is the
+    // Listen row playListenItem / buildListenChapterTracks build: the file's /video stream, /thumbnail art, /api/progress, the
+    // `listen` marker (the Watch way back, no play tally, no radio), a clip Item as its chapter row.
     function rowFromNativeItem(it) {
-      if (!it || it.kind !== 'track' || typeof it.id !== 'string') return null;
+      if (!it || typeof it.id !== 'string') return null;
+      var video = it.kind === 'video';
+      if (!video && it.kind !== 'track') return null;
       var base = (it.progress && typeof it.progress.key === 'string' && it.progress.key) ? it.progress.key : it.id;
       var isChapter = !!(it.clip && typeof it.clip.startSec === 'number');
-      var lib = isChapter || (it.progress && it.progress.route === '/api/progress');
+      var lib = video || isChapter || (it.progress && it.progress.route === '/api/progress');
       var row = { id: it.id, title: it.title || '', artist: it.artist || '', album: it.album || '', albumKey: '', durationSec: isChapter ? Math.max(0, (Number(it.clip.endSec) || 0) - (Number(it.clip.startSec) || 0)) : (Number(it.durationSec) || 0), artUrl: typeof it.artworkSrc === 'string' ? it.artworkSrc : '' };
       if (lib) { row.source = isChapter ? 'library-chapter' : 'library'; row.streamSrc = '/video/' + encodeURIComponent(base); row.progressEndpoint = '/api/progress'; if (isChapter) row.chapterStartSec = Number(it.clip.startSec) || 0; }
+      if (video) { row.listen = true; row.hasThumbnail = typeof it.artworkSrc === 'string' && it.artworkSrc.length > 0; if (isChapter) row.albumKey = base; }
       return row;
     }
     // v1.353: the speaker's player volume as this device shows it (the controller holds a level the
@@ -4604,9 +4612,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // host without nativeAudio, never reads either (the player's choke point asks native-audio.js, which is inert there).
         radioSeed: item.listen ? undefined : stationSeedFor(item),
         // A Listen row (a VIDEO played as audio from the watch page, v1.252) is not music to native: its id is a video the
-        // audio file route cannot serve (gate r1 qa C1), so it carries no queue and stays on the web element (D2).
+        // audio file route cannot serve (gate r1 qa C1), so it carries no queue and stays on the web element (D2) - unless the
+        // host announces nativeVideoAudio (v1.398.0 V2b): then it rides as a `video` Item like a song, and native-audio.js builds
+        // the Item from `listen` + `hasThumbnail` (V4: the /thumbnail art only when the video has one; S6).
         listen: !!item.listen,
-        nativeQueue: (forQueue || item.listen) ? undefined : function () { return nativeQueueProvider(item, i); },
+        hasThumbnail: item.listen ? item.hasThumbnail : undefined,
+        nativeQueue: (forQueue || (item.listen && !nativeVideoOn())) ? undefined : function () { return nativeQueueProvider(item, i); },
       };
       return data;
     }
@@ -5876,6 +5887,7 @@ if (typeof module !== 'undefined' && module.exports) {
             durationSec: Number(v.duration) || 0,
             source: 'library',
             listen: true,
+            hasThumbnail: v.hasThumbnail === true || v.hasThumbnail === false ? v.hasThumbnail : undefined, // v1.398.0 (S6)
             streamSrc: '/video/' + encodeURIComponent(v.id),
             artUrl: '/thumbnail/' + encodeURIComponent(v.id),
             progressEndpoint: '/api/progress',
