@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -44,8 +44,34 @@
   // (audioTick is a position delta). src and artworkSrc are server-relative paths native resolves and appends the media
   // token to (D7). clip = one chapter of a file (clip-relative time, D6). progress.route is the ONLINE route native posts
   // to with the web's own body (D8). public/js/native-audio.js owns the ONE subscription and every post.
-  var AUDIO_KINDS = ['track', 'podcastEpisode'];
-  var AUDIO_PROGRESS_ROUTES = ['/api/music/progress', '/api/progress', '/api/podcasts/progress'];
+  // v1.398.0 nativeVideoAudio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V3 + V4): a host that ALSO announces
+  // `nativeVideoAudio` accepts two more kinds - a library video and a TV episode played as SOUND (in v1.398.0 the web sends one:
+  // a Listen row, a video played as audio from the watch page; the background handoff of a playing video was designed and NOT
+  // built - native-bridge.md section 3 "Not built"; tvEpisode is reserved for the next plan). Add-only: the kind and progress.route
+  // enums widen, nothing else. The Item rules the schema's description
+  // states and the app enforces (audioItemOk below, so a wrong Item never leaves the page): src is EXACTLY the kind's own
+  // /api/offline/file/<kind>/ route, artworkSrc one of the four art routes, radioSeed only on a track.
+  var AUDIO_KINDS = ['track', 'podcastEpisode', 'video', 'tvEpisode'];
+  var AUDIO_PROGRESS_ROUTES = ['/api/music/progress', '/api/progress', '/api/podcasts/progress', '/api/tv/progress'];
+  var AUDIO_FILE_ROUTE = '/api/offline/file/';
+  var AUDIO_ART_PREFIXES = ['/albumart/', '/podcastart/', '/thumbnail/', '/tvthumb/'];
+  function audioItemOk(it) {
+    if (!it || typeof it !== 'object') return false;
+    if (typeof it.src !== 'string' || it.src.indexOf(AUDIO_FILE_ROUTE + it.kind + '/') !== 0) return false;
+    if (it.artworkSrc !== undefined) {
+      var art = typeof it.artworkSrc === 'string' ? it.artworkSrc : '';
+      var okArt = false;
+      for (var i = 0; i < AUDIO_ART_PREFIXES.length; i++) { if (art.indexOf(AUDIO_ART_PREFIXES[i]) === 0) okArt = true; }
+      if (!okArt) return false;
+    }
+    if (it.radioSeed !== undefined && it.kind !== 'track') return false;
+    return true;
+  }
+  function audioQueueOk(queue) {
+    if (!Array.isArray(queue)) return false;
+    for (var i = 0; i < queue.length; i++) { if (!audioItemOk(queue[i])) return false; }
+    return true;
+  }
   var AUDIO_STATES = ['idle', 'loading', 'playing', 'paused', 'ended', 'failed'];
   var AUDIO_ERRORS = ['network', 'notPlayable', 'revoked', 'notOnServer', 'other'];
   var AUDIO_LOOP = ['off', 'one'];
@@ -267,6 +293,7 @@
         if (def.cap && !has(def.cap)) { warn('capability not announced (' + def.cap + ')', type); return false; }
         var f = fields && typeof fields === 'object' ? fields : {};
         if (!fieldsOk(def.fields, f)) { warn('fields do not match the contract', type); return false; }
+        if (type === 'audio.load' && !audioQueueOk(f.queue)) { warn('an Item breaks the src / artworkSrc / radioSeed rules', type); return false; } // v1.398.0 (V4)
         var msg = pick(def.fields, f);
         msg.v = 1;
         msg.type = type;
@@ -340,7 +367,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};

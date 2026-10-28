@@ -58,20 +58,27 @@
     }
     return max > 0 ? max : NaN;
   }
-  var PROGRESS_ROUTES = ['/api/music/progress', '/api/progress', '/api/podcasts/progress'];
+  var PROGRESS_ROUTES = ['/api/music/progress', '/api/progress', '/api/podcasts/progress', '/api/tv/progress'];
   // A player.load DESCRIPTOR (the `data` music.js / podcasts.js build per row: type, title, channelName, album, duration,
-  // artUrl, streamSrc, progressEndpoint, resumeMode, chapterStartSec, baseMediaId, subId, radioSeed) -> a contract Item, or
-  // null when it is not a music / podcast load. The views hand the SAME builder's output to the queue provider, so the
-  // load and its queue cannot drift. src is always the iOS-playable file route of the FILE (a chapter row's parent);
-  // artworkSrc is one of the two media-token art routes (a library track's /thumbnail art is served by /albumart too).
-  function itemFromDescriptor(d) {
+  // artUrl, streamSrc, progressEndpoint, resumeMode, chapterStartSec, baseMediaId, subId, radioSeed, listen, hasThumbnail) -> a
+  // contract Item, or null when it is not a music / podcast load. The views hand the SAME builder's output to the queue provider,
+  // so the load and its queue cannot drift. src is always the iOS-playable file route of the FILE (a chapter row's parent);
+  // artworkSrc is one of the media-token art routes (a library track's /thumbnail art is served by /albumart too).
+  // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V2b + V4 + S2 + S6): with `opts.video` (the host
+  // announces `nativeVideoAudio`) a Listen row - a VIDEO played as audio from the watch page (`listen: true`), one row per chapter
+  // for a chaptered video - is a `video` Item: the whole file's iOS-playable rendition at /api/offline/file/video/<file>, its
+  // /thumbnail art (omitted when the video has none), progress at /api/progress under the file id, a chapter row as the file plus
+  // `clip` (the D6 semantics), never a radioSeed. Without `opts.video` a Listen row is null, as in v1.397.0 (the audio file
+  // route cannot serve a video's id, gate r1 qa C1), and the whole load stays on the web element.
+  function itemFromDescriptor(d, opts) {
     if (!d || typeof d !== 'object' || d.type !== 'audio') return null;
-    if (d.listen === true) return null; // a watch-page Listen row: a video's id, which the audio file route cannot serve (gate r1 qa C1)
     var id = d.id != null ? String(d.id) : '';
     if (!id) return null;
+    var listen = d.listen === true;
+    if (listen && !(opts && opts.video === true)) return null;
     var podcast = d.resumeMode === 'podcast';
     if (!podcast && d.resumeMode !== 'music') return null;
-    var kind = podcast ? 'podcastEpisode' : 'track';
+    var kind = listen ? 'video' : (podcast ? 'podcastEpisode' : 'track');
     var base = (typeof d.baseMediaId === 'string' && d.baseMediaId) ? d.baseMediaId : id.replace(/::c\d+$/, '');
     var item = { kind: kind, id: id, src: FILE_ROUTE + kind + '/' + encodeURIComponent(base), title: typeof d.title === 'string' ? d.title : '' };
     var artist = typeof d.channelName === 'string' ? d.channelName : '';
@@ -79,18 +86,28 @@
     if (artist) item.artist = artist;
     if (album) item.album = album;
     var art = typeof d.artUrl === 'string' ? d.artUrl : '';
-    if (/^\/(albumart|podcastart)\//.test(art)) item.artworkSrc = art;
+    if (listen) { if (d.hasThumbnail !== false) item.artworkSrc = '/thumbnail/' + encodeURIComponent(base); }
+    else if (/^\/(albumart|podcastart)\//.test(art)) item.artworkSrc = art;
     else if (podcast && typeof d.subId === 'string' && d.subId) item.artworkSrc = '/podcastart/' + encodeURIComponent(d.subId);
     else if (!podcast) item.artworkSrc = '/albumart/' + encodeURIComponent(base);
     var dur = num(d.duration, 0);
+    // gate r1 (adversary A-S1 = qa W5): a chapter row with no known span (a video whose duration the server does not know yet, its
+    // last chapter) would be "the whole file from 0" under a chapter id - the load stays on the web, as in v1.397.0
+    if (listen && typeof d.chapterStartSec === 'number' && !(dur > 0)) return null;
     if (dur > 0) item.durationSec = dur;
     if (typeof d.chapterStartSec === 'number' && isFinite(d.chapterStartSec) && d.chapterStartSec >= 0 && dur > 0) {
       item.clip = { startSec: d.chapterStartSec, endSec: d.chapterStartSec + dur };
     }
-    var route = PROGRESS_ROUTES.indexOf(d.progressEndpoint) >= 0 ? d.progressEndpoint : (podcast ? '/api/podcasts/progress' : '/api/music/progress');
-    item.progress = { route: route, key: item.clip ? base : id };
-    if (!podcast && typeof d.radioSeed === 'string' && d.radioSeed) item.radioSeed = d.radioSeed;
+    var route = listen ? '/api/progress' : (PROGRESS_ROUTES.indexOf(d.progressEndpoint) >= 0 ? d.progressEndpoint : (podcast ? '/api/podcasts/progress' : '/api/music/progress'));
+    item.progress = { route: route, key: (item.clip || listen) ? base : id };
+    if (kind === 'track' && typeof d.radioSeed === 'string' && d.radioSeed) item.radioSeed = d.radioSeed;
     return item;
+  }
+  // v1.398.0 (V10): the Item kinds ONE bound view holds together. Music lists `track` rows and Listen `video` rows in one queue;
+  // Podcasts lists episodes. The Up-next flattening (D12) hands a view only the entries of its own family.
+  function sameFamily(a, b) {
+    var fam = function (k) { return (k === 'track' || k === 'video') ? 'music' : k; };
+    return !!a && !!b && fam(a) === fam(b);
   }
   // An Up-next queue entry (GET /api/queue as lib/queue/routes.js shapedQueue emits it: `item` = { title, name, channelName,
   // folderName, artUrl, durationSec, hasThumbnail } for a track (channelName = artist, folderName = album) and a podcast
@@ -115,11 +132,12 @@
   function create(win) {
     var host = win && win.FileTube && win.FileTube.host;
     var enabled = !!(host && typeof host.has === 'function' && host.has('nativeAudio'));
+    var videoOn = enabled && host.has('nativeVideoAudio'); // v1.398.0: the engine also takes a video's sound (a Listen row)
     var noop = function () {};
     if (!enabled) {
       return {
-        enabled: false,
-        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, active: function () { return false; }, lastClaimFollowed: function () { return false; },
+        enabled: false, videoAudio: false,
+        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, ownedKind: function () { return null; }, active: function () { return false; }, lastClaimFollowed: function () { return false; },
         snapshot: function () { return null; }, position: function () { return 0; }, currentItem: function () { return null; },
         bindView: function () { return noop; }, syncQueue: function () { return false; }, modesChanged: function () { return false; },
         setSleep: function () { return false; }, sleep: function () { return { mode: 'off' }; }, onChange: function () { return noop; },
@@ -132,6 +150,7 @@
     var tick = null;           // { pos, at } the latest position (clip-relative) and when it was read
     var posted = null;         // { items, index } the last audio.load / the queue native holds as far as the web knows
     var ownedId = null;        // the web load id native plays for (null: the web element is the player)
+    var ownedItem = null;      // the Item claim() handed native for ownedId (gate r2 adversary A-r2-W1: never read from the live snapshot, which is empty after a lost queue)
     var el = null;             // the proxied element
     var provider = null;       // the last load's data.nativeQueue
     var view = null;           // the bound view's hooks { onIndex, onAppend, modes }
@@ -370,7 +389,7 @@
       if (!q || !Array.isArray(q.items) || !q.items.length) return null;
       var items = [];
       for (var k = 0; k < q.items.length; k++) {
-        var it = q.items[k] && q.items[k].kind && q.items[k].src && q.items[k].progress ? q.items[k] : itemFromDescriptor(q.items[k]);
+        var it = q.items[k] && q.items[k].kind && q.items[k].src && q.items[k].progress ? q.items[k] : itemFromDescriptor(q.items[k], { video: videoOn });
         if (!it) return null; // one row native cannot play: the whole load stays on the web (an index must never shift)
         items.push(it);
       }
@@ -423,10 +442,10 @@
         for (var k = 0; k < items.length; k++) have[items[k].kind + ':' + items[k].id] = true;
         for (var j = at + 1; j < entries.length; j++) {
           var it = itemFromQueueEntry(entries[j]);
-          // only the kind the playing Item has: the bound view (music or podcasts) can mirror and follow those; a cross-kind
-          // entry would play with no owner in the web (gate r1 qa W2) - it stays with the web's own ended cascade semantics
-          // (none under native), i.e. it is not played from here
-          if (!it || it.kind !== cur.kind || have[it.kind + ':' + it.id]) continue;
+          // only the playing Item's FAMILY (v1.398.0 V10: Music holds track and Listen video Items together): the bound view
+          // (music or podcasts) can mirror and follow those; a cross-family entry would play with no owner in the web (gate r1
+          // qa W2) - it stays with the web's own ended cascade semantics (none under native), i.e. it is not played from here
+          if (!it || !sameFamily(it.kind, cur.kind) || have[it.kind + ':' + it.id]) continue;
           have[it.kind + ':' + it.id] = true;
           extra.push(it); uids.push(entries[j].uid);
         }
@@ -465,13 +484,13 @@
       if (same && cur && sameItem(cur, want)) {
         // a follow: native already plays this item (it advanced, or the view re-loaded the current one, or the page adopted it)
         followed = adopting ? 'adopt' : 'advance';
-        ownedId = String(id); attach(target); subscribe();
+        ownedId = String(id); ownedItem = want; attach(target); subscribe();
         fire('durationchange');
         return true;
       }
       followed = false;
       pendingJump = null;
-      ownedId = String(id);
+      ownedId = String(id); ownedItem = want;
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;
@@ -490,7 +509,7 @@
       if (!sendLoad(q.items, q.index, 0, false)) {
         // the adapter refused the message (a malformed Item): the web plays this one; make sure native is silent
         post('audio.stop');
-        ownedId = null; detach(); provider = null;
+        ownedId = null; ownedItem = null; detach(); provider = null;
         return false;
       }
       fire('emptied'); fire('durationchange');
@@ -499,7 +518,7 @@
     }
     function stop() {
       post('audio.stop');
-      ownedId = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
+      ownedId = null; ownedItem = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
       queueUids = Object.create(null);
       if (snap) { snap = { rev: snap.rev, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: lastRate, modes: snap.modes, sleep: { mode: 'off' } }; }
       tick = null;
@@ -509,6 +528,7 @@
     function release() { if (ownedId || posted) stop(); else detach(); }
     function beginLoad() { transitioning = true; }
     function owns(id) { return !!ownedId && (id === undefined || String(id) === ownedId); }
+    function ownedKind() { return (ownedId && ownedItem) ? ownedItem.kind : null; } // the kind of the Item native plays for the web's load (a video: a Listen row)
     function active() { return !!ownedId; }
 
     // D17: the view's queue ORDER changed (a shuffle toggle, an append of its own, a reorder): re-send at the current index and
@@ -550,8 +570,8 @@
     } catch (_) { /* no window events */ }
 
     return {
-      enabled: true,
-      claim: claim, release: release, beginLoad: beginLoad, owns: owns, active: active,
+      enabled: true, videoAudio: videoOn,
+      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, active: active,
       lastClaimFollowed: function () { return followed; },
       snapshot: function () { return snap; }, position: position, currentItem: currentItem,
       bindView: bindView, syncQueue: syncQueue, modesChanged: modesChanged,
@@ -560,7 +580,7 @@
     };
   }
 
-  var api = { create: create, itemFromDescriptor: itemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
+  var api = { create: create, itemFromDescriptor: itemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, sameFamily: sameFamily, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};
