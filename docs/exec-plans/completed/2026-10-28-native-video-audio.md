@@ -686,6 +686,21 @@ background handoff and go with the next plan.
 - W5: the final schema sha is 37c97c05 (the description text; fields unchanged since W1's b44cbb91) - sent to the FileTube Root with
   the tag.
 
+### The release suites and the close-out binding (RELEASING.md step 1)
+
+- **Suites before the gate (1503b29f):** Node 22.23.1 `npm test`: 13039 tests, 13026 pass, 0 fail, 13 skipped (597.8 s); Node 24.20.0
+  `npm test`: 13039 tests, 13026 pass, 0 fail, 13 skipped (589.6 s).
+- **Suites at release (6dfa659f, the release bookkeeping tree):** Node 22.23.1 `npm test`: 13043 tests, 13030 pass, 0 fail, 13 skipped
+  (525.1 s); Node 24.20.0 `npm test`: 13043 tests, 13030 pass, 0 fail, 13 skipped (514.7 s).
+- **The close-out binding:** `git diff --name-only 978e92b2..6dfa659f` = ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS.md,
+  docs/exec-plans/completed/2026-10-28-native-video-audio.md, docs/references/ios-host.md, docs/releases.json, package-lock.json,
+  package.json, public/js/host-adapter.js, public/js/native-audio.js, public/js/player.js, test/unit/native-audio-web.test.js,
+  test/unit/native-bridge-audio.test.js, test/unit/native-video-audio-contract.test.js. The package files differ by their three
+  version lines only (`git diff 978e92b2..6dfa659f -- package.json package-lock.json`: 1.397.0 -> 1.398.0, three pairs); the six
+  code / test files by ONE comment line each (the plan's path, active/ -> completed/):
+  `git diff 978e92b2..6dfa659f -- public/js test | grep '^[+-]' | grep -v '^[+-]\{3\}' | grep -v '^[+-]\s*//' | wc -l` = 0. No seat
+  re-check (Dean's ruling, 2026-10-12). This commit adds this section only.
+
 ### Final verdicts (the seats' own lines above are newest first; restated here last so the marker reads the close)
 
   - Gate: APPROVED r3 @978e92b2 - security-brief
