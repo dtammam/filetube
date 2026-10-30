@@ -25,16 +25,18 @@ const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
 // A PHONE realm (player.js resolveMobileFormFactor): coarse pointer, no hover, a narrow viewport; the Background audio setting
 // ON and the sidecar's audio status 'ready', so the web's own background path is fully armed and any leak of it shows.
-function realm({ host = null, settings = { backgroundAudioForVideo: true }, videoStatus = null } = {}) {
+function realm({ host = null, settings = { backgroundAudioForVideo: true }, videoStatus = null, desktop = false } = {}) {
   const vc = new VirtualConsole();
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
-  w.matchMedia = (q) => ({ matches: /max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  w.matchMedia = (q) => ({ matches: !desktop && /max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
   const plays = [];
   w.HTMLMediaElement.prototype.load = function () {};
   w.HTMLMediaElement.prototype.pause = function () {};
   w.HTMLMediaElement.prototype.play = function () { plays.push(this.id); return Promise.resolve(); };
+  const fakeTrack = { mode: 'disabled', activeCues: null, addEventListener() {}, removeEventListener() {} }; // jsdom has no TextTrack (the CC button reads textTracks[0])
+  Object.defineProperty(w.HTMLMediaElement.prototype, 'textTracks', { configurable: true, get() { return [fakeTrack]; } });
   w.resolveAudioArtUrl = () => '/albumart/t1';
   w.formatDuration = () => '';
   w.clampPositionState = (s) => s;
@@ -50,13 +52,16 @@ function realm({ host = null, settings = { backgroundAudioForVideo: true }, vide
     else if (url.indexOf('/api/queue') === 0) body = { entries: [], pointerUid: null };
     else if (/^\/api\/progress\//.test(url)) body = { timestamp: 0 };
     else if (/^\/api\/videos\/[^/]+$/.test(url) && videoStatus) body = videoStatus();
-    return Promise.resolve({ ok: true, status: 200, json: async () => body });
+    return Promise.resolve({ ok: true, status: 200, json: async () => body, text: async () => (/^\/api\/subtitles\//.test(url) ? 'WEBVTT\n\n00:00:00.000 --> 00:00:09.000\nHello\n' : '') });
   };
   const fake = host ? installFakeHost(w, host) : null;
   for (const f of SCRIPTS) w.eval(read(f));
   const el = () => w.document.getElementById('media-player');
   const own = (name) => Object.getOwnPropertyDescriptor(el(), name) !== undefined;
-  return { w, fake, plays, calls, player: w.FileTube.player, na: w.FileTube.nativeAudio, slot: w.document.getElementById('player-slot'), el, own, close: () => w.close() };
+  const sidecar = () => w.document.getElementById('bg-audio-sidecar');
+  const hide = () => { Object.defineProperty(w.document, 'hidden', { configurable: true, value: true }); Object.defineProperty(w.document, 'visibilityState', { configurable: true, value: 'hidden' }); };
+  const overlayText = () => { const o = w.document.querySelector('.cc-overlay'); return o && !o.hidden ? o.textContent : null; };
+  return { w, fake, plays, calls, player: w.FileTube.player, na: w.FileTube.nativeAudio, slot: w.document.getElementById('player-slot'), el, own, sidecar, hide, overlayText, host: () => w.document.getElementById('player-wrapper'), close: () => w.close() };
 }
 // The watch page's descriptor for a library video (watch.js initWatch: the /api/videos/:id payload plus its stamps).
 const VIDEO = { id: 'v1', type: 'video', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, width: 1920, height: 1080, browseCtx: null, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt: null };
@@ -73,6 +78,7 @@ test('RED FIRST (S1, S2, S4): a host announcing nativeAudio + nativeVideo takes 
   try {
     assert.strictEqual(r.w.FileTube.host.has('nativeVideo'), true, 'the adapter knows the capability');
     r.player.load('v1', VIDEO, { slot: r.slot });
+    assert.strictEqual(r.el().hasAttribute('controls'), false, 'the custom bar from the first frame: the claim re-applies the controls mode synchronously (the mount ran before it)');
     await settle(80);
     assert.strictEqual(r.el().getAttribute('src'), null, 'no src: the web element loads NOTHING under nativeVideo (S1)');
     assert.deepStrictEqual(r.plays, [], 'the web element is never played');
@@ -119,6 +125,7 @@ test('W2 (S1): the watch page\'s BARE early load is deferred - no src, no claim,
     assert.strictEqual(r.el().getAttribute('src'), null, 'the early load sets no src under nativeVideo');
     assert.deepStrictEqual(r.fake.of('audio.load'), [], 'and claims nothing (no title, no projection yet)');
     assert.strictEqual(r.na.active(), false);
+    assert.ok(!r.calls.some((c) => c === 'GET /api/settings' || /prepare-audio/.test(c)), 'the bare early load holds the sidecar settings read too (wouldClaimVideo: typeless under nativeVideo)');
     assert.strictEqual(r.player.load('v1', VIDEO, { slot: r.slot }), true, 'the full-data load of the same id');
     await settle(80);
     assert.strictEqual(r.el().getAttribute('src'), null);
@@ -219,13 +226,19 @@ test('W2 (S6, the readiness rule): a rendition still transcoding takes the web\'
   let status = { transcodeStatus: 'pending', transcodeProgress: 40 };
   const r = realm({ host: CAPS, videoStatus: () => status });
   try {
-    r.player.load('t1', Object.assign({}, VIDEO, { id: 't1', needsTranscode: true, transcodeStatus: 'pending' }), { slot: r.slot });
+    r.player.load('t1', Object.assign({}, VIDEO, { id: 't1', hasSubtitles: true, needsTranscode: true, transcodeStatus: 'pending' }), { slot: r.slot });
     await settle(80);
     assert.deepStrictEqual(r.fake.of('audio.load'), [], 'not claimed while transcoding (the file route would 503)');
     assert.strictEqual(r.el().getAttribute('src'), null, 'the web waits too');
     assert.ok(r.calls.includes('GET /video/t1'), 'the transcode is triggered, as before');
     assert.ok(r.calls.includes('GET /api/videos/t1'), 'and polled');
     assert.ok(r.w.document.getElementById('transcode-overlay') === null || true); // the overlay element is the shell's; its presence is not this test's claim
+    // while the web waits it is an ordinary mobile video load: the poster, the track and (settings on, sidecar ready) the armed sidecar
+    assert.strictEqual(r.el().getAttribute('poster'), '/thumbnail/t1');
+    assert.strictEqual(r.w.document.getElementById('cc-track').getAttribute('src'), '/api/subtitles/t1');
+    assert.ok(r.calls.some((c) => /prepare-audio/.test(c)), 'the sidecar was prepared for the web load');
+    assert.strictEqual(r.sidecar().getAttribute('src'), '/audio/t1', 'and armed');
+    r.host().querySelector('#cc-btn').click(); // captions turned on DURING the wait
     status = { transcodeStatus: 'ready' };
     await settle(2300); // the poll's 2 s timer
     const loads = r.fake.of('audio.load');
@@ -233,6 +246,72 @@ test('W2 (S6, the readiness rule): a rendition still transcoding takes the web\'
     assert.strictEqual(loads[0].queue[0].id, 't1');
     assert.strictEqual(r.el().getAttribute('src'), null, 'the element still loads nothing');
     assert.ok(r.own('currentTime'));
+    // gate r1 CRITICAL: the late claim must undo everything the web load set up
+    assert.strictEqual(r.el().getAttribute('poster'), null, 'the poster is gone (it painted over the hole for the whole playback)');
+    assert.strictEqual(r.w.document.getElementById('cc-track').getAttribute('src'), '', 'the track is inert');
+    assert.strictEqual(r.sidecar().getAttribute('src'), null, 'the sidecar is disarmed');
+    assert.strictEqual(r.el().hasAttribute('controls'), false);
+    const rev = loads[0].rev;
+    const SNAP = (extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: loads[0].queue, index: 0, state: 'playing', positionSec: 3, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
+    r.fake.emit(SNAP());
+    await settle(60);
+    assert.strictEqual(r.overlayText(), 'Hello', 'captions turned on during the wait show from the proxy time after the claim');
+    assert.strictEqual(r.calls.filter((c) => /\/api\/subtitles\//.test(c)).length, 1, 'the list was fetched once');
+    // the lock-screen pause (the adversary's repro): the page is hidden, native reports paused - the proxy fires 'pause', the
+    // pause-hidden handoff trigger runs; nothing may hand off to the web sidecar, nothing may be posted back
+    const before = r.fake.posts.length;
+    r.hide();
+    r.fake.emit(SNAP({ state: 'paused', positionSec: 30 }));
+    await settle(80);
+    assert.deepStrictEqual(r.plays.filter((id) => id === 'bg-audio-sidecar'), [], 'the web sidecar never plays');
+    assert.deepStrictEqual(r.fake.posts.slice(before).map((m) => m.type).filter((t) => /^audio\.(pause|play|seek|stop|load)$/.test(t)), [], 'nothing posted back to native');
+    assert.strictEqual(r.sidecar().getAttribute('src'), null, 'still disarmed');
+  } finally { r.close(); }
+});
+
+test('W2 (S6, gate r1 A24): a WIDE app window never takes the desktop live transcode for a rendition still transcoding under nativeVideo - the poll path, then the claim', async () => {
+  let status = { transcodeStatus: 'pending', transcodeProgress: 10 };
+  const r = realm({ host: CAPS, videoStatus: () => status, desktop: true });
+  try {
+    r.player.load('t1', Object.assign({}, VIDEO, { id: 't1', needsTranscode: true, transcodeStatus: 'pending' }), { slot: r.slot });
+    await settle(80);
+    assert.strictEqual(r.el().getAttribute('src'), null, 'no /video/t1?live=1 stream on the web element');
+    assert.ok(r.calls.includes('GET /api/videos/t1'), 'the status is polled instead');
+    status = { transcodeStatus: 'ready' };
+    await settle(2300);
+    assert.strictEqual(r.fake.of('audio.load').length, 1, 'claimed when ready');
+    assert.strictEqual(r.el().getAttribute('src'), null);
+  } finally { r.close(); }
+});
+
+test('W2 (gate r1 A5): a MUSIC track claimed after a surface video ends the surface - surfaceOwned false, the hole closed, one closing visible:false, the track plays natively', async () => {
+  const r = realm({ host: CAPS });
+  try {
+    const measures = { n: 0 };
+    r.w.HTMLVideoElement.prototype.getBoundingClientRect = () => { measures.n += 1; return { left: 0, top: 300, width: 393, height: 221, right: 393, bottom: 521, x: 0, y: 300 }; };
+    r.player.load('v1', VIDEO, { slot: r.slot });
+    await settle(80);
+    r.fake.emit({ v: 1, type: 'audioState', rev: r.fake.of('audio.load')[0].rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 3, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } });
+    await settle(60);
+    assert.strictEqual(r.na.surfaceOwned(), true);
+    assert.strictEqual(r.w.document.body.classList.contains('ft-native-video'), true);
+    const t1 = { id: 't1', type: 'audio', title: 'Song 1', channelName: 'A', album: 'B', duration: 100, artUrl: '/albumart/t1', streamSrc: '/track/t1', progressEndpoint: '/api/music/progress', resumeMode: 'music' };
+    r.fake.clear();
+    r.player.load('t1', Object.assign({}, t1, { nativeQueue: () => ({ items: [t1], index: 0 }) }), { slot: r.slot });
+    await settle(80);
+    assert.strictEqual(r.na.owns('t1'), true, 'the track is native\'s');
+    assert.strictEqual(r.na.surfaceOwned(), false, 'but not a surface');
+    assert.strictEqual(r.fake.of('audio.load')[0].queue[0].kind, 'track');
+    const surf = r.fake.of('video.surface');
+    assert.strictEqual(surf.length, 1, 'one closing message');
+    assert.strictEqual(surf[0].visible, false);
+    assert.strictEqual(r.w.document.body.classList.contains('ft-native-video'), false, 'the page paints normally for a track');
+    measures.n = 0;
+    r.w.dispatchEvent(new r.w.Event('resize'));
+    r.w.dispatchEvent(new r.w.Event('orientationchange'));
+    await settle(300);
+    assert.strictEqual(r.fake.of('video.surface').length, 1, 'a track never posts a surface');
+    assert.strictEqual(measures.n, 0, 'and never measures the box, even on a layout event (the sampler runs only for a surface video)');
   } finally { r.close(); }
 });
 

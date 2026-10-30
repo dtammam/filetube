@@ -57,10 +57,11 @@ function realm({ host = null, desktop = false } = {}) {
   const el = () => w.document.getElementById('media-player');
   // the player box the browser would lay out (jsdom lays nothing out): viewport coords, as getBoundingClientRect answers
   let box = { left: 0, top: 300, width: 393, height: 221 };
+  const measures = { n: 0 }; // every read of the box (the controller measures once per sync; the player's own loops never read it idle)
   const setBox = (b) => { box = b; };
   const scroll = { y: 0 };
   return {
-    w, fake, plays, calls, el, setBox, scroll,
+    w, fake, plays, calls, el, setBox, scroll, measures,
     player: w.FileTube.player, na: w.FileTube.nativeAudio,
     slot: w.document.getElementById('player-slot'),
     host: () => w.document.getElementById('player-wrapper'),
@@ -70,7 +71,7 @@ function realm({ host = null, desktop = false } = {}) {
     last: () => { const s = fake.of('video.surface'); return s[s.length - 1]; },
     stubBox() {
       // the host template is instantiated by the first load, so the box is stubbed on every <video> of this realm
-      w.HTMLVideoElement.prototype.getBoundingClientRect = () => ({ left: box.left, top: box.top, width: box.width, height: box.height, right: box.left + box.width, bottom: box.top + box.height, x: box.left, y: box.top });
+      w.HTMLVideoElement.prototype.getBoundingClientRect = () => { measures.n += 1; return { left: box.left, top: box.top, width: box.width, height: box.height, right: box.left + box.width, bottom: box.top + box.height, x: box.left, y: box.top }; };
       try { Object.defineProperty(w, 'scrollY', { configurable: true, get: () => scroll.y }); Object.defineProperty(w, 'scrollX', { configurable: true, get: () => 0 }); } catch (_) { /* jsdom may refuse: the tests then read y as 0 */ }
     },
     close: () => w.close(),
@@ -234,6 +235,39 @@ test('W3 (S8): a WIDE app window (not the phone form factor) still takes the CSS
     await settle(60);
     assert.strictEqual(r.host().classList.contains('css-fullscreen'), true, 'the f key: CSS fullscreen too');
     assert.strictEqual(r.last().space, 'viewport');
+  } finally { r.close(); }
+});
+
+test('W3 (gate r1 WARNING): nothing while nothing moves - over an idle second the surface controller writes no body class, schedules no frame and posts nothing; in the slot, docked, and in fullscreen', async () => {
+  const r = realm({ host: CAPS });
+  try {
+    await loaded(r);
+    const records = [];
+    const mo = new r.w.MutationObserver((list) => { for (const m of list) records.push(m.target === r.w.document.body ? 'body:' + m.attributeName : (m.target.id || m.target.nodeName) + ':' + (m.attributeName || 'childList')); });
+    mo.observe(r.w.document.body, { attributes: true, attributeFilter: ['class', 'style'] });
+    const hole = r.hole(); if (hole) mo.observe(hole, { attributes: true, attributeFilter: ['style', 'class'] });
+    // the player's own fill loop runs on requestAnimationFrame every frame regardless; the controller's work is a box read
+    r.measures.n = 0;
+    const n0 = r.surfaces().length;
+    await settle(1000);
+    assert.deepStrictEqual(records, [], 'no attribute write on body or the hole while idle in the slot');
+    assert.ok(r.measures.n <= 2, 'at most the 1 s backstop\'s measure while idle (the player\'s own per-frame writes never wake the sampler): ' + r.measures.n);
+    assert.strictEqual(r.surfaces().length, n0, 'nothing posted');
+    r.player.dock(); await settle(80);
+    records.length = 0; r.measures.n = 0; const n1 = r.surfaces().length;
+    await settle(1000);
+    assert.deepStrictEqual(records, [], 'idle while docked: quiet');
+    assert.ok(r.measures.n <= 2, 'docked: ' + r.measures.n);
+    assert.strictEqual(r.surfaces().length, n1);
+    r.player.expand(r.slot); await settle(80);
+    r.setBox({ left: 0, top: 0, width: 393, height: 852 });
+    r.host().querySelector('#fs-btn').click(); await settle(120);
+    assert.strictEqual(r.last().space, 'viewport');
+    records.length = 0; r.measures.n = 0; const n2 = r.surfaces().length;
+    await settle(1000);
+    assert.deepStrictEqual(records, [], 'idle in fullscreen: quiet');
+    assert.ok(r.measures.n <= 2, 'fullscreen: ' + r.measures.n);
+    assert.strictEqual(r.surfaces().length, n2);
   } finally { r.close(); }
 });
 

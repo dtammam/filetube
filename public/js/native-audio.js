@@ -199,7 +199,9 @@
     var surfaceLast = null;  // v1.399.0 (S3): the last video.surface posted (a repeat is never sent)
     var surfaceRaf = 0;      // the one measure scheduled for the next animation frame
     var surfaceWired = false, surfaceObs = null, surfaceDocObs = null, surfaceMo = null, surfaceTimer = 0;
+    var surfaceWatched = []; // the wrapper and the container the observer currently listens to (re-pointed when the box moves)
     var holeEl = null;       // #ft-video-hole: the page colour with the player box cut out (S5), appended to body on first use
+    var holeClip = '';       // the clip path last written (a same-value style write would wake the body observer)
     var dockPoster = false;  // the thumbnail we put on the element while docked (S3a), removed on expand
     var followed = false;    // the last claim was a FOLLOW: 'adopt' (a fresh page took what native plays) | 'advance' (native moved on itself) | false
     var adopting = false;    // true while the bound view's adopt() runs (its load's claim is the 'adopt' follow)
@@ -350,7 +352,7 @@
     // (visible: false; the page keeps scrolling under the fixed mini player, S3a), the dock shows the video's thumbnail as the
     // element's poster, and the sound plays on. Without `nativeVideo` none of this exists (S11).
     function surfaceSchedule() {
-      if (!surfaceOn || surfaceRaf) return;
+      if (!surfaceOn || surfaceRaf || !ownedSurface || !ownedId) return; // only while native plays a video WITH its picture (a track never samples)
       var raf = typeof win.requestAnimationFrame === 'function' ? win.requestAnimationFrame.bind(win) : function (fn) { return win.setTimeout(fn, 16); };
       surfaceRaf = raf(function () { surfaceRaf = 0; surfaceSync(); });
     }
@@ -366,9 +368,17 @@
           if (doc.documentElement) surfaceDocObs.observe(doc.documentElement);
         }
         if (typeof win.MutationObserver === 'function' && doc.body) {
-          // a reparent (slot <-> dock <-> stage), content above the box, the fullscreen / expanded classes on the wrapper and body
+          // the fullscreen / expanded classes on the wrapper, body and html, a view swap under #view-root, the dock's hidden flag.
+          // Deliberately NOT the whole body subtree: the player's own per-frame writes (the time label, the fill) live there and
+          // would wake the sampler every frame (gate r1 WARNING). A reparent is heard on the container (surfaceWatchContainer),
+          // content growing above the box on the document's ResizeObserver, anything else by the 1 s backstop.
           surfaceMo = new win.MutationObserver(surfaceSchedule);
-          surfaceMo.observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+          surfaceMo.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
+          if (doc.documentElement) surfaceMo.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
+          var viewRoot = doc.getElementById('view-root'); if (viewRoot) surfaceMo.observe(viewRoot, { childList: true });
+          var dockEl = doc.getElementById('player-dock'); if (dockEl) surfaceMo.observe(dockEl, { attributes: true, attributeFilter: ['hidden'], childList: true });
+          var slotEl = doc.getElementById('player-slot'); if (slotEl) surfaceMo.observe(slotEl, { childList: true });
+          var stageEl = doc.getElementById('fs-stage'); if (stageEl) surfaceMo.observe(stageEl, { childList: true });
         }
         win.addEventListener('resize', surfaceSchedule);
         win.addEventListener('orientationchange', surfaceSchedule);
@@ -384,6 +394,7 @@
       // ownership ends (a stop, a stand-down load, the player closed): the layer is hidden once if it was showing, the hole closes
       if (surfaceLast && surfaceLast.visible) { var last = Object.assign({}, surfaceLast, { visible: false }); post('video.surface', last); surfaceLast = last; }
       if (surfaceObs && target) { try { surfaceObs.unobserve(target); } catch (_) { /* best-effort */ } }
+      if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; }
       holeApply(null, target);
     }
     function surfaceMeasure() {
@@ -407,10 +418,25 @@
       var visible = !docked && w > 0 && h > 0 && !(cs && cs.display === 'none');
       return { rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked };
     }
+    // the wrapper's class (css-fullscreen, audio-expanded) and its container's children (a reparent) are the placement signals
+    // nearest the box; (re)observed at every measure since the slot node is rebuilt per view
+    function surfaceWatchContainer() {
+      if (!surfaceMo || !el) return;
+      var wrapper = (typeof el.closest === 'function' && el.closest('#player-wrapper')) || el.parentNode;
+      var container = wrapper && wrapper.parentNode;
+      var want = [wrapper, container].filter(Boolean);
+      var same = want.length === surfaceWatched.length && want.every(function (n, i) { return n === surfaceWatched[i]; });
+      if (same) return;
+      surfaceWatched = want;
+      try {
+        if (wrapper) surfaceMo.observe(wrapper, { attributes: true, attributeFilter: ['class'] });
+        if (container) surfaceMo.observe(container, { childList: true });
+      } catch (_) { /* observing twice is a no-op; a detached node is harmless */ }
+    }
     function surfaceSync() {
       if (!surfaceOn) return;
       var m = null;
-      try { m = surfaceMeasure(); } catch (_) { return; } // a window being torn down: nothing to place
+      try { surfaceWatchContainer(); m = surfaceMeasure(); } catch (_) { return; } // a window being torn down: nothing to place
       if (!m) { if (el) surfaceOff(el); return; }
       var msg = { rect: m.rect, space: m.space, visible: m.visible, fit: m.fit, radius: m.radius };
       var same = surfaceLast && JSON.stringify(surfaceLast) === JSON.stringify(msg);
@@ -425,13 +451,15 @@
       else if (dockPoster) { el.removeAttribute('poster'); dockPoster = false; }
     }
     // S5: the hole. `m` is the visible measure, or null to close it.
+    // Every write here is IDEMPOTENT (gate r1 WARNING): a same-value classList or style write still queues a mutation record,
+    // the body observer hears it and schedules the next frame - the sampler would feed itself at 60 Hz while nothing moves.
     function holeApply(m, target) {
       var doc = win.document;
       var body = doc.body;
       if (!body) return;
       if (!m) {
-        body.classList.remove('ft-native-video');
-        if (holeEl) holeEl.removeAttribute('style');
+        if (body.classList.contains('ft-native-video')) body.classList.remove('ft-native-video');
+        if (holeEl && holeEl.hasAttribute('style')) { holeEl.removeAttribute('style'); holeClip = ''; }
         if (dockPoster && target && !target.closest('#player-dock')) { target.removeAttribute('poster'); dockPoster = false; }
         return;
       }
@@ -439,8 +467,8 @@
         holeEl = doc.getElementById('ft-video-hole');
         if (!holeEl) { holeEl = doc.createElement('div'); holeEl.id = 'ft-video-hole'; holeEl.setAttribute('aria-hidden', 'true'); body.insertBefore(holeEl, body.firstChild); }
       }
-      body.classList.add('ft-native-video');
-      if (m.space === 'viewport') { holeEl.removeAttribute('style'); return; } // CSS fullscreen: the whole viewport is the picture box (the wrapper and body paint nothing)
+      if (!body.classList.contains('ft-native-video')) body.classList.add('ft-native-video');
+      if (m.space === 'viewport') { if (holeEl.hasAttribute('style')) { holeEl.removeAttribute('style'); holeClip = ''; } return; } // CSS fullscreen: the whole viewport is the picture box (the wrapper and body paint nothing)
       var de = doc.documentElement;
       var docH = Math.max(num(de && de.scrollHeight, 0), num(body.scrollHeight, 0), num(win.innerHeight, 0));
       var docW = Math.max(num(de && de.clientWidth, 0), num(win.innerWidth, 0));
@@ -451,9 +479,10 @@
       var inner = 'M' + (x0 + rad) + ',' + y0 + 'H' + (x1 - rad) + 'A' + rad + ',' + rad + ' 0 0 1 ' + x1 + ',' + (y0 + rad) + 'V' + y1 + 'H' + x0 + 'V' + (y0 + rad) + 'A' + rad + ',' + rad + ' 0 0 1 ' + (x0 + rad) + ',' + y0 + 'Z';
       var outer = 'M0,0H' + docW + 'V' + docH + 'H0Z';
       var st = holeEl.style;
-      st.height = docH + 'px';
+      var hpx = docH + 'px';
+      if (st.height !== hpx) st.height = hpx;
       var clip = 'path(evenodd, "' + outer + inner + '")';
-      st.setProperty('-webkit-clip-path', clip); st.setProperty('clip-path', clip);
+      if (holeClip !== clip) { holeClip = clip; st.setProperty('-webkit-clip-path', clip); st.setProperty('clip-path', clip); }
     }
 
     // ---- snapshots ----------------------------------------------------------------------------------------------------
@@ -650,7 +679,7 @@
         if (ownedId) stop();
         return false;
       }
-      ownedSurface = false;
+      if (ownedSurface) { ownedSurface = false; if (surfaceOn && el) surfaceOff(el); } // a track after a surface video: the picture layer is closed here (the same element is re-claimed, nothing else fires)
       provider = data.nativeQueue;
       var q = readProvider();
       if (!q) { if (ownedId) stop(); provider = null; return false; }
@@ -742,7 +771,7 @@
     function beginLoad() { transitioning = true; }
     function owns(id) { return !!ownedId && (id === undefined || String(id) === ownedId); }
     function ownedKind() { return (ownedId && ownedItem) ? ownedItem.kind : null; } // the kind of the Item native plays for the web's load (a video: a Listen row, or a v1.399.0 surface video)
-    function surfaceOwned() { return !!ownedId && ownedSurface; }
+    function surfaceOwned() { return !!ownedId && ownedSurface; } // v1.399.0: native plays the web's video WITH its picture (the watch page's same-id re-open is an adopt, never a hand-back)
     // v1.399.0: would claim() take this video load for native (the same rule the claim applies)? player.js asks BEFORE the claim so
     // the sidecar's settings read and prepare-audio are never fired for a load native is about to own (S9); a bare typeless load
     // under nativeVideo is deferred to its full load and holds too.
@@ -750,7 +779,7 @@
       if (!surfaceOn || !data || typeof data !== 'object') return false;
       if (typeof data.type !== 'string') return true;
       return data.type === 'video' && !!videoItemFromDescriptor(id, data);
-    } // v1.399.0: native plays the web's video WITH its picture (the watch page's same-id re-open is an adopt, never a hand-back)
+    }
     function active() { return !!ownedId; }
 
     // D17: the view's queue ORDER changed (a shuffle toggle, an append of its own, a reorder): re-send at the current index and

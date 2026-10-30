@@ -3987,6 +3987,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // audio (HANDING_OFF is allowed -- the handoff routes through here).
   function armBackgroundAudioSrc() {
     if (!bgAudioEl || !currentId) return false;
+    if (nativeActive()) return false; // v1.399.0 (S9, gate r1): never a second player's src for a video native plays
     if (!bgAudioSettingCached) return false;
     if (bgAudioStatusKnown !== 'ready') return false;
     if (!currentData || currentData.type === 'audio') return false;
@@ -4052,6 +4053,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function attemptBackgroundAudioHandoff(trigger) {
     if (!bgAudioEl) return false;
+    // v1.399.0 (S9, gate r1 CRITICAL): a video native plays never hands off to the web's sidecar - the proxy's own 'pause' (a
+    // lock-screen pause arrives as a native snapshot while the page is hidden) reaches the pause-hidden trigger below the
+    // lifecycle skip, and the settings hold alone did not cover a video claimed late by the transcode poll
+    if (nativeActive()) { recordLifecycleEvent('bgAudio:skip', { detail: 'native' }); return false; }
     var eligible = shouldHandOffToBackgroundAudio({
       settingOn: bgAudioSettingCached,
       audioStatus: bgAudioStatusKnown,
@@ -6386,7 +6391,7 @@ if (typeof module !== 'undefined' && module.exports) {
           mediaPlayer.style.display = 'block';
           // v1.399.0: under nativeVideo the ready rendition is native's (the claim refused it while it was transcoding, so the
           // overlay above could show); in a browser the claim is inert and the element plays it, as before
-          if (nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) applyControlsMode();
+          if (nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) applyNativeVideoClaim();
           else mediaPlayer.src = readySrc;
           handleResumePlayback(gen, id);
           return;
@@ -10230,6 +10235,22 @@ if (typeof module !== 'undefined' && module.exports) {
   function nativeAudioRelease() { var n = nativeAudioApi(); if (n) { try { n.release(); } catch (_) { /* inert */ } } }
   function nativeAudioModesChanged() { var n = nativeAudioApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
   function nativeSurfaceSync() { var n = nativeAudioApi(); if (n && typeof n.syncSurface === 'function') { try { n.syncSurface(); } catch (_) { /* inert */ } } } // v1.399.0: a placement change measures the surface now
+  // v1.399.0: what a native video claim means for the web element, applied at BOTH claim sites (setupForMedia's branch, and the
+  // transcode poll's late claim - gate r1 CRITICAL: that path had already set the poster, the track src and the sidecar at load, when
+  // the rendition was not ready and the load was a stand-down). The element loads and paints nothing (no poster: it would sit over
+  // the hole), the <track> stays inert (the web's own cue list is the source), the background-audio sidecar is disarmed for this
+  // load (setting read as off, its src stripped, the status repoll ended) so no second player can ever sound, the bar is the
+  // custom one, and captions already on re-feed from the proxy's time.
+  function applyNativeVideoClaim() {
+    if (!mediaPlayer) return;
+    mediaPlayer.removeAttribute('poster');
+    if (ccTrack) ccTrack.src = '';
+    bgAudioSettingCached = false;
+    if (audioStatusRepollTimer) { clearTimeout(audioStatusRepollTimer); audioStatusRepollTimer = null; }
+    releaseBackgroundAudioElement();
+    applyControlsMode();
+    if (audioCaptionsOn) { ensureNativeCueList(); startNativeCcLoop(); if (ccTrack) renderActiveCueOverlay(ccTrack.track); }
+  }
   // Under native the lock screen is native's: the web view's own MediaSession must carry nothing (two now-playing cards
   // would fight), so the metadata, the playback state and every action handler the web ever set are cleared.
   function clearMediaSessionForNative() {
@@ -10248,9 +10269,11 @@ if (typeof module !== 'undefined' && module.exports) {
     playingLocal = false;
     nativeVideoDeferredId = null;
     // v1.399.0 (S9): a video load native is about to own (or a bare early load held for its full one) never arms the web's
-    // background-audio sidecar below: no settings read, no prepare-audio, as for a load that plays the phone's copy. This ONE
-    // hold is the gate (bgAudioSettingCached resolves false for the load, so every sidecar path - handoff, pre-sync, swap-back -
-    // reads "setting off"); handleBackgroundLifecycle's own native skip keeps the proxy from being paused at hidden.
+    // background-audio sidecar below: no settings read, no prepare-audio, as for a load that plays the phone's copy. The hold
+    // covers a load claimed HERE; a video claimed late by the transcode poll (a stand-down at load, so the hold was false and the
+    // sidecar got armed) is disarmed by applyNativeVideoClaim, and attemptBackgroundAudioHandoff / armBackgroundAudioSrc refuse
+    // under nativeActive() for every trigger (gate r1 CRITICAL: the proxy's own pause at a lock-screen pause reaches the
+    // pause-hidden trigger, which the lifecycle skip does not cover).
     var nativeVideoHold = (function () { var n = nativeAudioApi(); return !!(n && typeof n.wouldClaimVideo === 'function' && n.wouldClaimVideo(id, data)); })();
     var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
     if (localSrc) {
@@ -10585,7 +10608,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
       if (nativeVideoDeferred) return;
-      if (nativeClaimed) applyControlsMode(); // the mount ran before the claim: the custom bar, never the native strip
+      if (nativeClaimed) applyNativeVideoClaim(); // the mount ran before the claim: the custom bar, never the native strip; nothing else on the element
 
       // v1.52 instant watch: the item's thumbnail as the video poster --
       // the frame shows a real image the instant the (aspect-reserved)
