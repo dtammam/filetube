@@ -352,3 +352,39 @@ close button would be covered). W1 freezes after the ruling.
   refused; videoSize delivered / dropped / absent); mutant: the radius lower bound removed from host-adapter.js -> red on
   "radius >= 0", restored. Bridge tests: 31 pass, 0 fail (video + contract mirror + audio). The frozen sha is in the W6 relay
   note below.
+
+### W2 - the load and the proxy (2026-10-30)
+
+- **The claim** (native-audio.js `claim` -> `claimVideo`, player.js setupForMedia's video branch): under `nativeVideo` (always
+  beside `nativeAudio` + `nativeVideoAudio`) a `type: 'video'` load whose descriptor passes `videoItemFromDescriptor` (exported,
+  pure) is native's: ONE whole-file Item (`video` at /api/offline/file/video/<id> with /thumbnail art and /api/progress, or
+  `tvEpisode` at /api/offline/file/tvEpisode/<id> with /tvthumb and /api/tv/progress; never a clip, never a radioSeed), sent as
+  `audio.load` with a one-item queue (no Up-next flattening: autoplay-next is out of scope, ROADMAP Planned). The element gets
+  no src and no poster (a poster would paint over the hole for good) and is the v1.397.0 proxy plus `videoWidth` / `videoHeight`
+  from `audioState.videoSize` (S4: `loadedmetadata` again when the size becomes known after the item's first snapshot, `resize`
+  on a change). `ownedSurface` / `surfaceOwned()` tell a surface video from a Listen row.
+- **The watch page's bare early load is deferred.** watch.js initWatch's first `player.load` carries no type, title, projection
+  or transcode state (the /api/videos/:id payload comes later as an adopt). Under nativeVideo setupForMedia sets NO src and claims
+  nothing for it (`nativeVideoDeferredId`); load() turns that id's full-data adopt into a real load, which claims. Without the
+  capability the early load sets `/video/<id>` as before (S11).
+- **A same-id re-open** (the watch page again, the dock expanding) is an adopt of the proxy: `isNativeHandBackLoad` gains a 5th
+  argument and never hands a SURFACE video back (the v1.398.0 Listen -> Watch hand-back is for a Listen row only). A FRESH page
+  while native plays the video (a navigation) follows it in `claimVideo` (`lastClaimFollowed() === 'adopt'`: no progress read,
+  no seek, no autostart, nothing re-sent).
+- **S6 stand-downs** (null from `videoItemFromDescriptor`, so the web element plays and native stops first as in v1.397.0): a
+  360 / VR `projection`, the Feed's cards (`/api/feed/progress/*`, `readerHref: '/feed'`), any explicit non-TV `streamSrc` (a
+  preview, a book), a non-video type, and **a rendition still transcoding** (`needsTranscode` and not ready: the file route
+  answers 503 until the rendition exists, and native's V6 hold gives up after 120 s) - that one takes the web's "Preparing this
+  video" overlay + poll as today, and `pollTranscodeUntilReady` claims it for native when the status says ready (no src then).
+  The desktop live transcode is never used under nativeVideo (a wide app window takes the poll path).
+- **S10:** `saveProgressToServer` already returns under `nativeActive()` (v1.397.0 D8); bound by the W2 test (no POST
+  /api/progress across timeupdate + visibilitychange while native owns the video). The view count stays watch.js's own POST.
+- **Tests:** test/unit/native-video-surface-contract.test.js (the un-parked red test, green now: 11 tests - the red-first, two
+  S11 controls, the deferral, the re-open adopt, the fresh-page follow, the stand-downs with audio.stop, the tvEpisode Item, the
+  transcode-then-claim, S10 + S4 events, the pure builder with 11 nulls). Native + bridge families: 143 pass, 0 fail (before the
+  two added tests). **Mutants (10, each restored from a backup copy):** M1 hand-back guard, M2 deferral, M3 poster under claim,
+  M4 readiness rule, M5 the poll's claim, M6 size events, M7 ownedSurface, M8 the 360 stand-down, M9 the same-item follow, M10
+  the deferred adopt -> load: all red. M1 and M9 masked each other at first (a re-open never reaches the claim while the guard
+  holds): bound separately by `lastClaimFollowed() === false` after a re-open and by the fresh-page follow test (LESSONS: mutants
+  that mask each other need one assertion each).
+

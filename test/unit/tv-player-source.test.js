@@ -26,7 +26,8 @@ test('A2: a video source may carry its own streamSrc (the audio-only gate is wid
 });
 
 test('A2: desktop live-transcode is skipped for a tv source (no /video/:id?live=1 route for it)', () => {
-  assert.match(SRC, /if \(!isMobileViewport\(\) && !data\.statusUrl\) \{\s*\n\s*liveMode = true;/,
+  // v1.399.0: the same gate also skips liveMode under the app's nativeVideo (native plays the file route, never a live stream)
+  assert.match(SRC, /if \(!isMobileViewport\(\) && !data\.statusUrl && !nativeVideoOn\(\)\) \{\s*\n\s*liveMode = true;/,
     'a tv source (statusUrl present) never enters desktop liveMode');
 });
 

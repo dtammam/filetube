@@ -1135,6 +1135,9 @@ function nativeAudioApi() {
   return (n && n.enabled) ? n : null;
 }
 function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
+// v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the host also announces
+// `nativeVideo` - a watch-page video is native's with its picture; false in every browser and on every older app build (S11).
+function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
@@ -1142,7 +1145,10 @@ function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); 
 // load; its bare early-adopt call carries no type and stays an adopt of the proxy until the metadata arrives), and only when the
 // Item native plays is a `video` (a Listen row): a library AUDIO file native plays as a track Item keeps the proxy on the watch
 // page, exactly as in v1.397.0 (V3 byte-identity for a v0.14.0 build).
-function isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind) {
+// v1.399.0 (S1): never for a SURFACE video (native plays the web's video with its picture): the watch page's same-id re-open
+// stays an adopt of the proxy, as a track's does.
+function isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind, ownedSurface) {
+  if (ownedSurface === true) return false;
   if (!adopt || !nativeOwnsId || ownedKind !== 'video') return false;
   if (!data || typeof data.type !== 'string') return false;
   return typeof data.nativeQueue !== 'function';
@@ -6267,7 +6273,9 @@ if (typeof module !== 'undefined' && module.exports) {
           awaitingTranscode = false;
           hideTranscodeOverlay();
           mediaPlayer.style.display = 'block';
-          mediaPlayer.src = readySrc;
+          // v1.399.0: under nativeVideo the ready rendition is native's (the claim refused it while it was transcoding, so the
+          // overlay above could show); in a browser the claim is inert and the element plays it, as before
+          if (!nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) mediaPlayer.src = readySrc;
           handleResumePlayback(gen, id);
           return;
         }
@@ -10093,6 +10101,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   var playingLocal = false; // this load plays the phone's copy: no transcode fetch / poll, no background-audio sidecar handoff
+  var nativeVideoDeferredId = null; // v1.399.0: the id of a bare (typeless) watch-page load left undecided under nativeVideo until its full load
   // v1.397.0: the setupForMedia choke point hands an audio load with a queue to native (true) or keeps the web element.
   function nativeAudioClaim(id, data) {
     var n = nativeAudioApi();
@@ -10118,6 +10127,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var streamUrl = '/video/' + id;
     var nativeClaimed = false;
     playingLocal = false;
+    nativeVideoDeferredId = null;
     var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
     if (localSrc) {
       playingLocal = true;
@@ -10435,9 +10445,19 @@ if (typeof module !== 'undefined' && module.exports) {
         if (audioVisualFolder) audioVisualFolder.textContent = data.folderName || '';
       }
     } else {
-      nativeAudioClaim(id, data); // v1.397.0: a video load is never native's; native goes silent (audio.stop) before the web plays
+      // v1.399.0: the watch page's bare early load (watch.js initWatch: no type, title, projection or transcode state yet).
+      // Under nativeVideo nothing is decided for it: no src (the web element must never start a video native may own), no
+      // claim (native keeps what it plays); the full-data load that follows is turned into a real load by load() and decides.
+      var nativeVideoDeferred = nativeVideoOn() && typeof data.type !== 'string';
+      // v1.397.0: a video load is never native's; native goes silent (audio.stop) before the web plays. v1.399.0 (S1, S2, S6):
+      // under nativeVideo a library video or a TV episode IS native's - sound and picture - and the element loads nothing (no
+      // src, no poster: it is the proxy, and the page paints a transparent hole where the picture shows through); the S6
+      // stand-downs (360 / VR, the Feed, previews, a rendition still transcoding) keep the web element, as before.
+      if (nativeVideoDeferred) nativeVideoDeferredId = id;
+      else nativeClaimed = nativeAudioClaim(id, data);
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
+      if (nativeVideoDeferred) return;
 
       // v1.52 instant watch: the item's thumbnail as the video poster --
       // the frame shows a real image the instant the (aspect-reserved)
@@ -10445,7 +10465,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // Audio keeps its own artUrl poster branch above; teardown already
       // strips `poster` on every unload (see teardownMediaState), so a
       // thumbnail can never bleed onto the next item.
-      if (data.hasThumbnail === true) {
+      if (nativeClaimed) {
+        // nothing on the element: native's layer carries the picture, and a poster here would paint over the hole for good
+      } else if (data.hasThumbnail === true) {
         mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
       } else if (typeof data.artUrl === 'string' && data.artUrl) {
         // v1.196: a source with explicit art (a TV episode's /tvposter/:showId)
@@ -10454,13 +10476,17 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.poster = data.artUrl;
       }
 
-      if (data.needsTranscode) {
+      if (nativeClaimed) {
+        // native plays the file route; the web's transcode paths are not for this load
+      } else if (data.needsTranscode) {
         // Desktop live-transcode (/video/:id?live=1) exists only for the main
         // video library. A TV source (identified by its own `statusUrl`) has no
         // live endpoint, so it always takes the await-poll path - fetch streamSrc
         // (a 503 triggers the TV-owned transcode), poll statusUrl, then play the
         // rendition. On desktop a ready rendition still plays immediately below.
-        if (!isMobileViewport() && !data.statusUrl) {
+        // v1.399.0: under nativeVideo (a wide app window too) a rendition that is not ready takes the await-poll path - the
+        // poll claims it for native when it is ready; the live transcode is a web-element stream native cannot play.
+        if (!isMobileViewport() && !data.statusUrl && !nativeVideoOn()) {
           liveMode = true;
         } else if (data.transcodeStatus === 'ready') {
           mediaPlayer.src = streamUrl;
@@ -10900,8 +10926,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // the kind of the Item native plays for OUR load, remembered at the claim (gate r2 adversary A-r2-W1: the live snapshot's
     // queue is empty after native lost its queue, so a snapshot read would refuse the hand-back exactly then)
     var ownedKind = (nativeApiNow && typeof nativeApiNow.ownedKind === 'function') ? nativeApiNow.ownedKind() : null;
-    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind);
+    var ownedSurface = !!(nativeApiNow && typeof nativeApiNow.surfaceOwned === 'function' && nativeApiNow.surfaceOwned());
+    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind, ownedSurface);
     if (handBack) adopt = false;
+    // v1.399.0: the watch page's bare early load of THIS id was deferred under nativeVideo (setupForMedia: no src, no claim, the
+    // descriptor had no type, title or projection yet); its full-data load is the real load, not an adopt of an empty element
+    if (adopt && nativeVideoDeferredId !== null && nativeVideoDeferredId === id && data && typeof data.type === 'string') adopt = false;
     if (adopt) {
       placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data); // v1.382.0 (gate r1, C1): every load
       // v1.40.0: an adopt reuses the loaded media untouched, but the BROWSE

@@ -23,7 +23,7 @@
 (function (root) {
   var FILE_ROUTE = '/api/offline/file/';
   var RATE_MIN = 0.5, RATE_MAX = 3;
-  var PROXY_PROPS = ['currentTime', 'duration', 'paused', 'ended', 'playbackRate', 'defaultPlaybackRate', 'readyState', 'buffered', 'seeking', 'play', 'pause'];
+  var PROXY_PROPS = ['currentTime', 'duration', 'paused', 'ended', 'playbackRate', 'defaultPlaybackRate', 'readyState', 'buffered', 'seeking', 'play', 'pause', 'videoWidth', 'videoHeight'];
   var DEFAULT_MODES = { autoplay: true, shuffle: false, loop: 'off' };
   var ERROR_COPY = {
     network: 'No connection right now',
@@ -109,6 +109,38 @@
     var fam = function (k) { return (k === 'track' || k === 'video') ? 'music' : k; };
     return !!a && !!b && fam(a) === fam(b);
   }
+  // v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S1 + S2 + S6 + S10): the
+  // watch page's VIDEO load -> the ONE whole-file Item native plays with sound AND picture, or null when the load stays on the
+  // web element. A library video (watch.js's descriptor: the /api/videos/:id payload, `progressEndpoint` null) is a `video` Item at
+  // /api/offline/file/video/<id> with its /thumbnail art (omitted when the video has none) and progress at /api/progress; a TV
+  // episode (`progressEndpoint` '/api/tv/progress', the /api/tv/episode/:id payload) is a `tvEpisode` Item at
+  // /api/offline/file/tvEpisode/<id> with /tvthumb art and progress at /api/tv/progress. Never a clip, never a radioSeed. The S6
+  // stand-downs return null: a 360 / VR video (`projection` not flat: vr-view.js reads the element into WebGL), the Feed's cards
+  // (their own progress routes), a preview or any other explicit stream that is not a TV episode, and anything that is not a
+  // `type: 'video'` load. A video whose rendition is still transcoding (`needsTranscode` and not ready) stays on the web for now:
+  // the web's "Preparing this video" overlay and its poll keep the user informed, and the poll claims it when it is ready
+  // (player.js pollTranscodeUntilReady); the file route would answer 503 until then.
+  function videoItemFromDescriptor(id, d) {
+    if (!d || typeof d !== 'object' || d.type !== 'video') return null;
+    var sid = id != null ? String(id) : '';
+    if (!sid) return null;
+    if (typeof d.projection === 'string' && d.projection !== '' && d.projection !== 'flat') return null;
+    if (d.needsTranscode && d.transcodeStatus !== 'ready') return null;
+    var tv = d.progressEndpoint === '/api/tv/progress' || (typeof d.statusUrl === 'string' && d.statusUrl.indexOf('/api/tv/') === 0);
+    if (!tv && d.progressEndpoint != null && d.progressEndpoint !== '/api/progress') return null;
+    if (!tv && typeof d.streamSrc === 'string' && d.streamSrc) return null;
+    if (!tv && d.readerHref === '/feed') return null;
+    var kind = tv ? 'tvEpisode' : 'video';
+    var item = { kind: kind, id: sid, src: FILE_ROUTE + kind + '/' + encodeURIComponent(sid), title: typeof d.title === 'string' ? d.title.slice(0, 1024) : '' };
+    var artist = typeof d.channelName === 'string' ? d.channelName : '';
+    if (artist) item.artist = artist;
+    if (tv) item.artworkSrc = '/tvthumb/' + encodeURIComponent(sid);
+    else if (d.hasThumbnail === true) item.artworkSrc = '/thumbnail/' + encodeURIComponent(sid);
+    var dur = num(d.duration, 0);
+    if (dur > 0) item.durationSec = dur;
+    item.progress = { route: tv ? '/api/tv/progress' : '/api/progress', key: sid };
+    return item;
+  }
   // An Up-next queue entry (GET /api/queue as lib/queue/routes.js shapedQueue emits it: `item` = { title, name, channelName,
   // folderName, artUrl, durationSec, hasThumbnail } for a track (channelName = artist, folderName = album) and a podcast
   // (channelName = the show), the media item itself for a library item) -> an Item, or null for a kind native cannot play.
@@ -133,6 +165,7 @@
     var host = win && win.FileTube && win.FileTube.host;
     var enabled = !!(host && typeof host.has === 'function' && host.has('nativeAudio'));
     var videoOn = enabled && host.has('nativeVideoAudio'); // v1.398.0: the engine also takes a video's sound (a Listen row)
+    var surfaceOn = videoOn && host.has('nativeVideo'); // v1.399.0: and a watch-page video's PICTURE (one native player, the web's controls on top)
     var noop = function () {};
     if (!enabled) {
       return {
@@ -161,6 +194,8 @@
     var erroredIds = Object.create(null);
     var queueUids = Object.create(null); // index -> the Up-next entry uid the Item came from (D12: the pointer follows native)
     var seenItemKey = null;
+    var ownedSurface = false; // v1.399.0: the owned Item is a watch-page video native plays with its picture (not a Listen row)
+    var sizeKey = '';        // v1.399.0 (S4): the videoSize the proxy last reported (resize fires on a change)
     var followed = false;    // the last claim was a FOLLOW: 'adopt' (a fresh page took what native plays) | 'advance' (native moved on itself) | false
     var adopting = false;    // true while the bound view's adopt() runs (its load's claim is the 'adopt' follow)
     var pendingJump = null;  // { key, left, at } after an audio.jump: snapshots still showing the item LEFT are dropped for a moment (S-A)
@@ -279,6 +314,16 @@
       def('seeking', function () { return false; });
       def('play', function () { return proxyPlay; });
       def('pause', function () { return proxyPause; });
+      if (surfaceOn) {
+        // v1.399.0 (S4): the presentation size native reports on audioState (0 x 0 until the first frame is known, as an element
+        // answers before loadedmetadata)
+        def('videoWidth', function () { return videoSize().w; });
+        def('videoHeight', function () { return videoSize().h; });
+      }
+    }
+    function videoSize() {
+      var v = snap && snap.videoSize;
+      return (v && typeof v === 'object') ? { w: Math.max(0, Math.floor(num(v.w, 0))), h: Math.max(0, Math.floor(num(v.h, 0))) } : { w: 0, h: 0 };
     }
     function detach() {
       if (!el) return;
@@ -336,8 +381,10 @@
         if (view && typeof view.onAppend === 'function') { try { view.onAppend(extra, 'radio'); } catch (_) { /* the view's bug never breaks the proxy */ } }
       }
       var key = itemKey(cur);
+      var vs = videoSize(); var sk = (vs.w > 0 && vs.h > 0) ? vs.w + 'x' + vs.h : '';
+      var sizeChanged = key === seenItemKey && sk !== sizeKey;
       if (key !== seenItemKey) {
-        seenItemKey = key;
+        seenItemKey = key; sizeKey = sk;
         fire('durationchange'); fire('loadedmetadata');
         var rolled = !!(prevItem && cur && prevItem.src === cur.src && prevItem.clip && cur.clip); // the next chapter of the same file: the chapter watcher moves on its own
         // a FOLLOW is asked only when native moved to an item the web did not load itself (the web's own load is `ownedId`)
@@ -345,6 +392,13 @@
           if (queueUids[s.index]) { try { win.fetch('/api/queue/pointer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uid: queueUids[s.index] }), keepalive: true }).catch(function () {}); } catch (_) { /* best-effort */ } }
           if (view && typeof view.onIndex === 'function') { try { view.onIndex(s.index, cur); } catch (_) { /* never breaks the proxy */ } }
         }
+      }
+      if (sizeChanged) {
+        // v1.399.0 (S4): the size became known after the item's first snapshot (loadedmetadata again: the aspect box reads
+        // videoWidth / videoHeight there and skipped the 0 x 0), or changed (resize), as an element fires them
+        var firstSize = !sizeKey; sizeKey = sk;
+        if (firstSize) fire('loadedmetadata');
+        fire('resize');
       }
       if (playing() && !wasPlaying) { fire('play'); fire('playing'); }
       else if (!playing() && wasPlaying) fire('pause');
@@ -463,10 +517,15 @@
     // The player.load choke point. Returns true when native takes this load (nothing is set on the element).
     function claim(target, id, data) {
       transitioning = false;
+      if (surfaceOn && target && data && data.type === 'video') {
+        var vi = videoItemFromDescriptor(id, data);
+        if (vi) return claimVideo(target, id, vi);
+      }
       if (!target || !data || data.type !== 'audio' || typeof data.nativeQueue !== 'function') {
         if (ownedId) stop();
         return false;
       }
+      ownedSurface = false;
       provider = data.nativeQueue;
       var q = readProvider();
       if (!q) { if (ownedId) stop(); provider = null; return false; }
@@ -516,9 +575,37 @@
       flattenServerQueue(q.items, q.index);
       return true;
     }
+    // v1.399.0 (S1, S2): the watch page's video under `nativeVideo` - ONE whole-file Item is the queue (no Up-next flattening, no
+    // view: autoplay to the next video is not native's here), the element is the proxy with videoWidth / videoHeight, native
+    // owns sound, picture, the lock screen and the progress posts. A same-item claim while native plays it (the watch page
+    // re-opened, the full load after the bare early one, a transcode the poll found ready) FOLLOWS: nothing is re-sent.
+    function claimVideo(target, id, item) {
+      var items = [item];
+      provider = function () { return { items: items, index: 0 }; }; // reload() re-sends it when native lost its queue
+      var cur = currentItem();
+      var fresh = !!(snap && num(snap.rev, -1) >= rev && snap.state !== 'idle');
+      if (fresh && cur && sameItem(cur, item) && queue().length === 1) {
+        followed = 'adopt'; // the page takes what native plays, where it is: no progress read, no seek, no autostart (handleResumePlayback)
+        ownedId = String(id); ownedItem = item; ownedSurface = true; attach(target); subscribe();
+        fire('durationchange');
+        return true;
+      }
+      followed = false; pendingJump = null; queueUids = Object.create(null);
+      ownedId = String(id); ownedItem = item; ownedSurface = true;
+      attach(target);
+      subscribe();
+      playIntent = false; pauseIntent = false;
+      if (!sendLoad(items, 0, 0, false)) {
+        post('audio.stop');
+        ownedId = null; ownedItem = null; ownedSurface = false; detach(); provider = null;
+        return false;
+      }
+      fire('emptied'); fire('durationchange');
+      return true;
+    }
     function stop() {
       post('audio.stop');
-      ownedId = null; ownedItem = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
+      ownedId = null; ownedItem = null; ownedSurface = false; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
       queueUids = Object.create(null);
       if (snap) { snap = { rev: snap.rev, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: lastRate, modes: snap.modes, sleep: { mode: 'off' } }; }
       tick = null;
@@ -528,7 +615,8 @@
     function release() { if (ownedId || posted) stop(); else detach(); }
     function beginLoad() { transitioning = true; }
     function owns(id) { return !!ownedId && (id === undefined || String(id) === ownedId); }
-    function ownedKind() { return (ownedId && ownedItem) ? ownedItem.kind : null; } // the kind of the Item native plays for the web's load (a video: a Listen row)
+    function ownedKind() { return (ownedId && ownedItem) ? ownedItem.kind : null; } // the kind of the Item native plays for the web's load (a video: a Listen row, or a v1.399.0 surface video)
+    function surfaceOwned() { return !!ownedId && ownedSurface; } // v1.399.0: native plays the web's video WITH its picture (the watch page's same-id re-open is an adopt, never a hand-back)
     function active() { return !!ownedId; }
 
     // D17: the view's queue ORDER changed (a shuffle toggle, an append of its own, a reorder): re-send at the current index and
@@ -570,8 +658,8 @@
     } catch (_) { /* no window events */ }
 
     return {
-      enabled: true, videoAudio: videoOn,
-      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, active: active,
+      enabled: true, videoAudio: videoOn, videoSurface: surfaceOn,
+      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, surfaceOwned: surfaceOwned, active: active,
       lastClaimFollowed: function () { return followed; },
       snapshot: function () { return snap; }, position: position, currentItem: currentItem,
       bindView: bindView, syncQueue: syncQueue, modesChanged: modesChanged,
@@ -580,7 +668,7 @@
     };
   }
 
-  var api = { create: create, itemFromDescriptor: itemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, sameFamily: sameFamily, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
+  var api = { create: create, itemFromDescriptor: itemFromDescriptor, videoItemFromDescriptor: videoItemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, sameFamily: sameFamily, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};

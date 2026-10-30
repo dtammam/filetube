@@ -454,6 +454,11 @@
   channel folder), so "Go to channel" is absent after an adoption until the next plan adds the field; (3) a Listen row paused at 0:00
   re-opened on Watch autostarts (the hand-back carries nothing at 0, the ordinary resume reads the saved place); (4) library-audio
   chapter rows with no known span still reach native with no clip (the v1.397.0 shape, pinned by test; Listen rows refuse it).
+- **Autoplay to the next video under `nativeVideo` (iOS app), unasked** _(v1.399.0 W2, 2026-10-30)_ - the plan rules a video queue
+  and autoplay-next out of scope: native plays ONE whole-file Item and ends it itself, so the web's ended handler (which walks
+  the browse context / track nav for the next video) stands down as it does for every native load. A native-driven next video
+  needs a queue the watch page builds from its browse context (the Music pattern: `nativeQueue` + a bound view) or a web `ended`
+  follow that loads the next item; design with the iOS Root (lock-screen Next, the dock's row).
 - **Picture in the mini player (iOS app), unasked** _(v1.399.0 S3a, 2026-10-28)_ - under `nativeVideo` the app's player draws
   the picture in a layer BELOW the web view, which shows only where the page paints nothing. The docked mini player is fixed
   over page content that keeps scrolling under it, so the dock shows the video's thumbnail while the sound continues. A
