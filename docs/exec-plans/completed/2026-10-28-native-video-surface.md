@@ -646,6 +646,13 @@ close button would be covered). W1 freezes after the ruling.
   native-bridge-video test headers. No seat re-check (Dean's ruling, 2026-10-12); bound in the next docs commit with
   `git diff --name-only 42f1a668..HEAD`, `git diff 42f1a668..HEAD -- package.json package-lock.json` (version lines only), the
   comment-only check on the code / test files, and the release suites on the bookkeeping tree.
+- **Suites at release (dd92d252, the release bookkeeping tree):** Node 22.23.1 `npm test`: 13076 tests, 13063 pass, 0 fail, 13 skipped
+  (539 s); Node 24.20.0 `npm test`: 13076 tests, 13063 pass, 0 fail, 13 skipped (542 s).
+- **The close-out binding:** `git diff --name-only 42f1a668..dd92d252` = ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS.md, docs/exec-plans/completed/2026-10-28-native-video-surface.md, docs/references/ios-host.md, docs/releases.json, package-lock.json, package.json, public/css/style.css, public/js/host-adapter.js, public/js/native-audio.js, public/js/player.js, scripts/native-video-surface-probe.js, test/unit/native-bridge-video.test.js, test/unit/native-video-surface-captions.test.js, test/unit/native-video-surface-contract.test.js, test/unit/native-video-surface-guards.test.js, test/unit/native-video-surface-rect.test.js. The package files differ by their three version lines only (`git diff 42f1a668..dd92d252 -- package.json
+  package-lock.json`: 1.398.0 -> 1.399.0, three pairs); the code, probe and test files by ONE comment line each (the plan's path,
+  active/ -> completed/): `git diff 42f1a668..dd92d252 -- public/js public/css scripts test | grep '^[+-]' | grep -v '^[+-]\{3\}' |
+  grep -v '^[+-]\s*//' | grep -v '^[+-]\s*/\*\|^[+-]\s*\*' | wc -l` = 0. No seat re-check (Dean's ruling,
+  2026-10-12). This commit adds this section only.
 
 ### Device checks Dean owes (docs/DEVICE-CHECKS.md "Native video surface (v1.399.0)", after the iOS app build that pins this tag)
 
