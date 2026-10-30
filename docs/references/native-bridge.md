@@ -175,7 +175,7 @@ controls on top): the next plan, designed with the iOS Root first. The `tvEpisod
 `/api/tv/progress` route stay in the contract (add-only; the server already serves them to the media token) for that plan; no web
 code sends a `tvEpisode` Item today.
 
-**Native video (v1.399.0; a DRAFT until the iOS Root's surface spike confirms the hole and the scroll tracking - W1 freezes then).**
+**Native video (v1.399.0; frozen 2026-10-30 as the W1 contract - the surface spike never ran, so the hole, the scroll following, the lock with the layer detached and rotation are the app's first device checks, not facts).**
 With `nativeVideo` announced (always beside `nativeAudio` and `nativeVideoAudio`: the engine accepts the
 two video kinds), ONE native AVPlayer owns a video's SOUND AND PICTURE on the watch page: a library `video` or a `tvEpisode` loads
 through the same `audio.load` (one whole-file Item, no `clip`, no `radioSeed`: `/api/offline/file/video/<id>` with `/thumbnail/<id>`
@@ -187,8 +187,8 @@ web view; the web paints its page with a transparent HOLE exactly where the pict
 root paint nothing there; FileTube's controls, captions, chapter markers and skins paint on top as today) and tells native where
 with the ONE new intent, **`video.surface`** `{ rect: { x, y, w, h }, space, visible, fit, radius }` in CSS px, sent on any layout
 change of the player box and coalesced to one per animation frame (nothing while nothing moves). `space: 'document'` is the in-page
-player (the page scrolls; native follows `scrollView.contentOffset` itself, so no message is sent per scroll frame; the surface
-spike decides whether this holds, see the plan); `space: 'viewport'` is a fixed placement, CSS fullscreen (`#player-wrapper.css-fullscreen`,
+player (the page scrolls; native follows `scrollView.contentOffset` itself, so no message is sent per scroll frame; unverified
+on a device until the app build - if it lags, the fix is a re-root-cause, never a message per scroll frame patched in); `space: 'viewport'` is a fixed placement, CSS fullscreen (`#player-wrapper.css-fullscreen`,
 the web's own full screen with its bar and captions over the picture; `webkitEnterFullscreen` is never called: there is no media in
 the element). **The docked mini player shows no picture**: the page keeps scrolling under it, so the web sends `visible: false`
 while docked, the sound continues, the dock shows the video's thumbnail, and the picture returns on expand (ruled 2026-10-28). `fit`

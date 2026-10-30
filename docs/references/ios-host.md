@@ -112,7 +112,8 @@ and FileTube's controls, captions, chapters and skins paint on top as before. Th
 (no new transport) and tells native where the picture goes with one new intent, `video.surface` (a rect in CSS px, document space for
 the in-page player so native follows the scroll itself, viewport space for the web's own full screen); the docked mini player shows the
 thumbnail while the sound continues. Locking the phone or switching apps: native detaches the picture and the sound just continues.
-Captions render from the native position. The FileTube half is [the native-video-surface
+Captions render from the native position. The surface spike never ran (Dean lifted that gate 2026-10-30), so the hole, the scroll
+following, the lock with the layer detached and rotation are the app build's first device checks, (0a)-(0d). The FileTube half is [the native-video-surface
 plan](../exec-plans/active/2026-10-28-native-video-surface.md); details and owners: [native-bridge.md](native-bridge.md) sections 1, 2, 3,
 5 and 6 ("Native video (v1.399.0)").
 

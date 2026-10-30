@@ -3,8 +3,8 @@ plan: native-video-surface
 harness: v2 · full
 branch: feat/v1.399.0-native-video-surface
 anchor: spec
-status: W1 drafted on the branch, NOT frozen (the spike was retracted 2026-10-28); idle until the redone spike is relayed
-next: freeze W1 and relay its sha when the FileTube Root relays a real spike result; (1) or (3) failing stops the plan
+status: W1 FROZEN 2026-10-30 (the spike gate lifted by Dean); building W2-W6
+next: W2 - the load and the proxy; then W3 the surface, W4 captions, W5 guards, W6 relay; gate; release after v1.398.0
 design: Approved 2026-10-28 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
 gate: not started
 builder: extreme
@@ -48,7 +48,7 @@ What Dean will see on the iPhone app:
 |---|---|---|
 | S1 | One native AVPlayer owns a video's sound AND picture on hosts that announce **`nativeVideo`** (a new capability, add-only in bridge v1). The web's `#media-player` loads NOTHING and becomes the v1.397.0 proxy (own-property accessors + dispatched events) for the video. | Dean 2026-10-28 |
 | S2 | Transport reuses `audio.*`: `audio.load` with a `video` / `tvEpisode` Item (the kinds frozen in v1.398.0 W1, no clip, no radioSeed), plus play, pause, seek, setRate, stop, and the subscription's audioState and audioTick. No `video.*` transport messages. | Root |
-| S3 | ONE new intent, **`video.surface`** `{ rect: {x, y, w, h}, space: 'document' \| 'viewport', visible, fit: 'contain' \| 'cover', radius }`, in CSS px. `document` rects are for the in-page player (on the watch page the document scrolls: `document.scrollingElement` is `<html>`, player.js ~5726), so native follows `webView.scrollView.contentOffset` itself with no message per scroll frame. `viewport` rects are for fixed placements (the `#player-dock` mini player, CSS fullscreen). The web sends it on any layout change of the player box, coalesced to one per animation frame. `visible: false` hides the layer; the sound is unaffected. | Root (the space split is pending the spike) |
+| S3 | ONE new intent, **`video.surface`** `{ rect: {x, y, w, h}, space: 'document' \| 'viewport', visible, fit: 'contain' \| 'cover', radius }`, in CSS px. `document` rects are for the in-page player (on the watch page the document scrolls: `document.scrollingElement` is `<html>`, player.js ~5726), so native follows `webView.scrollView.contentOffset` itself with no message per scroll frame. `viewport` rects are for fixed placements (the `#player-dock` mini player, CSS fullscreen). The web sends it on any layout change of the player box, coalesced to one per animation frame. `visible: false` hides the layer; the sound is unaffected. | Root; frozen 2026-10-30 with `space: 'document'` and native following `contentOffset` (the spike gate lifted by Dean; device check (0b)) |
 | S3a | **The dock shows no picture** (ruled 2026-10-28 by the FileTube Root on the builder's placement finding; Dean may overrule): a layer below the web view shows only where nothing in the web view paints, and the page keeps scrolling UNDER the fixed mini player. While docked the web sends `visible: false`, the sound continues, and the dock shows the video's thumbnail; the picture returns in the slot and in CSS fullscreen. `space: 'viewport'` is for CSS fullscreen only. A layer ABOVE the web view with touch passthrough for the mini player is ROADMAP Planned ("picture in the mini player (iOS app)"). Native notes for W1: the web clips its own hole to the box's rounded top corners, so `radius` is a hint and a square layer is correct; native never rounds the bottom corners. | FileTube Root 2026-10-28 |
 | S4 | audioState gains **`videoSize {w, h}`** (additive), the presentation size. The proxy answers `videoWidth` / `videoHeight` from it, and fires `resize` and `loadedmetadata` as an element would. | Root |
 | S5 | The web leaves the surface region TRANSPARENT: the player box and every ancestor up to the root paint no background behind the picture while `nativeVideo` owns it. The controls, captions, chapter markers and skins paint on top as today. | Root |
@@ -59,7 +59,7 @@ What Dean will see on the iPhone app:
 | S10 | Progress, resume and watched state: native posts `/api/progress` or `/api/tv/progress` (v1.398.0 V4/V5). The web's own progress save for a proxied video is suppressed, so it's never saved twice. A view is counted (`POST /api/videos/:id/view`) by the web at play, as today. | Root |
 | S11 | Browsers, the PWA, desktop and app builds without `nativeVideo`: byte-identical. | Root |
 
-## The contract additions (bridge v1, add-only; freeze in W1 AFTER the spike result)
+## The contract additions (bridge v1, add-only; frozen in W1 2026-10-30)
 
 - Capability `nativeVideo`.
 - Intent `video.surface` (S3).
@@ -67,7 +67,7 @@ What Dean will see on the iPhone app:
 - native-bridge.md: a "Native video (v1.399.0)" section with S1-S3, S5, S8 and S9 in the doc's register, and the S6
   stand-down list. ios-host.md: an addendum.
 
-## The iOS Root's surface spike (feasibility; its result decides S3 and is a Step 0 gate for W1)
+## The iOS Root's surface spike (feasibility; it never ran - the gate was lifted by Dean 2026-10-30, see Evidence)
 
 Asked 2026-10-28, run on Dean's phone with a throwaway build:
 1. Can the picture show through a transparent region of a non-opaque WKWebView from an AVPlayerLayer below it, with
@@ -83,6 +83,10 @@ Outcomes:
 - (2) shows that only message-driven tracking works: S3 drops `space: 'document'` and the web posts per scroll frame. The
   Root re-freezes this before W1.
 - (4) problems: an S8 detail; the Root rules on it.
+
+**Lifted 2026-10-30 (Dean, via the FileTube Root): "The spike never ran, go ahead and build on that assumption."** (1) the
+hole, (2) scroll following, (3) lock with the layer detached and (4) rotation are UNVERIFIED and become the first device checks,
+(0a)-(0d) below. If one of them fails on the device after the app build, that is a re-root-cause, not a re-patch.
 
 ## Seams (verified 2026-10-28 by the Root; line numbers drift, so search by name)
 
@@ -127,7 +131,7 @@ Outcomes:
 
 ## Waves
 
-1. **W1 - the contract** (after the spike). Schema, host-adapter, docs, and contract tests. Send the schema sha to the
+1. **W1 - the contract** (frozen 2026-10-30; the spike gate lifted). Schema, host-adapter, docs, and contract tests. Send the schema sha to the
    FileTube Root to relay before W3.
 2. **W2 - the load and the proxy.**
    - At the choke point, a library `video` / `tvEpisode` load under `nativeVideo` is claimed: `audio.load`, no element
@@ -153,7 +157,7 @@ Outcomes:
 
 ## Stop rules
 
-- The spike fails (1) or (3): STOP.
+- The spike fails (1) or (3): STOP. (Lifted 2026-10-30: the spike never ran; (1)-(4) are device checks (0a)-(0d).)
 - The proxy can't carry a video consumer the census finds without forking the player core: STOP and ask.
 - S5 transparency would change any non-native rendering: STOP.
 - Any contract field changes after the W1 relay: STOP. The Root relays it.
@@ -184,6 +188,13 @@ Full gate (the player core, a new bridge surface): **adversary + qa + security-b
 
 ## Device checks (after the iOS app build that pins this tag; add to docs/DEVICE-CHECKS.md)
 
+- (0a) The HOLE (spike 1, unverified): the picture shows through the page's transparent region from the layer below the
+  web view, and a tap on it reaches the web's controls, not the layer.
+- (0b) SCROLL FOLLOWING (spike 2, unverified): with native following `contentOffset` and no message per scroll frame, a
+  fling keeps the picture locked to the player box with no visible lag. Lag = a re-root-cause of S3, not a patch.
+- (0c) LOCK WITH THE LAYER DETACHED (spike 3, unverified): the sound continues, lock screen and AirPods pause and resume,
+  and on foreground the picture returns at the right frame.
+- (0d) ROTATION (spike 4, unverified): no flash or misplaced picture while the rect churns.
 - (a) A video plays with its picture in place; the controls, scrub previews, chapters and skins all work on top of it.
 - (b) Scroll the watch page mid-video: the picture moves with the page and doesn't lag.
 - (c) Lock mid-video: the sound continues at full quality. Pause and resume from the lock screen and AirPods. Unlock: the
@@ -330,3 +341,14 @@ close button would be covered). W1 freezes after the ruling.
   the S6 stand-down list, the two native notes and the iOS Root's clamp rules), ios-host.md (the decision bullet and a v1.399.0
   addendum). test/unit/native-bridge-contract.test.js (the schema <-> adapter mirror) passes 10/10 on the draft. The W1 contract
   tests of their own and the red test land when W1 freezes.
+- **The spike gate was lifted by Dean 2026-10-30** (relayed by the FileTube Root: "The spike never ran, go ahead and build on that
+  assumption"); no result ever came from the iOS Root. (1) the hole, (2) scroll following, (3) lock with the layer detached and
+  (4) rotation are UNVERIFIED and become the first device checks (0a)-(0d). If any fails on the device after the app build, that
+  is a re-root-cause, not a re-patch.
+- **W1 FROZEN 2026-10-30** as drafted: `space: 'document'` stays with native following `contentOffset`; the S3a dock ruling, the
+  iOS Root's clamp rule and the two native notes (radius a hint / square layer correct; never round the bottom corners) are in
+  native-bridge.md's block, now headed as the frozen contract. New test/unit/native-bridge-video.test.js binds the contract at the
+  adapter (the capability gates the ONE video message; every video.surface field required and bounded, 15 malformed shapes
+  refused; videoSize delivered / dropped / absent); mutant: the radius lower bound removed from host-adapter.js -> red on
+  "radius >= 0", restored. Bridge tests: 31 pass, 0 fail (video + contract mirror + audio). The frozen sha is in the W6 relay
+  note below.
