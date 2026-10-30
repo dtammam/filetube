@@ -449,3 +449,42 @@ close button would be covered). W1 freezes after the ruling.
   NOTE block with a timing line) - red; C6 (loop not stopped at CC-off) and C7 (list kept across items) survive as EQUIVALENT:
   the loop's own guard ends it on the next beat and the id check refetches for a new item; both lines stay as hygiene.
 
+### W5 - guards and screenshots (2026-10-30)
+
+- **A binding test per ruling** (each mutant below went red in its wave's round):
+
+  | Ruling | Test (test/unit/) | The mutant that proved it |
+  |---|---|---|
+  | S1 one native player, element = proxy | native-video-surface-contract (RED FIRST, deferral, re-open, fresh page) | M2 deferral, M7 ownedSurface, M9 follow, M10 deferred adopt |
+  | S2 audio.* transport, no video.* | native-bridge-video (ONE video message) + contract (one audio.load) | mirror test (schema <-> adapter) |
+  | S3 video.surface rect / space / coalesced | native-video-surface-rect (slot, coalescing), -guards (the sequence) | N1 scroll offset, N2 dedupe, N4 space |
+  | S3a dock: no picture, thumbnail | native-video-surface-rect (dock / expand) | N3 dock visible, N6 thumbnail |
+  | S4 videoSize -> videoWidth, events | native-video-surface-contract (S10 + S4), native-bridge-video | M6 size events |
+  | S5 transparent hole | native-video-surface-rect (body class, clip path), the probe (paint measured) | N5 body class |
+  | S6 stand-downs | native-video-surface-contract (360 / Feed / preview, transcode), pure builder | M4 readiness, M8 360 |
+  | S7 captions from the proxy time | native-video-surface-captions | C1, C2, C3, C4, C5, C8, C9 |
+  | S8 CSS fullscreen, never webkitEnterFullscreen | native-video-surface-rect (button, wide window + f key), -guards (rotation) | N13, N14 |
+  | S9 hidden is native's | native-video-surface-rect (hidden + pagehide), contract (no prepare-audio) | N9 lifecycle, N10 settings hold |
+  | S10 no double progress | native-video-surface-contract (no POST /api/progress) | v1.397.0 D8 guard (pinned by test) |
+  | S11 byte-identical without the capability | the CONTROL in every file; -guards (state deepStrictEqual across three realms) | the controls themselves |
+- **The fake-host sequence** (native-video-surface-guards): slot -> dock -> expand -> a sideways rotation (the orientation media
+  query's change listener, the REAL v1.389.0 path) into the CSS fullscreen -> upright -> a 360 load: exactly six messages, one per
+  placement, the sideways one a viewport rect with radius 0; nothing between (a snapshot mid-fullscreen posts nothing).
+- **S11 identity:** after the same user sequence (early + full load, dock, expand, CC on, the fullscreen button, a rotation and
+  back) the page state (src, poster, controls, proxy accessors, host and body classes, the hole, the track src, the dock, the
+  player state, every fetch) is deepStrictEqual across no host, a nativeAudio + nativeVideoAudio host and a host with no media
+  capability; the hosts posted nothing but the page-start audio.subscribe (v1.397.0).
+- **Screenshots (scripts/native-video-surface-probe.js, headless Chromium, the REAL app with a clip, a fake host injected at
+  document start exactly as the app's script is):** watch page 390x844, light and dark, three placements each - the in-page
+  player, the docked mini player, the CSS fullscreen; the transparent region outlined in dashed red. Measured per shot: the last
+  video.surface (slot: document {0, 72, 390, 219.38} visible; dock: visible false; fullscreen: viewport {0, 0, 390, 844}), the
+  hole's even-odd path, and that body / html / wrapper / element all compute transparent while the picture shows. `radius` is 0
+  on the phone: the phone layout squares the player box (html.is-phone rules), so the hole is square there too.
+  **The probe found an S5 gap the jsdom tests could not:** in the CSS fullscreen the wrapper went transparent but the PAGE behind
+  it (the view's content) and the hole layer (the page colour) painted on, and the custom logo image (its own visibility: visible
+  inside the hidden header) sat over the picture. Fixed in style.css: under body.ft-native-video.ft-css-fullscreen the hole layer
+  is display none, #view-root is visibility hidden with the player wrapper re-shown, and header .logo-img is hidden; the probe
+  measures all three (`paintsBehindTheBox`) and exits 1 on any. Headless Chromium paints its own canvas colour in the hole (white
+  in light, near-black in dark via the wrapper's color-scheme) - a WKWebView with isOpaque off has none. The six PNGs went to Dean.
+  Run: `node scripts/native-video-surface-probe.js <out-dir>` -> `SUMMARY shots=6 claims=1 surfaces=4 ok`.
+

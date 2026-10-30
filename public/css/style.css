@@ -4900,6 +4900,24 @@ body.ft-native-video .ambient-glow {
 body.ft-native-video #ft-video-hole {
   display: block;
 }
+/* The web's CSS fullscreen under native: the WHOLE viewport is the picture box. The fixed wrapper paints nothing (above), so the
+   page behind it must paint nothing either - the hole layer goes, and the view's content is hidden while the player subtree stays
+   (visibility keeps layout, so leaving fullscreen puts everything back where it was). The header and bottom nav are already off in
+   .ft-css-fullscreen; modals and toasts live outside #view-root and stay. Measured by scripts/native-video-surface-probe.js. */
+body.ft-native-video.ft-css-fullscreen #ft-video-hole {
+  display: none;
+}
+body.ft-native-video.ft-css-fullscreen #view-root {
+  visibility: hidden;
+}
+body.ft-native-video.ft-css-fullscreen #player-wrapper.css-fullscreen {
+  visibility: visible;
+}
+/* the custom logo image re-enables its own visibility inside the hidden header (.ft-custom-logo .logo .logo-img above); the web's
+   black wrapper covered it, the transparent one would show it over the picture (measured by the probe) */
+body.ft-native-video.ft-css-fullscreen header .logo-img {
+  visibility: hidden;
+}
 body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;
