@@ -25,7 +25,7 @@ const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 
 // A PHONE realm (player.js resolveMobileFormFactor): coarse pointer, no hover, a narrow viewport; the Background audio setting
 // ON and the sidecar's audio status 'ready', so the web's own background path is fully armed and any leak of it shows.
-function realm({ host = null, settings = { backgroundAudioForVideo: true }, videoStatus = null, desktop = false } = {}) {
+function realm({ host = null, settings = { backgroundAudioForVideo: true }, videoStatus = null, desktop = false, holdSettings = null } = {}) {
   const vc = new VirtualConsole();
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
@@ -52,7 +52,9 @@ function realm({ host = null, settings = { backgroundAudioForVideo: true }, vide
     else if (url.indexOf('/api/queue') === 0) body = { entries: [], pointerUid: null };
     else if (/^\/api\/progress\//.test(url)) body = { timestamp: 0 };
     else if (/^\/api\/videos\/[^/]+$/.test(url) && videoStatus) body = videoStatus();
-    return Promise.resolve({ ok: true, status: 200, json: async () => body, text: async () => (/^\/api\/subtitles\//.test(url) ? 'WEBVTT\n\n00:00:00.000 --> 00:00:09.000\nHello\n' : '') });
+    const res = { ok: true, status: 200, json: async () => body, text: async () => (/^\/api\/subtitles\//.test(url) ? 'WEBVTT\n\n00:00:00.000 --> 00:00:09.000\nHello\n' : '') };
+    if (url === '/api/settings' && holdSettings) return holdSettings.then(() => res); // a slow settings read the test releases
+    return Promise.resolve(res);
   };
   const fake = host ? installFakeHost(w, host) : null;
   for (const f of SCRIPTS) w.eval(read(f));
@@ -266,6 +268,37 @@ test('W2 (S6, the readiness rule): a rendition still transcoding takes the web\'
     assert.deepStrictEqual(r.plays.filter((id) => id === 'bg-audio-sidecar'), [], 'the web sidecar never plays');
     assert.deepStrictEqual(r.fake.posts.slice(before).map((m) => m.type).filter((t) => /^audio\.(pause|play|seek|stop|load)$/.test(t)), [], 'nothing posted back to native');
     assert.strictEqual(r.sidecar().getAttribute('src'), null, 'still disarmed');
+  } finally { r.close(); }
+});
+
+test('W2 (gate r2, the slow-settings race): a settings read that lands AFTER the transcode poll claimed the video for native arms nothing - no prepare-audio, no sidecar src, the lock-screen pause plays nothing and posts nothing', async () => {
+  let status = { transcodeStatus: 'pending', transcodeProgress: 40 };
+  let release = null; const hold = new Promise((res) => { release = res; });
+  const r = realm({ host: CAPS, videoStatus: () => status, holdSettings: hold });
+  try {
+    r.player.load('t1', Object.assign({}, VIDEO, { id: 't1', needsTranscode: true, transcodeStatus: 'pending' }), { slot: r.slot });
+    await settle(80);
+    assert.ok(r.calls.includes('GET /api/settings'), 'the web load asked for the settings (a stand-down at load)');
+    assert.ok(!r.calls.some((c) => /prepare-audio/.test(c)), 'the answer has not landed');
+    status = { transcodeStatus: 'ready' };
+    await settle(2300); // the poll claims it for native first
+    const loads = r.fake.of('audio.load');
+    assert.strictEqual(loads.length, 1, 'claimed when ready');
+    release(); // now the slow settings answer lands, saying background audio is ON
+    await settle(120);
+    assert.ok(!r.calls.some((c) => /prepare-audio/.test(c)), 'no prepare-audio for a video native owns (a wasted server extraction otherwise)');
+    assert.strictEqual(r.sidecar().getAttribute('src'), null, 'the sidecar is never armed');
+    const rev = loads[0].rev;
+    const SNAP = (extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: loads[0].queue, index: 0, state: 'playing', positionSec: 3, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
+    r.fake.emit(SNAP());
+    await settle(40);
+    const before = r.fake.posts.length;
+    r.hide();
+    r.fake.emit(SNAP({ state: 'paused', positionSec: 30 }));
+    await settle(80);
+    assert.deepStrictEqual(r.plays.filter((id) => id === 'bg-audio-sidecar'), [], 'the web sidecar never plays');
+    assert.deepStrictEqual(r.fake.posts.slice(before).map((m) => m.type).filter((t) => /^audio\.(pause|play|seek|stop|load)$/.test(t)), [], 'nothing posted back to native');
+    assert.strictEqual(r.sidecar().getAttribute('src'), null);
   } finally { r.close(); }
 });
 

@@ -10373,6 +10373,9 @@ if (typeof module !== 'undefined' && module.exports) {
           bgAudioSyncPositionCached = !!(settings && settings.bgAudioSyncPosition); // v1.121: the position pre-sync lever
           applyControlsMode();
           trySidewaysFullscreen(); // v1.389.0 (D3): the custom-vs-native verdict just landed
+          // v1.399.0 (gate r2, adversary): the settings read can land AFTER the transcode poll claimed this video for native (a slow
+          // read, a fast transcode); the sidecar is then native's problem, never the web's - no prepare-audio, nothing armed
+          if (nativeActive()) { bgAudioSettingCached = false; recordLifecycleEvent('bgAudio:arm', { detail: 'native' }); return; }
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY
             // mobile video load, both ways -- Dean's first overlay reading

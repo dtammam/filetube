@@ -430,7 +430,8 @@
       surfaceWatched = want;
       try {
         if (wrapper) surfaceMo.observe(wrapper, { attributes: true, attributeFilter: ['class'] });
-        if (container) surfaceMo.observe(container, { childList: true });
+        // a second observe() on a node REPLACES its options: the dock keeps its hidden flag watched (gate r2, adversary INFO)
+        if (container) surfaceMo.observe(container, container.id === 'player-dock' ? { childList: true, attributes: true, attributeFilter: ['hidden'] } : { childList: true });
       } catch (_) { /* observing twice is a no-op; a detached node is harmless */ }
     }
     function surfaceSync() {
