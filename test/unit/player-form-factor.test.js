@@ -199,7 +199,9 @@ test('applyControlsMode: derives `isVideo` from `currentData.type` and gates nat
   // v1.34 T4: the mobileCustomPlayer setting VETOES native -- the three
   // positive conditions are unchanged, with the cached setting flag as the
   // fourth (negated) term.
-  assert.match(body, /var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;/, 'expected native to require mobile + isVideo + FULL and no custom-player override');
+  // v1.399.0 (S1): a video the iPhone app's own player plays with its picture (the element is a src-less proxy) never gets
+  // the native strip either - the fifth (negated) term.
+  assert.match(body, /var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached && !nativeSurfaceOwned\(\);/, 'expected native to require mobile + isVideo + FULL, no custom-player override and no native-surface video');
 });
 
 test('applyControlsMode: mobile+video+FULL sets the native `controls` attribute AND adds `.native-controls` on host', () => {

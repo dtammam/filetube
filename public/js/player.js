@@ -1138,6 +1138,8 @@ function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); 
 // v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the host also announces
 // `nativeVideo` - a watch-page video is native's with its picture; false in every browser and on every older app build (S11).
 function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
+// ...and native plays the CURRENT video with its picture (the web's controls, captions and skins are on top; the element is the proxy)
+function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof n.surfaceOwned === 'function' && n.surfaceOwned()); }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
@@ -2757,7 +2759,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // native-controls flash on each mobile video load before the fetch
     // resolves -- deliberately preferred over blocking mount on a settings
     // round-trip (the OFF/default path has no flash at all).
-    var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;
+    // v1.399.0 (S1): a video native plays with its picture has no media in the element - the native strip would be dead, so
+    // FileTube's own bar is the surface (and its fullscreen is the CSS one, S8)
+    var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached && !nativeSurfaceOwned();
     if (native) {
       mediaPlayer.setAttribute('controls', '');
       host.classList.add('native-controls');
@@ -2856,6 +2860,7 @@ if (typeof module !== 'undefined' && module.exports) {
       else window.scrollTo(0, plan.restoreTo);
     }
     refreshMinimizeButton(); // v1.362: no chevron in faux full screen
+    nativeSurfaceSync(); // v1.399.0 (S8): the picture box is the viewport now (or the in-page box again)
   }
   // v1.311.2: the ONE shared iOS body lock (body-scroll-lock.js, loaded before this
   // file on every shell that loads it; require()d under node tests).
@@ -4329,6 +4334,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
     var shouldRelease = shouldReleaseForLifecycleEvent(eventType, ctx);
+    if (shouldPauseForLifecycleEvent(eventType, ctx) && nativeActive()) {
+      // v1.399.0 (S9): a video native plays keeps playing at hidden / lock (native detaches its layer and the sound continues,
+      // the lock screen is native's): no pause, no sidecar, nothing posted; a terminal pagehide still releases the web's side
+      recordLifecycleEvent('bgAudio:skip', { detail: 'native' });
+      if (shouldRelease) releaseAudioSession();
+      return;
+    }
     if (shouldPauseForLifecycleEvent(eventType, ctx)) {
       // v1.27.0 (EXPERIMENTAL): this is the ONE place a background-audio
       // handoff can ever be triggered -- every precondition
@@ -6275,7 +6287,8 @@ if (typeof module !== 'undefined' && module.exports) {
           mediaPlayer.style.display = 'block';
           // v1.399.0: under nativeVideo the ready rendition is native's (the claim refused it while it was transcoding, so the
           // overlay above could show); in a browser the claim is inert and the element plays it, as before
-          if (!nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) mediaPlayer.src = readySrc;
+          if (nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) applyControlsMode();
+          else mediaPlayer.src = readySrc;
           handleResumePlayback(gen, id);
           return;
         }
@@ -7884,6 +7897,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // call sites already did.
   function enterFullscreen() {
     if (!mediaPlayer) return null;
+    if (nativeSurfaceOwned()) { setCssFullscreen(true); return null; } // v1.399.0 (S8): never webkitEnterFullscreen / the stage for a proxied video
     // v1.141: an AUDIO item never takes the webkit VIDEO branch below - on a
     // track-less element `webkitSupportsFullscreen` stays false forever, so
     // on any browser exposing the prefixed API the branch is a silent no-op
@@ -8667,7 +8681,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // settings flag, which introduced a click-time race): if the custom
         // bar is what's on screen for a mobile VIDEO, faux fullscreen is the
         // right behavior -- period.
-        if (isMobileFormFactor() && !inNativeControlsMode() &&
+        // v1.399.0 (S8): a video native plays with its picture takes the CSS fullscreen on every form factor (there is no media
+        // in the element to present; rotation is the web's layout plus a new surface rect)
+        if ((isMobileFormFactor() || nativeSurfaceOwned()) && !inNativeControlsMode() &&
             currentData && currentData.type !== 'audio' && state === STATE_FULL) {
           // restoreScroll: the ONLY restore-eligible off-caller (gate C1) --
           // an explicit user exit puts the page back where they left it;
@@ -10111,6 +10127,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function nativeAudioBeginLoad() { var n = nativeAudioApi(); if (n) { try { n.beginLoad(); } catch (_) { /* inert */ } } }
   function nativeAudioRelease() { var n = nativeAudioApi(); if (n) { try { n.release(); } catch (_) { /* inert */ } } }
   function nativeAudioModesChanged() { var n = nativeAudioApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
+  function nativeSurfaceSync() { var n = nativeAudioApi(); if (n && typeof n.syncSurface === 'function') { try { n.syncSurface(); } catch (_) { /* inert */ } } } // v1.399.0: a placement change measures the surface now
   // Under native the lock screen is native's: the web view's own MediaSession must carry nothing (two now-playing cards
   // would fight), so the metadata, the playback state and every action handler the web ever set are cleared.
   function clearMediaSessionForNative() {
@@ -10128,6 +10145,11 @@ if (typeof module !== 'undefined' && module.exports) {
     var nativeClaimed = false;
     playingLocal = false;
     nativeVideoDeferredId = null;
+    // v1.399.0 (S9): a video load native is about to own (or a bare early load held for its full one) never arms the web's
+    // background-audio sidecar below: no settings read, no prepare-audio, as for a load that plays the phone's copy. This ONE
+    // hold is the gate (bgAudioSettingCached resolves false for the load, so every sidecar path - handoff, pre-sync, swap-back -
+    // reads "setting off"); handleBackgroundLifecycle's own native skip keeps the proxy from being paused at hidden.
+    var nativeVideoHold = (function () { var n = nativeAudioApi(); return !!(n && typeof n.wouldClaimVideo === 'function' && n.wouldClaimVideo(id, data)); })();
     var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
     if (localSrc) {
       playingLocal = true;
@@ -10212,7 +10234,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // feature graduates out of EXPERIMENTAL.
       // v1.387.0 offline playback: a load that plays the phone's copy never arms the background-audio sidecar handoff
       // (the local element keeps playing instead): the settings read is answered as "off" for this load, no request.
-      (playingLocal ? Promise.resolve(null) : fetch('/api/settings'))
+      // v1.399.0 (S9): a video native plays is answered the same way - the web's sidecar is never armed for it, no prepare-audio
+      ((playingLocal || nativeVideoHold) ? Promise.resolve(null) : fetch('/api/settings'))
         .then(function (res) { return res === null ? null : (res.ok ? res.json() : null); })
         .then(function (settings) {
           if (gen !== loadGeneration) return; // a newer load has since started
@@ -10458,6 +10481,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
       if (nativeVideoDeferred) return;
+      if (nativeClaimed) applyControlsMode(); // the mount ran before the claim: the custom bar, never the native strip
 
       // v1.52 instant watch: the item's thumbnail as the video poster --
       // the frame shows a real image the instant the (aspect-reserved)
@@ -10532,6 +10556,7 @@ if (typeof module !== 'undefined' && module.exports) {
     state = STATE_FULL;
     applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
+    nativeSurfaceSync(); // v1.399.0 (S3a): the picture returns in the slot
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
     startFrozenSampler(); // v1.362.2 (D5): the dock stopped it; a still-playing expand resumes it (a no-op when the flag is off)
     scheduleCapRefresh(); // (Dean) measure the space below THIS view's player -> --player-cap-h
@@ -10734,6 +10759,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
+    nativeSurfaceSync(); // v1.399.0 (S3a): the dock shows no picture (visible: false; the sound plays on, the thumbnail shows)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 

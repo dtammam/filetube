@@ -114,7 +114,9 @@ test('handleBackgroundLifecycle(): every release call site is gated behind `if (
   // existing pause branch -- a terminal pagehide must still release even
   // mid-handoff (stops BOTH elements -- see releaseAudioSession's own
   // comment), so this is intentionally additive to the pre-existing 3.
-  assert.strictEqual(releaseCalls.length, 4, 'expected exactly 4 releaseAudioSession() call sites: the background-audio-handoff branch, the pause branch, the native-presentation-checkpoint branch, and the exempt-tail branch');
+  // v1.399.0 (S9) added a 5th: the native-video skip branch (a video the app's player owns is never paused at hidden; a
+  // terminal pagehide still releases the web's side), the same single-line guarded form.
+  assert.strictEqual(releaseCalls.length, 5, 'expected exactly 5 releaseAudioSession() call sites: the native-video skip branch, the background-audio-handoff branch, the pause branch, the native-presentation-checkpoint branch, and the exempt-tail branch');
   // Three of the four sites use the single-line `if (shouldRelease)
   // releaseAudioSession();` form (the new handoff branch, plus the
   // pre-existing pause and native-presentation branches); the fourth uses
@@ -122,7 +124,7 @@ test('handleBackgroundLifecycle(): every release call site is gated behind `if (
   // exempt tail branch). Together that accounts for all 4 -- i.e. none is a
   // bare, unconditional call.
   const singleLineGuarded = body.match(/if \(shouldRelease\) releaseAudioSession\(\);/g) || [];
-  assert.strictEqual(singleLineGuarded.length, 3, 'expected 3 single-line-guarded release calls');
+  assert.strictEqual(singleLineGuarded.length, 4, 'expected 4 single-line-guarded release calls');
   const blockGuarded = /if \(shouldRelease\) \{\s*\n\s*checkpointProgress\(\);\s*\n\s*releaseAudioSession\(\);\s*\n\s*\}/.exec(body);
   assert.ok(blockGuarded, 'expected 1 block-guarded release call (checkpoint then release)');
 });

@@ -143,7 +143,7 @@ test('W2 (S1): re-opening the SAME video while native plays it is a follow - no 
     r.player.load('v1', VIDEO, { slot: r.slot }); // ...and its full load
     await settle(80);
     assert.strictEqual(r.fake.of('audio.load').length, 1, 'still one audio.load');
-    assert.deepStrictEqual(r.fake.posts.slice(before).map((m) => m.type).filter((t) => t !== 'audio.subscribe'), [], 'nothing else posted (no seek, no play, no stop)');
+    assert.deepStrictEqual(r.fake.posts.slice(before).map((m) => m.type).filter((t) => t !== 'audio.subscribe' && t !== 'video.surface'), [], 'nothing else posted (no seek, no play, no stop)');
     assert.strictEqual(r.el().getAttribute('src'), null);
     assert.ok(r.own('currentTime'), 'the proxy stays');
     assert.ok(r.el().currentTime >= 12 && r.el().currentTime < 13, 'the proxy reads native\'s position (moving forward while playing): ' + r.el().currentTime);
@@ -168,7 +168,7 @@ test('W2 (S1): a FRESH watch page while native plays the video (a navigation; na
     r.player.load('v1', VIDEO, { slot: r.slot });
     await settle(80);
     assert.deepStrictEqual(r.fake.of('audio.load'), [], 'nothing re-sent');
-    assert.deepStrictEqual(r.fake.types().filter((t) => t !== 'audio.subscribe' && t !== 'host.hello'), [], 'no seek, no play, no stop (only the page\'s handshake and the subscription)');
+    assert.deepStrictEqual(r.fake.types().filter((t) => t !== 'audio.subscribe' && t !== 'host.hello' && t !== 'video.surface'), [], 'no seek, no play, no stop (only the page\'s handshake, the subscription and the W3 surface)');
     assert.strictEqual(r.na.lastClaimFollowed(), 'adopt', 'the claim followed what native plays');
     assert.strictEqual(r.na.owns('v1'), true);
     assert.strictEqual(r.na.surfaceOwned(), true);

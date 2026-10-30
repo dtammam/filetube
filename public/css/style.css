@@ -4867,6 +4867,39 @@ body.ft-css-fullscreen {
   overflow: hidden;
   background: #000; /* token-exempt: fullscreen letterbox black belt */
 }
+
+/* v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S5): while the iPhone app's own
+   player draws a video's picture in a layer BELOW the web view, the page leaves a transparent HOLE where the player box is. The
+   class is set by public/js/native-audio.js only while native owns a surface video and the picture is showing (never docked,
+   never in a browser or an older app build): body and html paint nothing, the page colour moves to #ft-video-hole - a
+   document-sized layer behind all content whose clip-path cuts the player box out (native-audio.js holeApply writes it per
+   layout change) - the player box paints no letterbox black (in CSS fullscreen the whole viewport is the picture box, so the
+   wrapper and the body belt go too), and the ambient glow (frames the web does not have) stays off. */
+body.ft-native-video,
+body.ft-native-video.ft-css-fullscreen {
+  background: transparent;
+}
+body.ft-native-video .player-container,
+body.ft-native-video #player-wrapper.css-fullscreen {
+  background: transparent;
+}
+body.ft-native-video .ambient-glow {
+  display: none;
+}
+#ft-video-hole {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  min-height: 100vh;
+  z-index: calc(var(--z-sticky) - 31); /* = -1: behind every in-flow box of the page, above the (now transparent) canvas; the ladder's lowest step minus one more than itself */
+  pointer-events: none;
+  background-color: var(--surface-0);
+}
+body.ft-native-video #ft-video-hole {
+  display: block;
+}
 body.ft-css-fullscreen header,
 body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;

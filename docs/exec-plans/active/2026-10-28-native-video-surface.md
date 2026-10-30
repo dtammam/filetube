@@ -388,3 +388,42 @@ close button would be covered). W1 freezes after the ruling.
   holds): bound separately by `lastClaimFollowed() === false` after a re-open and by the fresh-page follow test (LESSONS: mutants
   that mask each other need one assertion each).
 
+### W3 - the surface (2026-10-30)
+
+- **`video.surface`** (native-audio.js `surfaceMeasure` / `surfaceSync`): the `#media-player` box from getBoundingClientRect in
+  CSS px, `document` space (+ scrollX / scrollY) for the in-page player, `viewport` space in the web's CSS fullscreen (and a
+  `:fullscreen` stage); `visible` false while docked or the box is empty; `fit` from the element's object-fit; `radius` the
+  wrapper's border-top-left-radius (0 in fullscreen). Measured once per animation frame when something may have moved
+  (ResizeObserver on the element and the document, a MutationObserver on body for reparents / class changes, window resize and
+  orientationchange, visualViewport resize, fullscreenchange, a 1 s backstop) and posted only when it differs from the last one;
+  the player calls `syncSurface()` at the slot, dock and CSS-fullscreen transitions for a frame-exact move. A persisted
+  `pageshow` re-sends (the host hid the layer at the navigation commit). Ownership ending (a stop, a stand-down load, close)
+  posts one last `visible: false` when the layer was showing.
+- **S5, the hole:** `body.ft-native-video` (style.css) makes body / html, the player box and the CSS-fullscreen wrapper + body
+  belt transparent and hides the ambient glow; `#ft-video-hole` (created on first use, first child of body, z-index -1 via the
+  ladder) paints `var(--surface-0)` over the whole document and is clipped with ONE even-odd `clip-path: path()` - the page
+  minus the player box, the box's top corners rounded by `radius`, the bottom ones square (the bar sits below the picture). The
+  layer scrolls with the document, so the hole needs no per-scroll work (native follows contentOffset). In CSS fullscreen the
+  whole viewport is the box: no clip, the wrapper paints nothing. (A mask-image + mask-composite version was dropped: the inline
+  SVG string tripped the icon lint, and the path needs no SVG.)
+- **S3a:** docked = `visible: false` + the video's thumbnail as the element's `poster` (removed on expand: a poster would paint
+  over the hole for good); the sound is untouched (no transport posted by a dock / expand).
+- **S1 / S8:** `applyControlsMode` never gives a proxied video the native strip (the claim re-applies it: the mount runs first);
+  the bar's fullscreen button and the `f` key take `setCssFullscreen` on every form factor (`enterFullscreen` guards too);
+  `webkitEnterFullscreen` is never reached.
+- **S9:** `handleBackgroundLifecycle` skips the pause branch under `nativeActive()` (no `audio.pause` at hidden; a terminal
+  pagehide still runs the web's release, itself inert under native); the sidecar is never armed for a native video load because
+  setupForMedia answers the settings read as "off" for it (`wouldClaimVideo`, asked BEFORE the claim - the block runs earlier
+  than the branch; a bare early load holds too), so no prepare-audio POST and no second player; two extra guards inside the
+  handoff and the arm were REMOVED as unreachable behind that hold (their mutants survived; LESSONS: a guard no test can reach).
+- **Tests:** test/unit/native-video-surface-rect.test.js (8: the slot rect + hole + no native controls, coalescing / nothing
+  while nothing moves, dock / expand with the thumbnail, the CSS fullscreen round trip, S9 hidden + pagehide, the closing
+  visible:false on a stand-down, a wide-window fullscreen via button and key, the S11 control). Native + bridge families: 162
+  pass, 0 fail. **Mutants (12, backups restored):** N1 scroll offset, N2 dedupe, N3 dock visible, N4 fullscreen space, N5 body
+  class, N6 dock thumbnail, N7 closing message, N8 native strip, N9 lifecycle skip, N10 settings hold, N13 button form factor,
+  N14 enterFullscreen guard - all red (N13 / N14 masked each other on the phone realm; the wide-window test binds each).
+- **For the iOS Root (not contract):** the first `video.surface` of a load may be `visible: false` (a zero-size box before
+  layout, or a docked mount) - draw nothing until a visible rect arrives; the hole's rounded top corners match `radius`; the
+  web view's own `backgroundColor` shows in the overscroll bounce (the hole layer covers the document only) - set it to the
+  app's neutral; pinch-zoom (visual viewport) is not compensated in document rects.
+
