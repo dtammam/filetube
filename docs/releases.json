@@ -3760,5 +3760,11 @@
     "date": "2026-10-28",
     "title": "Music and podcasts play through the iPhone app's own player",
     "intent": "In the FileTube app, songs, chaptered audio and podcast episodes now play through the phone's built-in audio engine instead of the web page: the lock screen and AirPods control them reliably, a locked phone resumes after a pause, and other apps' audio behaves the way it does with any music app. The player screen looks the same, Loop keeps a chapter looping, speed carries across episodes, radio keeps going while the phone is locked, and the sticker menu gains a Sleep timer (15 to 60 minutes, or the end of the track). This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
+  },
+  {
+    "version": "1.398.0",
+    "date": "2026-10-28",
+    "title": "Listen to a video through the iPhone app's own player",
+    "intent": "In the FileTube app, a video you play as audio from Music (the Listen button on a video, chapters included) now plays through the phone's built-in audio engine like a song: the lock screen and AirPods control it, a locked phone resumes after a pause, and your place is saved. Tap Watch and the video picks up where the sound was. Watching a video and then locking the phone works as before. This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
   }
 ]

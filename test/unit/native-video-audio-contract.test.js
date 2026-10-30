@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.398.0 native video audio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md): the contract AT THE PLAYER.
+// [UNIT] v1.398.0 native video audio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md): the contract AT THE PLAYER.
 // Step 0's red-first test asked for the BACKGROUND HANDOFF (V2a / V7: a playing video that backgrounds posts audio.load with a
 // video Item and the sidecar is never played); it went red at 59245046 (1 fail, 2 pass). The iOS Root's spike then FAILED (the
 // audio session cannot be activated from a backgrounded app, OSStatus 560557684 '!int'), the stop rule fired and Dean chose a
@@ -140,14 +140,17 @@ test('CONTROL: a host with nativeAudio only, and no host - the same sidecar path
   }
 });
 
-test('S1 (pure): a same-id load that takes an item BACK from native (the watch page re-opening a Listen row native plays) is a hand-back only when it is an adopt, native owns the id and the load carries no nativeQueue; the carry keeps the proxy\'s position and paused state', () => {
+test('S1 (pure): a same-id load that takes an item BACK from native (the watch page re-opening a Listen row native plays) is a hand-back only when it is an adopt, native owns the id as a VIDEO Item, the load DESCRIBES the media (a type) and carries no nativeQueue; the carry keeps the proxy\'s position and paused state', () => {
   const web = { type: 'video', title: 'A talk' };
   const music = { type: 'audio', nativeQueue: () => ({ items: [], index: 0 }) };
-  assert.strictEqual(isNativeHandBackLoad(true, true, web), true);
-  assert.strictEqual(isNativeHandBackLoad(true, true, undefined), true, 'a bare adopt call (no data) is a web load too');
-  assert.strictEqual(isNativeHandBackLoad(true, true, music), false, 'the Music view re-loading its own row is a FOLLOW, never a hand-back');
-  assert.strictEqual(isNativeHandBackLoad(true, false, web), false, 'native does not own it: a plain adopt');
-  assert.strictEqual(isNativeHandBackLoad(false, true, web), false, 'not an adopt: the ordinary fresh-load path (its own carry)');
+  assert.strictEqual(isNativeHandBackLoad(true, true, web, 'video'), true);
+  assert.strictEqual(isNativeHandBackLoad(true, true, undefined, 'video'), false, 'gate r1 A-W1: a bare adopt call (no data) stays an adopt of the proxy');
+  assert.strictEqual(isNativeHandBackLoad(true, true, { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, 'video'), false, 'the watch page\'s early-adopt call (no type) stays an adopt');
+  assert.strictEqual(isNativeHandBackLoad(true, true, web, 'track'), false, 'gate r1 A-W1: a library audio file native plays as a track keeps the proxy on the watch page (v1.397.0, V3)');
+  assert.strictEqual(isNativeHandBackLoad(true, true, web, null), false);
+  assert.strictEqual(isNativeHandBackLoad(true, true, music, 'video'), false, 'the Music view re-loading its own row is a FOLLOW, never a hand-back');
+  assert.strictEqual(isNativeHandBackLoad(true, false, web, 'video'), false, 'native does not own it: a plain adopt');
+  assert.strictEqual(isNativeHandBackLoad(false, true, web, 'video'), false, 'not an adopt: the ordinary fresh-load path (its own carry)');
   assert.deepStrictEqual(nativeHandBackCarry(120.5, false), { t: 120.5, paused: false });
   assert.deepStrictEqual(nativeHandBackCarry(77, true), { t: 77, paused: true });
   assert.strictEqual(nativeHandBackCarry(0, false), null, 'at 0 there is nothing to carry: the ordinary resume reads the saved place');

@@ -443,6 +443,17 @@
 
 ### Features
 
+- [ ] **A native video SURFACE in the iPhone app** _(Dean, 2026-10-28, after the v1.398.0 spike failed)_ - one native AVPlayer plays
+  sound and picture, drawn where the video sits on the page, with the web's controls on top; designed with the iOS Root first (the
+  FileTube Root owns the plan). The v1.398.0 contract already carries the `tvEpisode` kind, the `/tvthumb` art and the
+  `/api/tv/progress` route for it, and the server serves them to the media token; the superseded handoff design (V2a, V7, V8) is
+  recorded in the v1.398.0 plan and in native-bridge.md section 3 "Not built".
+- **Native video audio (v1.398.0) follow-ups, unasked:** (1) a test gap the adversary named at r3 (mutant O2, measured correct in
+  the tree): bind that a Listen row adopted by a fresh Music page, and one native advanced into, still hands back to the watch page
+  (the two watch.js calls after an adoption and after an advance); (2) an adopted Listen row has no `folderName` (the Item carries no
+  channel folder), so "Go to channel" is absent after an adoption until the next plan adds the field; (3) a Listen row paused at 0:00
+  re-opened on Watch autostarts (the hand-back carries nothing at 0, the ordinary resume reads the saved place); (4) library-audio
+  chapter rows with no known span still reach native with no clip (the v1.397.0 shape, pinned by test; Listen rows refuse it).
 - **Picture in the mini player (iOS app), unasked** _(v1.399.0 S3a, 2026-10-28)_ - under `nativeVideo` the app's player draws
   the picture in a layer BELOW the web view, which shows only where the page paints nothing. The docked mini player is fixed
   over page content that keeps scrolling under it, so the dock shows the video's thumbnail while the sound continues. A
@@ -907,6 +918,37 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.398.0 - A video played as audio from Music plays through the iPhone app's own player (2026-10-28)
+
+- Dean (2026-10-28, via the iOS Root): "what is needed for the video to be treated this way - video audio"; he picked the native
+  engine over a full native video player and a web-only audio-session fix. The plan's first design handed a PLAYING video's sound to
+  the engine when the app went to the background (where the sidecar handoff happens today). The iOS Root's spike on Dean's iPhone 15
+  Pro showed iOS refuses it: the page's message reaches the app every time, but the audio session cannot be activated from an app
+  already in the background (OSStatus 560557684 '!int', cannot interrupt others), and pre-activating at willResignActive does not
+  help (AVPlayer never leaves waiting / paused); WebKit pauses the video 50-200 ms after didEnterBackground while the page still
+  reports visible, and visibilitychange -> hidden follows 5-15 ms later. The stop rule fired; Dean chose a native video SURFACE (one
+  native player for sound and picture, drawn where the video sits, the web's controls on top) as the next plan, and this release
+  ships what holds in every option: contract v1 gains `nativeVideoAudio` (add-only: Item kinds `video` and `tvEpisode`, the
+  `/api/tv/progress` route, the V4 src / art / radioSeed rules the adapter enforces; docs/references/native-bridge.md section 3
+  "Video audio" and "Not built: the background handoff"); the media token reaches `/api/offline/file/video|tvEpisode/:id`,
+  `/thumbnail/:id` and `/tvthumb/:id` and the device token posts `/api/tv/progress`, every one a neutral 404 for a restricted item
+  (V5); and a LISTEN row (a video played as audio from the watch page, one `::c` row per chapter for a chaptered video) plays through
+  the engine like a song when the app announces the capability (public/js/native-audio.js builds a `video` Item: the file's
+  iOS-playable rendition, its /thumbnail art only when it has one, progress under the file id, a chapter row as the file plus clip; a
+  chapter row with no known span keeps the whole load on the web; the Music queue holds track and Listen video Items together; a
+  fresh Music page adopts such a queue; tapping Watch takes the video back to the web element at the sound's position, playing only
+  if the sound was playing, through the watch page's full load, with a track Item (library audio) keeping the proxy as before).
+  player.js's background-audio path is untouched: with or without the capability a backgrounded video keeps the v1.397.0 sidecar
+  (bound). Older app builds, browsers, the PWA: byte-identical. Measured: the offline file route serves a 1 GB MP4 and a 400 MB
+  episode with Range within 1 ms of /video and /tvepisode and answers the suffix Range the web routes refuse. Gate: three rounds
+  (adversary, qa, security-brief): r1 one code WARNING (the hand-back fired on the watch page's bare early-adopt call and took a
+  natively playing library-audio file back to the web) plus five text WARNINGs, r2 one WARNING the r1 fix introduced (the kind gate
+  read the live snapshot, null after a lost queue), all closed; all three APPROVED r3 @978e92b2. Guards: native-video-audio-contract
+  (the red-first file, rewritten to the shipped scope), native-audio-web (+11), native-audio-items, native-bridge-audio, the
+  device-scope census, media-token integration (the V5 test); 30 builder mutants (28 killed, 1 masked, 1 equivalent) plus the seats'
+  own. Unasked follow-ups in Planned. Device checks: docs/DEVICE-CHECKS.md "Native video audio (v1.398.0)". Next plan: the native
+  video surface (designed with the iOS Root first).
 
 ### v1.397.0 - Music and podcasts play through the iPhone app's own player (2026-10-28)
 

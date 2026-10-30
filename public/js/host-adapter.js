@@ -44,9 +44,11 @@
   // (audioTick is a position delta). src and artworkSrc are server-relative paths native resolves and appends the media
   // token to (D7). clip = one chapter of a file (clip-relative time, D6). progress.route is the ONLINE route native posts
   // to with the web's own body (D8). public/js/native-audio.js owns the ONE subscription and every post.
-  // v1.398.0 nativeVideoAudio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V3 + V4): a host that ALSO announces
-  // `nativeVideoAudio` accepts two more kinds - a library video and a TV episode played as SOUND (the background handoff of a playing
-  // video, a Listen row). Add-only: the kind and progress.route enums widen, nothing else. The Item rules the schema's description
+  // v1.398.0 nativeVideoAudio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V3 + V4): a host that ALSO announces
+  // `nativeVideoAudio` accepts two more kinds - a library video and a TV episode played as SOUND (in v1.398.0 the web sends one:
+  // a Listen row, a video played as audio from the watch page; the background handoff of a playing video was designed and NOT
+  // built - native-bridge.md section 3 "Not built"; tvEpisode is reserved for the next plan). Add-only: the kind and progress.route
+  // enums widen, nothing else. The Item rules the schema's description
   // states and the app enforces (audioItemOk below, so a wrong Item never leaves the page): src is EXACTLY the kind's own
   // /api/offline/file/<kind>/ route, artworkSrc one of the four art routes, radioSeed only on a track.
   var AUDIO_KINDS = ['track', 'podcastEpisode', 'video', 'tvEpisode'];

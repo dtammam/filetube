@@ -75,7 +75,7 @@ test('audio.load: every Item needs kind, id, src, title and progress; clip needs
   win.close();
 });
 
-// v1.398.0 (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, W1 + V4): the two video kinds, and the Item rules the
+// v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, W1 + V4): the two video kinds, and the Item rules the
 // schema states and the adapter enforces so a wrong Item never leaves the page - src is EXACTLY the kind's own file route,
 // artworkSrc one of the four art routes, radioSeed only on a track. (The capability itself gates nothing at the adapter - a host
 // announces it beside nativeAudio - native-audio.js decides when to BUILD a video Item; see native-video-audio-contract.test.js.)

@@ -64,7 +64,7 @@
   // contract Item, or null when it is not a music / podcast load. The views hand the SAME builder's output to the queue provider,
   // so the load and its queue cannot drift. src is always the iOS-playable file route of the FILE (a chapter row's parent);
   // artworkSrc is one of the media-token art routes (a library track's /thumbnail art is served by /albumart too).
-  // v1.398.0 (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V2b + V4 + S2 + S6): with `opts.video` (the host
+  // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V2b + V4 + S2 + S6): with `opts.video` (the host
   // announces `nativeVideoAudio`) a Listen row - a VIDEO played as audio from the watch page (`listen: true`), one row per chapter
   // for a chaptered video - is a `video` Item: the whole file's iOS-playable rendition at /api/offline/file/video/<file>, its
   // /thumbnail art (omitted when the video has none), progress at /api/progress under the file id, a chapter row as the file plus
@@ -91,6 +91,9 @@
     else if (podcast && typeof d.subId === 'string' && d.subId) item.artworkSrc = '/podcastart/' + encodeURIComponent(d.subId);
     else if (!podcast) item.artworkSrc = '/albumart/' + encodeURIComponent(base);
     var dur = num(d.duration, 0);
+    // gate r1 (adversary A-S1 = qa W5): a chapter row with no known span (a video whose duration the server does not know yet, its
+    // last chapter) would be "the whole file from 0" under a chapter id - the load stays on the web, as in v1.397.0
+    if (listen && typeof d.chapterStartSec === 'number' && !(dur > 0)) return null;
     if (dur > 0) item.durationSec = dur;
     if (typeof d.chapterStartSec === 'number' && isFinite(d.chapterStartSec) && d.chapterStartSec >= 0 && dur > 0) {
       item.clip = { startSec: d.chapterStartSec, endSec: d.chapterStartSec + dur };
@@ -134,7 +137,7 @@
     if (!enabled) {
       return {
         enabled: false, videoAudio: false,
-        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, active: function () { return false; }, lastClaimFollowed: function () { return false; },
+        claim: function () { return false; }, release: noop, beginLoad: noop, owns: function () { return false; }, ownedKind: function () { return null; }, active: function () { return false; }, lastClaimFollowed: function () { return false; },
         snapshot: function () { return null; }, position: function () { return 0; }, currentItem: function () { return null; },
         bindView: function () { return noop; }, syncQueue: function () { return false; }, modesChanged: function () { return false; },
         setSleep: function () { return false; }, sleep: function () { return { mode: 'off' }; }, onChange: function () { return noop; },
@@ -147,6 +150,7 @@
     var tick = null;           // { pos, at } the latest position (clip-relative) and when it was read
     var posted = null;         // { items, index } the last audio.load / the queue native holds as far as the web knows
     var ownedId = null;        // the web load id native plays for (null: the web element is the player)
+    var ownedItem = null;      // the Item claim() handed native for ownedId (gate r2 adversary A-r2-W1: never read from the live snapshot, which is empty after a lost queue)
     var el = null;             // the proxied element
     var provider = null;       // the last load's data.nativeQueue
     var view = null;           // the bound view's hooks { onIndex, onAppend, modes }
@@ -480,13 +484,13 @@
       if (same && cur && sameItem(cur, want)) {
         // a follow: native already plays this item (it advanced, or the view re-loaded the current one, or the page adopted it)
         followed = adopting ? 'adopt' : 'advance';
-        ownedId = String(id); attach(target); subscribe();
+        ownedId = String(id); ownedItem = want; attach(target); subscribe();
         fire('durationchange');
         return true;
       }
       followed = false;
       pendingJump = null;
-      ownedId = String(id);
+      ownedId = String(id); ownedItem = want;
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;
@@ -505,7 +509,7 @@
       if (!sendLoad(q.items, q.index, 0, false)) {
         // the adapter refused the message (a malformed Item): the web plays this one; make sure native is silent
         post('audio.stop');
-        ownedId = null; detach(); provider = null;
+        ownedId = null; ownedItem = null; detach(); provider = null;
         return false;
       }
       fire('emptied'); fire('durationchange');
@@ -514,7 +518,7 @@
     }
     function stop() {
       post('audio.stop');
-      ownedId = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
+      ownedId = null; ownedItem = null; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
       queueUids = Object.create(null);
       if (snap) { snap = { rev: snap.rev, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: lastRate, modes: snap.modes, sleep: { mode: 'off' } }; }
       tick = null;
@@ -524,6 +528,7 @@
     function release() { if (ownedId || posted) stop(); else detach(); }
     function beginLoad() { transitioning = true; }
     function owns(id) { return !!ownedId && (id === undefined || String(id) === ownedId); }
+    function ownedKind() { return (ownedId && ownedItem) ? ownedItem.kind : null; } // the kind of the Item native plays for the web's load (a video: a Listen row)
     function active() { return !!ownedId; }
 
     // D17: the view's queue ORDER changed (a shuffle toggle, an append of its own, a reorder): re-send at the current index and
@@ -566,7 +571,7 @@
 
     return {
       enabled: true, videoAudio: videoOn,
-      claim: claim, release: release, beginLoad: beginLoad, owns: owns, active: active,
+      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, active: active,
       lastClaimFollowed: function () { return followed; },
       snapshot: function () { return snap; }, position: position, currentItem: currentItem,
       bindView: bindView, syncQueue: syncQueue, modesChanged: modesChanged,

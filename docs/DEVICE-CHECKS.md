@@ -5,6 +5,12 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Native video audio (v1.398.0; after the iOS app build that pins this tag)
+
+- [ ] v1.398.0 - (f) In Music, play a video as audio (the Listen button on a video; try a chaptered one too): it plays and resumes from the lock screen like a song, the chapters step as before, its position is saved; tap "Watch": the video opens where the sound was, playing only if the sound was playing.
+- [ ] v1.398.0 - (h) Signed in as the kid account on the phone: a restricted video never plays as sound by any route (Listen on it is not offered; a deep link to it fails quietly).
+- [ ] v1.398.0 - (i) An app build without nativeVideoAudio (v0.14.0): a Listen row and a video you lock the phone on behave exactly as on v1.397.0.
+
 ## Native audio (v1.397.0; after the iOS app build that pins this tag)
 
 - [ ] v1.397.0 - (a) Play an album, lock the phone, pause and resume from the lock screen and AirPods; the lock screen shows the song, its art and the album.

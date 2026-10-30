@@ -153,7 +153,8 @@ played as audio from the watch page) loads into native as a `video` Item like a 
 (`/api/offline/file/video/<id>`), its `/thumbnail/<id>` art (only when the video has a thumbnail), progress
 `{ route: '/api/progress', key: <video id> }`, never a `radioSeed`; a chaptered video's Listen rows are its file plus `clip` in FILE
 seconds, exactly as a chaptered audio file's rows are (one row per chapter, the same clip-relative semantics, saving under the file id).
-The Music view holds `track` and Listen `video` Items in one queue (the Up-next flattening hands it both). A web video load while
+The Music view holds `track` and Listen `video` Items in one queue (with the Up-next pointer on a Listen row, the flattening hands
+it the track entries after it). A web video load while
 native plays a Listen Item stops native first (the stand-down rule above), and the watch page re-opening that same video takes it
 back to its own element at native's position, playing only if native was playing. **A transcode still building** (the file route
 answers 503 + `Retry-After`): native holds the Item in `loading` and retries, honouring `Retry-After` capped at 30 s per wait and 120 s

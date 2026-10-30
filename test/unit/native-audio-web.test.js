@@ -491,7 +491,7 @@ test('gate r1 qa C1: a Listen row (a VIDEO played as audio from the watch page) 
   } finally { r.close(); }
 });
 
-// v1.398.0 native video audio (plan docs/exec-plans/active/2026-10-28-native-video-audio.md, V2b / V10 / S1 / S6 / S8): with
+// v1.398.0 native video audio (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, V2b / V10 / S1 / S6 / S8): with
 // nativeVideoAudio announced beside nativeAudio, a Listen row rides into native as a video Item.
 const VIDEO_CAPS = { capabilities: ['nativeAudio', 'nativeVideoAudio'] };
 const LISTEN_ROW = { id: 'vid1', listen: true, source: 'library', title: 'A talk', artist: 'Ch', album: '', albumKey: '', durationSec: 600, streamSrc: '/video/vid1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/vid1' };
@@ -545,7 +545,7 @@ test('v1.398.0 S2: a CHAPTERED video\'s Listen rows ride as video Items with cli
   } finally { r.close(); }
 });
 
-test('v1.398.0 S1: Listen -> Watch on the SAME id - the watch page\'s adopt-shaped load while native plays the Listen row is a fresh WEB load: audio.stop, the element gets /video/<id>, the proxy is gone, and the video resumes at native\'s position (playing) or sits there (paused)', async () => {
+test('v1.398.0 S1: Listen -> Watch on the SAME id - watch.js\'s BARE early-adopt call keeps the proxy (native plays on); its FULL load (the video payload) is the fresh WEB load: audio.stop, the element gets /video/<id> with its poster and lock-screen title, the proxy is gone, and the video resumes at native\'s position (playing) or sits there (paused)', async () => {
   for (const paused of [false, true]) {
     const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
     try {
@@ -554,18 +554,93 @@ test('v1.398.0 S1: Listen -> Watch on the SAME id - the watch page\'s adopt-shap
       r.fake.emit(r.snap({ state: paused ? 'paused' : 'playing', positionSec: 120, durationSec: 600 }));
       await settle(40);
       const proto0 = r.protoPlays.length, calls0 = r.calls.length;
-      // watch.js initWatch's early adopt call for the same id (resumeMode null etc. claim the plain-video flavor; no nativeQueue)
+      // 1. watch.js initWatch's EARLY adopt call for the same id (watch.js:1622: no type, the flavor nulls) - an adopt of the proxy
       r.player.load('vid1', { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+      await settle(60);
+      assert.deepStrictEqual(r.fake.of('audio.stop'), [], 'gate r1 A-W1: the bare call never hands back (native plays on through the metadata round-trip)');
+      assert.strictEqual(r.el().getAttribute('src'), null);
+      assert.ok(r.own('currentTime'), 'the proxy stays');
+      assert.strictEqual(r.na.active(), true);
+      // 2. the FULL load once /api/videos/:id answered (watch.js:1801: the payload spread, type video, channelName, hasThumbnail)
+      r.player.load('vid1', { id: 'vid1', type: 'video', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
       await settle(120);
       assert.strictEqual(r.fake.of('audio.stop').length, 1, 'native stopped first (V9)');
       assert.strictEqual(r.el().getAttribute('src'), '/video/vid1', 'the web element plays the video');
       assert.strictEqual(r.own('currentTime'), false, 'the proxy is gone');
       assert.strictEqual(r.na.active(), false);
+      assert.strictEqual(r.el().getAttribute('poster'), '/thumbnail/vid1', 'the video branch ran with the payload: the poster');
+      assert.strictEqual(r.w.navigator.mediaSession.metadata && r.w.navigator.mediaSession.metadata.title, 'A talk', 'the lock screen names the video');
+      assert.strictEqual(r.player.getCurrentMeta().isMusic, false, 'the plain-video flavor');
       assert.ok(Math.abs(r.el().currentTime - 120) < 0.3, 'at native\'s position (' + r.el().currentTime + ')');
       assert.strictEqual(r.protoPlays.length - proto0 > 0, !paused, paused ? 'paused stays paused' : 'playing resumes');
       assert.deepStrictEqual(r.calls.slice(calls0).filter((c) => /^GET \/api\/progress\//.test(c)), [], 'no saved-place read on the hand-back: the live position wins');
     } finally { r.close(); }
   }
+});
+
+test('v1.398.0 S1 (gate r2 adversary A-r2-W1): after native LOST its queue (the rev-0 idle snapshot) the owned Item is remembered from the claim, so Listen -> Watch still hands back: both watch.js calls, then one audio.stop, src /video/<id>, the proxy gone, no audio.load after the full load', async () => {
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid1&listen=1', items: [LISTEN_ROW] });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid1');
+    r.fake.emit(r.snap({ positionSec: 120, durationSec: 600 }));
+    await settle(30);
+    r.fake.emit({ v: 1, type: 'audioState', rev: 0, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+    await settle(30);
+    assert.strictEqual(r.na.currentItem(), null, 'the live snapshot holds nothing');
+    assert.strictEqual(r.na.ownedKind(), 'video', 'but the claimed Item is remembered');
+    r.player.load('vid1', { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+    await settle(60);
+    assert.deepStrictEqual(r.fake.of('audio.stop'), [], 'the bare call adopts');
+    const loadsBeforeFull = r.fake.of('audio.load').length;
+    r.player.load('vid1', { id: 'vid1', type: 'video', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+    await settle(120);
+    assert.strictEqual(r.fake.of('audio.stop').length, 1, 'handed back: native stopped');
+    assert.strictEqual(r.el().getAttribute('src'), '/video/vid1');
+    assert.strictEqual(r.own('currentTime'), false, 'the proxy is gone');
+    assert.strictEqual(r.na.active(), false);
+    assert.strictEqual(r.na.ownedKind(), null);
+    assert.strictEqual(r.fake.of('audio.load').length, loadsBeforeFull, 'no audio.load after the full load');
+    assert.ok(Math.abs(r.el().currentTime - 120) < 0.3, 'the last known position, kept through the lost-queue snapshot (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S1 (V3, gate r1 A-W1): a LIBRARY AUDIO file native plays as a track Item, then opened on the watch page (both watch.js calls): the proxy stays on the watch page and native plays on, exactly as in v1.397.0 - on a nativeAudio-only host AND with nativeVideoAudio', async () => {
+  const AUD = { id: 'aud1', source: 'library', title: 'Talk', artist: 'Sp', album: '', albumKey: '', durationSec: 90, streamSrc: '/video/aud1', progressEndpoint: '/api/progress', artUrl: '/thumbnail/aud1' };
+  for (const host of [{ capabilities: ['nativeAudio'] }, VIDEO_CAPS]) {
+    const r = realm({ host, url: 'http://localhost/music?play=aud1&ao=1', items: [AUD] });
+    try {
+      await settle(150);
+      assert.strictEqual(r.player.currentId, 'aud1', JSON.stringify(r.errors));
+      assert.strictEqual(r.lastLoad().queue[0].kind, 'track', 'library audio is a track Item');
+      r.fake.emit(r.snap({ positionSec: 33, durationSec: 90 }));
+      await settle(30);
+      const proto0 = r.protoPlays.length;
+      r.player.load('aud1', { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+      await settle(60);
+      r.player.load('aud1', { id: 'aud1', type: 'audio', title: 'Talk', channelName: 'Sp', folderName: 'Talks', duration: 90, hasThumbnail: false, browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null }, { slot: r.slot });
+      await settle(80);
+      assert.deepStrictEqual(r.fake.of('audio.stop'), [], 'native is never stopped: a track Item never hands back');
+      assert.strictEqual(r.el().getAttribute('src'), null, 'no src: the watch page shows the proxy');
+      assert.ok(r.own('currentTime'), 'the proxy stays');
+      assert.strictEqual(r.na.active(), true);
+      assert.strictEqual(r.protoPlays.length, proto0, 'the web element never plays');
+      assert.ok(Math.abs(r.el().currentTime - 33) < 0.5);
+    } finally { r.close(); }
+  }
+});
+
+test('v1.398.0 (gate r1 adversary A-S1 = qa W5): a chaptered video whose duration the server reports as 0 leaves its last chapter row with no span - the WHOLE Listen load stays on the web element (no video Item is sent), as in v1.397.0', async () => {
+  const video = { id: 'vid3', title: 'Unknown length', channelName: 'Ch', folderName: 'Ch', duration: 0, hasThumbnail: true, chapters: [{ startTime: 0, title: 'One' }, { startTime: 30, title: 'Two' }, { startTime: 60, title: 'Three' }] };
+  const r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music?play=vid3&listen=1', items: [], videos: { vid3: video } });
+  try {
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid3::c0', 'the first chapter row loaded: ' + JSON.stringify(r.errors));
+    assert.deepStrictEqual(r.fake.of('audio.load'), [], 'nothing went to native: one row has no span');
+    assert.strictEqual(r.el().getAttribute('src'), '/video/vid3', 'the web element plays the file');
+    assert.strictEqual(r.own('currentTime'), false);
+    assert.strictEqual(r.na.active(), false);
+  } finally { r.close(); }
 });
 
 test('v1.398.0 S8 (adoption): a fresh Music page while native plays a queue holding a video Item adopts it as a Listen row (the Watch way back, /video stream, /thumbnail art) beside the tracks, and the playing one loads as a FOLLOW', async () => {
@@ -586,6 +661,8 @@ test('v1.398.0 S8 (adoption): a fresh Music page while native plays a queue hold
     assert.strictEqual(r.el().getAttribute('src'), null);
     assert.ok(Math.abs(r.el().currentTime - 44) < 0.3);
     assert.strictEqual(r.player.getRemoteSnapshot().hasPrev, true, 'the track before it is a row too');
+    assert.strictEqual(r.player.getCurrentMeta().title, 'A talk');
+    assert.strictEqual(r.el().getAttribute('poster'), '/thumbnail/vid1', 'the adopted row is a LIBRARY row (source library, its own /thumbnail art): the audio branch posters from it (A5)');
     // the adopted row IS a Listen row (the listen marker, S8): music.js never shuffles AROUND a playing Listen row
     // (shufflePlayingIndex excludes it), so a shuffle toggle posts the modes and re-sends NOTHING - with the marker dropped the
     // tail would be reordered and a new audio.load would go out (and the row would ride as a 'track' on the audio route)
@@ -616,6 +693,45 @@ test('v1.398.0 S1 (the other direction): the Music view re-loading the SAME row 
     assert.strictEqual(r.el().getAttribute('src'), null, 'still native\'s');
     assert.ok(r.own('currentTime'), 'the proxy stays');
     assert.ok(Math.abs(r.el().currentTime - 33) < 0.5, 'where native is (' + r.el().currentTime + ')');
+  } finally { r.close(); }
+});
+
+test('v1.398.0 S8 (gate r1 adversary A-S2: A17 / A22 / the clip round trip): a queue adopted with a Listen video WITHOUT art and two chapter Items - a re-send (a shuffle around the playing TRACK) rebuilds the video Item with no artworkSrc and the chapter Items with their clips under the file id; adopting with a chapter Item playing folds its rows under one albumKey and posters the file', async () => {
+  const mk = (n) => ({ kind: 'track', id: 'n' + n, src: '/api/offline/file/track/n' + n, title: 'Native ' + n, artist: 'NA', album: 'NB', artworkSrc: '/albumart/n' + n, durationSec: 120, progress: { route: '/api/music/progress', key: 'n' + n }, radioSeed: 'track:n' + n });
+  const queue = [mk(1),
+    { kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'No art', artist: 'Ch', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } },
+    { kind: 'video', id: 'vid2::c0', src: '/api/offline/file/video/vid2', title: 'One', artist: 'Ch', album: 'A long talk', artworkSrc: '/thumbnail/vid2', durationSec: 30, clip: { startSec: 0, endSec: 30 }, progress: { route: '/api/progress', key: 'vid2' } },
+    { kind: 'video', id: 'vid2::c1', src: '/api/offline/file/video/vid2', title: 'Two', artist: 'Ch', album: 'A long talk', artworkSrc: '/thumbnail/vid2', durationSec: 65, clip: { startSec: 30, endSec: 95 }, progress: { route: '/api/progress', key: 'vid2' } },
+    mk(4)];
+  const state = (index) => ({ v: 1, type: 'audioState', rev: 3, queue, index, state: 'playing', positionSec: 5, durationSec: 120, rate: 1, modes: { autoplay: true, shuffle: false, loop: 'off' }, sleep: { mode: 'off' } });
+  // (a) the TRACK at index 0 plays: a shuffle toggle reorders the tail and re-sends the queue rebuilt from the adopted rows
+  let r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music' });
+  try {
+    await settle(80);
+    r.fake.emit(state(0));
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'n1', JSON.stringify(r.errors));
+    r.w.fisherYatesShuffle = (arr) => arr.slice().reverse();
+    r.w.document.getElementById('music-shufflemode-btn').click();
+    await settle(100);
+    const re = r.fake.of('audio.load').pop();
+    assert.ok(re, 're-sent: ' + JSON.stringify(r.errors));
+    assert.strictEqual(re.rev, 4);
+    const vid = re.queue.find((it) => it.id === 'vid1');
+    assert.deepStrictEqual(vid, { kind: 'video', id: 'vid1', src: '/api/offline/file/video/vid1', title: 'No art', artist: 'Ch', durationSec: 600, progress: { route: '/api/progress', key: 'vid1' } }, 'no artworkSrc: the row kept hasThumbnail false (A17)');
+    const c1 = re.queue.find((it) => it.id === 'vid2::c1');
+    assert.deepStrictEqual({ kind: c1.kind, src: c1.src, clip: c1.clip, progress: c1.progress, artworkSrc: c1.artworkSrc, album: c1.album }, { kind: 'video', src: '/api/offline/file/video/vid2', clip: { startSec: 30, endSec: 95 }, progress: { route: '/api/progress', key: 'vid2' }, artworkSrc: '/thumbnail/vid2', album: 'A long talk' }, 'the chapter Item round-trips through the row');
+  } finally { r.close(); }
+  // (b) a CHAPTER Item plays: its rows fold under one albumKey (the file) and the file's thumbnail is the poster
+  r = realm({ host: VIDEO_CAPS, url: 'http://localhost/music' });
+  try {
+    await settle(80);
+    r.fake.emit(state(2));
+    await settle(150);
+    assert.strictEqual(r.player.currentId, 'vid2::c0', JSON.stringify(r.errors));
+    assert.strictEqual(r.player.getCurrentMeta().albumKey, 'vid2', 'the chapter rows fold under the file (A22)');
+    assert.strictEqual(r.el().getAttribute('poster'), '/thumbnail/vid2');
+    assert.strictEqual(r.el().duration, 95, 'the file ends where its last chapter ends');
   } finally { r.close(); }
 });
 
