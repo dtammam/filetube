@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.399.0 native video surface, W5 (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the guards the plan
+// [UNIT] v1.399.0 native video surface, W5 (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md): the guards the plan
 // asks for beyond the per-wave tests - (1) a fake host in jsdom that plays snapshots while the REAL player walks slot -> dock ->
 // expand -> rotation into the CSS fullscreen -> rotation back -> a stand-down load, asserting the WHOLE sequence of rect messages
 // (one per placement, nothing between); (2) S11 byte-identity for the video path: the observable state of the page after the same

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.399.0 native video surface, W4 (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S7): captions from the
+// [UNIT] v1.399.0 native video surface, W4 (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S7): captions from the
 // PROXY's time. Under `nativeVideo` the element has no media, so its TextTrack never advances; the overlay is fed by a cue list
 // the web parses from the same /api/subtitles/:id WebVTT (a port of lib/transcript.js parseVttCues, bound equal here) and looks
 // up at the proxy's currentTime, repainted every 250 ms while captions are on. Same overlay, same look; without the capability

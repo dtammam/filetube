@@ -109,7 +109,7 @@
     var fam = function (k) { return (k === 'track' || k === 'video') ? 'music' : k; };
     return !!a && !!b && fam(a) === fam(b);
   }
-  // v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S1 + S2 + S6 + S10): the
+  // v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S1 + S2 + S6 + S10): the
   // watch page's VIDEO load -> the ONE whole-file Item native plays with sound AND picture, or null when the load stays on the
   // web element. A library video (watch.js's descriptor: the /api/videos/:id payload, `progressEndpoint` null) is a `video` Item at
   // /api/offline/file/video/<id> with its /thumbnail art (omitted when the video has none) and progress at /api/progress; a TV

@@ -1,6 +1,6 @@
 'use strict';
 // native-video-surface-probe - the headless instrument for the v1.399.0 native video surface (plan
-// docs/exec-plans/active/2026-10-28-native-video-surface.md, W5). Boots the real app (this tree, or FT_ROOT=<other worktree>)
+// docs/exec-plans/completed/2026-10-28-native-video-surface.md, W5). Boots the real app (this tree, or FT_ROOT=<other worktree>)
 // on a scratch DATA_DIR with one real H.264 clip, emulates an iPhone (touch, no hover, iPhone platform, 390x844) and injects a
 // FAKE HOST before any page script - `window.FileTubeHost` announcing nativeAudio + nativeVideoAudio + nativeVideo, recording
 // every message the page posts - exactly as the iOS app's document-start script does. Then it opens the watch page, waits for

@@ -3,10 +3,10 @@ plan: native-video-surface
 harness: v2 · full
 branch: feat/v1.399.0-native-video-surface
 anchor: spec
-status: W1-W6 built; gate r2 APPROVED by all three seats @17fd493d; r3 (the disclosed race) pending
-next: gate r2 with the same seats; then the close-out, the release PR and Dean's merge word
+status: Shipped v1.399.0
+next: the release PR; Dean's merge word; the tag's Publish run; relay tag + commit to the FileTube Root; device checks (0a)-(0d), (a)-(k)
 design: Approved 2026-10-28 (Dean picked "Native picture, web controls" after the v1.398.0 handoff spike failed)
-gate: r2 APPROVED @17fd493d (adversary, qa, security-brief); r3 re-confirmation pending on the adversary's disclosed WARNING fix
+gate: APPROVED r3 @42f1a668 (adversary, qa, security-brief)
 builder: extreme
 ---
 
@@ -612,3 +612,46 @@ close button would be covered). W1 freezes after the ruling.
   - INFO (same race, committed code): the late settings response still fires one `POST /api/videos/t1/prepare-audio` for a video native already owns (a server-side ffmpeg extraction queued for nothing). A `nativeActive()` check before that POST in setupForMedia's settings `.then` would close it; disclose or fold into the test above.
   - INFO (introduced by the fix, reasoning only, no runtime effect found): `surfaceWatchContainer` re-observes the wrapper's container with `{ childList: true }` at each measure; when docked that container is `#player-dock`, which surfaceWire observed with `{ attributes: ['hidden'], childList }` - a second observe() on the same target REPLACES the options (DOM spec), so after the first docked measure the dock's `hidden` flips are no longer observed. The player calls syncSurface explicitly at dock / expand, so every real transition is still frame-exact (the placement-sequence test passes); a later expand-by-attribute without that call would wait for the 1 s backstop. Merge the dock's two option sets if the container is the dock.
   - Verified, nothing else new: surfaceOff cancels the pending frame; the schedule gate (claimVideo sets ownedSurface before attach, so the first measure runs; the persisted pageshow re-send still runs while owned); the narrowed observers plus the document ResizeObserver, the explicit syncs and the backstop cover slot / dock / stage / fullscreen / rotation (the W5 sequence test is green); the A10 / A13 / A24 bindings are real (each regex or assert checks the behaviour, not presence); the W6 note exists now and the frontmatter reads r1 CHANGES fixed; the probe removes its three scratch dirs; the misplaced comment and the lifecycle prose are fixed as prescribed.
+
+### Gate r3
+
+- Gate: APPROVED r3 @42f1a668 - security-brief
+  - Delta re-check (no shell; traced in the tree at 42f1a668). No CRITICAL, no WARNING, no new INFO. No URL, style or bridge message changed.
+  - Verified player.js:10378: in the `/api/settings` callback, `if (nativeActive()) { bgAudioSettingCached = false; recordLifecycleEvent('bgAudio:arm', { detail: 'native' }); return; }` sits after `trySidewaysFullscreen()` and BEFORE the `bgAudioSettingCached` branch, so a settings response landing after the transcode poll's claim neither POSTs `/api/videos/<id>/prepare-audio` (closing the adversary's r2 INFO: no server-side extraction queued for a video native owns) nor arms the `/audio/<id>` sidecar. The r2 guards at :3990 and :4059 remain the second line.
+  - Verified native-audio.js:434: `surfaceMo.observe(container, ...)` picks `{ childList, attributes, attributeFilter: ['hidden'] }` only when `container.id === 'player-dock'`; observer options only, DOM-only, nothing reaches native or a style.
+  - No em dash in the delta (0 hits across the plan doc, native-audio.js and native-video-surface-contract.test.js). The new race test is a test file only.
+  - r1 INFO 1 (native's clamp is the boundary, in filetube-ios) and INFO 2 (a spoofed `videoSize` needs page-script execution) stand as labeled suspicions; no action on this branch.
+- Gate: APPROVED r3 @42f1a668 - qa
+  - Instruments (verified, run here at 42f1a668): `npm run -s lint` 0 errors, 6 warnings (the same pre-existing common.js six); `npm run -s lint:ui -- --enforce` OK (the live debt equals docs/ui-exceptions.json); `npm run -s lint:overlay` clean (0 violations); `bash .harness/lib/check-markers.sh docs/exec-plans/active` clean; the targeted set (`native-video-surface-*`, `native-bridge-video`, `native-bridge-contract`, `player-lifecycle-release`, `player-offline-local-src`, `player-form-factor`, `tv-player-source`) 132 pass, 0 fail. 0 em or en dashes in the delta's added lines.
+  - Delta verified against the brief (`git diff 17fd493d..42f1a668`: 4 files, +85 / -8): player.js adds ONE line in the settings callback (~10378) - `if (nativeActive()) { bgAudioSettingCached = false; recordLifecycleEvent(...); return; }` placed AFTER `bgAudioSettingCached` / `mobileCustomPlayerCached` / `preExtractAudioCached` / `bgAudioSyncPositionCached`, `applyControlsMode()` and `trySidewaysFullscreen()` and BEFORE the `!bgAudioSettingCached` arm line, so the early return skips only the prepare-audio POST, `declarePlaybackAudioSession`, `armBackgroundAudioSrc` and the repoll; the cache flags above it are unchanged. The block it sits in is gated `data.type !== 'audio' && (!data.statusUrl || data.prepareAudioUrl) && isMobileFormFactor() && bgAudioEl`, so no audio load (a track, a Listen row) ever reaches it, and for a non-native mobile video `nativeActive()` is false (the claim stopped native): no behaviour change outside the slow-settings race. native-audio.js (~434) changes only the dock's observer options to `{ childList, attributes, attributeFilter: ['hidden'] }` when the dock is the container, so the per-measure re-point no longer replaces the wire-time hidden watch (observe() on a node replaces its options). The new race test holds the `/api/settings` promise until after the poll's claim and binds: no prepare-audio, sidecar src null, the hidden paused snapshot plays nothing and posts nothing. The plan's "Gate r2 fix" section matches the tree (R10 red; R1 / R2 alone survive behind the now-bound upstream check, disclosed).
+  - Nothing new introduced: my r1 jsdom probes and the idle Chromium measure are untouched by this delta (no observer target or hole write changed except the dock's option set, which fires once per dock / expand). INFO: the frontmatter's `next:` still says "gate r2 with the same seats" (status and gate lines are current); update at close-out.
+- Gate: APPROVED r3 @42f1a668 - adversary
+  - Instruments (run by this seat at 42f1a668; mutants in a fresh /tmp `git archive 42f1a668` sandbox, pristine-diffed and removed; the worktree untouched): targeted families + the four pinned player tests: 185 pass, 0 fail (22.23.1). Full suite in the sandbox copy: 13076 tests, 13054 pass, 8 fail, 14 skipped; the 8 are the same `git ls-files` source locks that need a `.git` (7 files), re-run in the worktree: 69 pass, 0 fail. Node 24 not run by this seat.
+  - My r2 WARNING (the slow-settings race) FIXED as prescribed and bound. My own race repro (a held /api/settings released after the poll's claim, then the hidden paused snapshot) on the committed code: prepare-audio POST 0, sidecar src null, plays [], posted [] (r2 had 1 wasted POST). T1 (transcode-then-claim + lock-screen pause) still clean: poster null, track '', sidecar null, plays [], posted [].
+  - The builder's mutant claims re-measured and all TRUE: R1 + R2 removed alone -> everything green (the race is now closed upstream by the callback check, so the corrected Evidence sentence is accurate this time); R10 (the callback check) removed alone -> the committed race test red (prepare-audio 1) and my repro red; R1 + R2 + R10 removed -> sidecar `src=/audio/t1`, plays ["bg-audio-sidecar"], posts audio.pause, caught by the committed race test. The guards' doc now matches measurement.
+  - My r2 INFO (the dock's `hidden` observation replaced by the container re-observe): fixed (the dock keeps `{ childList, attributes: ['hidden'] }` when it is the container).
+  - S11 on the new line (player.js:10378, reasoning): the settings fetch is issued at :10363 while the synchronous claim / stop runs later in the same setupForMedia call (:10582 / :10610), so on a browser or a pre-nativeVideo build `nativeActive()` is false by the time the callback runs for a web video - the new return is unreachable there, and `applyControlsMode()` / `trySidewaysFullscreen()` still run before it as before. Nothing else new in the 3 source lines.
+
+### The release suites and the close-out binding (RELEASING.md step 1)
+
+- **Suites before the gate (7d624835):** Node 22.23.1 `npm test`: 13072 tests, 13059 pass, 0 fail, 13 skipped; Node 24.20.0 `npm test`:
+  13072 tests, 13059 pass, 0 fail, 13 skipped.
+- **The gate closed at 42f1a668:** adversary, qa and security-brief all APPROVED r3 at that sha (r1 CHANGES: the transcode-then-claim
+  CRITICAL and the 60 Hz sampler WARNING; r2 APPROVED with the adversary's disclosed slow-settings race; r3 APPROVED).
+- **The close-out (this commit) is release bookkeeping only:** the version fields of package.json / package-lock.json (1.398.0 ->
+  1.399.0), docs/releases.json, ROADMAP.md (the Planned bullet becomes the Shipped entry), docs/DEVICE-CHECKS.md ((0a)-(0d),
+  (a)-(k)), docs/LESSONS.md (a section 2 line and a section 4 line), this plan's move to completed/ and its frontmatter, and the
+  plan-path comment line (active/ -> completed/) in docs/references/ios-host.md, public/css/style.css, public/js/host-adapter.js,
+  public/js/native-audio.js, public/js/player.js, scripts/native-video-surface-probe.js and the five native-video-surface /
+  native-bridge-video test headers. No seat re-check (Dean's ruling, 2026-10-12); bound in the next docs commit with
+  `git diff --name-only 42f1a668..HEAD`, `git diff 42f1a668..HEAD -- package.json package-lock.json` (version lines only), the
+  comment-only check on the code / test files, and the release suites on the bookkeeping tree.
+
+### Device checks Dean owes (docs/DEVICE-CHECKS.md "Native video surface (v1.399.0)", after the iOS app build that pins this tag)
+
+- (0a) the hole, (0b) scroll following, (0c) lock with the layer detached, (0d) rotation - the spike that never ran; a failure is a
+  re-root-cause, not a re-patch.
+- (a) picture in place + controls on top, (b) scroll, (c) lock, (d) a call ducks and releases, (e) fullscreen and rotation with the
+  page never showing through, (f) captions in sync (turned on early too), (g) the dock shows the thumbnail and expand returns the
+  picture, (h) 360 / Feed / preview on the web element, (i) a TV episode resumes and saves once, (j) a video still converting plays
+  natively afterwards with no thumbnail stuck over it, (k) an app build without nativeVideo unchanged.

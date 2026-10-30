@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.399.0 native video surface, W3 (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S3 + S3a + S5 + S8 +
+// [UNIT] v1.399.0 native video surface, W3 (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S3 + S3a + S5 + S8 +
 // S9): the PICTURE SURFACE at the player, with the REAL player.js + native-audio.js in a phone-shaped jsdom realm and a fake host.
 // The web tells native where the player box is with ONE coalesced `video.surface` per layout change (document space in the page,
 // viewport space in the web's CSS fullscreen; nothing while nothing moves), paints the HOLE (body.ft-native-video + #ft-video-hole

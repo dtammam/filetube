@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the contract AT THE
+// [UNIT] v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md): the contract AT THE
 // PLAYER. Step 0's red-first test (the first test below) went red at d6d6ecc8 (1 fail, 2 pass) and green with W2: a host
 // announcing `nativeVideo` (with `nativeAudio` + `nativeVideoAudio`, the transport) gets `audio.load` with a `video` Item when
 // the WATCH PAGE loads a library video (S1, S2), and the element gets NO src (it becomes the v1.397.0 proxy, now answering

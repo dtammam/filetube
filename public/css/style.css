@@ -4868,7 +4868,7 @@ body.ft-css-fullscreen {
   background: #000; /* token-exempt: fullscreen letterbox black belt */
 }
 
-/* v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S5): while the iPhone app's own
+/* v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S5): while the iPhone app's own
    player draws a video's picture in a layer BELOW the web view, the page leaves a transparent HOLE where the player box is. The
    class is set by public/js/native-audio.js only while native owns a surface video and the picture is showing (never docked,
    never in a browser or an older app build): body and html paint nothing, the page colour moves to #ft-video-hole - a

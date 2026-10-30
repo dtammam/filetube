@@ -1135,7 +1135,7 @@ function nativeAudioApi() {
   return (n && n.enabled) ? n : null;
 }
 function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
-// v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the host also announces
+// v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md): the host also announces
 // `nativeVideo` - a watch-page video is native's with its picture; false in every browser and on every older app build (S11).
 function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
 // ...and native plays the CURRENT video with its picture (the web's controls, captions and skins are on top; the element is the proxy)
@@ -1953,7 +1953,7 @@ function buildCaptionOverlayText(rawCueTexts) {
   return lines.join('\n');
 }
 
-// v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S7): under `nativeVideo` the
+// v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S7): under `nativeVideo` the
 // element has no media, so its TextTrack never advances and `activeCues` stays empty. The overlay is fed instead by a cue list
 // the web parses from the SAME `/api/subtitles/:id` WebVTT and looks up by the proxy's currentTime. The parser is a port of
 // lib/transcript.js parseVttCues (+ cleanCueLine, lib/subtitles.js parseVttTimeMs / VTT_CUE_TIMING_LINE), kept identical and

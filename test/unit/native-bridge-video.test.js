@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.399.0 native video surface, W1 (plan docs/exec-plans/active/2026-10-28-native-video-surface.md): the `nativeVideo`
+// [UNIT] v1.399.0 native video surface, W1 (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md): the `nativeVideo`
 // half of the bridge contract AT THE ADAPTER. The conformance net (native-bridge-contract.test.js) proves the tables equal the
 // schema; this file proves they BIND: `video.surface` (S3, the ONE new intent) leaves the page only under `nativeVideo` and only
 // in the contract shape, and `audioState.videoSize` (S4, additive) is validated as data on the way in - a bad size is dropped,

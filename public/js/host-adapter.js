@@ -99,7 +99,7 @@
   }
   function audioQueueSpec() { return { is: 'array', req: true, max: AUDIO_QUEUE_MAX, items: { is: 'object', props: audioItemFields() } }; }
   var AUDIO_RATE = { is: 'number', min: 0.5, max: 3, req: true };
-  // v1.399.0 nativeVideo (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S3 + S4): where the picture goes, in CSS px.
+  // v1.399.0 nativeVideo (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S3 + S4): where the picture goes, in CSS px.
   // rect = the #media-player box; space 'document' (the in-page player: native follows the scroll itself) or 'viewport' (CSS
   // fullscreen); visible false hides the layer (the docked mini player); fit = the element's object-fit; radius = the box's corner
   // radius as a hint (the web's own hole is already clipped to it). Native clamps every number to the web view and rejects w / h <= 0.
