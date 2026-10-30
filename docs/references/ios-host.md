@@ -47,7 +47,8 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
   never fight over the lock screen. Music and podcasts (Dean, 2026-10-28); since v1.398.0 (`nativeVideoAudio`) a video played as
   AUDIO from Music (a Listen row) too - its picture stays the web player's. A video that is watched and then backgrounded keeps the
   web player's sidecar: the engine cannot be started from the background (the v1.398.0 spike), so the next step is a native video
-  surface.
+  surface; since v1.399.0 (`nativeVideo`) a watch-page video's PICTURE too: one native player for sound and picture, drawn in a
+  layer below the web view where the page leaves a transparent hole, FileTube's controls on top.
 - **Offline is native-only.** Service workers are effectively unavailable in a `WKWebView` whose server address the user types
   (Apple allows them only for at most 10 domains fixed at build time). Offline becomes a native Downloads page and the native
   player, never "the web UI, offline".
@@ -98,6 +99,23 @@ files, the catalogue and every download's state, fetches the manifest itself wit
 album or season add reports its members with `parentKind` + `parentId`. The server half is [the offline-server
 plan](../exec-plans/completed/2026-10-11-offline-server.md); the design is [ios-offline.md](ios-offline.md). Details and owners:
 [native-bridge.md](native-bridge.md) sections 2, 3, 5 and 6.
+
+## Addendum 2026-10-28 (v1.399.0): the native video surface, eleven capabilities
+
+Contract v1 (add-only) grows from ten capabilities to eleven: `nativeVideo`. The v1.398.0 background handoff failed its spike on Dean's
+iPhone 15 Pro (iOS refuses to activate the audio session from an app already in the background, OSStatus 560557684 '!int'), so the
+native player has to own a video from the first frame. Dean chose "native picture, web controls" over Apple's full-screen player
+(which loses chapters, scrub previews and subtitle styling) and over a muted web picture chasing native sound (which drifts and
+downloads every video twice). On the watch page one native AVPlayer plays a library video's or a TV episode's sound and picture; the
+picture is a layer BELOW the non-opaque web view, shown through a transparent hole the page paints exactly where the player box is,
+and FileTube's controls, captions, chapters and skins paint on top as before. The web sends the whole-file Item through `audio.load`
+(no new transport) and tells native where the picture goes with one new intent, `video.surface` (a rect in CSS px, document space for
+the in-page player so native follows the scroll itself, viewport space for the web's own full screen); the docked mini player shows the
+thumbnail while the sound continues. Locking the phone or switching apps: native detaches the picture and the sound just continues.
+Captions render from the native position. The surface spike never ran (Dean lifted that gate 2026-10-30), so the hole, the scroll
+following, the lock with the layer detached and rotation are the app build's first device checks, (0a)-(0d). The FileTube half is [the native-video-surface
+plan](../exec-plans/completed/2026-10-28-native-video-surface.md); details and owners: [native-bridge.md](native-bridge.md) sections 1, 2, 3,
+5 and 6 ("Native video (v1.399.0)").
 
 ## Addendum 2026-10-28 (v1.398.0): a video played as audio goes native; the background handoff does not, ten capabilities
 

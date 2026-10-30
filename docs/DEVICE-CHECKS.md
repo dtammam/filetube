@@ -5,6 +5,27 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Native video surface (v1.399.0; after the iOS app build that pins this tag)
+
+The surface spike never ran (Dean lifted that gate 2026-10-30): (0a)-(0d) are the first checks, and a failure there is a
+re-root-cause of the plan, never a re-patch.
+
+- [ ] v1.399.0 - (0a) THE HOLE: open a video; the picture shows through the page exactly where the player box is, and a tap on the picture reaches FileTube's controls, not the app.
+- [ ] v1.399.0 - (0b) SCROLL: scroll and fling the watch page mid-video; the picture stays locked to the player box with no visible lag (native follows the scroll itself).
+- [ ] v1.399.0 - (0c) LOCK: lock the phone mid-video; the sound continues; pause and resume from the lock screen and AirPods; unlock: the picture is back at the right frame.
+- [ ] v1.399.0 - (0d) ROTATION: rotate into and out of fullscreen; no flash, no misplaced picture.
+- [ ] v1.399.0 - (a) A video plays with its picture in place; the controls, scrub previews, chapters and skins all work on top of it; no native controls strip.
+- [ ] v1.399.0 - (b) Scroll the watch page mid-video: the picture moves with the page and does not lag (same as 0b, after a long watch).
+- [ ] v1.399.0 - (c) Lock mid-video: the sound continues at full quality; pause and resume from the lock screen and AirPods; unlock: the picture is at the right frame.
+- [ ] v1.399.0 - (d) A voice memo or call mid-video: FileTube yields; afterwards no other app is ducked.
+- [ ] v1.399.0 - (e) Fullscreen (the bar's button) and rotation: no flash, no misplaced picture; the page never shows through.
+- [ ] v1.399.0 - (f) Captions on: in sync with the sound, and they look as before; turn them on before the video is ready too.
+- [ ] v1.399.0 - (g) Navigate away (docked player): the dock shows the thumbnail and the sound continues; tap it to expand: the picture is back at the right frame.
+- [ ] v1.399.0 - (h) A 360 video, a Feed video and a preview play exactly as before (on the web element).
+- [ ] v1.399.0 - (i) A TV episode resumes where it was left, and its progress is saved once.
+- [ ] v1.399.0 - (j) A video that still needs converting: the "Preparing this video" overlay shows, then it plays natively with its picture and no thumbnail stuck over it.
+- [ ] v1.399.0 - (k) An app build without nativeVideo: everything exactly as before.
+
 ## Native video audio (v1.398.0; after the iOS app build that pins this tag)
 
 - [ ] v1.398.0 - (f) In Music, play a video as audio (the Listen button on a video; try a chaptered one too): it plays and resumes from the lock screen like a song, the chapters step as before, its position is saved; tap "Watch": the video opens where the sound was, playing only if the sound was playing.

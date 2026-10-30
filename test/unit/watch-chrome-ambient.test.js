@@ -140,9 +140,10 @@ test('v1.186.1 the ambient stacking context lives on the STAGE, never on #player
   // z-index:var(--z-sheet); a z-indexed ANCESTOR caps it below the chrome. So
   // #player-slot must carry NO z-index; the stage owns the context and drops it
   // in faux fullscreen.
-  const stage = STYLE_CSS.slice(STYLE_CSS.indexOf('.watch-player-stage {'), STYLE_CSS.indexOf('.ambient-glow {'));
+  // anchored at a line start: v1.399.0 added `body.ft-native-video .ambient-glow {` earlier in the file
+  const stage = STYLE_CSS.slice(STYLE_CSS.indexOf('.watch-player-stage {'), STYLE_CSS.indexOf('\n.ambient-glow {'));
   assert.match(stage, /z-index:\s*0;/, 'the stage owns the ambient stacking context');
-  const glow = STYLE_CSS.slice(STYLE_CSS.indexOf('.ambient-glow {'), STYLE_CSS.indexOf('.ambient-glow.is-on'));
+  const glow = STYLE_CSS.slice(STYLE_CSS.indexOf('\n.ambient-glow {'), STYLE_CSS.indexOf('.ambient-glow.is-on'));
   assert.match(glow, /z-index:\s*-1;/, 'the glow sits BEHIND #player-slot within the stage context');
   // #player-slot must NOT get a z-index (that was the trap).
   const slotRule = STYLE_CSS.match(/(^|\n)#player-slot\s*\{[^}]*\}/);

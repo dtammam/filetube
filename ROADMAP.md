@@ -443,17 +443,22 @@
 
 ### Features
 
-- [ ] **A native video SURFACE in the iPhone app** _(Dean, 2026-10-28, after the v1.398.0 spike failed)_ - one native AVPlayer plays
-  sound and picture, drawn where the video sits on the page, with the web's controls on top; designed with the iOS Root first (the
-  FileTube Root owns the plan). The v1.398.0 contract already carries the `tvEpisode` kind, the `/tvthumb` art and the
-  `/api/tv/progress` route for it, and the server serves them to the media token; the superseded handoff design (V2a, V7, V8) is
-  recorded in the v1.398.0 plan and in native-bridge.md section 3 "Not built".
 - **Native video audio (v1.398.0) follow-ups, unasked:** (1) a test gap the adversary named at r3 (mutant O2, measured correct in
   the tree): bind that a Listen row adopted by a fresh Music page, and one native advanced into, still hands back to the watch page
   (the two watch.js calls after an adoption and after an advance); (2) an adopted Listen row has no `folderName` (the Item carries no
   channel folder), so "Go to channel" is absent after an adoption until the next plan adds the field; (3) a Listen row paused at 0:00
   re-opened on Watch autostarts (the hand-back carries nothing at 0, the ordinary resume reads the saved place); (4) library-audio
   chapter rows with no known span still reach native with no clip (the v1.397.0 shape, pinned by test; Listen rows refuse it).
+- **Autoplay to the next video under `nativeVideo` (iOS app), unasked** _(v1.399.0 W2, 2026-10-30)_ - the plan rules a video queue
+  and autoplay-next out of scope: native plays ONE whole-file Item and ends it itself, so the web's ended handler (which walks
+  the browse context / track nav for the next video) stands down as it does for every native load. A native-driven next video
+  needs a queue the watch page builds from its browse context (the Music pattern: `nativeQueue` + a bound view) or a web `ended`
+  follow that loads the next item; design with the iOS Root (lock-screen Next, the dock's row).
+- **Picture in the mini player (iOS app), unasked** _(v1.399.0 S3a, 2026-10-28)_ - under `nativeVideo` the app's player draws
+  the picture in a layer BELOW the web view, which shows only where the page paints nothing. The docked mini player is fixed
+  over page content that keeps scrolling under it, so the dock shows the video's thumbnail while the sound continues. A
+  picture there needs a layer ABOVE the web view with touches passed through (a `layer: 'above'` field on `video.surface`,
+  bridge v1 add-only; the dock's bar sits below the picture, only its close button would be covered).
 - **Native audio (v1.397.0) follow-ups, unasked:** (1) Feed song and podcast cards still play on the web element inside the app
   (the Feed plays a SLICE of a song with its own end-at logic on the element, and its podcast progress route is not one of the
   native progress routes); a Feed load stops native first. (2) After the iOS web view is reloaded while native keeps playing (a
@@ -913,6 +918,26 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.399.0 - On the iPhone app, a video plays in the app's own player, picture and sound, under FileTube's controls (2026-10-30)
+
+- Dean (2026-10-28, after the v1.398.0 handoff spike failed on his phone): "Native picture, web controls." On hosts that announce
+  `nativeVideo` (beside nativeAudio + nativeVideoAudio) ONE native AVPlayer owns a watch-page video's sound AND picture: the web's
+  `#media-player` loads nothing and is the v1.397.0 proxy (now answering videoWidth / videoHeight from `audioState.videoSize`); the
+  picture is native's layer BELOW the non-opaque web view, shown through a transparent hole the page paints where the player box is
+  (body / html / the box transparent, the page colour on a document-sized layer clipped around the box with one even-odd path); the
+  web tells native where with the ONE new intent `video.surface { rect, space: 'document' | 'viewport', visible, fit, radius }`,
+  measured once per frame when something may have moved and posted only on a change. Transport stays `audio.*`. Docked = no picture
+  (visible false), the thumbnail as the poster, the sound plays on. Fullscreen = the web's CSS fullscreen (a viewport rect; the page
+  behind it hidden). Captions come from a cue list the web parses from the same VTT and looks up at the proxy's time. Hidden / lock
+  is native's (the layer detaches, the sound continues); the web never pauses, hands off or arms its sidecar for a video native
+  owns. Stand-downs keep the web element: 360 / VR, the Feed, previews, a rendition still transcoding (claimed when the poll says
+  ready). Browsers, the PWA and older app builds: byte-identical. Contract v1 add-only: `nativeVideo`, `video.surface`,
+  `audioState.videoSize` (schema blob 15647ae3, frozen at bf5a26ec, unchanged through the release). The surface spike never ran:
+  Dean lifted that gate 2026-10-30, so the hole, scroll following, the lock with the layer detached and rotation are the first device
+  checks (0a)-(0d). Gate: r1 CHANGES (a video claimed late by the transcode poll kept the web's poster, track and armed sidecar - a
+  lock-screen pause then played the web sidecar beside native; the surface sampler fed itself at 60 Hz), r2 a disclosed slow-settings
+  race, r3 APPROVED by all three seats @42f1a668. Device checks owed in docs/DEVICE-CHECKS.md.
 
 ### v1.398.0 - A video played as audio from Music plays through the iPhone app's own player (2026-10-28)
 

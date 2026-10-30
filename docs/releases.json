@@ -3766,5 +3766,11 @@
     "date": "2026-10-28",
     "title": "Listen to a video through the iPhone app's own player",
     "intent": "In the FileTube app, a video you play as audio from Music (the Listen button on a video, chapters included) now plays through the phone's built-in audio engine like a song: the lock screen and AirPods control it, a locked phone resumes after a pause, and your place is saved. Tap Watch and the video picks up where the sound was. Watching a video and then locking the phone works as before. This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
+  },
+  {
+    "version": "1.399.0",
+    "date": "2026-10-30",
+    "title": "Watch a video through the iPhone app's own player",
+    "intent": "In the FileTube app, a video you watch now plays through the phone's own player, picture and sound, with FileTube's controls, chapters, scrubbing, captions and skins on top exactly as before. Lock the phone or switch apps and the sound keeps going; the lock screen and your AirPods control it; unlock and the picture is back where the sound is. The small corner player shows the video's thumbnail while the sound plays on. Full screen is the same full screen as before. 360 videos, the Feed and previews play as they did. This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
   }
 ]
