@@ -1135,6 +1135,11 @@ function nativeAudioApi() {
   return (n && n.enabled) ? n : null;
 }
 function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); }
+// v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md): the host also announces
+// `nativeVideo` - a watch-page video is native's with its picture; false in every browser and on every older app build (S11).
+function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
+// ...and native plays the CURRENT video with its picture (the web's controls, captions and skins are on top; the element is the proxy)
+function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof n.surfaceOwned === 'function' && n.surfaceOwned()); }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
@@ -1142,7 +1147,10 @@ function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); 
 // load; its bare early-adopt call carries no type and stays an adopt of the proxy until the metadata arrives), and only when the
 // Item native plays is a `video` (a Listen row): a library AUDIO file native plays as a track Item keeps the proxy on the watch
 // page, exactly as in v1.397.0 (V3 byte-identity for a v0.14.0 build).
-function isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind) {
+// v1.399.0 (S1): never for a SURFACE video (native plays the web's video with its picture): the watch page's same-id re-open
+// stays an adopt of the proxy, as a track's does.
+function isNativeHandBackLoad(adopt, nativeOwnsId, data, ownedKind, ownedSurface) {
+  if (ownedSurface === true) return false;
   if (!adopt || !nativeOwnsId || ownedKind !== 'video') return false;
   if (!data || typeof data.type !== 'string') return false;
   return typeof data.nativeQueue !== 'function';
@@ -1945,6 +1953,65 @@ function buildCaptionOverlayText(rawCueTexts) {
   return lines.join('\n');
 }
 
+// v1.399.0 native video surface (plan docs/exec-plans/completed/2026-10-28-native-video-surface.md, S7): under `nativeVideo` the
+// element has no media, so its TextTrack never advances and `activeCues` stays empty. The overlay is fed instead by a cue list
+// the web parses from the SAME `/api/subtitles/:id` WebVTT and looks up by the proxy's currentTime. The parser is a port of
+// lib/transcript.js parseVttCues (+ cleanCueLine, lib/subtitles.js parseVttTimeMs / VTT_CUE_TIMING_LINE), kept identical and
+// bound to it by test/unit/native-video-surface-captions.test.js: cue-BLOCK aware (only a timing line at a block boundary opens
+// a cue; a payload line that merely looks like one is payload), NOTE / STYLE / REGION blocks and the header skipped, inline
+// tags stripped and the common entities decoded; garbage in => [] out. Pure, DOM-free.
+var VTT_CUE_TIMING_LINE = /^\s*((?:\d{1,2}:)?\d{1,2}:\d{2}\.\d{3})\s*-->\s*((?:\d{1,2}:)?\d{1,2}:\d{2}\.\d{3})(.*)$/;
+var VTT_ENTITY_MAP = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ', '&lrm;': '', '&rlm;': '' };
+function parseVttTimeMs(str) {
+  var m = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\.(\d{3})$/.exec(String(str).trim());
+  if (!m) return NaN;
+  var hours = m[1] !== undefined ? Number(m[1]) : 0;
+  return ((hours * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000 + Number(m[4]);
+}
+function cleanVttCueLine(text) {
+  var raw = typeof text === 'string' ? text : '';
+  return raw
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(amp|lt|gt|quot|#39|apos|nbsp|lrm|rlm);/g, function (m) { return VTT_ENTITY_MAP[m]; })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function parseVttCues(text) {
+  var raw = typeof text === 'string' ? text : '';
+  var lines = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  var cues = [];
+  var current = null;
+  var inSkippedBlock = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line === '' || (!current && line.trim() === '')) { current = null; inSkippedBlock = false; continue; }
+    if (current) { var cleaned = cleanVttCueLine(line); if (cleaned !== '') current.lines.push(cleaned); continue; }
+    if (inSkippedBlock) continue;
+    var m = VTT_CUE_TIMING_LINE.exec(line);
+    if (m) {
+      var startMs = parseVttTimeMs(m[1]);
+      var endMs = parseVttTimeMs(m[2]);
+      if (!isFinite(startMs) || !isFinite(endMs)) { inSkippedBlock = true; continue; }
+      current = { startMs: startMs, endMs: endMs, lines: [] };
+      cues.push(current);
+      continue;
+    }
+    if (/^(NOTE|STYLE|REGION)\b/.test(line.trim()) || /^WEBVTT/.test(line.trim())) { inSkippedBlock = true; continue; }
+  }
+  return cues;
+}
+// The cues showing at `tSec` (start <= t < end, as TextTrack.activeCues), in document order, shaped like cues for the overlay.
+function vttCuesActiveAt(cues, tSec) {
+  var out = [];
+  var ms = Number(tSec) * 1000;
+  if (!Array.isArray(cues) || !isFinite(ms)) return out;
+  for (var i = 0; i < cues.length; i++) {
+    var c = cues[i];
+    if (c && ms >= c.startMs && ms < c.endMs && c.lines.length) out.push({ text: c.lines.join('\n') });
+  }
+  return out;
+}
+
 // ---- v1.43.1 B2: chapters-menu height clamp (pure math) --------------------
 // The chapters popup opens UPWARD from the control bar inside #player-wrapper,
 // which is overflow:hidden and (mobile portrait) max-height-capped at 45vh —
@@ -2181,6 +2248,7 @@ if (typeof module !== 'undefined' && module.exports) {
     queuePointerMatchesPlaying,
     isAdoptLoad,
     isNativeHandBackLoad, // v1.398.0 (S1)
+    parseVttCues, vttCuesActiveAt, cleanVttCueLine, // v1.399.0 (S7): captions from the proxy time
     nativeHandBackCarry,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     resolveExplicitStart, // v1.352 L1: &t= on a watch link
@@ -2447,6 +2515,11 @@ if (typeof module !== 'undefined' && module.exports) {
     img.src = '/storyboard/' + encodeURIComponent(id);
   }
   var audioCaptionsOn = false;
+  // v1.399.0 (S7): the parsed cue list for the video native plays ({ id, cues } once loaded, { id, cues: null } while the fetch is
+  // in flight), and the 250 ms repaint loop that reads the proxy's extrapolated currentTime while captions are on (the proxy fires
+  // timeupdate about once a second, a cue boundary deserves better)
+  var nativeCueList = null;
+  var nativeCcTimer = null;
 
   // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
   // controller actually PAINTED into `ccOverlayTextEl` (or `null` when
@@ -2751,7 +2824,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // native-controls flash on each mobile video load before the fetch
     // resolves -- deliberately preferred over blocking mount on a settings
     // round-trip (the OFF/default path has no flash at all).
-    var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached;
+    // v1.399.0 (S1): a video native plays with its picture has no media in the element - the native strip would be dead, so
+    // FileTube's own bar is the surface (and its fullscreen is the CSS one, S8)
+    var native = mobile && isVideo && state === STATE_FULL && !mobileCustomPlayerCached && !nativeSurfaceOwned();
     if (native) {
       mediaPlayer.setAttribute('controls', '');
       host.classList.add('native-controls');
@@ -2850,6 +2925,7 @@ if (typeof module !== 'undefined' && module.exports) {
       else window.scrollTo(0, plan.restoreTo);
     }
     refreshMinimizeButton(); // v1.362: no chevron in faux full screen
+    nativeSurfaceSync(); // v1.399.0 (S8): the picture box is the viewport now (or the in-page box again)
   }
   // v1.311.2: the ONE shared iOS body lock (body-scroll-lock.js, loaded before this
   // file on every shell that loads it; require()d under node tests).
@@ -3311,7 +3387,8 @@ if (typeof module !== 'undefined' && module.exports) {
   function renderActiveCueOverlay(track) {
     if (!ccOverlayEl || !ccOverlayTextEl) return;
     var rawTexts = [];
-    var cues = track && track.activeCues;
+    // v1.399.0 (S7): a video native plays has no cues in its TextTrack; the parsed list, looked up at the proxy's time, is the source
+    var cues = nativeSurfaceOwned() ? nativeActiveCues() : (track && track.activeCues);
     if (cues) {
       for (var i = 0; i < cues.length; i++) {
         if (cues[i] && typeof cues[i].text === 'string') rawTexts.push(cues[i].text);
@@ -3345,7 +3422,40 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccOverlayTextEl) ccOverlayTextEl.textContent = '';
     if (ccOverlayEl) ccOverlayEl.hidden = true;
     lastCcOverlayText = null;
+    stopNativeCcLoop();
   }
+  // v1.399.0 (S7): the cue list for the current native video. Fetched once per item at the first CC-on (the same document the
+  // <track> would load - its src is left empty under nativeVideo so the browser never fetches it twice); `liveOffset` is never
+  // set for a native load. A TV episode has no subtitles route (as for the track).
+  function nativeActiveCues() {
+    if (!nativeCueList || nativeCueList.id !== currentId || !Array.isArray(nativeCueList.cues) || !mediaPlayer) return [];
+    return vttCuesActiveAt(nativeCueList.cues, mediaPlayer.currentTime);
+  }
+  function ensureNativeCueList() {
+    if (!nativeSurfaceOwned() || !currentId || !currentData || !currentData.hasSubtitles || currentData.statusUrl) return;
+    if (nativeCueList && nativeCueList.id === currentId) return;
+    var id = currentId;
+    var gen = loadGeneration;
+    nativeCueList = { id: id, cues: null };
+    var p;
+    try { p = fetch('/api/subtitles/' + encodeURIComponent(id)); } catch (_) { nativeCueList = null; return; }
+    Promise.resolve(p)
+      .then(function (res) { return res && res.ok ? res.text() : ''; })
+      .then(function (text) {
+        if (gen !== loadGeneration || currentId !== id) return; // a newer load: this list is nobody's
+        nativeCueList = { id: id, cues: parseVttCues(text) };
+        if (audioCaptionsOn && ccTrack) renderActiveCueOverlay(ccTrack.track);
+      })
+      .catch(function () { if (nativeCueList && nativeCueList.id === id && nativeCueList.cues === null) nativeCueList = null; }); // a failed fetch: the next CC-on retries
+  }
+  function startNativeCcLoop() {
+    if (nativeCcTimer || !nativeSurfaceOwned()) return;
+    nativeCcTimer = setInterval(function () {
+      if (!audioCaptionsOn || !currentData || !nativeSurfaceOwned()) { stopNativeCcLoop(); return; }
+      if (ccTrack) renderActiveCueOverlay(ccTrack.track);
+    }, 250);
+  }
+  function stopNativeCcLoop() { if (nativeCcTimer) { clearInterval(nativeCcTimer); nativeCcTimer = null; } }
 
   // ---- Media Session ("Now Playing" control surface) -------------------------
   // Hardens the CONTROL SURFACE (accurate metadata, play/pause state, scrubber
@@ -3877,6 +3987,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // audio (HANDING_OFF is allowed -- the handoff routes through here).
   function armBackgroundAudioSrc() {
     if (!bgAudioEl || !currentId) return false;
+    if (nativeActive()) return false; // v1.399.0 (S9, gate r1): never a second player's src for a video native plays
     if (!bgAudioSettingCached) return false;
     if (bgAudioStatusKnown !== 'ready') return false;
     if (!currentData || currentData.type === 'audio') return false;
@@ -3942,6 +4053,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function attemptBackgroundAudioHandoff(trigger) {
     if (!bgAudioEl) return false;
+    // v1.399.0 (S9, gate r1 CRITICAL): a video native plays never hands off to the web's sidecar - the proxy's own 'pause' (a
+    // lock-screen pause arrives as a native snapshot while the page is hidden) reaches the pause-hidden trigger below the
+    // lifecycle skip, and the settings hold alone did not cover a video claimed late by the transcode poll
+    if (nativeActive()) { recordLifecycleEvent('bgAudio:skip', { detail: 'native' }); return false; }
     var eligible = shouldHandOffToBackgroundAudio({
       settingOn: bgAudioSettingCached,
       audioStatus: bgAudioStatusKnown,
@@ -4323,6 +4438,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
     var shouldRelease = shouldReleaseForLifecycleEvent(eventType, ctx);
+    if (shouldPauseForLifecycleEvent(eventType, ctx) && nativeActive()) {
+      // v1.399.0 (S9): a video native plays keeps playing at hidden / lock (native detaches its layer and the sound continues,
+      // the lock screen is native's): no pause, no sidecar, nothing posted; a terminal pagehide still releases the web's side
+      recordLifecycleEvent('bgAudio:skip', { detail: 'native' });
+      if (shouldRelease) releaseAudioSession();
+      return;
+    }
     if (shouldPauseForLifecycleEvent(eventType, ctx)) {
       // v1.27.0 (EXPERIMENTAL): this is the ONE place a background-audio
       // handoff can ever be triggered -- every precondition
@@ -6267,7 +6389,10 @@ if (typeof module !== 'undefined' && module.exports) {
           awaitingTranscode = false;
           hideTranscodeOverlay();
           mediaPlayer.style.display = 'block';
-          mediaPlayer.src = readySrc;
+          // v1.399.0: under nativeVideo the ready rendition is native's (the claim refused it while it was transcoding, so the
+          // overlay above could show); in a browser the claim is inert and the element plays it, as before
+          if (nativeAudioClaim(id, Object.assign({}, currentData || {}, { transcodeStatus: 'ready' }))) applyNativeVideoClaim();
+          else mediaPlayer.src = readySrc;
           handleResumePlayback(gen, id);
           return;
         }
@@ -7876,6 +8001,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // call sites already did.
   function enterFullscreen() {
     if (!mediaPlayer) return null;
+    if (nativeSurfaceOwned()) { setCssFullscreen(true); return null; } // v1.399.0 (S8): never webkitEnterFullscreen / the stage for a proxied video
     // v1.141: an AUDIO item never takes the webkit VIDEO branch below - on a
     // track-less element `webkitSupportsFullscreen` stays false forever, so
     // on any browser exposing the prefixed API the branch is a silent no-op
@@ -8659,7 +8785,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // settings flag, which introduced a click-time race): if the custom
         // bar is what's on screen for a mobile VIDEO, faux fullscreen is the
         // right behavior -- period.
-        if (isMobileFormFactor() && !inNativeControlsMode() &&
+        // v1.399.0 (S8): a video native plays with its picture takes the CSS fullscreen on every form factor (there is no media
+        // in the element to present; rotation is the web's layout plus a new surface rect)
+        if ((isMobileFormFactor() || nativeSurfaceOwned()) && !inNativeControlsMode() &&
             currentData && currentData.type !== 'audio' && state === STATE_FULL) {
           // restoreScroll: the ONLY restore-eligible off-caller (gate C1) --
           // an explicit user exit puts the page back where they left it;
@@ -8753,7 +8881,7 @@ if (typeof module !== 'undefined' && module.exports) {
         track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
         ccBtn.classList.toggle('active', audioCaptionsOn);
         ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
-        if (audioCaptionsOn) renderActiveCueOverlay(track);
+        if (audioCaptionsOn) { ensureNativeCueList(); startNativeCcLoop(); renderActiveCueOverlay(track); } // v1.399.0 (S7): both are no-ops unless native plays the video
         else hideCaptionOverlay();
       });
     }
@@ -9372,7 +9500,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // touch the DOM on an actual cue change).
     mediaPlayer.addEventListener('timeupdate', function () {
       if (!audioCaptionsOn || !currentData) return;
-      if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
+      // v1.399.0 (S7): a browser's <track> always has its TextTrack; the proxy's timeupdate (a native tick or a seek) repaints
+      // the overlay from the parsed list, with or without one
+      if (ccTrack) renderActiveCueOverlay(ccTrack.track);
     });
 
     // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
@@ -9971,6 +10101,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the overlay itself (mirrors the CC button reset just above).
     audioCaptionsOn = false;
     hideCaptionOverlay();
+    nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     // Feature A (v1.26.1, Shorts player-size jump): clear the reserved
     // aspect + portrait marker for the OUTGOING media -- a previous
     // portrait item's `--media-aspect`/`.portrait-media` must never leak
@@ -10093,6 +10224,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   var playingLocal = false; // this load plays the phone's copy: no transcode fetch / poll, no background-audio sidecar handoff
+  var nativeVideoDeferredId = null; // v1.399.0: the id of a bare (typeless) watch-page load left undecided under nativeVideo until its full load
   // v1.397.0: the setupForMedia choke point hands an audio load with a queue to native (true) or keeps the web element.
   function nativeAudioClaim(id, data) {
     var n = nativeAudioApi();
@@ -10102,6 +10234,23 @@ if (typeof module !== 'undefined' && module.exports) {
   function nativeAudioBeginLoad() { var n = nativeAudioApi(); if (n) { try { n.beginLoad(); } catch (_) { /* inert */ } } }
   function nativeAudioRelease() { var n = nativeAudioApi(); if (n) { try { n.release(); } catch (_) { /* inert */ } } }
   function nativeAudioModesChanged() { var n = nativeAudioApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
+  function nativeSurfaceSync() { var n = nativeAudioApi(); if (n && typeof n.syncSurface === 'function') { try { n.syncSurface(); } catch (_) { /* inert */ } } } // v1.399.0: a placement change measures the surface now
+  // v1.399.0: what a native video claim means for the web element, applied at BOTH claim sites (setupForMedia's branch, and the
+  // transcode poll's late claim - gate r1 CRITICAL: that path had already set the poster, the track src and the sidecar at load, when
+  // the rendition was not ready and the load was a stand-down). The element loads and paints nothing (no poster: it would sit over
+  // the hole), the <track> stays inert (the web's own cue list is the source), the background-audio sidecar is disarmed for this
+  // load (setting read as off, its src stripped, the status repoll ended) so no second player can ever sound, the bar is the
+  // custom one, and captions already on re-feed from the proxy's time.
+  function applyNativeVideoClaim() {
+    if (!mediaPlayer) return;
+    mediaPlayer.removeAttribute('poster');
+    if (ccTrack) ccTrack.src = '';
+    bgAudioSettingCached = false;
+    if (audioStatusRepollTimer) { clearTimeout(audioStatusRepollTimer); audioStatusRepollTimer = null; }
+    releaseBackgroundAudioElement();
+    applyControlsMode();
+    if (audioCaptionsOn) { ensureNativeCueList(); startNativeCcLoop(); if (ccTrack) renderActiveCueOverlay(ccTrack.track); }
+  }
   // Under native the lock screen is native's: the web view's own MediaSession must carry nothing (two now-playing cards
   // would fight), so the metadata, the playback state and every action handler the web ever set are cleared.
   function clearMediaSessionForNative() {
@@ -10118,6 +10267,14 @@ if (typeof module !== 'undefined' && module.exports) {
     var streamUrl = '/video/' + id;
     var nativeClaimed = false;
     playingLocal = false;
+    nativeVideoDeferredId = null;
+    // v1.399.0 (S9): a video load native is about to own (or a bare early load held for its full one) never arms the web's
+    // background-audio sidecar below: no settings read, no prepare-audio, as for a load that plays the phone's copy. The hold
+    // covers a load claimed HERE; a video claimed late by the transcode poll (a stand-down at load, so the hold was false and the
+    // sidecar got armed) is disarmed by applyNativeVideoClaim, and attemptBackgroundAudioHandoff / armBackgroundAudioSrc refuse
+    // under nativeActive() for every trigger (gate r1 CRITICAL: the proxy's own pause at a lock-screen pause reaches the
+    // pause-hidden trigger, which the lifecycle skip does not cover).
+    var nativeVideoHold = (function () { var n = nativeAudioApi(); return !!(n && typeof n.wouldClaimVideo === 'function' && n.wouldClaimVideo(id, data)); })();
     var localSrc = resolveOfflineLocalSrc(id, data, typeof window !== 'undefined' && window.FileTube ? window.FileTube.offline : null);
     if (localSrc) {
       playingLocal = true;
@@ -10202,7 +10359,8 @@ if (typeof module !== 'undefined' && module.exports) {
       // feature graduates out of EXPERIMENTAL.
       // v1.387.0 offline playback: a load that plays the phone's copy never arms the background-audio sidecar handoff
       // (the local element keeps playing instead): the settings read is answered as "off" for this load, no request.
-      (playingLocal ? Promise.resolve(null) : fetch('/api/settings'))
+      // v1.399.0 (S9): a video native plays is answered the same way - the web's sidecar is never armed for it, no prepare-audio
+      ((playingLocal || nativeVideoHold) ? Promise.resolve(null) : fetch('/api/settings'))
         .then(function (res) { return res === null ? null : (res.ok ? res.json() : null); })
         .then(function (settings) {
           if (gen !== loadGeneration) return; // a newer load has since started
@@ -10215,6 +10373,9 @@ if (typeof module !== 'undefined' && module.exports) {
           bgAudioSyncPositionCached = !!(settings && settings.bgAudioSyncPosition); // v1.121: the position pre-sync lever
           applyControlsMode();
           trySidewaysFullscreen(); // v1.389.0 (D3): the custom-vs-native verdict just landed
+          // v1.399.0 (gate r2, adversary): the settings read can land AFTER the transcode poll claimed this video for native (a slow
+          // read, a fast transcode); the sidecar is then native's problem, never the web's - no prepare-audio, nothing armed
+          if (nativeActive()) { bgAudioSettingCached = false; recordLifecycleEvent('bgAudio:arm', { detail: 'native' }); return; }
           if (!bgAudioSettingCached) {
             // v1.27.2 (diagnostics): the arm line now records on EVERY
             // mobile video load, both ways -- Dean's first overlay reading
@@ -10319,7 +10480,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // other than 'disabled' or the user later shows it via #cc-btn).
     // v1.196: a TV episode has no subtitles route; leave the track inert (empty
     // src) rather than pointing it at /api/subtitles/:id for a non-video id.
-    if (ccTrack) ccTrack.src = data.statusUrl ? '' : '/api/subtitles/' + id;
+    // v1.399.0 (S7): under nativeVideo the element has no media and the overlay reads the web's own parsed list (ensureNativeCueList
+    // fetches the same document once), so the track stays inert too - the browser must not fetch it a second time.
+    if (ccTrack) ccTrack.src = (data.statusUrl || nativeVideoHold) ? '' : '/api/subtitles/' + id;
     // v1.34 T3: the resolved chapter list rides GET /api/videos/:id; the
     // picker rebuilds per load (and hides on teardown).
     applyChaptersForMedia(data);
@@ -10435,9 +10598,20 @@ if (typeof module !== 'undefined' && module.exports) {
         if (audioVisualFolder) audioVisualFolder.textContent = data.folderName || '';
       }
     } else {
-      nativeAudioClaim(id, data); // v1.397.0: a video load is never native's; native goes silent (audio.stop) before the web plays
+      // v1.399.0: the watch page's bare early load (watch.js initWatch: no type, title, projection or transcode state yet).
+      // Under nativeVideo nothing is decided for it: no src (the web element must never start a video native may own), no
+      // claim (native keeps what it plays); the full-data load that follows is turned into a real load by load() and decides.
+      var nativeVideoDeferred = nativeVideoOn() && typeof data.type !== 'string';
+      // v1.397.0: a video load is never native's; native goes silent (audio.stop) before the web plays. v1.399.0 (S1, S2, S6):
+      // under nativeVideo a library video or a TV episode IS native's - sound and picture - and the element loads nothing (no
+      // src, no poster: it is the proxy, and the page paints a transparent hole where the picture shows through); the S6
+      // stand-downs (360 / VR, the Feed, previews, a rendition still transcoding) keep the web element, as before.
+      if (nativeVideoDeferred) nativeVideoDeferredId = id;
+      else nativeClaimed = nativeAudioClaim(id, data);
       mediaPlayer.style.display = 'block';
       if (skipControls) skipControls.style.display = 'block';
+      if (nativeVideoDeferred) return;
+      if (nativeClaimed) applyNativeVideoClaim(); // the mount ran before the claim: the custom bar, never the native strip; nothing else on the element
 
       // v1.52 instant watch: the item's thumbnail as the video poster --
       // the frame shows a real image the instant the (aspect-reserved)
@@ -10445,7 +10619,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // Audio keeps its own artUrl poster branch above; teardown already
       // strips `poster` on every unload (see teardownMediaState), so a
       // thumbnail can never bleed onto the next item.
-      if (data.hasThumbnail === true) {
+      if (nativeClaimed) {
+        // nothing on the element: native's layer carries the picture, and a poster here would paint over the hole for good
+      } else if (data.hasThumbnail === true) {
         mediaPlayer.poster = '/thumbnail/' + encodeURIComponent(id);
       } else if (typeof data.artUrl === 'string' && data.artUrl) {
         // v1.196: a source with explicit art (a TV episode's /tvposter/:showId)
@@ -10454,13 +10630,17 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.poster = data.artUrl;
       }
 
-      if (data.needsTranscode) {
+      if (nativeClaimed) {
+        // native plays the file route; the web's transcode paths are not for this load
+      } else if (data.needsTranscode) {
         // Desktop live-transcode (/video/:id?live=1) exists only for the main
         // video library. A TV source (identified by its own `statusUrl`) has no
         // live endpoint, so it always takes the await-poll path - fetch streamSrc
         // (a 503 triggers the TV-owned transcode), poll statusUrl, then play the
         // rendition. On desktop a ready rendition still plays immediately below.
-        if (!isMobileViewport() && !data.statusUrl) {
+        // v1.399.0: under nativeVideo (a wide app window too) a rendition that is not ready takes the await-poll path - the
+        // poll claims it for native when it is ready; the live transcode is a web-element stream native cannot play.
+        if (!isMobileViewport() && !data.statusUrl && !nativeVideoOn()) {
           liveMode = true;
         } else if (data.transcodeStatus === 'ready') {
           mediaPlayer.src = streamUrl;
@@ -10506,6 +10686,7 @@ if (typeof module !== 'undefined' && module.exports) {
     state = STATE_FULL;
     applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
+    nativeSurfaceSync(); // v1.399.0 (S3a): the picture returns in the slot
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
     startFrozenSampler(); // v1.362.2 (D5): the dock stopped it; a still-playing expand resumes it (a no-op when the flag is off)
     scheduleCapRefresh(); // (Dean) measure the space below THIS view's player -> --player-cap-h
@@ -10708,6 +10889,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
+    nativeSurfaceSync(); // v1.399.0 (S3a): the dock shows no picture (visible: false; the sound plays on, the thumbnail shows)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 
@@ -10777,6 +10959,7 @@ if (typeof module !== 'undefined' && module.exports) {
     applyMediaAspect(null, null);
     audioCaptionsOn = false;
     hideCaptionOverlay();
+    nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     if (mediaPlayer) {
       try {
         // F5 (two-reviewer gate, structural consistency, v1.27.1
@@ -10900,8 +11083,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // the kind of the Item native plays for OUR load, remembered at the claim (gate r2 adversary A-r2-W1: the live snapshot's
     // queue is empty after native lost its queue, so a snapshot read would refuse the hand-back exactly then)
     var ownedKind = (nativeApiNow && typeof nativeApiNow.ownedKind === 'function') ? nativeApiNow.ownedKind() : null;
-    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind);
+    var ownedSurface = !!(nativeApiNow && typeof nativeApiNow.surfaceOwned === 'function' && nativeApiNow.surfaceOwned());
+    var handBack = isNativeHandBackLoad(adopt, !!(nativeApiNow && typeof nativeApiNow.owns === 'function' && nativeApiNow.owns(id)), data, ownedKind, ownedSurface);
     if (handBack) adopt = false;
+    // v1.399.0: the watch page's bare early load of THIS id was deferred under nativeVideo (setupForMedia: no src, no claim, the
+    // descriptor had no type, title or projection yet); its full-data load is the real load, not an adopt of an empty element
+    if (adopt && nativeVideoDeferredId !== null && nativeVideoDeferredId === id && data && typeof data.type === 'string') adopt = false;
     if (adopt) {
       placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data); // v1.382.0 (gate r1, C1): every load
       // v1.40.0: an adopt reuses the loaded media untouched, but the BROWSE

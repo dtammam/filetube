@@ -63,6 +63,7 @@ test('source seams: the local URL is assigned AFTER the streamSrc block; a local
   assert.match(body, /var localSrc = resolveOfflineLocalSrc\(id, data, /, 'the decision is asked once per load');
   assert.match(body, /data = Object\.assign\(\{\}, data, \{ needsTranscode: false, transcodeStatus: 'ready' \}\);/, 'a local load never enters the transcode branch');
   assert.match(body, /if \(typeof data\.streamSrc === 'string' && data\.streamSrc\) \{\s*\n\s*streamUrl = data\.streamSrc;\s*\n\s*\}\s*\n\s*if \(localSrc\) streamUrl = localSrc;/, 'the phone\'s copy wins over every server URL, right after the streamSrc block');
-  assert.match(body, /\(playingLocal \? Promise\.resolve\(null\) : fetch\('\/api\/settings'\)\)/, 'no settings fetch and no sidecar arm for a local play');
+  // v1.399.0 (S9): a video the app's own player is about to own is answered the same way (nativeVideoHold)
+  assert.match(body, /\(\(playingLocal \|\| nativeVideoHold\) \? Promise\.resolve\(null\) : fetch\('\/api\/settings'\)\)/, 'no settings fetch and no sidecar arm for a local play (nor for a native-video load)');
   assert.ok(body.indexOf('if (localSrc) streamUrl = localSrc;') < body.indexOf("if (data.needsTranscode) {"), 'the swap precedes the transcode branch');
 });
