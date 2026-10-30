@@ -68,7 +68,8 @@ test('A2: the /api/videos-only side effects (dimensions POST, subtitles) are ski
   // dimensions POST guarded
   assert.match(SRC, /if \(!data\.statusUrl\) \{\s*\n\s*fetch\('\/api\/videos\/' \+ encodeURIComponent\(id\) \+ '\/dimensions'/);
   // subtitle track left inert (no /api/subtitles/:id for a tv id)
-  assert.match(SRC, /ccTrack\.src = data\.statusUrl \? '' : '\/api\/subtitles\/' \+ id;/);
+  // v1.399.0 (S7): the same inert track for a video the iPhone app's own player owns (the web parses the VTT itself)
+  assert.match(SRC, /ccTrack\.src = \(data\.statusUrl \|\| nativeVideoHold\) \? '' : '\/api\/subtitles\/' \+ id;/);
 });
 
 // ---- v1.197 (W3): seamless background audio for episodes ---------------------

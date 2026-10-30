@@ -1953,6 +1953,65 @@ function buildCaptionOverlayText(rawCueTexts) {
   return lines.join('\n');
 }
 
+// v1.399.0 native video surface (plan docs/exec-plans/active/2026-10-28-native-video-surface.md, S7): under `nativeVideo` the
+// element has no media, so its TextTrack never advances and `activeCues` stays empty. The overlay is fed instead by a cue list
+// the web parses from the SAME `/api/subtitles/:id` WebVTT and looks up by the proxy's currentTime. The parser is a port of
+// lib/transcript.js parseVttCues (+ cleanCueLine, lib/subtitles.js parseVttTimeMs / VTT_CUE_TIMING_LINE), kept identical and
+// bound to it by test/unit/native-video-surface-captions.test.js: cue-BLOCK aware (only a timing line at a block boundary opens
+// a cue; a payload line that merely looks like one is payload), NOTE / STYLE / REGION blocks and the header skipped, inline
+// tags stripped and the common entities decoded; garbage in => [] out. Pure, DOM-free.
+var VTT_CUE_TIMING_LINE = /^\s*((?:\d{1,2}:)?\d{1,2}:\d{2}\.\d{3})\s*-->\s*((?:\d{1,2}:)?\d{1,2}:\d{2}\.\d{3})(.*)$/;
+var VTT_ENTITY_MAP = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ', '&lrm;': '', '&rlm;': '' };
+function parseVttTimeMs(str) {
+  var m = /^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\.(\d{3})$/.exec(String(str).trim());
+  if (!m) return NaN;
+  var hours = m[1] !== undefined ? Number(m[1]) : 0;
+  return ((hours * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000 + Number(m[4]);
+}
+function cleanVttCueLine(text) {
+  var raw = typeof text === 'string' ? text : '';
+  return raw
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(amp|lt|gt|quot|#39|apos|nbsp|lrm|rlm);/g, function (m) { return VTT_ENTITY_MAP[m]; })
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function parseVttCues(text) {
+  var raw = typeof text === 'string' ? text : '';
+  var lines = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  var cues = [];
+  var current = null;
+  var inSkippedBlock = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line === '' || (!current && line.trim() === '')) { current = null; inSkippedBlock = false; continue; }
+    if (current) { var cleaned = cleanVttCueLine(line); if (cleaned !== '') current.lines.push(cleaned); continue; }
+    if (inSkippedBlock) continue;
+    var m = VTT_CUE_TIMING_LINE.exec(line);
+    if (m) {
+      var startMs = parseVttTimeMs(m[1]);
+      var endMs = parseVttTimeMs(m[2]);
+      if (!isFinite(startMs) || !isFinite(endMs)) { inSkippedBlock = true; continue; }
+      current = { startMs: startMs, endMs: endMs, lines: [] };
+      cues.push(current);
+      continue;
+    }
+    if (/^(NOTE|STYLE|REGION)\b/.test(line.trim()) || /^WEBVTT/.test(line.trim())) { inSkippedBlock = true; continue; }
+  }
+  return cues;
+}
+// The cues showing at `tSec` (start <= t < end, as TextTrack.activeCues), in document order, shaped like cues for the overlay.
+function vttCuesActiveAt(cues, tSec) {
+  var out = [];
+  var ms = Number(tSec) * 1000;
+  if (!Array.isArray(cues) || !isFinite(ms)) return out;
+  for (var i = 0; i < cues.length; i++) {
+    var c = cues[i];
+    if (c && ms >= c.startMs && ms < c.endMs && c.lines.length) out.push({ text: c.lines.join('\n') });
+  }
+  return out;
+}
+
 // ---- v1.43.1 B2: chapters-menu height clamp (pure math) --------------------
 // The chapters popup opens UPWARD from the control bar inside #player-wrapper,
 // which is overflow:hidden and (mobile portrait) max-height-capped at 45vh —
@@ -2189,6 +2248,7 @@ if (typeof module !== 'undefined' && module.exports) {
     queuePointerMatchesPlaying,
     isAdoptLoad,
     isNativeHandBackLoad, // v1.398.0 (S1)
+    parseVttCues, vttCuesActiveAt, cleanVttCueLine, // v1.399.0 (S7): captions from the proxy time
     nativeHandBackCarry,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     resolveExplicitStart, // v1.352 L1: &t= on a watch link
@@ -2455,6 +2515,11 @@ if (typeof module !== 'undefined' && module.exports) {
     img.src = '/storyboard/' + encodeURIComponent(id);
   }
   var audioCaptionsOn = false;
+  // v1.399.0 (S7): the parsed cue list for the video native plays ({ id, cues } once loaded, { id, cues: null } while the fetch is
+  // in flight), and the 250 ms repaint loop that reads the proxy's extrapolated currentTime while captions are on (the proxy fires
+  // timeupdate about once a second, a cue boundary deserves better)
+  var nativeCueList = null;
+  var nativeCcTimer = null;
 
   // v1.26.4 (frozen audio-CC overlay, on-device iOS bug): the last text this
   // controller actually PAINTED into `ccOverlayTextEl` (or `null` when
@@ -3322,7 +3387,8 @@ if (typeof module !== 'undefined' && module.exports) {
   function renderActiveCueOverlay(track) {
     if (!ccOverlayEl || !ccOverlayTextEl) return;
     var rawTexts = [];
-    var cues = track && track.activeCues;
+    // v1.399.0 (S7): a video native plays has no cues in its TextTrack; the parsed list, looked up at the proxy's time, is the source
+    var cues = nativeSurfaceOwned() ? nativeActiveCues() : (track && track.activeCues);
     if (cues) {
       for (var i = 0; i < cues.length; i++) {
         if (cues[i] && typeof cues[i].text === 'string') rawTexts.push(cues[i].text);
@@ -3356,7 +3422,40 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ccOverlayTextEl) ccOverlayTextEl.textContent = '';
     if (ccOverlayEl) ccOverlayEl.hidden = true;
     lastCcOverlayText = null;
+    stopNativeCcLoop();
   }
+  // v1.399.0 (S7): the cue list for the current native video. Fetched once per item at the first CC-on (the same document the
+  // <track> would load - its src is left empty under nativeVideo so the browser never fetches it twice); `liveOffset` is never
+  // set for a native load. A TV episode has no subtitles route (as for the track).
+  function nativeActiveCues() {
+    if (!nativeCueList || nativeCueList.id !== currentId || !Array.isArray(nativeCueList.cues) || !mediaPlayer) return [];
+    return vttCuesActiveAt(nativeCueList.cues, mediaPlayer.currentTime);
+  }
+  function ensureNativeCueList() {
+    if (!nativeSurfaceOwned() || !currentId || !currentData || !currentData.hasSubtitles || currentData.statusUrl) return;
+    if (nativeCueList && nativeCueList.id === currentId) return;
+    var id = currentId;
+    var gen = loadGeneration;
+    nativeCueList = { id: id, cues: null };
+    var p;
+    try { p = fetch('/api/subtitles/' + encodeURIComponent(id)); } catch (_) { nativeCueList = null; return; }
+    Promise.resolve(p)
+      .then(function (res) { return res && res.ok ? res.text() : ''; })
+      .then(function (text) {
+        if (gen !== loadGeneration || currentId !== id) return; // a newer load: this list is nobody's
+        nativeCueList = { id: id, cues: parseVttCues(text) };
+        if (audioCaptionsOn && ccTrack) renderActiveCueOverlay(ccTrack.track);
+      })
+      .catch(function () { if (nativeCueList && nativeCueList.id === id && nativeCueList.cues === null) nativeCueList = null; }); // a failed fetch: the next CC-on retries
+  }
+  function startNativeCcLoop() {
+    if (nativeCcTimer || !nativeSurfaceOwned()) return;
+    nativeCcTimer = setInterval(function () {
+      if (!audioCaptionsOn || !currentData || !nativeSurfaceOwned()) { stopNativeCcLoop(); return; }
+      if (ccTrack) renderActiveCueOverlay(ccTrack.track);
+    }, 250);
+  }
+  function stopNativeCcLoop() { if (nativeCcTimer) { clearInterval(nativeCcTimer); nativeCcTimer = null; } }
 
   // ---- Media Session ("Now Playing" control surface) -------------------------
   // Hardens the CONTROL SURFACE (accurate metadata, play/pause state, scrubber
@@ -8777,7 +8876,7 @@ if (typeof module !== 'undefined' && module.exports) {
         track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
         ccBtn.classList.toggle('active', audioCaptionsOn);
         ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
-        if (audioCaptionsOn) renderActiveCueOverlay(track);
+        if (audioCaptionsOn) { ensureNativeCueList(); startNativeCcLoop(); renderActiveCueOverlay(track); } // v1.399.0 (S7): both are no-ops unless native plays the video
         else hideCaptionOverlay();
       });
     }
@@ -9396,7 +9495,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // touch the DOM on an actual cue change).
     mediaPlayer.addEventListener('timeupdate', function () {
       if (!audioCaptionsOn || !currentData) return;
-      if (ccTrack && ccTrack.track) renderActiveCueOverlay(ccTrack.track);
+      // v1.399.0 (S7): a browser's <track> always has its TextTrack; the proxy's timeupdate (a native tick or a seek) repaints
+      // the overlay from the parsed list, with or without one
+      if (ccTrack) renderActiveCueOverlay(ccTrack.track);
     });
 
     // Click/tap-the-cover-art-to-play/pause (AC9): acts ONLY while FULL --
@@ -9995,6 +10096,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the overlay itself (mirrors the CC button reset just above).
     audioCaptionsOn = false;
     hideCaptionOverlay();
+    nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     // Feature A (v1.26.1, Shorts player-size jump): clear the reserved
     // aspect + portrait marker for the OUTGOING media -- a previous
     // portrait item's `--media-aspect`/`.portrait-media` must never leak
@@ -10352,7 +10454,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // other than 'disabled' or the user later shows it via #cc-btn).
     // v1.196: a TV episode has no subtitles route; leave the track inert (empty
     // src) rather than pointing it at /api/subtitles/:id for a non-video id.
-    if (ccTrack) ccTrack.src = data.statusUrl ? '' : '/api/subtitles/' + id;
+    // v1.399.0 (S7): under nativeVideo the element has no media and the overlay reads the web's own parsed list (ensureNativeCueList
+    // fetches the same document once), so the track stays inert too - the browser must not fetch it a second time.
+    if (ccTrack) ccTrack.src = (data.statusUrl || nativeVideoHold) ? '' : '/api/subtitles/' + id;
     // v1.34 T3: the resolved chapter list rides GET /api/videos/:id; the
     // picker rebuilds per load (and hides on teardown).
     applyChaptersForMedia(data);
@@ -10829,6 +10933,7 @@ if (typeof module !== 'undefined' && module.exports) {
     applyMediaAspect(null, null);
     audioCaptionsOn = false;
     hideCaptionOverlay();
+    nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     if (mediaPlayer) {
       try {
         // F5 (two-reviewer gate, structural consistency, v1.27.1

@@ -427,3 +427,25 @@ close button would be covered). W1 freezes after the ruling.
   web view's own `backgroundColor` shows in the overscroll bounce (the hole layer covers the document only) - set it to the
   app's neutral; pinch-zoom (visual viewport) is not compensated in document rects.
 
+### W4 - captions from the proxy time (2026-10-30)
+
+- **The parser:** player.js `parseVttCues` / `cleanVttCueLine` / `vttCuesActiveAt` (pure, exported) - a port of lib/transcript.js
+  parseVttCues + cleanCueLine and lib/subtitles.js parseVttTimeMs / VTT_CUE_TIMING_LINE, kept identical (no client module can
+  require the server's; the port is BOUND equal to the server parser on a fixture with a BOM, CRLF, header fields, a NOTE block
+  holding a timing line, a cue identifier, tags and entities, a rolling cue's whitespace-only first line, a timing-looking payload
+  line, a malformed timing block and a STYLE block). No new file: the parser rides player.js next to the overlay it feeds.
+- **The feed:** `renderActiveCueOverlay` reads `vttCuesActiveAt(list, mediaPlayer.currentTime)` under `nativeSurfaceOwned()`
+  (start inclusive, end exclusive, as TextTrack.activeCues) and the TextTrack otherwise; the same `buildCaptionOverlayText` and
+  the same overlay element. `ensureNativeCueList` fetches `/api/subtitles/:id` ONCE per item at the first CC-on (never for a TV
+  episode: no route; a failed fetch retries at the next CC-on; a superseded load's list is dropped by generation); the `<track>`
+  src is left empty under nativeVideo so the browser never fetches the document a second time. Repaints: the proxy's `timeupdate`
+  (a native tick about once a second, a seek) plus a 250 ms loop while captions are on (the proxy's extrapolated position crosses
+  cue boundaries between ticks); CC-off and the teardown stop the loop and the teardown drops the list.
+- **Tests:** test/unit/native-video-surface-captions.test.js (5: the port equals the server parser, the lookup's boundaries, the
+  overlay following ticks / snapshots / a proxy seek / the loop past a cue end with CC-off and a cached CC-on, a new item and a
+  TV episode, the S11 control: the track carries /api/subtitles/:id and the page fetches nothing). tv-player-source A2's pinned
+  track-src line updated (the TV claim still holds). **Mutants (9):** C1 overlay reads the track, C2 end inclusive, C3 refetch per
+  CC-on, C4 track src under native, C5 loop without repaint, C8 TV fetch, C9 NOTE not skipped (bound after the fixture gained a
+  NOTE block with a timing line) - red; C6 (loop not stopped at CC-off) and C7 (list kept across items) survive as EQUIVALENT:
+  the loop's own guard ends it on the next beat and the id check refetches for a new item; both lines stay as hygiene.
+

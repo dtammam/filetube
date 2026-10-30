@@ -145,7 +145,9 @@ test('wireHostListeners() exists and is isolated for inspection', () => {
 
 test('a timeupdate fallback is wired on mediaPlayer, gated on audioCaptionsOn (audio+video overlay captions since v1.124 F1)', () => {
   const body = wireHostListenersMatch[1];
-  const tuMatch = /mediaPlayer\.addEventListener\('timeupdate', function \(\) \{\s*\n\s*if \(!audioCaptionsOn \|\| !currentData\) return;\s*\n\s*if \(ccTrack && ccTrack\.track\) renderActiveCueOverlay\(ccTrack\.track\);\s*\n\s*\}\);/.exec(body);
+  // v1.399.0 (S7): the call is gated on the <track> element alone (a browser's track always has its TextTrack; the iPhone app's
+  // proxied video repaints from the web's parsed cue list with or without one); a comment sits between the two lines.
+  const tuMatch = /mediaPlayer\.addEventListener\('timeupdate', function \(\) \{\s*\n\s*if \(!audioCaptionsOn \|\| !currentData\) return;\s*\n(?:\s*\/\/[^\n]*\n)*\s*if \(ccTrack\) renderActiveCueOverlay\(ccTrack\.track\);\s*\n\s*\}\);/.exec(body);
   assert.ok(tuMatch, 'expected a gated mediaPlayer timeupdate listener calling renderActiveCueOverlay(ccTrack.track)');
 });
 
