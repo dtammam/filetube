@@ -409,7 +409,17 @@
       if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; }
       aboveHold = 0; belowPending = false;
       occludeClear();
+      dockClassApply(false);
       holeApply(null, target);
+    }
+    // v1.401.0 (R3): html.ft-native-dock while the docked picture is native's above layer (style.css: the X moves into the bar, the
+    // caption strip under the picture). Kept while the dock is covered (R4: the thumbnail dock keeps the bar layout, nothing jumps);
+    // removed on expand, close and every stand-down (surfaceOff). Idempotent: the html class is a placement signal the observer hears.
+    function dockClassApply(on) {
+      var de = win.document.documentElement;
+      if (!de || !de.classList) return;
+      if (on) { if (!de.classList.contains('ft-native-dock')) de.classList.add('ft-native-dock'); }
+      else if (de.classList.contains('ft-native-dock')) de.classList.remove('ft-native-dock');
     }
     function surfaceMeasure() {
       var doc = win.document;
@@ -463,6 +473,7 @@
       var m = null;
       try { surfaceWatchContainer(); m = surfaceMeasure(); } catch (_) { return; } // a window being torn down: nothing to place
       if (!m) { if (el) surfaceOff(el); return; }
+      try { dockClassApply(!!(m.docked && dockOn)); } catch (_) { /* a paint detail never breaks playback */ }
       var msg = { rect: m.rect, space: m.space, visible: m.visible, fit: m.fit, radius: m.radius };
       if (m.layer) msg.layer = m.layer;
       var same = surfaceLast && JSON.stringify(surfaceLast) === JSON.stringify(msg);

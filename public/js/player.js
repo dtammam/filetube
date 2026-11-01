@@ -1140,6 +1140,9 @@ function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); 
 function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
 // ...and native plays the CURRENT video with its picture (the web's controls, captions and skins are on top; the element is the proxy)
 function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof n.surfaceOwned === 'function' && n.surfaceOwned()); }
+// v1.401.0 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md): the host also announces `nativeVideoDock` - a docked surface
+// video shows LIVE above the web view, so the dock carries the bar layout (the X in the bar) and the caption strip (R3)
+function nativeDockLive() { var n = nativeAudioApi(); return !!(n && typeof n.dockLive === 'function' && n.dockLive()); }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
@@ -2515,6 +2518,12 @@ if (typeof module !== 'undefined' && module.exports) {
     img.src = '/storyboard/' + encodeURIComponent(id);
   }
   var audioCaptionsOn = false;
+  // v1.401.0 (R3): the ONE writer of the captions flag. It also marks the host (`is-cc-on`) so style.css can hold the dock's caption
+  // strip open while captions are on (html.ft-native-dock: a fixed two-line strip between the picture and the bar; L3), never per cue.
+  function setCaptionsOn(on) {
+    audioCaptionsOn = !!on;
+    if (host && host.classList) host.classList.toggle('is-cc-on', audioCaptionsOn);
+  }
   // v1.399.0 (S7): the parsed cue list for the video native plays ({ id, cues } once loaded, { id, cues: null } while the fetch is
   // in flight), and the 250 ms repaint loop that reads the proxy's extrapolated currentTime while captions are on (the proxy fires
   // timeupdate about once a second, a cue boundary deserves better)
@@ -5765,7 +5774,10 @@ if (typeof module !== 'undefined' && module.exports) {
     var w = parseFloat(cs.width), right = parseFloat(cs.right), bottom = parseFloat(cs.bottom);
     var bar = parseFloat(cs.getPropertyValue('--size-touch'));
     if (!isFinite(w) || !isFinite(right) || !isFinite(bottom) || w <= 0) return null;
-    var h = w * 9 / 16 + (isFinite(bar) ? bar : 0);
+    // v1.401.0 (R3): with the live docked picture (nativeVideoDock) and captions on, the dock also carries the caption strip between
+    // the picture and the bar (style.css --ft-dock-cc-h on #player-dock), so the pull aims at the taller dock
+    var strip = (audioCaptionsOn && nativeSurfaceOwned() && nativeDockLive()) ? parseFloat(cs.getPropertyValue('--ft-dock-cc-h')) : 0;
+    var h = w * 9 / 16 + (isFinite(bar) ? bar : 0) + (isFinite(strip) ? strip : 0);
     return { x: window.innerWidth - right - w, y: window.innerHeight - bottom - h, w: w };
   }
 
@@ -8890,7 +8902,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // audio path already uses puts captions ABOVE the bar in every view, and
         // `mode='showing'` is no longer set anywhere. `audioCaptionsOn` is the
         // overlay's on/off flag for both media types now.
-        audioCaptionsOn = !audioCaptionsOn;
+        setCaptionsOn(!audioCaptionsOn);
         track.mode = audioCaptionsOn ? 'hidden' : 'disabled';
         ccBtn.classList.toggle('active', audioCaptionsOn);
         ccBtn.setAttribute('aria-pressed', audioCaptionsOn ? 'true' : 'false');
@@ -10112,7 +10124,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Feature B (v1.26.1): the outgoing media's caption overlay must never
     // bleed into the next item -- reset the on/off flag and force-hide/clear
     // the overlay itself (mirrors the CC button reset just above).
-    audioCaptionsOn = false;
+    setCaptionsOn(false);
     hideCaptionOverlay();
     nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     // Feature A (v1.26.1, Shorts player-size jump): clear the reserved
@@ -10973,7 +10985,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // genuine non-adopt load next time) but leaves nothing stale on the
     // detached host.
     applyMediaAspect(null, null);
-    audioCaptionsOn = false;
+    setCaptionsOn(false);
     hideCaptionOverlay();
     nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     if (mediaPlayer) {

@@ -259,3 +259,147 @@ test('the capability is readable by the player (dockLive) and false without it',
     assert.strictEqual(r2.na.dockLive(), false);
   } finally { r1.close(); r2.close(); }
 });
+
+// ---- W3 (R3, L2 + L3): the dock's look with a live picture ------------------------------------------------------------------------
+
+const htmlOn = (r) => r.w.document.documentElement.classList.contains('ft-native-dock');
+
+test('R3: html.ft-native-dock is on exactly while the dock holds a live surface video - off in the slot, on from dock() (and from the fly-in\'s first frame), off on the expand tick, off on close(); never without the capability', async () => {
+  const r = realm();
+  try {
+    await loaded(r);
+    assert.strictEqual(htmlOn(r), false, 'in the slot: off');
+    r.player.dock();
+    assert.strictEqual(htmlOn(r), true, 'docked: on in the same tick');
+    await settle(80);
+    assert.strictEqual(htmlOn(r), true, 'and it stays');
+    r.player.expand(r.slot);
+    assert.strictEqual(htmlOn(r), false, 'expand: off on the tick the hole opens (before the below post)');
+    await settle(60);
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.strictEqual(htmlOn(r), true, 'the fly-in\'s first frame carries the bar layout already');
+    await settle(400);
+    assert.strictEqual(htmlOn(r), true);
+    r.player.close();
+    assert.strictEqual(htmlOn(r), false, 'close: off');
+  } finally { r.close(); }
+});
+
+test('R3 CONTROL: without nativeVideoDock the class never appears across dock / expand / close; a music track in the dock never carries it', async () => {
+  const r = realm({ caps: VIDEO_CAPS });
+  try {
+    await loaded(r);
+    r.player.dock(); await settle(40);
+    assert.strictEqual(htmlOn(r), false);
+    r.player.expand(r.slot); await settle(40);
+    r.player.dock(); await settle(40);
+    assert.strictEqual(htmlOn(r), false);
+    r.player.close();
+    assert.strictEqual(htmlOn(r), false);
+  } finally { r.close(); }
+  const r2 = realm();
+  try {
+    await loaded(r2);
+    r2.player.dock(); await settle(40);
+    assert.strictEqual(htmlOn(r2), true);
+    const TRACK = { id: 't1', type: 'audio', title: 'Song', channelName: 'Band', album: 'LP', duration: 200, artUrl: '/albumart/t1', resumeMode: 'music', readerHref: '/music?nowplaying=1', progressEndpoint: '/api/music/progress', nativeQueue: () => ({ items: [{ id: 't1', type: 'audio', title: 'Song', channelName: 'Band', album: 'LP', duration: 200, artUrl: '/albumart/t1', resumeMode: 'music', progressEndpoint: '/api/music/progress' }], index: 0 }) };
+    r2.player.load('t1', TRACK, { slot: r2.slot }); await settle(80);
+    assert.strictEqual(htmlOn(r2), false, 'a track (no picture) drops the live-dock layout at its load');
+    r2.player.dock(); await settle(40);
+    assert.strictEqual(r2.player.getState(), 'docked', 'the track plays in the dock');
+    assert.strictEqual(htmlOn(r2), false, 'and the dock with a track never carries it');
+  } finally { r2.close(); }
+});
+
+function withCaptions(r) {
+  // jsdom has no TextTrack: the CC button reads textTracks[0] and flips its mode
+  const fakeTrack = { mode: 'disabled', activeCues: null, addEventListener() {}, removeEventListener() {} };
+  Object.defineProperty(r.w.HTMLMediaElement.prototype, 'textTracks', { configurable: true, get() { return [fakeTrack]; } });
+  return { ccBtn: () => r.wrapper().querySelector('#cc-btn'), ccOn: () => r.wrapper().classList.contains('is-cc-on') };
+}
+const VIDEO_CC = Object.assign({}, VIDEO, { hasSubtitles: true });
+
+test('R3 (L3): the ONE captions writer marks the host is-cc-on while captions are on - the CC button toggles it, close() and a new load clear it', async () => {
+  const r = realm();
+  try {
+    const c = withCaptions(r);
+    r.player.load('v1', VIDEO_CC, { slot: r.slot }); await settle(80);
+    r.fake.emit(STATE(r.fake.of('audio.load')[0].rev)); await settle(60);
+    assert.strictEqual(c.ccOn(), false, 'captions start off');
+    c.ccBtn().click();
+    assert.strictEqual(c.ccOn(), true, 'CC on: the mark is on');
+    assert.strictEqual(c.ccBtn().getAttribute('aria-pressed'), 'true');
+    c.ccBtn().click();
+    assert.strictEqual(c.ccOn(), false, 'CC off: gone');
+    c.ccBtn().click(); assert.strictEqual(c.ccOn(), true);
+    r.player.load('v2', Object.assign({}, VIDEO_CC, { id: 'v2' }), { slot: r.slot }); await settle(80);
+    assert.strictEqual(c.ccOn(), false, 'a new load resets captions, mark included');
+    c.ccBtn().click(); assert.strictEqual(c.ccOn(), true);
+    const hostEl = r.wrapper(); // close() detaches the host: read the mark on the element itself
+    r.player.close();
+    assert.strictEqual(hostEl.classList.contains('is-cc-on'), false, 'close clears it');
+  } finally { r.close(); }
+});
+
+// the dock's CSS, as the phone sees it (jsdom has no stylesheet: inline styles + the custom properties player.js reads)
+function dockGeometry(r) {
+  const d = r.w.document.getElementById('player-dock');
+  d.style.right = '8px'; d.style.bottom = '80px'; d.style.width = '160px'; d.style.setProperty('--size-touch', '44px'); d.style.setProperty('--ft-dock-cc-h', '32px');
+  Object.defineProperty(r.w, 'innerHeight', { value: 664, configurable: true }); Object.defineProperty(r.w, 'innerWidth', { value: 390, configurable: true });
+}
+function touch(w, el, type, x, y, stamp) {
+  const e = new w.Event(type, { bubbles: true, cancelable: true });
+  const list = [{ clientX: x, clientY: y }];
+  Object.defineProperty(e, 'touches', { value: type === 'touchend' || type === 'touchcancel' ? [] : list });
+  Object.defineProperty(e, 'changedTouches', { value: list });
+  Object.defineProperty(e, 'timeStamp', { value: stamp });
+  el.dispatchEvent(e); return e;
+}
+// a slow pull (never a flick) from the picture's top band down by dy, 10 px per 40 ms
+function pull(r, dy) { let t = 1000; touch(r.w, r.el(), 'touchstart', 200, 320, t); for (let d = 10; d <= dy; d += 10) { t += 40; touch(r.w, r.el(), 'touchmove', 200, 320 + d, t); } return t; }
+const scaleOf = (tr) => { const m = /scale\(([-\d.]+)\)/.exec(tr || ''); return m ? +m[1] : null; };
+const playerMod = require('../../public/js/player.js');
+
+test('R3: the pull aims at the dock WITH the caption strip while captions are on under nativeVideoDock (dockRestingRect reads --ft-dock-cc-h); without captions, or without the capability, at the bare dock', async () => {
+  const from = { x: 0, y: 300, w: 393 };
+  const expectS = (stripH) => playerMod.minimizeDragTransform({ from, to: { x: 390 - 8 - 160, y: 664 - 80 - (160 * 9 / 16 + 44 + stripH), w: 160 }, dy: 100 }).s;
+  assert.notStrictEqual(expectS(32).toFixed(4), expectS(0).toFixed(4), 'the two targets tell apart at dy 100');
+  for (const [label, caps, cc, stripH] of [['dock cap + captions on', DOCK_CAPS, true, 32], ['dock cap, captions off', DOCK_CAPS, false, 0], ['no dock cap, captions on', VIDEO_CAPS, true, 0]]) {
+    const r = realm({ caps });
+    try {
+      const c = withCaptions(r);
+      dockGeometry(r);
+      r.player.load('v1', VIDEO_CC, { slot: r.slot }); await settle(80);
+      r.fake.emit(STATE(r.fake.of('audio.load')[0].rev)); await settle(60);
+      if (cc) { c.ccBtn().click(); assert.strictEqual(c.ccOn(), true, label); }
+      pull(r, 100);
+      const s = scaleOf(r.wrapper().style.transform);
+      assert.ok(s !== null, label + ': the pull claimed and moved the picture: ' + r.wrapper().style.transform);
+      assert.strictEqual(s.toFixed(4), expectS(stripH).toFixed(4), label + ': the scale at dy 100 follows the dock height ' + (160 * 9 / 16 + 44 + stripH));
+      touch(r.w, r.el(), 'touchcancel', 200, 420, 2000);
+    } finally { r.close(); }
+  }
+});
+
+test('R3 source lock: style.css carries the live-dock block after the dock\'s base and mobile rules - the X in the bar at a full thumb, the strip height, the is-cc-on reserve, the strip rule, and the strip height on #player-dock unconditionally', () => {
+  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = (sel) => { const re = new RegExp('(?:^|\\n)' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ' \\{([^}]*)\\}'); const m = re.exec(css); assert.ok(m, 'rule exists: ' + sel); return { body: m[1], at: m.index }; };
+  const x = rule('html.ft-native-dock #player-dock .player-dock-close');
+  for (const d of ['top: auto', 'bottom: 0', 'right: 0', 'width: var(--size-touch)', 'height: var(--size-touch)', 'background: transparent']) assert.ok(x.body.includes(d), 'the X: ' + d);
+  assert.match(x.body, /z-index: calc\(var\(--z-sticky\) - 21\)/, 'the X paints over the bar (8)');
+  const bar = rule('html.ft-native-dock #player-dock .player-controls');
+  assert.ok(bar.body.includes('height: var(--size-touch)') && /padding: 0 var\(--size-touch\) 0 var\(--space-3\)/.test(bar.body), 'the bar reserves the X\'s seat');
+  const cc = rule('html.ft-native-dock #player-dock #player-wrapper.is-cc-on');
+  assert.match(cc.body, /padding-bottom: calc\(var\(--size-touch\) \+ var\(--ft-dock-cc-h\)\)/, 'the reserve grows by the strip while captions are on');
+  const strip = rule('html.ft-native-dock #player-dock .cc-overlay');
+  assert.ok(strip.body.includes('bottom: var(--size-touch)') && strip.body.includes('height: var(--ft-dock-cc-h)'), 'the strip sits between the picture and the bar at a fixed height');
+  const dock = /\n#player-dock \{\n {2}--ft-dock-cc-h: var\(--size-control-sm\); *\n\}/.exec(css);
+  assert.ok(dock, 'the strip height is defined on #player-dock itself (dockRestingRect reads it before the dock shows)');
+  // placement: after the mobile M5 block's own .player-dock-close rule and after the dock caption clamp
+  const m5 = css.indexOf('#player-dock .player-dock-close {\n    top: 0;');
+  const clamp = css.indexOf('#player-dock .cc-overlay-text {\n  font-size: var(--fs-xs);');
+  assert.ok(m5 > 0 && clamp > 0 && x.at > m5 && x.at > clamp, 'file order: the live-dock block follows the rules it overrides');
+  // a hidden caption overlay still collapses (the strip is the wrapper's reserve, not the overlay's box)
+  assert.ok(/\.cc-overlay\[hidden\] \{\n {2}display: none;\n\}/.test(css));
+});
