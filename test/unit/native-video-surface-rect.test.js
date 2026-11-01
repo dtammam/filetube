@@ -177,7 +177,7 @@ test('v1.401.1 (WebKit poster repaint): on every dock the poster set is followed
       assert.strictEqual(el.hidden, false, 'the element is shown again');
       // idle docked: an unchanged poster writes nothing
       log.length = 0;
-      r.na.sync && r.na.sync();
+      r.na.syncSurface(); r.na.syncSurface();
       await settle(120);
       assert.deepStrictEqual(log, [], 'idle docked: no poster / hidden / layout-read writes (' + log.join(',') + ')');
       r.player.expand(r.slot);
