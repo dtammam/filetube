@@ -134,6 +134,12 @@ test('M9: bulkSummary says what happened, once, with the failures and the refusa
   assert.strictEqual(bulkSummary('move', { ok: 1, failed: 0, refusal: "You don't have permission for that." }),
     "Moved 1 item. You don't have permission for that.");
   assert.strictEqual(bulkSummary('like', { ok: 0, failed: 0, refusal: 'Sign in again to continue.' }), 'Nothing was liked. Sign in again to continue.');
+  // Reheat (M6): one request; ok = the server's eligible count, requested = what the bar sent
+  assert.strictEqual(bulkSummary('reheat', { ok: 3, failed: 0, refusal: null, requested: 3 }), 'Reheating 3 items.');
+  assert.strictEqual(bulkSummary('reheat', { ok: 1, failed: 0, refusal: null, requested: 1 }), 'Reheating 1 item.');
+  assert.strictEqual(bulkSummary('reheat', { ok: 10, failed: 0, refusal: null, requested: 12 }), 'Reheating 10 of 12.');
+  assert.strictEqual(bulkSummary('reheat', { ok: 0, failed: 0, refusal: null, requested: 2 }), 'Nothing to reheat.');
+  assert.strictEqual(bulkSummary('reheat', { ok: 0, failed: 0, refusal: 'A reheat is already running.', requested: 2 }), 'Nothing to reheat. A reheat is already running.');
 });
 
 test('requestQueueAdd (common.js): the silent queue add resolves the body and rejects with the status', async () => {

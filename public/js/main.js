@@ -807,6 +807,8 @@ function bulkSummary(action, r) {
   else if (action === 'watched') head = n === 0 ? 'Nothing was marked watched.' : 'Marked ' + noun(n) + ' watched.';
   else if (action === 'move') head = n === 0 ? 'Nothing was moved.' : 'Moved ' + noun(n) + '.';
   else if (action === 'delete') head = n === 0 ? 'Nothing was moved to Trash.' : 'Moved ' + noun(n) + ' to Trash.';
+  // Reheat (M6): ONE request; `n` is the server's eligible count, `requested` what the bar sent.
+  else if (action === 'reheat') head = n === 0 ? 'Nothing to reheat.' : (typeof r.requested === 'number' && r.requested !== n ? 'Reheating ' + n + ' of ' + r.requested + '.' : 'Reheating ' + noun(n) + '.');
   else head = n === 0 ? 'Nothing was done.' : 'Done: ' + noun(n) + '.';
   const parts = [head];
   if (r.failed > 0) parts.push(r.failed + ' failed.');
@@ -3800,6 +3802,10 @@ const PreviewCards = (function () {
       paintSelectBar();
       const r = { ok: 0, failed: 0, refusal: null };
       try {
+        if (action === 'reheat') { // M6: one ids-scoped request, never a per-card loop (the route is single-flight)
+          await runBulkReheat(items, r);
+          return;
+        }
         for (const it of items) {
           if (shown.aborted || signal.aborted || !selectMode) break;
           const res = await runBulkOne(action, it, opt);
@@ -3809,6 +3815,7 @@ const PreviewCards = (function () {
         }
       } finally {
         bulkBusy = false;
+        if (action === 'reheat') afterBulk(action, r);
       }
       if (action === 'queue' && r.ok > 0 && typeof refreshQueueChrome === 'function') refreshQueueChrome();
       if (action === 'watchlater' && r.ok > 0 && sidebarFoldersList && typeof applyWatchLaterSidebarEntry === 'function') applyWatchLaterSidebarEntry(sidebarFoldersList, { force: true });
@@ -3821,8 +3828,40 @@ const PreviewCards = (function () {
       else syncSelection();
     }
 
-    // The verbs the later waves add (W2 reheat, W3 Move to folder / Move to Trash). Until they
-    // land, an id that reaches here is a per-item failure, never a silent success.
+    // Reheat (M6, W2): ONE `POST /api/ytdlp/repull-metadata` with the selected ids in grid order
+    // (the library batch route, narrowed server side; its single-flight latch, visibility
+    // predicate, cancel and progress chip are the existing ones). A 202 unticks every sent id -
+    // the server owns the run from here and the download status chip shows its progress; the
+    // summary says how many the server counted eligible ("Reheating 10 of 12." when a sent id was
+    // hidden, unknown or not reheatable - never which). 409 / 403 / 401 are refusals in the
+    // per-item verb's own words; anything else is a failure that keeps the cards ticked.
+    async function runBulkReheat(items, r) {
+      const ids = items.map((it) => String(it.id));
+      r.requested = ids.length;
+      try {
+        const res = await fetch('/api/ytdlp/repull-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (res.status === 202 && body && body.started === true) {
+          r.ok = typeof body.eligible === 'number' ? body.eligible : ids.length;
+          ids.forEach((id) => selected.delete(id));
+          return;
+        }
+        if (res.status === 409) { r.refusal = 'A reheat is already running.'; return; }
+        if (res.status === 403) { r.refusal = 'Read-only mode: reheat is disabled on this instance.'; return; }
+        if (res.status === 401) { r.refusal = bulkRefusal(401); return; }
+        r.failed = ids.length;
+        r.refusal = (body && typeof body.error === 'string' && body.error) || null;
+      } catch (_) {
+        r.failed = ids.length;
+      }
+    }
+
+    // The verbs W3 adds (Move to folder / Move to Trash). Until they land, an id that reaches
+    // here is a per-item failure, never a silent success.
     async function runBulkOneLater() {
       return { status: 'failed' };
     }

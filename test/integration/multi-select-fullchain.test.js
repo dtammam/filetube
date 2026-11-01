@@ -106,6 +106,13 @@ function makeFetchStub(opts) {
     if (url === '/api/queue' && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ entries: [] }) });
     }
+    if (url === '/api/ytdlp/repull-metadata' && method === 'POST') {
+      const ids = JSON.parse(init.body).ids;
+      const r = opts.reheat || {};
+      const status = typeof r.status === 'number' ? r.status : 202;
+      const json = r.body || { started: true, eligible: typeof r.eligible === 'number' ? r.eligible : ids.length, ineligible: 0, withSourceId: ids.length, requested: ids.length };
+      return Promise.resolve({ ok: status < 300, status, json: async () => json });
+    }
     return new Promise(() => {}); // pins / bell / the next view's html - irrelevant here
   };
   return { fetchImpl, calls, setItems: (next) => { items = next; } };
@@ -547,4 +554,90 @@ test('M9: a second tap while a run is in flight does nothing (the verbs are disa
     assert.strictEqual(requests(calls, 'POST', '/api/queue/items').length, 6, 'exactly one request per card');
     assert.deepStrictEqual(toasts(document), ['Added 6 items to the queue.']);
   } finally { dom.window.close(); }
+});
+
+// ---- W2: Reheat (M6) ---------------------------------------------------------------------------
+
+test('M6 Reheat: ONE POST /api/ytdlp/repull-metadata with the selected ids in grid order; a 202 unticks them, one toast', async () => {
+  const { fetchImpl, calls } = makeFetchStub({ healthOk: true });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    click(dom, cardTitle(document, 'v6'));
+    click(dom, cardTitle(document, 'v2'));
+    click(dom, cardTitle(document, 'v4'));
+    await settle();
+    assert.strictEqual(verb(document, 'reheat').textContent.trim(), 'Reheat metadata');
+    await runVerb(dom, 'reheat');
+    const posts = calls.filter((c) => c.url === '/api/ytdlp/repull-metadata' && c.method === 'POST');
+    assert.strictEqual(posts.length, 1, 'exactly ONE request, never a per-card loop');
+    assert.deepStrictEqual(JSON.parse(posts[0].body), { ids: ['v2', 'v4', 'v6'] }, 'the ids in grid order, nothing else in the body');
+    assert.strictEqual(calls.filter((c) => c.url.indexOf('/api/ytdlp/repull-metadata/item/') === 0).length, 0, 'the single-flight per-item route is never used');
+    assert.deepStrictEqual(toasts(document), ['Reheating 3 items.']);
+    assert.ok(!grid(document).classList.contains('is-select-mode'), 'every sent id unticked: select mode ends');
+  } finally { dom.window.close(); }
+});
+
+test('M6 Reheat: the server counting fewer eligible says "Reheating N of M" (which ones is never revealed); a 409 keeps the cards selected', async () => {
+  {
+    const { fetchImpl } = makeFetchStub({ healthOk: true, reheat: { eligible: 2 } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      for (const id of ['v1', 'v2', 'v3']) click(dom, cardTitle(document, id));
+      await settle();
+      await runVerb(dom, 'reheat');
+      assert.deepStrictEqual(toasts(document), ['Reheating 2 of 3.']);
+      assert.ok(!grid(document).classList.contains('is-select-mode'), 'the server owns the run now: all sent ids untick');
+    } finally { dom.window.close(); }
+  }
+  {
+    const { fetchImpl, calls } = makeFetchStub({ healthOk: true, reheat: { status: 409, body: { started: false, alreadyRunning: true } } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      for (const id of ['v1', 'v2']) click(dom, cardTitle(document, id));
+      await settle();
+      await runVerb(dom, 'reheat');
+      assert.strictEqual(calls.filter((c) => c.url === '/api/ytdlp/repull-metadata').length, 1);
+      assert.deepStrictEqual(toasts(document), ['Nothing to reheat. A reheat is already running.']);
+      assert.ok(grid(document).classList.contains('is-select-mode'));
+      assert.deepStrictEqual(selectedIds(document), ['v1', 'v2'], 'nothing ran: the cards stay selected for a retry');
+    } finally { dom.window.close(); }
+  }
+});
+
+test('M6 Reheat: without the module (no health) the bar offers no Reheat; a 403 read-only answer is the per-item verb\'s own message', async () => {
+  {
+    const { fetchImpl } = makeFetchStub({ healthOk: false });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      click(dom, cardTitle(document, 'v1'));
+      await settle();
+      assert.strictEqual(verb(document, 'reheat'), null);
+    } finally { dom.window.close(); }
+  }
+  {
+    const { fetchImpl } = makeFetchStub({ healthOk: true, reheat: { status: 403, body: { error: 'read-only media mode', readOnlyMedia: true } } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      click(dom, cardTitle(document, 'v1'));
+      await settle();
+      await runVerb(dom, 'reheat');
+      assert.deepStrictEqual(toasts(document), ['Nothing to reheat. Read-only mode: reheat is disabled on this instance.']);
+      assert.deepStrictEqual(selectedIds(document), ['v1']);
+    } finally { dom.window.close(); }
+  }
 });

@@ -1654,3 +1654,143 @@ test('preview: is NOT gated on the single-flight reheat lock -- it is read-only 
     await close();
   }
 });
+
+// ---- v1.400.0 multi-select (M6): the optional `ids` body -------------------------------------
+//
+// The bar's Reheat on a hand-picked selection sends ONE POST with `ids`; the route validates
+// them, hands the enumerator a Set as its fourth argument (the enumerator narrows - bound with
+// the REAL enumerator in rbac-reheat-visibility.test.js), and reports `requested` in the 202.
+// Without `ids` the call and the response are the ones every older test above sees.
+
+test('v1.400.0 ids: the validated ids reach the enumerator as a Set (4th arg); the 202 carries requested; the batch runs the narrowed worklist', async () => {
+  const deps = makeFakeDeps();
+  const itemA = makeItem({ videoId: 'aaaaaaaaaaa' });
+  const itemB = makeItem({ videoId: 'bbbbbbbbbbb' });
+  const enumCalls = [];
+  deps.enumerateRepullableItems = (db, config, itemVisible, onlyIds) => {
+    enumCalls.push({ onlyIds });
+    const items = [itemA, itemB].filter((it) => !onlyIds || onlyIds.has(it.mediaId));
+    return { items, eligible: items.length, ineligible: 0, withSourceId: items.length };
+  };
+  const repullCalls = [];
+  run.repullItemMetaAndSubs = async (watchUrl) => { repullCalls.push(watchUrl); return { wroteSubs: true }; };
+  deps.recordRepulledItemMeta = async () => true;
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: [itemB.mediaId, 'not-in-the-library', itemB.mediaId] }),
+    });
+    assert.equal(res.status, 202);
+    assert.deepEqual(await res.json(), { started: true, eligible: 1, ineligible: 0, withSourceId: 1, requested: 3 });
+    assert.equal(enumCalls.length, 1);
+    assert.ok(enumCalls[0].onlyIds instanceof Set, 'the enumerator receives a Set');
+    assert.deepEqual(Array.from(enumCalls[0].onlyIds).sort(), ['not-in-the-library', itemB.mediaId].sort(), 'exactly the requested ids (deduplicated)');
+    await flush(30);
+    assert.deepEqual(repullCalls, [itemB.watchUrl], 'only the requested, eligible item is reheated');
+    const entry = getReheatEntry();
+    assert.equal(entry.total, 1);
+    assert.equal(entry.done, 1);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.400.0 parity: without ids the enumerator is called with THREE arguments and the 202 has no requested field (byte-identical route)', async () => {
+  const deps = makeFakeDeps();
+  let seen = null;
+  deps.enumerateRepullableItems = function () { seen = { argc: arguments.length, args: Array.from(arguments) }; return { items: [], eligible: 0, ineligible: 2, withSourceId: 0 }; };
+  deps.recordRepulledItemMeta = async () => true; // the route's wiring check needs all three seams
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    for (const body of [undefined, '{}', JSON.stringify({ force: true })]) {
+      seen = null;
+      ytdlp.resetRepullMetadataStateForTests();
+      const res = await fetch(`${base}/api/ytdlp/repull-metadata`, body === undefined ? { method: 'POST' }
+        : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      assert.equal(res.status, 202);
+      const json = await res.json();
+      assert.deepEqual(json, { started: true, eligible: 0, ineligible: 2, withSourceId: 0 }, 'the existing shape, no requested key');
+      assert.ok(!('requested' in json));
+      assert.equal(seen.argc, 3, 'three arguments, exactly as before (no trailing undefined)');
+      assert.equal(seen.args[3], undefined);
+      await flush(10);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test('v1.400.0 ids: every malformed shape is a 400 with NOTHING started - no db read, no enumeration, no spawn, the latch free', async () => {
+  const deps = makeFakeDeps();
+  let loads = 0;
+  const realLoad = deps.loadDatabase;
+  deps.loadDatabase = () => { loads += 1; return realLoad(); };
+  let enumerated = 0;
+  deps.enumerateRepullableItems = () => { enumerated += 1; return { items: [makeItem()], eligible: 1, ineligible: 0, withSourceId: 1 }; };
+  let spawned = 0;
+  run.repullItemMetaAndSubs = async () => { spawned += 1; return { wroteSubs: true }; };
+  deps.recordRepulledItemMeta = async () => true;
+  const tooMany = Array.from({ length: ytdlp.REPULL_IDS_CAP + 1 }, (_, i) => 'id' + i);
+  const bad = [
+    { ids: 'media-aaaaaaaaaaa' },         // a string, not an array
+    { ids: {} },                         // an object
+    { ids: 5 },                          // a number
+    { ids: null },                       // null (sent explicitly)
+    { ids: [] },                         // empty: nothing to do is not a batch
+    { ids: [42] },                       // a non-string element
+    { ids: ['ok', ''] },                 // an empty id
+    { ids: ['ok', 'a\u0000b'] },         // a NUL byte (node:sqlite truncation, LESSONS 9)
+    { ids: ['x'.repeat(513)] },          // over the per-id length
+    { ids: tooMany },                    // over the cap
+  ];
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    for (const body of bad) {
+      const res = await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      assert.equal(res.status, 400, 'rejected: ' + JSON.stringify(body).slice(0, 60));
+      const json = await res.json();
+      assert.ok(typeof json.error === 'string' && json.error.length > 0);
+      assert.equal(json.started, undefined);
+    }
+    await flush(20);
+    assert.equal(loads, 0, 'no database read for a malformed body');
+    assert.equal(enumerated, 0, 'no enumeration');
+    assert.equal(spawned, 0, 'no spawn');
+    assert.equal(getReheatEntry(), undefined, 'no activity entry');
+    // the latch was never taken: a valid request right after is a 202, not a 409
+    const ok = await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ['media-aaaaaaaaaaa'] }) });
+    assert.equal(ok.status, 202);
+    await flush(30);
+  } finally {
+    await close();
+  }
+});
+
+test('v1.400.0 validateRepullIds (pure): the cap and the per-id rule', () => {
+  assert.equal(ytdlp.validateRepullIds(['a']), null);
+  assert.equal(ytdlp.validateRepullIds(Array.from({ length: ytdlp.REPULL_IDS_CAP }, (_, i) => 'id' + i)), null, 'exactly the cap is allowed');
+  assert.equal(ytdlp.validateRepullIds(['x'.repeat(512)]), null, 'exactly the per-id length is allowed');
+  assert.match(ytdlp.validateRepullIds(Array.from({ length: ytdlp.REPULL_IDS_CAP + 1 }, () => 'a')), /at most 500/);
+  assert.match(ytdlp.validateRepullIds([]), /at least one/);
+  for (const v of [undefined, null, 'a', 1, {}, ['a', 1], [''], ['a\u0000'], ['x'.repeat(513)], [null]]) {
+    assert.ok(typeof ytdlp.validateRepullIds(v) === 'string', 'rejected: ' + JSON.stringify(v && v.length > 50 ? '(long)' : v));
+  }
+});
+
+test('v1.400.0 ids: the single-flight latch still wins - an ids request during a running batch is a 409, not a second batch', async () => {
+  const deps = makeFakeDeps();
+  deps.enumerateRepullableItems = () => ({ items: [makeItem({ videoId: 'ccccccccccc' })], eligible: 1, ineligible: 0, withSourceId: 1 });
+  run.repullItemMetaAndSubs = async () => { await flush(60); return { wroteSubs: true }; };
+  deps.recordRepulledItemMeta = async () => true;
+  const { base, close } = await startTestApp(deps, enabledConfig());
+  try {
+    assert.equal((await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST' })).status, 202);
+    const res = await fetch(`${base}/api/ytdlp/repull-metadata`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ['media-ccccccccccc'] }) });
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), { started: false, alreadyRunning: true });
+    await flush(120);
+  } finally {
+    await close();
+  }
+});
