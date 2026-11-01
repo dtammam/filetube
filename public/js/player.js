@@ -5776,6 +5776,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // The ONE remover (R5): every end path (snap end, commit end, close, a new load, backgrounding, a rotate)
   // lands here, via resetTransientPlaybackUi or directly.
+  var minimizeSlotHold = null; // v1.400.1 (R4c): the slot whose height is held while the page leaves under a native picture
   function clearMinimizeDrag() {
     if (minimizeSettleTimer) { clearTimeout(minimizeSettleTimer); minimizeSettleTimer = null; }
     minimizeGestureLive = false;
@@ -5785,6 +5786,7 @@ if (typeof module !== 'undefined' && module.exports) {
     host.style.transform = '';
     host.style.transformOrigin = '';
     host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
+    if (minimizeSlotHold) { minimizeSlotHold.style.minHeight = ''; minimizeSlotHold = null; } // R4c
     var dockEl = document.getElementById('player-dock');
     if (dockEl) dockEl.classList.remove('is-minimize-settle');
     // v1.400.1 (R3): the clips that keep the page text off a native picture go with the pull (the one remover)
@@ -6033,15 +6035,21 @@ if (typeof module !== 'undefined' && module.exports) {
   function minimizeToDock(source) {
     if (!minimizeAllowed()) return false;
     var from = host.getBoundingClientRect(); // where the picture is NOW (the pull's transform included)
+    // v1.400.1 (R4c): under a native picture the slot is taller than the dock's floor (the control bar sits BELOW the picture), so
+    // the page under it jumped up when the host left (measured: 80 px in the headless probe). Held until the pull's end paths run.
+    var holdH = 0;
+    try { var na0 = window.FileTube && window.FileTube.nativeAudio; var sl0 = document.getElementById('player-slot'); if (na0 && na0.surfaceOwned && na0.surfaceOwned() && sl0 && host.parentNode === sl0) holdH = sl0.getBoundingClientRect().height; } catch (_) { holdH = 0; }
     recordLifecycleEvent('minimize', { detail: source });
     // v1.362.4: marked BEFORE dock(), whose clearMinimizeDrag would otherwise flash the page back up mid-leave.
     var leaving = (minimizeFadeEnabled() && watchViewRoot()) || null;
     if (leaving) markViewArrival(leaving);
     dock();
     if (state !== STATE_DOCKED) { if (leaving) endViewFade(); return false; }
+    if (holdH > 0) { var sl1 = document.getElementById('player-slot'); if (sl1) { sl1.style.minHeight = holdH + 'px'; minimizeSlotHold = sl1; } }
     // The watch page holds at its floor while it leaves; the page that arrives fades in.
     if (leaving) setMinimizeFade(1, true);
     playMinimizeSettle(from);
+    if (minimizeSlotHold && !minimizeSettleTimer) minimizeSettleTimer = setTimeout(clearMinimizeDrag, 600); // reduced motion: no settle timer, the hold still ends
     if (window.FileTube && typeof window.FileTube.leaveWatchForBrowse === 'function') window.FileTube.leaveWatchForBrowse();
     return true;
   }

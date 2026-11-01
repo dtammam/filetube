@@ -217,3 +217,42 @@ test('R3: player.js clearMinimizeDrag calls clearOcclusion (the one remover keep
   const fn = src.slice(src.indexOf('function clearMinimizeDrag()'));
   assert.ok(fn.slice(0, fn.indexOf('\n  }\n')).includes('na.clearOcclusion();'));
 });
+
+// ---- W3 (R4): a clean release -----------------------------------------------------------------------------------------
+
+test('R4b: the thumbnail is preloaded at the claim; it is the poster only once docked (never during the pull); gone on expand', async () => {
+  const r = realm();
+  try {
+    const imgs = [];
+    r.w.Image = function () { const o = { set src(v) { imgs.push(v); } }; return o; };
+    await loaded(r);
+    assert.deepStrictEqual(imgs, ['/thumbnail/v1'], 'preloaded once, at the claim');
+    r.pull(120); await settle(60);
+    assert.strictEqual(r.w.document.getElementById('media-player').getAttribute('poster'), null, 'no poster over the live picture during the pull');
+    const wr = r.wrapper(); wr.classList.remove('is-minimize-drag'); wr.style.transform = '';
+    r.player.dock(); await settle(40);
+    assert.strictEqual(r.w.document.getElementById('media-player').getAttribute('poster'), '/thumbnail/v1', 'the dock paints the thumbnail in the same sync as visible: false');
+    assert.strictEqual(r.last().visible, false);
+  } finally { r.close(); }
+});
+
+test('R4c: committing the minimize under a native picture holds the slot height until clearMinimizeDrag runs', async () => {
+  const r = realm();
+  try {
+    const p = watchPage(r);
+    r.w.document.body.setAttribute('data-view', 'watch');
+    await loaded(r);
+    const h = 321;
+    r.slot.getBoundingClientRect = () => ({ left: 0, top: 300, width: 393, height: h, right: 393, bottom: 300 + h, x: 0, y: 300 });
+    const chev = r.wrapper().querySelector('.player-minimize');
+    assert.ok(chev, 'the chevron exists');
+    chev.click();
+    assert.strictEqual(r.player.getState(), 'docked', 'the commit docked');
+    assert.strictEqual(r.slot.style.minHeight, '321px', 'the slot keeps its height after the host leaves (no page jump before the swap)');
+    r.player.expand(r.slot); // an end path (resetTransientPlaybackUi -> clearMinimizeDrag)
+    r.player.dock();
+    await settle(900);
+    assert.strictEqual(r.slot.style.minHeight, '', 'the hold ends with the pull (the one remover)');
+    void p;
+  } finally { r.close(); }
+});

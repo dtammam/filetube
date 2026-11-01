@@ -505,6 +505,15 @@
       for (var i = 0; i < occluded.length; i++) { try { occluded[i].node.style.removeProperty('clip-path'); occluded[i].node.style.removeProperty('-webkit-clip-path'); } catch (_) { /* detached */ } }
       occluded = [];
     }
+    // v1.400.1 (R4b): the thumbnail is fetched and decoded at the claim, so when the dock sets it as the poster (the same frame as
+    // visible: false) it paints on that frame - never the black gap of an image still loading. NOT set as the poster here: a
+    // poster during the pull would cover the live picture.
+    var artPreload = null;
+    function preloadArt(item) {
+      var art = item && typeof item.artworkSrc === 'string' ? item.artworkSrc : '';
+      if (!art || typeof win.Image !== 'function') return;
+      try { artPreload = new win.Image(); artPreload.decoding = 'sync'; artPreload.src = art; } catch (_) { artPreload = null; }
+    }
     // S3a: the docked mini player shows the video's thumbnail (the element's poster, removed again on expand)
     function dockArt(docked) {
       if (!el) return;
@@ -802,12 +811,12 @@
       var fresh = !!(snap && num(snap.rev, -1) >= rev && snap.state !== 'idle');
       if (fresh && cur && sameItem(cur, item) && queue().length === 1) {
         followed = 'adopt'; // the page takes what native plays, where it is: no progress read, no seek, no autostart (handleResumePlayback)
-        ownedId = String(id); ownedItem = item; ownedSurface = true; attach(target); subscribe();
+        ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item); attach(target); subscribe();
         fire('durationchange');
         return true;
       }
       followed = false; pendingJump = null; queueUids = Object.create(null);
-      ownedId = String(id); ownedItem = item; ownedSurface = true;
+      ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item);
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;
