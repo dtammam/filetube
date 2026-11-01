@@ -969,6 +969,101 @@ a.sidebar-item {
   padding: var(--space-3) 0 var(--space-3) var(--space-6);
 }
 
+/* ---- v1.400.0 multi-select (plan 2026-11-01-multi-select) -------------------
+   The tick glyph sits last inside the card's ui-thumb (it paints over the image
+   without a z-index, like the duration badge); a ticked card is ink on the
+   selected fill (the selected-row role, CONTRIBUTING) with the glyph on the
+   accent fill. The action bar is a fixed surface on the chip rung: above the
+   phone's bottom nav (--z-nav), below the dock (--z-dock); it clears the bottom
+   nav the way the toast host does (--mobile-bottom-nav-h) and the dock the way
+   #remote-pill does (--player-dock-h, written by player.js on every dock show).
+   The verbs row scrolls sideways on a phone and wraps on desktop; every verb is
+   a ui-btn (flex: none), so a button never shrinks. */
+.card-tick {
+  position: absolute;
+  top: var(--space-3);
+  left: var(--space-3);
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-pill);
+  background: var(--scrim);
+  color: var(--ink-on-accent);
+  box-shadow: inset 0 0 0 var(--hairline) var(--surface-1);
+  pointer-events: none;
+}
+.card-tick .ui-icon { visibility: hidden; }
+.video-card.is-selected .card-tick {
+  background: var(--accent-fill);
+  box-shadow: none;
+}
+.video-card.is-selected .card-tick .ui-icon { visibility: visible; }
+.video-card.is-selected {
+  background-color: var(--fill-selected);
+}
+.video-grid.is-select-mode {
+  /* the fixed bar must not cover the last row: one bar of clearance under the grid */
+  margin-bottom: calc(var(--space-16) * 4);
+}
+html.has-player-dock .video-grid.is-select-mode {
+  /* the bar is lifted by the dock's height, so the clearance is too (gate r1 qa W3, measured by the probe) */
+  margin-bottom: calc(var(--space-16) * 4 + var(--player-dock-h, 0px));
+}
+.select-bar {
+  position: fixed;
+  left: var(--space-6);
+  right: calc(var(--space-6) + var(--scroll-lock-gap, 0px));
+  bottom: var(--space-6);
+  z-index: var(--z-chip);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-overlay);
+}
+.select-bar__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.select-bar__count {
+  font: var(--t-callout);
+  color: var(--ink-1);
+  white-space: nowrap;
+}
+.select-bar__spacer { flex: 1 1 auto; }
+.select-bar__verbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-width: 0;
+}
+html.has-player-dock .select-bar {
+  bottom: calc(var(--space-6) + var(--player-dock-h, 0px) + var(--space-4));
+}
+@media (max-width: 768px) {
+  .select-bar {
+    left: var(--space-4);
+    right: calc(var(--space-4) + var(--scroll-lock-gap, 0px));
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
+  }
+  html.has-player-dock .select-bar {
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h, 0px) + var(--space-4));
+  }
+  .select-bar__verbs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: var(--space-1);
+  }
+}
+
 /* v1.45.8 (Dean): pull-to-refresh indicator. Fixed just under the header (mobile
    header height where defined, else the 56px desktop header). Hidden until a
    top-pull adds .visible (see main.js); the refresh glyph rotates with the pull
@@ -7333,6 +7428,12 @@ body[data-view="home"] .modern-sort {
   display: none;
 }
 body[data-view="home"] .modern-view-toggle { display: inline-flex; }
+/* v1.400.0 multi-select: the modern home's Select glyph, route-bound like the two above. */
+.modern-select {
+  display: none;
+  align-items: center;
+}
+body[data-view="home"] .modern-select { display: inline-flex; }
 
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {

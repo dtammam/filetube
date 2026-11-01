@@ -443,6 +443,12 @@
 
 ### Features
 
+- **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
+  spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
+  selection freeze, not directly (qa r2 INFO) - export it, unit-test it, retitle the two "r1 A1" full-chain tests to what they
+  bind; (3) a bulk 401 fixture (adversary r2: under a mutant an expired session reads "N failed" instead of one stop); (4) the
+  modern header glyph's pressed-state sync is untested; (5) the reheat 202's `requested` counts a caller's duplicate ids (the
+  bar sends none); (6) every reheat 403 is worded as read-only mode (a no-capability 403 cannot come from the bar).
 - **Native video audio (v1.398.0) follow-ups, unasked:** (1) a test gap the adversary named at r3 (mutant O2, measured correct in
   the tree): bind that a Listen row adopted by a fresh Music page, and one native advanced into, still hands back to the watch page
   (the two watch.js calls after an adoption and after an advance); (2) an adopted Listen row has no `folderName` (the Item carries no
@@ -918,6 +924,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.400.0 - Select several videos at once and act on them together (2026-11-01)
+
+- Dean (2026-11-01): "an option to the system for multi-selecting things. Would be extremely useful to select a set of videos
+  from the Downloads folder to then be able to reheat, or delete, etc. Will save lots of time." Every media-card grid (Home, a
+  folder, the Downloads folder, search, Liked, Watch later) has a Select tool in its toolbar (the modern home: a header glyph) and
+  a Select row leading every card menu; in select mode a tap on a card toggles it and never plays, shift-click ticks a range,
+  "Select N shown" ticks exactly the loaded cards (a page loaded later is not ticked), and Escape / Cancel / leaving the page
+  clear it; a re-render keeps the ids still present. A fixed bar (above the bottom bar and the mini player) offers the verbs the
+  card menu's own rules allow for the selection ("Verb N of M" when only some apply): Add to queue, Watch later, Like, Mark
+  watched, Move to folder, Reheat metadata, Move to Trash - each run sequentially in grid order through the card menu's own
+  per-item requests (Like and Mark watched SET, never toggle), one summary toast, failed cards stay ticked for a retry, a
+  permission or read-only refusal stops the run. Reheat sends ONE `POST /api/ytdlp/repull-metadata` with `ids` (the library
+  batch narrowed server side after the visibility predicate; a hidden or unknown id is simply not counted; the route without
+  `ids` is byte-identical). Move to Trash: one confirm with the count and total size, then one ordinary DELETE per id; Move to
+  folder: the shared picker, then the existing per-item move. The confirm and the picker bind the exact id set they were
+  opened on and the selection is frozen while they are up. Disclosed: an ids reheat of a selection OUTSIDE Downloads behaves
+  like Settings' Library Reheat (with "relocate imports" on, a hydrated import moves into its channel folder; Downloads itself
+  never relocates); a moved item is re-keyed, so its card leaves the grid on every scope; on desktop the bar spans the
+  sidebar's bottom. Gate: r1 security APPROVED, qa + adversary CHANGES (a count stood in for the confirmed ids; the empty render
+  arms skipped the reconciler; the read-only refusal is a 403 with `readOnlyMedia`, not a 409; the picker did not latch the bar;
+  the clearance under the grid ignored the dock), r2 APPROVED by all three seats @c501fc2e. Device checks owed in
+  docs/DEVICE-CHECKS.md.
 
 ### v1.399.0 - On the iPhone app, a video plays in the app's own player, picture and sound, under FileTube's controls (2026-10-30)
 

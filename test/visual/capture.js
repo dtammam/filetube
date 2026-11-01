@@ -182,6 +182,10 @@ function sceneKit(FX, BASE) {
     { id: '01-home', path: '/', run: async (p) => { await p.waitForSelector('.video-card', { timeout: 12000 }); } },
     { id: '02-home-scrolled', path: '/', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('.video-card'); await p.evaluate(() => window.scrollTo(0, 900)); await snapScroll(p); } },
     { id: '03-channel-page', path: '/?folder=Harbor%20Workshop', run: async (p) => { await p.waitForSelector('.video-card', { timeout: 12000 }); } },
+    // v1.400.0 multi-select: select mode on a channel grid - two cards ticked, the action bar up. A tree without
+    // the feature (no #select-mode-btn) photographs the plain channel page.
+    { id: '03b-channel-select-mode', path: '/?folder=Harbor%20Workshop', run: async (p, vp) => { await p.waitForSelector('.video-card', { timeout: 12000 });
+      if (await p.locator('#select-mode-btn').count()) { await tap(p, '#select-mode-btn', vp); await tap(p, '.video-card:nth-child(1) .video-title', vp); await tap(p, '.video-card:nth-child(3) .video-title', vp); await p.waitForSelector('.select-bar:not([hidden])', { timeout: 8000 }); await sleep(500); } } },
     { id: '04-subs-top', path: '/subscriptions', run: async (p) => { await p.waitForSelector('.subs-more', { timeout: 12000 }); } },
     { id: '05-subs-activity', path: '/subscriptions', run: async (p, vp) => { await p.waitForSelector('.subs-more'); await tap(p, '.subs-toolbar [data-sub-panel="activity"]', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await sleep(700); } },
     { id: '06-subs-row-sheet', path: '/subscriptions', run: async (p, vp) => { await p.waitForSelector('.subs-more'); await tap(p, '.ui-row[data-sub-id] .ui-row__link', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await sleep(400); } },

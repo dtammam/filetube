@@ -675,6 +675,8 @@ const CLASSIFIED = [
   ['public/js/ui.js', "doc.addEventListener('keydown', onKey);", 'bubble'],
   ['public/js/ui.js', "doc.removeEventListener('keydown', onKey);", 'bubble'],
   ['public/js/read.js', "document.addEventListener('keydown', (event) => {", 'bubble'],
+  // v1.400.0 multi-select: Escape leaves select mode (home grid); bubble, live only while a select session is open
+  ['public/js/main.js', "document.addEventListener('keydown', (e) => {\n          if (e.key !== 'Escape' && e.key !== 'Esc') return;", 'bubble'],
   // capture: each one, why it cannot act on a key typed into the input
   ['public/js/common.js', "document.addEventListener('keydown', ddrKeyHandler, true);", 'capture: only while the shortcuts dialog is open, and opening it moves the focus to its close button'],
   ['public/js/common.js', "document.removeEventListener('keydown', shortcutsModalState.ddrKeyHandler, true);", 'capture: the removal of the one above'],

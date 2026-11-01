@@ -235,6 +235,9 @@
           <div class="section-actions">
             <div class="library-chip-host" id="library-chip-host"></div>
             <div class="library-tools">
+              <!-- v1.400.0 multi-select (M2): Select enters select mode on this grid; main.js shows it once the grid has cards.
+                   Icon-only like its siblings (the tools group carries no word label on a phone, home-mobile-scale.test.js). -->
+              <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="select-mode-btn" aria-label="Select" title="Select" aria-pressed="false" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-checklist"/></svg></span></button>
               <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="play-all-btn" aria-label="Play all" title="Play all" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-play_arrow"/></svg></span></button>
               <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="sort-select-btn" aria-label="Sort" aria-haspopup="menu"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-sort"/></svg></span></button>
               <button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="shuffle-again-btn" aria-label="Shuffle again" hidden><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-shuffle"/></svg></span></button>
