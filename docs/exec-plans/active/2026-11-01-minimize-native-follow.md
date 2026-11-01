@@ -144,6 +144,34 @@ On the iPhone app with the native picture on, a video playing on the watch page:
 - (f) Tap the mini player: the picture returns in the slot (unchanged from v1.399.0).
 - (g) Safari (no app): the pull looks exactly as before.
 
+## Gate
+
+Per `.harness/scrutiny.toml`: the version bump touches `package*.json`, so the full gate - adversary (floor), qa,
+security-brief. Brief them with LESSONS 2, 3, 4, 6, 7, 8 and these attack surfaces: (1) the live loop never outlives the
+drag (every end path, a rotate mid-pull, a second finger, backgrounding, a new load during the spring); (2) the idle census
+(zero extra posts and reads per idle second, measured as the v1.399.0 gate did); (3) a stale clip or hole left on the watch
+page after any end path; (4) reachability (the fixture moves the rect only through the real transform); (5) Safari / the PWA /
+an app build without `nativeVideo` byte-identical. Ship on CRITICAL/WARNING closure; ask Dean at round 3.
+
+## Release
+
+`docs/RELEASING.md` + AGENTS.md: `npm version 1.400.1 --no-git-tag-version`, ROADMAP Shipped entry, `docs/releases.json`
+in pure user language, DEVICE-CHECKS section "Minimize follow (v1.400.1)" with (a)-(g) above, the plan closed with
+`node scripts/plan-complete.js docs/exec-plans/active/2026-11-01-minimize-native-follow.md "Shipped v1.400.1" --apply` in the
+release PR, the protected-main PR flow (tag the local no-ff merge, push branch + tag in one push, `gh pr create`, CI green).
+**Do not run `gh pr merge` until Dean says so** (Dean, 2026-11-01: the Root asks him the outstanding device-check questions
+before this merges). Ask with AskUserQuestion when CI is green; then merge, `git pull --ff-only`, delete the branch
+(remote via `gh api -X DELETE`, local `-d`), and confirm the tag's Publish Docker Image run is green.
+
+## Evidence (the builder fills this)
+
+- W1: 
+- W2: 
+- W3: 
+- Full suite (Node 22), before the gate and on the release commit: 
+- Gate verdicts (bound to sha): 
+- Release: tag, PR, Publish run: 
+
 ## Out of scope
 
 Live picture in the dock (plan B); the chevron (it commits through the same `minimizeToDock`, so R4 covers its fly-in for
