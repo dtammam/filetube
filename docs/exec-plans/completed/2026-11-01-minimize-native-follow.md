@@ -3,10 +3,10 @@ plan: minimize-native-follow
 harness: v2 · full
 branch: fix/v1.400.1-minimize-native-follow
 anchor: spec
-status: Planned
+status: Shipped v1.400.1
 next: builder Step 0, then W1
 design: Rulings approved by Dean 2026-11-01 (AskUserQuestion): plan A only (no live picture in the dock; that is plan B, ROADMAP Planned)
-gate: pending
+gate: APPROVED r2 @63fbc423 (adversary; qa + security-brief r1 @9f5b4c53, source unchanged since)
 builder: standard
 ---
 
@@ -172,7 +172,9 @@ before this merges). Ask with AskUserQuestion when CI is green; then merge, `git
 - Gate verdicts (bound to sha):
   - SECURITY r1 @9f5b4c53: APPROVED (no findings; the artwork preload is the same same-origin value the dock already uses; package files differ by the version field only, checked by diff).
   - QA r1 @9f5b4c53: APPROVED (115/115 targeted tests, lint:ui OK, overlay-containment 0 violations; 3 INFO).
-  - ADVERSARY r1 @9f5b4c53: CHANGES - 3 WARNINGs, all test-binding gaps (web-only guard on the slot hold, the reduced-motion fallback timer, the detached-wrapper guard); no behaviour defect. Closed by three tests (each mutated red); r2 re-confirmation pending.
+  - ADVERSARY r1 @9f5b4c53: CHANGES - 3 WARNINGs, all test-binding gaps (web-only guard on the slot hold, the reduced-motion fallback timer, the detached-wrapper guard); no behaviour defect. Closed by three tests (each mutated red).
+  - ADVERSARY r2 @63fbc423: APPROVED (re-mutated all three red in a fresh sandbox; the diff 9f5b4c53..63fbc423 is the test file + this plan only).
+  - Close-out binding: approval sha 63fbc423; the close-out range 63fbc423..HEAD is bookkeeping only (plan move + status, the gate line); `git diff --name-only 63fbc423..HEAD` is pasted in the release PR body.
 - Release: tag, PR, Publish run: 
 
 ## Out of scope

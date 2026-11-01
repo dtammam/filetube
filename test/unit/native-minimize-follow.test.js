@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.400.1 minimize follow (plan docs/exec-plans/active/2026-11-01-minimize-native-follow.md, R1 + R2 + R3): under a native
+// [UNIT] v1.400.1 minimize follow (plan docs/exec-plans/completed/2026-11-01-minimize-native-follow.md, R1 + R2 + R3): under a native
 // picture the pull / spring-back / fly-in moves the wrapper with a TRANSFORM that no observer hears; the surface controller now
 // measures every frame while one of the three classes is on the wrapper. The REAL player.js + native-audio.js run in a phone jsdom
 // realm; the box is moved ONLY through the wrapper's class + style.transform (what claimMinimizeDrag / followMinimizeDrag write),
