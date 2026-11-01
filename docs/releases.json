@@ -3778,5 +3778,11 @@
     "date": "2026-11-01",
     "title": "Select several videos and act on them together",
     "intent": "On any video grid (Home, a folder, the Downloads folder, search, Liked, Watch later), tap Select in the toolbar, or long-press a card and choose Select, then tick as many videos as you like and use the bar at the bottom: add them to the queue, save them for Watch later, like them, mark them watched, move them to a folder, reheat their details, or move them to Trash, all at once instead of one menu at a time. Moving to Trash asks once, naming how many and how much; anything that fails stays ticked so you can try again."
+  },
+  {
+    "version": "1.400.1",
+    "date": "2026-11-01",
+    "title": "The picture follows your finger when you pull the player down",
+    "intent": "On the iPhone app, pulling the video down to minimize it now shrinks the picture smoothly, right under your finger, instead of jumping into place a second later. Nothing from the page shows over the picture while you pull, letting go early springs it back with the controls, and letting go to minimize flies it into the mini player without a black flash or the page jumping first. Safari and the home-screen app are unchanged."
   }
 ]

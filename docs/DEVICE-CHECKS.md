@@ -5,6 +5,18 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Minimize follow (v1.400.1)
+
+On the iPhone app with the native picture on, a video playing on the watch page (the app needs no new build):
+
+- [ ] v1.400.1 - (a) Pull down slowly: the picture shrinks and follows the finger continuously, top edge under the finger, no steps.
+- [ ] v1.400.1 - (b) Pull halfway, swipe back up fast, then down again: the picture never trails the controls, no black frame, no clipped strip.
+- [ ] v1.400.1 - (c) During the pull, the title / Like row / Subscribe never show on top of the picture.
+- [ ] v1.400.1 - (d) Let go early (snap back): the picture springs back with the controls.
+- [ ] v1.400.1 - (e) Let go past the commit point: the picture flies into the dock with no black flash, the thumbnail shows in the dock, the watch page does not jump before Home appears, the sound plays on.
+- [ ] v1.400.1 - (f) Tap the mini player: the picture returns in the slot (unchanged from v1.399.0).
+- [ ] v1.400.1 - (g) Safari (no app): the pull looks exactly as before.
+
 ## Multi-select (v1.400.0)
 
 - [ ] v1.400.0 - Downloads folder: tap the checklist glyph in the toolbar (Select); tick three cards: the bar reads "3 selected";
@@ -15,8 +27,6 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   untick and select mode ends. Like on a set that includes an already-liked video: no video is unliked.
 - [ ] v1.400.0 - Reheat metadata on three Downloads videos: one toast "Reheating 3 items." and the download status chip shows
   the run; nothing moves on disk (they are already in Downloads). Say if the count read "N of M".
-- [ ] v1.400.0 - Move to Trash on two: the confirm says "Move 2 items (<size>) to Trash?"; Cancel leaves both ticked and in
-  place; confirm again: both leave the grid, Settings > Trash lists them, the toast says "Moved 2 items to Trash."
 - [ ] v1.400.0 - Move to folder on two: the picker says "Move 2 items to:"; pick a folder: both leave this grid and show in
   that folder.
 - [ ] v1.400.0 - Phone: with a video in the mini player, the bar sits above it and above the bottom bar, the verbs scroll
@@ -27,20 +37,12 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Native video surface (v1.399.0; after the iOS app build that pins this tag)
 
-The surface spike never ran (Dean lifted that gate 2026-10-30): (0a)-(0d) are the first checks, and a failure there is a
-re-root-cause of the plan, never a re-patch.
+The surface spike never ran (Dean lifted that gate 2026-10-30). Dean confirmed (0a)-(0d), (b), (c), (e) and (g) on 2026-11-01;
+the lines below are the ones still open, and a failure is a re-root-cause, never a re-patch.
 
-- [ ] v1.399.0 - (0a) THE HOLE: open a video; the picture shows through the page exactly where the player box is, and a tap on the picture reaches FileTube's controls, not the app.
-- [ ] v1.399.0 - (0b) SCROLL: scroll and fling the watch page mid-video; the picture stays locked to the player box with no visible lag (native follows the scroll itself).
-- [ ] v1.399.0 - (0c) LOCK: lock the phone mid-video; the sound continues; pause and resume from the lock screen and AirPods; unlock: the picture is back at the right frame.
-- [ ] v1.399.0 - (0d) ROTATION: rotate into and out of fullscreen; no flash, no misplaced picture.
 - [ ] v1.399.0 - (a) A video plays with its picture in place; the controls, scrub previews, chapters and skins all work on top of it; no native controls strip.
-- [ ] v1.399.0 - (b) Scroll the watch page mid-video: the picture moves with the page and does not lag (same as 0b, after a long watch).
-- [ ] v1.399.0 - (c) Lock mid-video: the sound continues at full quality; pause and resume from the lock screen and AirPods; unlock: the picture is at the right frame.
 - [ ] v1.399.0 - (d) A voice memo or call mid-video: FileTube yields; afterwards no other app is ducked.
-- [ ] v1.399.0 - (e) Fullscreen (the bar's button) and rotation: no flash, no misplaced picture; the page never shows through.
 - [ ] v1.399.0 - (f) Captions on: in sync with the sound, and they look as before; turn them on before the video is ready too.
-- [ ] v1.399.0 - (g) Navigate away (docked player): the dock shows the thumbnail and the sound continues; tap it to expand: the picture is back at the right frame.
 - [ ] v1.399.0 - (h) A 360 video, a Feed video and a preview play exactly as before (on the web element).
 - [ ] v1.399.0 - (i) A TV episode resumes where it was left, and its progress is saved once.
 - [ ] v1.399.0 - (j) A video that still needs converting: the "Preparing this video" overlay shows, then it plays natively with its picture and no thumbnail stuck over it.
@@ -54,7 +56,6 @@ re-root-cause of the plan, never a re-patch.
 
 ## Native audio (v1.397.0; after the iOS app build that pins this tag)
 
-- [ ] v1.397.0 - (a) Play an album, lock the phone, pause and resume from the lock screen and AirPods; the lock screen shows the song, its art and the album.
 - [ ] v1.397.0 - (b) Start a voice memo or take a call mid-song: FileTube yields, then resumes or stays paused as iOS decides.
 - [ ] v1.397.0 - (c) Pause FileTube: another app's audio is no longer ducked.
 - [ ] v1.397.0 - (d) Loop chapter on a chaptered file (Loop on while a chapter row plays): the chapter repeats; Loop off: the next chapter follows and the Click LCD advances.
@@ -65,13 +66,6 @@ re-root-cause of the plan, never a re-patch.
 - [ ] v1.397.0 - (i) An older app build (no nativeAudio) plays exactly as before (the web element, the web lock screen).
 - [ ] v1.397.0 - (j) Shuffle on mid-album: the song keeps playing without a restart; Next plays a shuffled row. Tap a row in the up-next list: it plays (an audio.jump, no reload).
 - [ ] v1.397.0 - (k) Play a video while music plays: the music stops at once (no two sounds); go back to Music and tap a song: it plays natively again.
-
-## Toggle pills (v1.396.0)
-
-- [ ] v1.396.0 - (a) Desktop Music: toggle Loop, Shuffle, Autoplay and Remote control. ON is obvious (solid ground + check) and hovering an ON one stays readable.
-- [ ] v1.396.0 - (b) Play a chapter: "Loop chapter" ON looks the same.
-- [ ] v1.396.0 - (c) Home chips, and Settings > sticker picker: the picked one is inverted.
-- [ ] v1.396.0 - (d) Phone Sticker sheet skin: unchanged.
 
 ## Pages (v1.395.0)
 
