@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.400.0-multi-select
 anchor: spec
 status: Approved (kickoff rulings below; the builder writes Design + Steps, then builds)
-next: builder - research the grid/menu seams (R1-R4), write ## Design and ## Steps inline, build W1-W3, commit, full gate
+next: builder - W1 (select mode + bar + client verbs), then W2 (ids reheat), W3 (Trash + Move + layout), full gate
 design: Rulings approved by Dean 2026-11-01 (AskUserQuestion); the builder's Design must stay inside them
 gate: pending
 builder: extreme
@@ -110,13 +110,168 @@ parameter on the reheat route is a mutating surface, so prove the visibility pre
 Release ceremony per docs/RELEASING.md (ROADMAP Shipped entry, `docs/releases.json` user-language ledger, LESSONS
 entry if the gate teaches one), protected-main PR flow; the PR merge waits on Dean's word if the classifier refuses.
 
+## Research (builder, 2026-11-01; file:line on this branch at 16038abc)
+
+- R1 Grid render. Cards are DOM built by `buildVideoCardEl` (main.js:791) through the view's `buildCardEl` (2464) and
+  the ONE DOM writer `putCards(items, append)` (2483: replace = `replaceChildren`, append = `appendChild`). Page 0 /
+  sort / format / search / shuffle go through `fetchLibraryPage0` -> `renderMediaGridPage` (2008, 2807); further pages
+  through the IntersectionObserver sentinel -> `maybeLoadNextPage` (2320, appends only, never re-renders); the modern
+  home through `fetchModernGrid` (1705) into the same `#video-grid`. In-place removals: `removeCardFromGrid` (2513),
+  `toggleCardWatchLater` (3195), `hideCardFromFeed` (3260). The id is `card.dataset.id` (798) and the view's truth is
+  `currentItems` (1330). Click paths: the stash-watch-seed bubble listener on the grid (1286), the router's document
+  anchor handler (navigates), the kebab delegate (3408). Hover preview: `PreviewCards.start(el)` (1085) from the grid's
+  mouseover (desktop) / the in-view observer (mobile). Modern mode hides `.section-title` (style.css:7316) and injects
+  its controls into `.header-right` (`injectModernHeaderSort`, 1751); feed mode hides the grid (7290, no cards).
+- R2 Menu path. `buildCardMenuItems(item, caps, opts)` (725) is pure and is the applicability authority; `openCardMenu`
+  (3377) builds it with `cardCaps` and the view's opts; `runCardAction` (3328) dispatches ONE verb for ONE card to the
+  per-item implementations: `addToQueue` (common.js:4949, toasts + Undo), `toggleCardLike` (3172, POST/DELETE by state),
+  `requestWatchLater`/`setWatchLater` (common.js:15327/15345: silent request + the toasting verb), `triggerCardReheat`
+  (3227, the single-flight per-item route), `confirmAndDeleteCard` -> `deleteCardById` (3311, 2768, toasts per item).
+  Long-press / right-click: `FTInteraction.onActionMenu(videoGrid, ...)` (3419; interaction.js:271 - the fired press
+  swallows the click that follows it, interaction.js:90). Mark watched has no card row today: watch.js:3869 and
+  skin-surface.js:333 POST `/api/watched/:id` directly (media only, lib/user/routes.js:96). Move to folder has no card
+  row either: watch.js:753 offers it under `canModifyLibrary`.
+- R3 Reuse. `showMoveModal(item, folders, onMove, doc)` (common.js:13960) is the ONE Move picker (a ui.sheet dialog
+  with a ui.select of `GET /api/config` folders; watch.js:4417 is its caller) and `requestMoveItem(id, folder)`
+  (common.js:15182) the silent per-item POST. `cardDeleteConfirmCopy` (778) is the single-card Trash copy;
+  `cleanupConfirmBody(count, bytes)` (cleanup.js:57) the count-and-size shape. `formatFileSize` (common.js:1194).
+  `DELETE /api/videos/:id` (lib/media/routes.js:968): 403 no capability, 409 read-only `{readOnly:true}`, 404, 200
+  `{success}` (`deleteResultToast` reads it). `POST /api/videos/:id/move` (1382): 403 / 409 read-only / per-move status.
+- R4 Reheat. `enumerateRepullableItems(db, config, itemVisible)` (lib/ytdlp/relocation.js:1017) is the one
+  enumerator: the batch route (lib/ytdlp/index.js:7368), the per-item route (7539) and the relocation preview all call
+  it; `runRepullMetadataBatch` (1219) runs the worklist and ALSO relocates a hydrated import that is NOT in the download
+  root (`maybeRelocate`, 1283; `relocateHydratedImports` setting, server.js default ON). The single-flight latch is
+  `repullMetadataInProgress` (773). Tests: test/integration/ytdlp-repull-metadata-endpoint.test.js (fake express app +
+  fake deps, the enumerator stubbed), test/integration/rbac-reheat-visibility.test.js (the real server, a restricted
+  member, the enumerator real).
+
 ## Design
 
-_(builder writes this, inside the rulings)_
+Inside M1-M12. Everything client-side lives in the home view's `init()` closure (main.js) beside the card menu it
+extends; the pure pieces are module-scope and exported for tests; the server change is one optional parameter.
+
+**Selection state (M10).** Per view instance: `selectMode` (bool), `selected` (a Set of id strings, insertion order),
+`lastTickedId` (shift ranges). The DOM carries it: `#video-grid.is-select-mode`, `.video-card.is-selected`, and a
+`.card-tick` glyph (`ui.icon('check')`, no button) placed in `.card-media` of every card while in select mode.
+`syncSelection()` is the one reconciler: it drops every id not in `currentItems`, repaints the ticks, and rewrites the
+bar. It runs after `putCards` (both arms: a replace keeps the ids still present, an append ticks nothing new - M3), after
+`removeCardFromGrid`, and after the two in-place `card.remove()` sites. Leaving the view aborts
+`FileTube.viewSignal()` (read at enter, LESSONS 4: the cached home never aborts its own signal), which exits select mode
+and clears the set; `destroy()` does the same. A scope/folder change is a new view instance (fresh `init`), so the set
+is gone by construction.
+
+**Entry (M2).** (a) A static `Select` ui-btn (tonal, sm, pill, `#select-mode-btn`) in `.library-tools` of index.html,
+first in the tools group, hidden while the grid has no cards; on the modern home (its header hides `.section-title`) the
+same control is a header glyph injected like the modern sort (`injectModernSelectButton`, removed on abort). (b) A
+`Select` row first in `buildCardMenuItems` when `opts.selectable === true` (the view passes it for every grid card; the
+pure builder stays testable); `runCardAction('select')` enters select mode with that card ticked. Long-press keeps opening
+the menu in normal mode (no gesture change). In select mode: a CAPTURE-phase click listener on `#video-grid` claims every
+click inside a non-skeleton `.video-card` - `preventDefault` + `stopPropagation` so neither the card's `<a>`, the
+stash-seed listener nor the router's document anchor handler run - and toggles the card (shift-click: ticks the range
+from `lastTickedId` to it in grid order); `onActionMenu`'s handler returns early (no menu over a pending selection; the
+gesture's click swallow still fires, so a long-press in select mode toggles nothing); `PreviewCards.start` refuses a card
+inside a select-mode grid and `PreviewCards.stopAll()` stops the running previews at entry; a document `keydown` Escape
+(bound while in select mode) and the bar's Cancel leave select mode and clear the set.
+
+**Select all (M3).** The bar's `Select N shown` ticks exactly `currentItems` (the loaded cards) at the moment of the tap.
+A page appended later is not ticked (append calls `syncSelection`, which only prunes).
+
+**The bar (M4, M12).** `.select-bar`, built with ui primitives, appended to the view root (view-owned DOM inside
+`#view-root`, discarded with it) and shown only in select mode. Two rows: the head (`N selected`, `Select N shown`,
+Cancel) and the verbs row (ui-btn sm tonal pills with registry icons, in M4's order: Add to queue, Watch later, Like,
+Mark watched, Move to folder, Reheat metadata, Move to Trash (destructive)). The verbs row scrolls horizontally on a
+phone and wraps on desktop; a button never shrinks (CONTRIBUTING's action-row rule). `position: fixed`, `z-index:
+var(--z-chip)` (above the bottom nav, below the dock), bottom = `var(--space-6)` on desktop and
+`calc(var(--mobile-bottom-nav-h) + var(--space-4))` on a phone (the toast host's rule), lifted by
+`var(--player-dock-h) + var(--space-4)` under `html.has-player-dock` (the rung player.js writes on every dock show, the
+`#remote-pill` precedent). No raw literals; the tick and the bar take their colours from the roles (`--accent-fill`
+for a ticked glyph, `--surface-1` / `--shadow-overlay` for the bar). `[hidden]` already wins globally (ui.css:87).
+
+**Applicability (M5).** `buildBulkActions(items, caps)` (module scope, exported) returns the bar's verbs. For queue,
+Watch later, Like, Reheat and Trash a card applies iff `buildCardMenuItems(item, caps, {})` offers that id (the menu
+IS the rule; `like` applies to any card the menu offers Like on, and the run then skips cards already liked as no-op
+successes - M4's SET semantics). Mark watched and Move to folder have no menu row, so their rules are stated here:
+Mark watched = a media card (`cardKindPresentation(item) === null`; the only kind with the route); Move to folder = a
+media card AND `caps.canModifyLibrary === true` (watch.js:753's rule). Label: the verb alone when every selected card
+applies, `Verb N of M` when some do, absent when none do. Capability-gated verbs (Trash, Move, Reheat) are therefore
+absent for a member without the capability (acceptance 8); the server stays the gate.
+
+**Running a verb (M9).** `runBulk(verb)` snapshots the applicable selected ids IN GRID ORDER at the tap, latches a busy
+flag (a second tap while running does nothing; the verbs disable), and runs them sequentially with one await per id.
+Per id: `ok` (untick), `failed` (stays ticked), or `refused` (401/403, or a 409 `{readOnly:true}` for Trash/Move):
+refused stops the loop, says why, and leaves every unsent id ticked. Leaving the view mid-run (the shown-view signal
+aborts) stops the loop before the next request. One summary toast per run (`Moved 11 to Trash. 1 failed.`,
+`Added 12 to the queue.`, `Liked 12.`, `Marked 12 watched.`, `Added 12 to Watch later.`, `Moved 11. 1 failed.`,
+`Could not: you don't have permission ...`). When nothing stays ticked the view leaves select mode; otherwise it stays
+in select mode on exactly the failed cards. The per-item requests are the SAME functions the card menu uses, made
+silent where the menu one toasts: `addToQueue` is split into `requestQueueAdd` (silent, common.js) + the toasting
+wrapper; `toggleCardLike` into `requestCardLike(item, on)` + the toggle; `deleteCardById` gains a `{ quiet: true }`
+return-the-outcome mode the single path does not use; `requestWatchLater` and `requestMoveItem` already exist silent.
+Mark watched POSTs `/api/watched/:id` (the watch page's own request) and sets `item.watched`; Like sets `item.liked`.
+
+**Reheat (M6, W2).** The bar's verb sends ONE `POST /api/ytdlp/repull-metadata` with `{ ids }` (grid order). Server:
+the body's `ids`, when present, must be an array of 1..500 strings, each non-empty, at most 512 characters, with no NUL
+byte, else 400 `{ error }` before any database read and with nothing started (the RBAC, read-only and single-flight
+checks run first, unchanged). The validated ids become a Set handed to `enumerateRepullableItems(db, config,
+itemVisible, onlyIds)` as a NEW optional fourth argument: inside the loop, after the broken-record branch and the
+visibility check, an id outside the set is skipped, so a hidden or unknown or ineligible id is simply not in the
+worklist or the counts. The 202 body gains `requested: ids.length` ONLY when `ids` was sent; without `ids` the route and
+its response are byte-identical (bound by a parity test on the fake-deps harness that asserts the enumerator is called
+with `undefined` and the body is the existing shape). The batch runner is untouched, so an ids-scoped run behaves
+exactly like the Settings page's Library Reheat for those items - including its relocation of a hydrated import that
+sits outside the download root while `relocateHydratedImports` is on (the Downloads folder is the download root, so
+Dean's stated case never relocates). Disclosed here and in the ROADMAP entry. The `/preview` sibling does not take
+`ids`: the client shows no preview count (M5's `Reheat N of M` comes from the card menu's own rule). Client: 202 ->
+`Reheating N` (N = `eligible`; `Reheating N of M` when it is under `requested`) and every sent id unticks (progress
+shows in the existing download status chip); 409 -> `A reheat is already running.`; 403 -> the read-only message.
+
+**Move to Trash (M7, W3).** One `ui.confirm` (danger) bound to the shown-view signal, seeded at confirm time from the
+selected ids that are still in `currentItems`: `Move N items (<size>) to Trash?` + the single-card copy's second
+sentence, plus `Local files cannot be re-downloaded.` when any selected media item is not yt-dlp-managed; the count and
+size are summed from `item.size` at that moment. Confirm -> `runBulk('delete')`: one `DELETE /api/videos/:id` per id
+(a podcast card in a mixed grid goes to its own route through `deletePodcastCard`'s quiet twin), sequential, succeeded
+cards leave the grid through the existing in-place removal. Cancel / Esc / scrim / Close / a late tap send nothing.
+
+**Move to folder (M8, W3).** `showMoveModal` with `item = { label: 'N videos' }` and the view's `allFolders` (the same
+`GET /api/config` list); the picker gains an unquoted `label` reading (`Move N videos to:`) beside its existing quoted
+title form. Its `onMove` runs `runBulk('move', folder)`: `requestMoveItem(id, folder)` per id, sequential; a moved item
+is re-keyed by the server (a new id), so its card leaves this grid on every scope (a stale card would 404) and the
+counts shrink - the plan's "update in place" reading is not possible without the new item, disclosed.
+
+**Layout evidence (acceptance 10).** `scripts/select-bar-probe.js` (the CDP probe pattern): boots this tree on a
+scratch DATA_DIR seeded with the visual fixture, at 390x844 (touch, phone) and 1280x800, enters select mode, ticks two
+cards, and prints the bar's rect, the bottom nav's rect, the dock's rect (after `FileTube.player` docks a video) and
+`scrollWidth` vs `innerWidth`; the acceptance numbers are zero overlap and no page overflow, before (main: no bar; the
+nav and dock rects) and after. A `select-mode` scene joins test/visual/capture.js (a new surface gets a scene).
+
+**Tests.** W1: unit (`buildBulkActions`, the Select row, `requestQueueAdd`/`requestCardLike` wiring) and a full-chain
+jsdom suite on the real index.html (the card-action-menu-fullchain harness shape): enter / tick / count / a click in
+select mode leaves `location` unchanged and stashes no watch seed / Escape and Cancel / the menu's Select row / shift
+range / Select N shown vs an appended page / a re-render keeps ticked ids / the four client verbs send exactly the
+expected requests in grid order with SET semantics and one toast. W2: the endpoint harness (400 shapes with nothing
+started, the Set reaching the enumerator, the `requested` field, the no-ids parity) and the real-server RBAC suite
+(a hidden id in `ids` is not reheated and the response does not reveal it). W3: the full-chain suite's destructive
+half (confirm count and size, Cancel sends nothing, one DELETE per id and nothing else, a failed id stays ticked and
+the summary says `1 failed`, a 403 stops the run; Move: the picker, one POST per id, failure per M9) and the probe.
 
 ## Steps
 
-_(builder)_
+W1 (select mode + bar + client verbs)
+1. main.js module scope: `buildBulkActions`, the `select` row in `buildCardMenuItems` (opts.selectable), the
+   `PreviewCards` select-mode refusal + `stopAll`. Export the pure pieces.
+2. main.js view: state, `enterSelectMode`/`exitSelectMode`/`toggleSelected`/`selectAllShown`/`syncSelection`, the
+   capture click handler, the Escape handler, the shown-view abort, the `onActionMenu` early return, the bar builder,
+   the `runBulk` runner with the queue / Watch later / Like / Mark watched verbs, the modern-home header glyph.
+3. common.js: `requestQueueAdd` split out of `addToQueue`; main.js: `requestCardLike` split out of `toggleCardLike`.
+4. index.html: the Select button. style.css: the tick, the selected card, the bar (phone + desktop + dock lift).
+5. Tests (unit + full-chain); `npm run lint`, `npm run lint:ui`, the overlay census; commit.
+W2 (reheat)
+6. relocation.js: the `onlyIds` argument. index.js: validate `ids`, thread the Set, `requested` in the 202.
+7. main.js: the Reheat verb. Tests: endpoint harness + RBAC suite + parity; commit.
+W3 (Trash + Move + layout)
+8. main.js: the Trash confirm + `deleteCardById` quiet mode + the Move verb; common.js: `showMoveModal` label form.
+9. Full-chain destructive tests; `scripts/select-bar-probe.js` + the probe numbers; the visual scene; commit.
+10. Full Node 22 suite; the gate (full, data-loss brief); release per docs/RELEASING.md.
 
 ## Deviations
 
