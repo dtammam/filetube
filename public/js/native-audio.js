@@ -351,6 +351,10 @@
     // corners rounded like the player box, the bottom ones square: the control bar sits below the picture); (3) while DOCKED the picture is hidden
     // (visible: false; the page keeps scrolling under the fixed mini player, S3a), the dock shows the video's thumbnail as the
     // element's poster, and the sound plays on. Without `nativeVideo` none of this exists (S11).
+    // v1.400.1 (plan 2026-11-01-minimize-native-follow, R1): while the minimize pull, its spring-back or its fly-in moves the
+    // wrapper with a TRANSFORM, no observer hears it (a transform changes no layout size, class or child list), so the picture
+    // used to move once per second (the backstop). `surfaceLiveDecision` names those three states; surfaceSync keeps asking for
+    // the next frame while one is present, and ends with one exact measure when the last leaves. Idle cost: unchanged.
     function surfaceSchedule() {
       if (!surfaceOn || surfaceRaf || !ownedSurface || !ownedId) return; // only while native plays a video WITH its picture (a track never samples)
       var raf = typeof win.requestAnimationFrame === 'function' ? win.requestAnimationFrame.bind(win) : function (fn) { return win.setTimeout(fn, 16); };
@@ -395,6 +399,7 @@
       if (surfaceLast && surfaceLast.visible) { var last = Object.assign({}, surfaceLast, { visible: false }); post('video.surface', last); surfaceLast = last; }
       if (surfaceObs && target) { try { surfaceObs.unobserve(target); } catch (_) { /* best-effort */ } }
       if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; }
+      occludeClear();
       holeApply(null, target);
     }
     function surfaceMeasure() {
@@ -416,7 +421,8 @@
       if (!viewportSpace) { x += num(win.scrollX, 0); y += num(win.scrollY, 0); }
       var round = function (v) { return Math.round(v * 100) / 100; };
       var visible = !docked && w > 0 && h > 0 && !(cs && cs.display === 'none');
-      return { rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked };
+      var live = !!(wrapper && wrapper.classList && el.isConnected !== false && surfaceLiveDecision(wrapper.className)); // a detached wrapper never loops
+      return { live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked };
     }
     // the wrapper's class (css-fullscreen, audio-expanded) and its container's children (a reparent) are the placement signals
     // nearest the box; (re)observed at every measure since the slot node is rebuilt per view
@@ -441,8 +447,63 @@
       if (!m) { if (el) surfaceOff(el); return; }
       var msg = { rect: m.rect, space: m.space, visible: m.visible, fit: m.fit, radius: m.radius };
       var same = surfaceLast && JSON.stringify(surfaceLast) === JSON.stringify(msg);
+      // R2: native's layer lands on the frame AFTER this post, the hole on this one. During live motion the hole opens only where
+      // the picture is under either lag: the intersection of this rect and the one posted before it. The final measure is exact.
+      var prev = (m.live && surfaceLast && surfaceLast.visible && surfaceLast.space === m.space) ? surfaceLast.rect : null;
       if (!same && post('video.surface', msg)) surfaceLast = msg;
-      try { holeApply(m.visible ? m : null, el); dockArt(m.docked); } catch (_) { /* a paint detail never breaks playback */ }
+      try {
+        var hm = m;
+        if (m.live && m.visible && prev) hm = Object.assign({}, m, { rect: rectIntersect(m.rect, prev) });
+        holeApply(m.visible ? hm : null, el); dockArt(m.docked);
+        if (m.live) occludeApply(m); else occludeClear();
+      } catch (_) { /* a paint detail never breaks playback */ }
+      if (m.live) surfaceSchedule(); // R1: the next frame, while the pull / spring / fly-in runs
+    }
+    function rectIntersect(a, b) {
+      var x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y), x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+      return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+    }
+    // R3: the page text around the stage (the set the v1.362.4 fade dims) paints ABOVE the web view, so it would paint over
+    // native's picture. While the pull runs, each such element that meets the box is clipped (even-odd) to exclude it. Plain
+    // clip-path on the siblings, never on an ancestor of the video (LESSONS 7). The one remover is player.js clearMinimizeDrag
+    // (via clearOcclusion); the first non-live measure and surfaceOff are belts. Idempotent writes only.
+    var occluded = []; // [{ node, clip }]
+    function occludeNodes() {
+      var doc = win.document;
+      var root = doc.getElementById('view-root');
+      if (!root || root.getAttribute('data-view') !== 'watch') return [];
+      var slot = doc.getElementById('player-slot');
+      var out = [];
+      var cands = root.querySelectorAll('.watch-main > *, .watch-sidebar');
+      for (var i = 0; i < cands.length; i++) { if (!(slot && cands[i].contains(slot))) out.push(cands[i]); }
+      return out;
+    }
+    function occludeApply(m) {
+      if (!m.visible) { occludeClear(); return; }
+      var vr = m.vrect, next = [];
+      var nodes = occludeNodes();
+      for (var i = 0; i < nodes.length; i++) {
+        var n = nodes[i], b = n.getBoundingClientRect();
+        var hit = b.right > vr.x && b.left < vr.x + vr.w && b.bottom > vr.y && b.top < vr.y + vr.h;
+        var prior = null;
+        for (var j = 0; j < occluded.length; j++) if (occluded[j].node === n) { prior = occluded[j]; break; }
+        if (!hit) { if (prior) { n.style.removeProperty('clip-path'); n.style.removeProperty('-webkit-clip-path'); } continue; }
+        var bx = vr.x - b.left, by = vr.y - b.top, BIG = 4000;
+        var clip = 'path(evenodd, "M-' + BIG + ',-' + BIG + 'H' + (b.width + BIG) + 'V' + (b.height + BIG) + 'H-' + BIG + 'ZM' + bx + ',' + by + 'h' + vr.w + 'v' + vr.h + 'h-' + vr.w + 'Z")';
+        if (!prior || prior.clip !== clip) { n.style.setProperty('-webkit-clip-path', clip); n.style.setProperty('clip-path', clip); }
+        next.push({ node: n, clip: clip });
+      }
+      // an element that left the set (a view swap) is dropped from the list; its clip dies with the node
+      for (var k = 0; k < occluded.length; k++) {
+        var keep = false; for (var q = 0; q < next.length; q++) if (next[q].node === occluded[k].node) { keep = true; break; }
+        if (!keep) { try { occluded[k].node.style.removeProperty('clip-path'); occluded[k].node.style.removeProperty('-webkit-clip-path'); } catch (_) { /* detached */ } }
+      }
+      occluded = next;
+    }
+    function occludeClear() {
+      if (!occluded.length) return;
+      for (var i = 0; i < occluded.length; i++) { try { occluded[i].node.style.removeProperty('clip-path'); occluded[i].node.style.removeProperty('-webkit-clip-path'); } catch (_) { /* detached */ } }
+      occluded = [];
     }
     // S3a: the docked mini player shows the video's thumbnail (the element's poster, removed again on expand)
     function dockArt(docked) {
@@ -831,10 +892,15 @@
       subscribed: function () { return subscribed; },
       syncSurface: function () { if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; } surfaceSync(); }, // v1.399.0: measure now (the player calls it on a placement change; tests too)
       lastSurface: function () { return surfaceLast; },
+      clearOcclusion: occludeClear, // v1.400.1 (R3): player.js clearMinimizeDrag, the one remover of the pull's state, calls this
     };
   }
 
-  var api = { create: create, itemFromDescriptor: itemFromDescriptor, videoItemFromDescriptor: videoItemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, sameFamily: sameFamily, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
+  // v1.400.1 (R1): is the minimize pull / spring-back / fly-in running? (`classes` = the wrapper's class string)
+  function surfaceLiveDecision(classes) {
+    return /(?:^|\s)is-minimize-(?:drag|snap|settle)(?:\s|$)/.test(String(classes || ''));
+  }
+  var api = { surfaceLiveDecision: surfaceLiveDecision, create: create, itemFromDescriptor: itemFromDescriptor, videoItemFromDescriptor: videoItemFromDescriptor, itemFromQueueEntry: itemFromQueueEntry, fileDurationOf: fileDurationOf, sameItem: sameItem, sameQueue: sameQueue, sameFamily: sameFamily, FILE_ROUTE: FILE_ROUTE, DEFAULT_MODES: DEFAULT_MODES, ERROR_COPY: ERROR_COPY };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};

@@ -5787,6 +5787,8 @@ if (typeof module !== 'undefined' && module.exports) {
     host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
     var dockEl = document.getElementById('player-dock');
     if (dockEl) dockEl.classList.remove('is-minimize-settle');
+    // v1.400.1 (R3): the clips that keep the page text off a native picture go with the pull (the one remover)
+    try { var na = window.FileTube && window.FileTube.nativeAudio; if (na && typeof na.clearOcclusion === 'function') na.clearOcclusion(); } catch (_) { /* no native surface */ }
     // v1.362.4: the fade goes with the drag, unless THIS page is the one leaving (gate r1, both seats: a mark left
     // by an expand points at another page and must not keep this one dimmed).
     if (viewFadeMarked !== watchViewRoot()) clearMinimizeFade();
