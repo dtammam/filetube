@@ -153,6 +153,42 @@ test('W3 (S3a): docked, the picture is hidden (visible: false), the hole closes,
   } finally { r.close(); }
 });
 
+test('v1.401.1 (WebKit poster repaint): on every dock the poster set is followed by hidden, a layout read, shown - once per change, nothing when the poster is unchanged, playback untouched', async () => {
+  const r = realm({ host: CAPS });
+  try {
+    await loaded(r);
+    const el = r.el();
+    const log = [];
+    Object.defineProperty(el, 'offsetWidth', { configurable: true, get() { log.push('read'); return 393; } });
+    const setAttr = el.setAttribute.bind(el);
+    el.setAttribute = (n, v) => { if (n === 'poster') log.push('poster:' + v); return setAttr(n, v); };
+    const hdesc = Object.getOwnPropertyDescriptor(r.w.HTMLElement.prototype, 'hidden');
+    Object.defineProperty(el, 'hidden', { configurable: true, get() { return hdesc.get.call(this); }, set(v) { log.push('hidden:' + v); hdesc.set.call(this, v); } });
+    const p0 = r.fake.posts.length;
+    for (let i = 0; i < 3; i++) {
+      log.length = 0;
+      r.player.dock();
+      await settle(60);
+      assert.strictEqual(el.getAttribute('poster'), '/thumbnail/v1', 'dock ' + (i + 1) + ': the thumbnail is the poster');
+      const set = log.indexOf('poster:/thumbnail/v1');
+      assert.ok(set >= 0, 'dock ' + (i + 1) + ': the poster was set (' + log.join(',') + ')');
+      const after = log.slice(set + 1);
+      assert.deepStrictEqual(after.slice(0, 3), ['hidden:true', 'read', 'hidden:false'], 'dock ' + (i + 1) + ': hidden -> a layout read -> shown, right after the poster set (' + log.join(',') + ')');
+      assert.strictEqual(el.hidden, false, 'the element is shown again');
+      // idle docked: an unchanged poster writes nothing
+      log.length = 0;
+      r.na.syncSurface(); r.na.syncSurface();
+      await settle(120);
+      assert.deepStrictEqual(log, [], 'idle docked: no poster / hidden / layout-read writes (' + log.join(',') + ')');
+      r.player.expand(r.slot);
+      await settle(60);
+      assert.strictEqual(el.getAttribute('poster'), null, 'expanded: the poster is gone');
+    }
+    assert.deepStrictEqual(r.fake.posts.slice(p0).map((m) => m.type).filter((t) => /^audio\.(pause|stop|seek|play)$/.test(t)), [], 'the sound plays on across the toggles');
+    assert.strictEqual(el.hasAttribute('src'), false, 'the element has no src under native: the toggle cannot interrupt playback');
+  } finally { r.close(); }
+});
+
 test('W3 (S8): the fullscreen button takes the CSS fullscreen - a VIEWPORT rect, radius 0, the body belt transparent; the button again returns to the document rect', async () => {
   const r = realm({ host: CAPS });
   try {

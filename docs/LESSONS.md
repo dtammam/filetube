@@ -214,6 +214,8 @@ Depth: `docs/references/ios-background-audio-behavior-map.md`, `docs/references/
 
 - **A sandboxed iframe (no `allow-same-origin`) gets NO SameSite=Lax cookie on its subresource requests in Chromium and Firefox (WebKit sends it): its images 401 behind a cookie gate.** Measured with tools/pages/sandbox-cookie-probe.js (v1.395.0). Guard: serve the framed document with its own assets inlined (data: URIs, CSP `img-src 'self' data:`), keep the sandbox; measure in all three engines before designing on a cookie. (v1.395.0; x1)
 
+- **WebKit does not repaint a `<video>` poster that is set again after a removal, until the renderer is rebuilt (v1.401.1): the iPhone app's mini player showed the thumbnail on the first dock and BLACK from the second.** Measured in headless WebKit (Playwright 1.20, webkit-1616) with a fake host: web state was right in every cycle (poster attribute set, surface hidden, no stray clip), the element simply painted its black background; a poster removed once BEFORE the first dock made the first dock black too. Chromium paints the poster every time, so a Chromium probe cannot see it. Guard: after the poster attribute actually changes in `dockArt`, rebuild the renderer once (`hidden = true`, a layout read, `hidden = false`; not `style.display`, the UI ratchet bans JS display writes); never per frame. Test: the order set -> hidden -> layout read -> shown on the real dock() path, mutated red.
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#8-platform-facts-ios-webkit-pwa-browsers).
 
 ## 9. Data integrity and persistence (the data-loss core: full gate, never slimmed)

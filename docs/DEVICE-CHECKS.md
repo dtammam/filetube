@@ -5,6 +5,14 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Mini player thumbnail (v1.401.1)
+
+On the iPhone app v0.16.0 (or later), a video playing on the watch page. A failure here is a re-root-cause, not a patch.
+
+- [ ] v1.401.1 - (a) Swipe the player down into the mini player, tap it to expand, swipe down again, five times in a row: the thumbnail shows in the mini player every time, never black.
+- [ ] v1.401.1 - (b) The same with the chevron button instead of the swipe.
+- [ ] v1.401.1 - (c) The sound never stops or hiccups across any of it.
+
 ## Live mini player (v1.401.0; after the app build that announces nativeVideoDock)
 
 On the iPhone app build that announces `nativeVideoDock` (filetube-ios v0.17.0), a video playing on the watch page. A failure here is a
