@@ -84,7 +84,7 @@ function hitTest(r) {
   const overlays = []; const hits = { n: 0 };
   const rectOf = (el) => el.getBoundingClientRect();
   const inside = (b, x, y) => x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
-  const rendered = (el) => el.isConnected && !el.hidden && el.style.display !== 'none' && !el.closest('[hidden]');
+  const rendered = (el) => el.isConnected && !el.hidden && r.w.getComputedStyle(el).display !== 'none' && !el.closest('[hidden]');
   const w = r.w;
   w.document.elementsFromPoint = (x, y) => {
     hits.n += 1;
@@ -276,5 +276,49 @@ test('R4 CONTROL: without nativeVideoDock a sheet over the thumbnail dock change
     scrim.remove(); s.remove(); await settle(80);
     assert.strictEqual(r.surfaces().length, n0, 'no post');
     assert.strictEqual(h.hits.n, 0, 'no hit test without the capability');
+  } finally { r.close(); }
+});
+
+// ---- gate prep: the two mutants the first round left standing (a survivor on correct code is a WARNING, LESSONS 2) ---------------
+
+test('R4: a sheet left open across close() and a new load is seen on the next dock FIRST measure with no new signal (dock() itself scans)', async () => {
+  const r = realm();
+  try {
+    const h = hitTest(r);
+    await dockedLive(r);
+    const scrim = h.overlay({ cls: 'ui-scrim', rect: FULL, z: 1500 }); const s = h.overlay({ cls: 'ui-sheet', rect: OVER_DOCK, z: 1501, text: 'x' });
+    await settle(60);
+    assert.strictEqual(r.last().visible, false);
+    r.player.close(); // surfaceOff: every cover state reset, the sheet stays up
+    await settle(60);
+    const { VIDEO } = require('../helpers/live-dock-realm');
+    r.player.load('v2', Object.assign({}, VIDEO, { id: 'v2' }), { slot: r.slot }); await settle(80);
+    const loads = r.fake.of('audio.load'); r.fake.emit(Object.assign(require('../helpers/live-dock-realm').STATE(loads[loads.length - 1].rev), { queue: [Object.assign({}, require('../helpers/live-dock-realm').ITEM, { id: 'v2', src: '/api/offline/file/video/v2', artworkSrc: '/thumbnail/v2' })] })); await settle(60);
+    assert.strictEqual(r.last().visible, true, 'in the slot: shown');
+    h.hits.n = 0;
+    r.player.dock();
+    assert.ok(h.hits.n > 0, 'the first docked measure scanned without any new DOM signal');
+    assert.strictEqual(r.last().visible, false, 'docked under the sheet that never left');
+    scrim.remove(); s.remove(); await settle(60);
+    assert.strictEqual(r.last().visible, true);
+  } finally { r.close(); }
+});
+
+test('R4: a cover revealed by a BODY CLASS alone (a takeover keyed in CSS, no node added, no hidden toggled) is seen: the surface sampler own body signal wakes the scan', async () => {
+  const r = realm();
+  try {
+    const h = hitTest(r);
+    const st = r.w.document.createElement('style'); st.textContent = '.pk-cover { display: none; } body.pk-on .pk-cover { display: block; }'; r.w.document.head.appendChild(st);
+    const cover = h.overlay({ cls: 'pk-cover', rect: FULL, z: 1100, bg: 'rgb(10, 10, 10)', text: 'Pocket' });
+    await dockedLive(r);
+    assert.strictEqual(r.na.dockCovered(), false, 'display none: not rendered, not covering');
+    const n0 = r.surfaces().length;
+    r.w.document.body.classList.add('pk-on'); // the ONE mutation
+    await settle(60);
+    assert.strictEqual(r.surfaces().length, n0 + 1);
+    assert.strictEqual(r.last().visible, false, 'revealed by the class: covered');
+    r.w.document.body.classList.remove('pk-on'); await settle(60);
+    assert.strictEqual(r.last().visible, true);
+    cover.remove();
   } finally { r.close(); }
 });
