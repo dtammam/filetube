@@ -271,6 +271,8 @@ chrome by a frame during the fly-in (the bridge hop under an above layer) is a n
   qa named at r3 (S5: a 40 ms wait racing the jsdom settle's ~50 ms clearMinimizeDrag); standalone on the quiet box 5 of 5 runs
   14 pass, 0 fail; recorded in the known-flake list. The suite is re-run on the clean tree after this close-out commit and its
   counts go into the PR body and the next docs line.
+- Full suite on the release tree, re-run on the quiet box after the close-out (dfc0d00c = aa478f1d + the plan doc; Node 22.23.1,
+  `npm test`): 13174 tests, 13161 pass, 0 fail, 13 skipped (583 s). Green.
 - Close-out binding (RELEASING.md step 1, Dean's ruling 2026-10-12): every seat APPROVED r3 at aa478f1d; this commit changes the
   plan doc only (`git diff --name-only aa478f1d..HEAD` = docs/exec-plans/completed/2026-11-01-live-dock-picture.md): the three r3
   verdict blocks and these two bullets. No seat re-check.
