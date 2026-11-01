@@ -35,6 +35,8 @@ const NAMES = [
   'lock',
   // v1.395.0 Pages: the bottom-bar / empty-state glyph (a saved article)
   'article',
+  // v1.400.0 multi-select: the Select tool (the grid header) and the card menu's Select row
+  'checklist',
 ];
 
 const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thumb_up', 'favorite', 'star',

@@ -727,6 +727,10 @@ function buildCardMenuItems(item, caps, opts) {
   const c = caps || {};
   const kp = cardKindPresentation(it);
   const out = [];
+  // v1.400.0 multi-select (M2): the Select row enters select mode with THIS card ticked. The
+  // view passes `opts.selectable` for every grid card; a caller that does not (the kebab's
+  // own "can this menu hold anything" check, a unit harness) sees the menu exactly as before.
+  if (opts && opts.selectable === true) out.push({ id: 'select', icon: 'checklist', label: 'Select' });
   if (!kp || kp.canQueue) out.push({ id: 'queue', icon: 'playlist_add', label: 'Add to queue' });
   // v1.343 Watch later: media (video/audio); v1.376.0 W2: podcast episodes too (kp.canWatchLater).
   // opts.watchLater = already on the list.
@@ -752,6 +756,62 @@ function buildCardMenuItems(item, caps, opts) {
   if (!kp && opts && opts.feedHideable) out.push({ id: 'feedhide', icon: 'visibility_off', label: 'Hide from feed' });
   if ((!kp || kp.canDelete) && c.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
   return out;
+}
+
+// v1.400.0 multi-select (M4, M5): the action bar's verbs for a SELECTION, in the ruling's
+// order. Applicability is the card menu's OWN rule: a card applies to queue / Watch later /
+// Like / Reheat / Move to Trash iff buildCardMenuItems offers that id for it (one roster, never
+// a copy - LESSONS 12). Two bar verbs have no menu row, so their rules live here: Mark watched
+// = a media card (the only kind with POST /api/watched/:id); Move to folder = a media card AND
+// the library-modify capability (watch.js's rule for its More menu). Like applies to any card
+// the menu offers Like on (ticked or not); the run then skips an already-liked card as a no-op
+// success (M4: the verbs SET, never toggle). The server stays the real gate.
+const BULK_ACTIONS = [
+  { id: 'queue', icon: 'playlist_add', label: 'Add to queue' },
+  { id: 'watchlater', icon: 'schedule', label: 'Watch later' },
+  { id: 'like', icon: 'favorite', label: 'Like' },
+  { id: 'watched', icon: 'visibility', label: 'Mark watched' },
+  { id: 'move', icon: 'folder', label: 'Move to folder' },
+  { id: 'reheat', icon: 'local_fire_department', label: 'Reheat metadata' },
+  { id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true },
+];
+function bulkActionApplies(action, item, caps) {
+  const it = item || {};
+  const kp = cardKindPresentation(it);
+  if (action === 'watched') return !kp;
+  if (action === 'move') return !kp && !!(caps && caps.canModifyLibrary === true);
+  return buildCardMenuItems(it, caps, {}).some((en) => en.id === action);
+}
+// Pure: `[{ id, icon, label, danger, ids, total }]` - one entry per verb that applies to at
+// least one of `items` (the selection, in grid order); `ids` = the cards it applies to, in that
+// order; the label carries "N of M" when it applies to only some (M5), the bare verb otherwise.
+function buildBulkActions(items, caps) {
+  const list = Array.isArray(items) ? items.filter((it) => it && it.id != null) : [];
+  const out = [];
+  for (const a of BULK_ACTIONS) {
+    const ids = list.filter((it) => bulkActionApplies(a.id, it, caps)).map((it) => String(it.id));
+    if (ids.length === 0) continue;
+    const label = ids.length === list.length ? a.label : a.label + ' ' + ids.length + ' of ' + list.length;
+    out.push({ id: a.id, icon: a.icon, label, danger: a.danger === true, ids, total: list.length });
+  }
+  return out;
+}
+// Pure: the one summary toast of a bulk run (M9). `r` = { ok: n, failed: n, refusal: string|null }.
+function bulkSummary(action, r) {
+  const n = r.ok;
+  const noun = (k) => (k === 1 ? '1 item' : k + ' items');
+  let head;
+  if (action === 'queue') head = n === 0 ? 'Nothing was added to the queue.' : 'Added ' + noun(n) + ' to the queue.';
+  else if (action === 'watchlater') head = n === 0 ? 'Nothing was added to Watch later.' : 'Added ' + noun(n) + ' to Watch later.';
+  else if (action === 'like') head = n === 0 ? 'Nothing was liked.' : 'Liked ' + noun(n) + '.';
+  else if (action === 'watched') head = n === 0 ? 'Nothing was marked watched.' : 'Marked ' + noun(n) + ' watched.';
+  else if (action === 'move') head = n === 0 ? 'Nothing was moved.' : 'Moved ' + noun(n) + '.';
+  else if (action === 'delete') head = n === 0 ? 'Nothing was moved to Trash.' : 'Moved ' + noun(n) + ' to Trash.';
+  else head = n === 0 ? 'Nothing was done.' : 'Done: ' + noun(n) + '.';
+  const parts = [head];
+  if (r.failed > 0) parts.push(r.failed + ' failed.');
+  if (r.refusal) parts.push(r.refusal);
+  return parts.join(' ');
 }
 
 // v1.387.0 offline playback: the offline kind a card's item has (the manifest enum), or null for a kind that is not an
@@ -1032,6 +1092,9 @@ if (typeof module !== 'undefined' && module.exports) {
     cardShareUrl,
     cardDownloadHref,
     buildCardMenuItems,
+    buildBulkActions, // v1.400.0 multi-select: the bar's verbs (the menu's own applicability)
+    bulkActionApplies,
+    bulkSummary,
     cardDeleteConfirmCopy,
     buildVideoCardEl,
     buildSkeletonCardEl,
@@ -1082,8 +1145,14 @@ const PreviewCards = (function () {
     return v;
   }
   // hover/in-view start is DELAYED so a brush-past / fast scroll never fires it.
+  // v1.400.0 multi-select (M2): no preview starts on a card of a grid in select mode (a tap there
+  // toggles the card, and a clip rolling under a tick is noise); stopAll() ends the ones running.
+  function inSelectMode(el) {
+    return !!(el && el.closest && el.closest('.video-grid.is-select-mode'));
+  }
   function start(el) {
     if (active.has(el) || pending.has(el) || reducedMotion()) return;
+    if (inSelectMode(el)) return;
     if (el.getAttribute('data-pv-nofile') === '1') return; // known-absent -> no delay, no probe
     const t = setTimeout(function () { pending.delete(el); begin(el); }, START_DELAY_MS);
     pending.set(el, t);
@@ -1094,6 +1163,7 @@ const PreviewCards = (function () {
   // poster (never a blank box), never re-probe.
   function begin(el) {
     if (active.has(el) || reducedMotion()) return;
+    if (inSelectMode(el)) return;
     if (el.getAttribute('data-pv-nofile') === '1') return;
     const v = ensureVideo(el);
     el.setAttribute('data-pv-want', '1'); // still-wanted intent (cleared by stop)
@@ -1210,6 +1280,11 @@ const PreviewCards = (function () {
   }
 
   return {
+    // Stops every running and pending preview (select-mode entry).
+    stopAll() {
+      Array.from(active).forEach(stop);
+      Array.from(pending.keys()).forEach(stop);
+    },
     init() {
       if (inited || typeof document === 'undefined') return;
       inited = true;
@@ -1335,6 +1410,16 @@ const PreviewCards = (function () {
     // cross-user-bleed class). Empty until the latch lands: the card menu then
     // offers neither Delete nor Reheat.
     let cardCaps = {};
+    // v1.400.0 multi-select (M10): the selection, by id, per view instance. `selected` keeps
+    // insertion order; the grid order is derived from currentItems at action time.
+    // `syncSelection()` (below) is the ONE reconciler the render paths call.
+    let selectMode = false;
+    const selected = new Set();
+    let lastTickedId = null;      // shift-click ranges start here (M2)
+    let selectSession = null;     // an AbortController per select-mode session (Escape, the shown-view abort)
+    let selectBar = null;         // the action bar's DOM, built once per instance
+    let bulkBusy = false;         // a run in flight: a second tap does nothing (M9)
+    const selectBtn = root.querySelector('#select-mode-btn');
     const storedSortPick = localStorage.getItem('filetube_sort');
     let currentSort = storedSortPick || 'release-date';
 
@@ -1843,9 +1928,36 @@ const PreviewCards = (function () {
         // round trips, so the chips (~54px) and the reserve (~98px) landed ABOVE the
         // already-painted grid skeleton and shoved it down (probe: 0.175 CLS, modern cold at
         // 390). Only the channel fetch and the grid fetch wait now (renderModernHome).
+        // v1.400.0 multi-select (M1, M2): the modern home hides .section-title (and with it the
+        // static #select-mode-btn), so its Select lives in the header beside the view toggle,
+        // mounted and torn down exactly like the sort glyph.
+        function injectModernSelectButton(sig) {
+          const headerRight = document.querySelector('.header-right');
+          if (!headerRight) return;
+          const prior = headerRight.querySelector('.modern-select');
+          if (prior) prior.remove(); // idempotent
+          const wrap = document.createElement('div');
+          wrap.className = 'modern-select';
+          const btn = chromeButtonEl({ icon: 'checklist', ariaLabel: 'Select' });
+          btn.title = 'Select';
+          btn.setAttribute('aria-pressed', 'false');
+          btn.addEventListener('click', () => {
+            if (selectMode) exitSelectMode(); else enterSelectMode();
+            btn.setAttribute('aria-pressed', selectMode ? 'true' : 'false');
+          }, { signal: sig });
+          wrap.appendChild(btn);
+          const toggle = headerRight.querySelector('.modern-view-toggle');
+          if (toggle) headerRight.insertBefore(wrap, toggle); // left of the view toggle
+          else headerRight.insertBefore(wrap, headerRight.firstChild);
+          sig.addEventListener('abort', () => {
+            const el = document.querySelector('.modern-select');
+            if (el) el.remove();
+          }, { once: true });
+        }
         function mountModernChrome(chromeHost, sig) {
           injectModernHeaderSort(sig); // glyph-only ▾, leftmost in the header top-right
           injectModernViewToggle(sig); // v1.160: card/list toggle beside it
+          injectModernSelectButton(sig); // v1.400.0: Select, left of the toggle
           if (chromeHost) {
             // #modern-avatar-bar is filled by T4 (mobile-only). The chip row is
             // wired with ONE delegated listener covering every chip.
@@ -2486,6 +2598,9 @@ const PreviewCards = (function () {
       if (append) videoGrid.appendChild(frag);
       else videoGrid.replaceChildren(frag);
       revealHomeArt(videoGrid, signal);
+      // v1.400.0 (M3, M10): a replace keeps the ticked ids still present and drops the rest; an
+      // append ticks nothing new (what you see is what gets acted on).
+      syncSelection();
     }
 
     // Appends `items` as NEW cards at the tail of #video-grid - the existing
@@ -2518,6 +2633,7 @@ const PreviewCards = (function () {
       if (!videoGrid.querySelector('.video-card')) {
         renderMediaGridPage([], { append: false });
       }
+      syncSelection(); // v1.400.0: a card that left is no longer selected
     }
 
     // Render folders in the sidebar. A folder flagged
@@ -3169,15 +3285,26 @@ const PreviewCards = (function () {
     // v1.40.0: the per-card Like toggle, NON-optimistic (the state flips only
     // after the request resolves). The item carries the state, so the next menu
     // reads Like/Unlike from it and a re-render rebuilds it correctly.
+    // v1.400.0: the Like REQUEST, silent - on=true POSTs (set), false DELETEs. Resolves the new
+    // state (written onto the item); rejects with an Error carrying `status` on a non-2xx. The
+    // card menu's toggle below and the bar's bulk Like (SET only, M4) both run through it.
+    function requestCardLike(item, on) {
+      const kp = cardKindPresentation(item);
+      return fetch(cardLikeEndpoint(kp ? kp.kind : undefined, item.id), { method: on ? 'POST' : 'DELETE' })
+        .then((res) => {
+          if (!res.ok) throw Object.assign(new Error('like request failed: ' + res.status), { status: res.status });
+          return res.json().catch(() => ({}));
+        })
+        .then((data) => {
+          item.liked = typeof data.liked === 'boolean' ? data.liked : on;
+          return item.liked;
+        });
+    }
     async function toggleCardLike(item) {
       if (!item || !item.id) return;
       const currentlyLiked = item.liked === true;
-      const kp = cardKindPresentation(item);
       try {
-        const res = await fetch(cardLikeEndpoint(kp ? kp.kind : undefined, item.id), { method: currentlyLiked ? 'DELETE' : 'POST' });
-        if (!res.ok) throw new Error('like request failed: ' + res.status);
-        const data = await res.json().catch(() => ({}));
-        item.liked = typeof data.liked === 'boolean' ? data.liked : !currentlyLiked;
+        await requestCardLike(item, !currentlyLiked);
         showToast(item.liked ? 'Added to Liked' : 'Removed from Liked');
       } catch (_) {
         showToast('Could not update Liked.'); // never fake success
@@ -3198,6 +3325,7 @@ const PreviewCards = (function () {
         currentOffset -= 1;
         currentTotal -= 1;
       }
+      syncSelection(); // v1.400.0
     }
     // Move to top: PUT the loaded window's ids with this one first. The server keeps any row the
     // window did not list (unloaded pages, another device's add) after them, so it never drops one.
@@ -3261,6 +3389,7 @@ const PreviewCards = (function () {
       currentItems = currentItems.filter((it) => String(it.id) !== String(id));
       currentOffset -= 1;
       currentTotal -= 1;
+      syncSelection(); // v1.400.0
       fetch('/api/feed-hidden/' + encodeURIComponent(id), { method: 'POST' })
         .then((res) => {
           if (!res.ok) throw new Error('hide failed');
@@ -3333,7 +3462,9 @@ const PreviewCards = (function () {
         if (off && off.enabled && offKind && off.runMenuAction(action, offKind, item.id)) return;
       }
       if (!item) return;
-      if (action === 'queue') {
+      if (action === 'select') {
+        enterSelectMode(item.id); // v1.400.0 (M2): select mode with this card ticked
+      } else if (action === 'queue') {
         const kp = cardKindPresentation(item);
         addToQueue(item.id, undefined, kp ? kp.kind : undefined); // common.js: THE one queue verb
       } else if (action === 'like') {
@@ -3381,6 +3512,7 @@ const PreviewCards = (function () {
       const off = window.FileTube && window.FileTube.offline;
       const offKind = cardOfflineKind(item);
       const entries = buildCardMenuItems(item, cardCaps, {
+        selectable: true, // v1.400.0 (M2): every grid card offers Select
         feedHideable: modernMode,
         watchLater: watchLaterFilter || watchLaterHas(item.id, item.kind) === true,
         watchLaterTop: watchLaterFilter && currentItems.length > 1 && currentItems[0] !== item,
@@ -3405,6 +3537,296 @@ const PreviewCards = (function () {
       });
     }
 
+
+    // ---- v1.400.0 multi-select (plan docs/exec-plans/active/2026-11-01-multi-select.md) -------
+    //
+    // Select several cards and act on them together. The state is the `selected` Set of ids
+    // (M10); the DOM carries it as #video-grid.is-select-mode, .video-card.is-selected and a
+    // .card-tick glyph per card; syncSelection() is the one reconciler every render path calls.
+    // In select mode a click anywhere on a card toggles it and NEVER navigates (a capture-phase
+    // listener on the grid claims it before the card's links, the stash-seed listener and the
+    // router's document anchor handler - M2); shift-click ticks the range from the last tick.
+    // The action bar (M4) is view-owned DOM inside #view-root, so it dies with the view; its verbs
+    // come from buildBulkActions (the card menu's own applicability, M5) and run sequentially
+    // through the SAME per-item requests the card menu uses (M9).
+
+    // The selected items, in grid order (currentItems' order), ids no longer loaded dropped.
+    function selectedItemsInGridOrder() {
+      return currentItems.filter((it) => it && selected.has(String(it.id)));
+    }
+
+    // The tick glyph on a card (no button: the whole card is the hit target in select mode).
+    // Placed last inside the ui-thumb, so it paints over the image without a z-index.
+    function ensureCardTick(card, on) {
+      const existing = card.querySelector('.card-tick');
+      if (!on) { if (existing) existing.remove(); return; }
+      if (existing) return;
+      const u = cardUi();
+      const host = card.querySelector('.card-media .ui-thumb') || card.querySelector('.card-media');
+      if (!u || !host) return;
+      const tick = document.createElement('span');
+      tick.className = 'card-tick';
+      tick.setAttribute('aria-hidden', 'true');
+      tick.appendChild(u.icon('check', { size: 'sm' }));
+      host.appendChild(tick);
+    }
+
+    // THE reconciler (M3, M10): drops ids that left currentItems, repaints the ticks and the bar.
+    function syncSelection() {
+      const live = new Set(currentItems.map((it) => String(it.id)));
+      for (const id of Array.from(selected)) if (!live.has(id)) selected.delete(id);
+      if (lastTickedId !== null && !live.has(lastTickedId)) lastTickedId = null;
+      videoGrid.classList.toggle('is-select-mode', selectMode);
+      const cards = videoGrid.querySelectorAll('.video-card[data-id]');
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const on = selectMode && selected.has(card.getAttribute('data-id'));
+        card.classList.toggle('is-selected', on);
+        if (on) card.setAttribute('aria-selected', 'true'); else card.removeAttribute('aria-selected');
+        ensureCardTick(card, selectMode);
+      }
+      if (selectBtn) {
+        selectBtn.hidden = currentItems.length === 0;
+        selectBtn.setAttribute('aria-pressed', selectMode ? 'true' : 'false');
+      }
+      paintSelectBar();
+    }
+
+    // The bar's DOM, built once per instance with the ui primitives (M12): a head row (the count,
+    // Select N shown, Cancel) and a verbs row (ui-btn pills; scrolls on a phone, wraps on desktop).
+    function ensureSelectBar() {
+      if (selectBar) return selectBar;
+      const u = cardUi();
+      if (!u) return null;
+      const bar = document.createElement('div');
+      bar.className = 'select-bar';
+      bar.hidden = true;
+      bar.setAttribute('role', 'region');
+      bar.setAttribute('aria-label', 'Selected items');
+      const head = document.createElement('div');
+      head.className = 'select-bar__head';
+      const count = document.createElement('span');
+      count.className = 'select-bar__count';
+      count.setAttribute('aria-live', 'polite');
+      head.appendChild(count);
+      const all = u.button({ variant: 'plain', size: 'sm', label: 'Select all' });
+      all.classList.add('select-bar__all');
+      all.addEventListener('click', () => selectAllShown(), { signal });
+      head.appendChild(all);
+      const spacer = document.createElement('span');
+      spacer.className = 'select-bar__spacer';
+      head.appendChild(spacer);
+      const cancel = u.button({ variant: 'secondary', size: 'sm', label: 'Cancel' });
+      cancel.classList.add('select-bar__cancel');
+      cancel.addEventListener('click', () => exitSelectMode(), { signal });
+      head.appendChild(cancel);
+      bar.appendChild(head);
+      const verbs = document.createElement('div');
+      verbs.className = 'select-bar__verbs';
+      bar.appendChild(verbs);
+      root.appendChild(bar);
+      selectBar = bar;
+      return bar;
+    }
+
+    // Writes the bar from the current selection: the count, "Select N shown" (N = the loaded
+    // cards, M3), and one pill per applicable verb (buildBulkActions). While a run is in flight
+    // every verb is disabled and the running one is busy (M9: a second tap does nothing).
+    function paintSelectBar() {
+      if (!selectMode) { if (selectBar) selectBar.hidden = true; return; }
+      const bar = ensureSelectBar();
+      if (!bar) return;
+      const u = cardUi();
+      const items = selectedItemsInGridOrder();
+      bar.hidden = false;
+      bar.querySelector('.select-bar__count').textContent = items.length === 1 ? '1 selected' : items.length + ' selected';
+      const all = bar.querySelector('.select-bar__all');
+      const shown = currentItems.length;
+      all.querySelector('.ui-btn__label').textContent = 'Select ' + shown + ' shown';
+      all.disabled = shown === 0 || items.length === shown;
+      bar.querySelector('.select-bar__cancel').disabled = bulkBusy;
+      const verbs = bar.querySelector('.select-bar__verbs');
+      const actions = buildBulkActions(items, cardCaps);
+      verbs.replaceChildren();
+      actions.forEach((a) => {
+        const b = u.button({ variant: 'tonal', size: 'sm', pill: true, icon: a.icon, label: a.label, disabled: bulkBusy });
+        b.setAttribute('data-bulk-action', a.id);
+        if (a.danger) b.classList.add('ui-btn--danger');
+        if (bulkBusy && bulkBusy === a.id && u.setBusy) u.setBusy(b, true);
+        b.addEventListener('click', () => runBulk(a.id), { signal });
+        verbs.appendChild(b);
+      });
+    }
+
+    // Enters select mode (idempotent); `seedId` ticks that card (the card menu's Select row, M2).
+    function enterSelectMode(seedId) {
+      if (!selectMode) {
+        selectMode = true;
+        closeCardMenu();
+        selectSession = new AbortController();
+        // Leaving the view (navigate, popstate, a folder change) ends the session: the router's
+        // SHOWN-view signal, read now (the cached home never aborts its own, LESSONS 4).
+        shownViewSignal().addEventListener('abort', () => exitSelectMode(), { once: true, signal: selectSession.signal });
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'Escape' && e.key !== 'Esc') return;
+          if (document.querySelector('.ui-sheet.is-open')) return; // the open sheet owns this Escape
+          e.preventDefault();
+          exitSelectMode();
+        }, { signal: selectSession.signal });
+        try { PreviewCards.stopAll(); } catch (_) { /* preview is a progressive enhancement */ }
+        ensureSelectBar();
+      }
+      if (seedId != null) {
+        selected.add(String(seedId));
+        lastTickedId = String(seedId);
+      }
+      syncSelection();
+    }
+
+    // Leaves select mode and clears the selection (Cancel, Escape, leaving the view, destroy).
+    function exitSelectMode() {
+      if (!selectMode) return;
+      selectMode = false;
+      selected.clear();
+      lastTickedId = null;
+      if (selectSession) { selectSession.abort(); selectSession = null; }
+      syncSelection();
+    }
+    signal.addEventListener('abort', () => exitSelectMode(), { once: true });
+
+    // Toggles one card; with `range`, ticks (never unticks) every card between the last tick and
+    // this one in grid order (M2: desktop shift-click).
+    function toggleSelected(id, opts) {
+      const key = String(id);
+      if (opts && opts.range && lastTickedId !== null && lastTickedId !== key) {
+        const order = currentItems.map((it) => String(it.id));
+        const a = order.indexOf(lastTickedId);
+        const b = order.indexOf(key);
+        if (a !== -1 && b !== -1) {
+          for (let i = Math.min(a, b); i <= Math.max(a, b); i++) selected.add(order[i]);
+          lastTickedId = key;
+          syncSelection();
+          return;
+        }
+      }
+      if (selected.has(key)) selected.delete(key);
+      else { selected.add(key); lastTickedId = key; }
+      syncSelection();
+    }
+
+    // "Select N shown": exactly the loaded cards, now (M3). A page loaded later is not ticked.
+    function selectAllShown() {
+      currentItems.forEach((it) => { if (it && it.id != null) selected.add(String(it.id)); });
+      syncSelection();
+    }
+
+    // In select mode, the FIRST listener a card click meets: it toggles and nothing else runs.
+    videoGrid.addEventListener('click', (e) => {
+      if (!selectMode) return;
+      const card = e.target && e.target.closest ? e.target.closest('.video-card') : null;
+      if (!card || card.classList.contains('skeleton-card') || !card.hasAttribute('data-id')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSelected(card.getAttribute('data-id'), { range: e.shiftKey === true });
+    }, { signal, capture: true });
+
+    if (selectBtn) {
+      selectBtn.addEventListener('click', () => { if (selectMode) exitSelectMode(); else enterSelectMode(); }, { signal });
+    }
+
+    // The refusal the whole run stops on (M9): the server says the ACTION is refused for this
+    // user / instance, not this item. 401 / 403 everywhere; a 409 `{readOnly:true}` for a move or
+    // a Trash. Returns the message, or null for a per-item failure.
+    function bulkRefusal(status, body) {
+      if (status === 401) return 'Sign in again to continue.';
+      if (status === 403) return "You don't have permission for that.";
+      if (status === 409 && body && body.readOnly === true) return 'Read-only mode: nothing was changed.';
+      return null;
+    }
+
+    // ONE item of a bulk run. Resolves { status: 'ok' | 'failed' | 'refused', message? }.
+    // Each verb is the card menu's own request (never a copy): requestQueueAdd / requestWatchLater
+    // (common.js), requestCardLike, the watch page's POST /api/watched/:id.
+    async function runBulkOne(action, item, opt) {
+      const kp = cardKindPresentation(item);
+      const kind = kp ? kp.kind : undefined;
+      const outcome = (err) => {
+        const status = err && typeof err.status === 'number' ? err.status : 0;
+        const refusal = bulkRefusal(status, err && err.body);
+        return refusal ? { status: 'refused', message: refusal } : { status: 'failed' };
+      };
+      try {
+        if (action === 'queue') {
+          await requestQueueAdd(item.id, 'end', kind);
+          return { status: 'ok' };
+        }
+        if (action === 'watchlater') {
+          await requestWatchLater(item.id, true, kind === 'podcast' ? 'podcast' : undefined);
+          return { status: 'ok' };
+        }
+        if (action === 'like') {
+          if (item.liked === true) return { status: 'ok' }; // SET semantics (M4): already liked is a no-op
+          await requestCardLike(item, true);
+          return { status: 'ok' };
+        }
+        if (action === 'watched') {
+          const res = await fetch('/api/watched/' + encodeURIComponent(item.id), { method: 'POST' });
+          if (!res.ok) throw Object.assign(new Error('watched request failed: ' + res.status), { status: res.status });
+          item.watched = true;
+          // Marking watched removes the item from Watch later server side (lib/user/routes.js).
+          const wl = typeof watchLaterSnapshot === 'function' ? watchLaterSnapshot() : null;
+          if (wl) wl.delete(watchLaterKey(item.id, kind));
+          return { status: 'ok' };
+        }
+        if (action === 'delete' || action === 'move' || action === 'reheat') {
+          return await runBulkOneLater(action, item, opt); // the W2 / W3 verbs
+        }
+        return { status: 'failed' };
+      } catch (err) {
+        return outcome(err);
+      }
+    }
+
+    // Runs `action` over the applicable selected cards, sequentially, in grid order (M9). Each
+    // success unticks its card; a failure leaves it ticked; a refusal stops the run and leaves
+    // every unsent card ticked; leaving the view stops it before the next request. One summary
+    // toast; when nothing stays ticked the view leaves select mode.
+    async function runBulk(action, opt) {
+      if (bulkBusy || !selectMode) return;
+      const shown = shownViewSignal();
+      const items = selectedItemsInGridOrder().filter((it) => bulkActionApplies(action, it, cardCaps));
+      if (items.length === 0) return;
+      bulkBusy = action;
+      paintSelectBar();
+      const r = { ok: 0, failed: 0, refusal: null };
+      try {
+        for (const it of items) {
+          if (shown.aborted || signal.aborted || !selectMode) break;
+          const res = await runBulkOne(action, it, opt);
+          if (res.status === 'ok') { r.ok += 1; selected.delete(String(it.id)); }
+          else if (res.status === 'refused') { r.refusal = res.message; break; }
+          else r.failed += 1;
+        }
+      } finally {
+        bulkBusy = false;
+      }
+      if (action === 'queue' && r.ok > 0 && typeof refreshQueueChrome === 'function') refreshQueueChrome();
+      if (action === 'watchlater' && r.ok > 0 && sidebarFoldersList && typeof applyWatchLaterSidebarEntry === 'function') applyWatchLaterSidebarEntry(sidebarFoldersList, { force: true });
+      afterBulk(action, r);
+    }
+    function afterBulk(action, r) {
+      if (shownViewSignal().aborted || signal.aborted) return;
+      showToast(bulkSummary(action, r));
+      if (selectMode && selected.size === 0) exitSelectMode();
+      else syncSelection();
+    }
+
+    // The verbs the later waves add (W2 reheat, W3 Move to folder / Move to Trash). Until they
+    // land, an id that reaches here is a per-item failure, never a silent success.
+    async function runBulkOneLater() {
+      return { status: 'failed' };
+    }
+
     videoGrid.addEventListener('click', (e) => {
       const kebab = e.target && e.target.closest ? e.target.closest('.card-kebab') : null;
       if (!kebab) return;
@@ -3417,6 +3839,7 @@ const PreviewCards = (function () {
     const FTI = (typeof window !== 'undefined' && window.FTInteraction) || null;
     if (FTI && typeof FTI.onActionMenu === 'function') {
       const offActionMenu = FTI.onActionMenu(videoGrid, (e, pt) => {
+        if (selectMode) return; // v1.400.0 (M2): no menu over a pending selection; the press's click swallow still fires
         const card = e && e.target && e.target.closest ? e.target.closest('.video-card') : null;
         if (!card || card.classList.contains('skeleton-card')) return;
         openCardMenu(card, pt);

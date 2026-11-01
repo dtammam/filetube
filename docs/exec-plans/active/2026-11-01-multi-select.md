@@ -275,4 +275,14 @@ W3 (Trash + Move + layout)
 
 ## Deviations
 
+- W1 (2026-11-01): the grid header's Select is an ICON-ONLY ui-btn (the `checklist` glyph, aria-label and title
+  "Select"), not a labelled pill: `test/unit/home-mobile-scale.test.js` locks the tools group to icon-only controls
+  (a measured phone-fit rule, sweep S2), so the Design's "tonal, sm, pill" became the group's own shape (comply, never
+  widen - LESSONS 3). The word "Select" is the card menu's row. The modern home's header glyph is the same button.
+  `checklist` joined the icon registry (tools/icons/names.js, fetched and rebuilt) for the tool and the menu row; the
+  per-card tick keeps `check`.
+- W1: the Like request moved into `requestCardLike(item, on)` and the Watch later / queue errors now carry `status`;
+  the card-like source lock and the key-listener census were updated in lockstep (intent preserved: the toggle still
+  DELETEs when liked and POSTs when not; the Escape listener is bubble-phase and classified).
+
 ## Evidence

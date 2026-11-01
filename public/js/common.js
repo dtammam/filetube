@@ -4946,13 +4946,21 @@ function formatQueuePosition(n) {
 // position: 'end' (default) | 'next'. Toasts the outcome and refreshes the
 // header chrome; resolves with the server's shaped queue (or null on error
 // - callers needing more than the toast can inspect it).
-function addToQueue(mediaId, position, kind) {
+// v1.400.0 multi-select: the queue add REQUEST, silent. Resolves the response body on a 2xx;
+// rejects with an Error carrying the server's message and `status` otherwise. `addToQueue`
+// (the card menu's verb, below) is this plus the toast and its Undo; the bar's bulk Add to queue
+// runs it once per card and toasts once (one request shape, two voices).
+function requestQueueAdd(mediaId, position, kind) {
   return fetch('/api/queue/items', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mediaId, position: position === 'next' ? 'next' : 'end', kind: (kind === 'podcast' || kind === 'track') ? kind : 'media' }),
   })
-    .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(new Error(b.error || 'Could not add to queue')))))
+    .then((res) => (res.ok ? res.json() : res.json().catch(() => ({})).then((b) => Promise.reject(Object.assign(new Error(b.error || 'Could not add to queue'), { status: res.status, body: b })))));
+}
+
+function addToQueue(mediaId, position, kind) {
+  return requestQueueAdd(mediaId, position, kind)
     .then((body) => {
       const entries = body && body.queue && Array.isArray(body.queue.entries) ? body.queue.entries : [];
       // Ruling 3's Undo: one tap deletes the just-added entry (uid-exact -
@@ -15328,7 +15336,7 @@ function watchLaterHas(id, kind) { return watchLaterIdsSet ? watchLaterIdsSet.ha
 function requestWatchLater(mediaId, on, kind) {
   const q = kind === 'podcast' ? '?kind=podcast' : '';
   return fetch('/api/watch-later/' + encodeURIComponent(mediaId) + q, { method: on ? 'POST' : 'DELETE' })
-    .then((res) => (res.ok ? res.json() : Promise.reject(new Error('watch later request failed: ' + res.status))))
+    .then((res) => (res.ok ? res.json() : Promise.reject(Object.assign(new Error('watch later request failed: ' + res.status), { status: res.status })))) // v1.400.0: the status rides the error (a bulk run tells a refusal from a failure)
     .then((body) => {
       const now = body && typeof body.watchLater === 'boolean' ? body.watchLater : on;
       if (!watchLaterIdsSet) watchLaterIdsSet = new Set();
@@ -18352,6 +18360,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     fetchWatchLaterIds, watchLaterSnapshot, watchLaterKey, watchLaterHas, requestWatchLater, podcastTrashConfirmCopy, podcastShareUrl, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
+    requestQueueAdd, // v1.400.0 multi-select: the silent queue add
     showChoiceModal,
     // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
     confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,
