@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -73,7 +73,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `audio.sleep` | `mode: 'off' \| 'minutes' \| 'endOfItem'`, `minutes` 1..720 (required with `'minutes'`) | `nativeAudio` | arms, re-arms or clears the sleep timer; when it fires native pauses and reports `sleep.mode: 'off'` |
 | `audio.subscribe` | (none) | `nativeAudio` | sends one full `audioState` now, then one per real change, plus `audioTick` about once a second while playing |
 | `audio.unsubscribe` | (none) | `nativeAudio` | stops them (playback goes on) |
-| `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0 | `nativeVideo` | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0) |
+| `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0, optional `layer: 'below' \| 'above'` (v1.401.0; sent only when `nativeVideoDock` is announced; `'above'` only with `space: 'viewport'`) | `nativeVideo` (+ `nativeVideoDock` for `layer`) | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0); `layer: 'above'` moves the picture view above the web view for the docked mini player, touches passing through (v1.401.0) |
 
 ## 3. Native to web events
 
@@ -207,6 +207,26 @@ surface is released** like the other held capabilities (section 6): on every mai
 (the sound plays on) and the next page sends a new `video.surface` when it shows the item; a persisted `pageshow` re-sends it.
 Browsers, the PWA, desktop and app builds without `nativeVideo`: byte-identical.
 
+**Live dock picture (v1.401.0; add-only, plan docs/exec-plans/active/2026-11-01-live-dock-picture.md).** With **`nativeVideoDock`** announced (only
+ever beside `nativeVideo`), the docked mini player keeps the LIVE picture instead of the thumbnail. Why a new placement: native's layer
+sits BELOW the web view and the page keeps scrolling UNDER the fixed mini player, so a hole cannot hide the page's text from a docked
+picture (v1.400.1 measured it mid-drag). So `video.surface` gains one optional field, **`layer: 'below' | 'above'`** (absent = `'below'`,
+today's meaning). The web sends `layer` ONLY when `nativeVideoDock` is announced (host-adapter.js refuses a message carrying it without the
+capability, so a v0.16 app never receives an unknown field), and `'above'` only with `space: 'viewport'` (native rejects `'above'` with
+`'document'`). **Native with `layer: 'above'`:** the picture view moves ABOVE the web view at the rect (viewport space, CSS px, the same
+clamps), its view has `isUserInteractionEnabled = false` so every touch reaches the web (tap to expand, play/pause, the X), all four corners
+are rounded by `radius` (the dock clips its whole box), and every frame or layer change is applied with implicit animations disabled
+(`CATransaction.setDisableActions(true)`; the v1.400.1 recording showed a one-frame clipped strip on each snap). A switch `'below'` <->
+`'above'` keeps the AVPlayer and never re-buffers. **What the web sends while docked** (public/js/native-audio.js): `visible: true`,
+`space: 'viewport'`, `layer: 'above'`, the rect of the dock's PICTURE (the `#media-player` box; the bar and the caption strip sit below it),
+`radius` = the dock's own corner radius; the picture follows the fly-in per frame (the v1.400.1 cadence) and the web keeps its hole open
+for two frames across a switch (going back to `'below'` on expand it opens the hole FIRST and posts on the next frame). **Covered =
+thumbnail:** while a sheet, menu, dialog, popover or toast overlaps the dock's picture the web posts `visible: false` (the dock shows the
+thumbnail, the sound never stops) and `visible: true` again the moment it is clear. Everything else in this section and section 6 is
+unchanged: `visible: false` still hides the layer, and the host still hides it on every main-frame navigation commit. Safari, the PWA,
+desktop and app builds without `nativeVideoDock` (the v0.16 app): byte-identical to v1.400.1 - the dock shows the thumbnail and no `layer`
+field is ever sent.
+
 ## 4. Server side: `/api/host-info`
 
 A public `GET /api/host-info` (no login) answers
@@ -226,6 +246,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | downloads | native owns the files and the state; the web asks and displays | public/js/offline.js holds the ONE subscription per page and the `{kind:id -> state}` map (v1.387.0) |
 | nativeAudio | native owns playback (the engine, the audio session, the lock screen, the queue it was sent, radio appends, progress posts); the web sends intents and renders snapshots | public/js/native-audio.js holds the ONE subscription per page, builds the Items and drives the shared media element as a proxy of native's state (v1.397.0) |
 | nativeVideo | native owns the video's playback AND its picture layer (sound, picture, the audio session, the lock screen, backgrounding, progress posts); the web owns WHERE the picture goes (the hole it paints and the `video.surface` rect), the controls, captions and skins on top | public/js/native-audio.js claims a watch-page video at the player's choke point, proxies the element (videoWidth / videoHeight from `audioState.videoSize`) and sends the ONE coalesced `video.surface` per layout change; the docked mini player sends `visible: false` (v1.399.0) |
+| nativeVideoDock | native owns the picture view's side of the web view (`layer`), the touch passthrough and the rounded corners; the web decides WHEN the docked picture is live (`layer: 'above'`, `visible` false while a web surface covers the dock) | public/js/native-audio.js sends `layer` only under this capability; the dock's bar, X and caption strip stay web (v1.401.0) |
 | nativeVideoAudio | a pure widening of nativeAudio: the engine also accepts a video or a TV episode as SOUND; in v1.398.0 the web sends only a Listen row (a video played as audio from the watch page) | a Listen row is proxied like a track; the background handoff of a playing video was NOT built (the spike failed; a native video surface is the next plan) (v1.398.0) |
 
 ## 6. Release of held capabilities
@@ -241,4 +262,5 @@ on `pagehide` it releases them all (idempotent for the host). The downloads subs
 binds its OWN `pagehide` / `pageshow` pair (skin-surface.js's re-assert covers only the registries a Pocket owner claims). The `nativeVideo`
 SURFACE (v1.399.0) is released the same way: the host hides the picture layer on every main-frame navigation commit and when the
 web view goes away (the sound plays on, as for `nativeAudio`), and the page that next shows the item sends a fresh `video.surface`
-(a persisted `pageshow` re-sends the current one).
+(a persisted `pageshow` re-sends the current one). The same release covers a `layer: 'above'` surface (v1.401.0): the host hides the
+picture view on the navigation commit whichever side of the web view it is on, and the next page's `video.surface` places it again.

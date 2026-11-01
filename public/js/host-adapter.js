@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -106,6 +106,13 @@
   // videoSize on audioState = the playing video's presentation size, which the element proxy answers videoWidth / videoHeight from.
   var SURFACE_SPACES = ['document', 'viewport'];
   var SURFACE_FITS = ['contain', 'cover'];
+  // v1.401.0 nativeVideoDock (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, the Contract): one optional field on
+  // video.surface, `layer` - 'below' (absent = below: the v1.399.0 sibling under the web view, shown through the page's hole) or
+  // 'above' (the docked mini player: the picture view moves ABOVE the web view at the rect, touches pass through to the web,
+  // all four corners rounded by radius). The web sends `layer` ONLY when the host announces `nativeVideoDock` (fieldCaps below:
+  // a message carrying a field whose capability is not announced is refused, so a v0.16 app never receives an unknown field),
+  // and 'above' only with space 'viewport' (native rejects it with 'document').
+  var SURFACE_LAYERS = ['below', 'above'];
   function surfaceRectSpec() { return { is: 'object', req: true, props: { x: { is: 'number', req: true }, y: { is: 'number', req: true }, w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
   function videoSizeSpec() { return { is: 'object', props: { w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
 
@@ -148,7 +155,8 @@
     'audio.subscribe': { cap: 'nativeAudio', fields: {} },
     'audio.unsubscribe': { cap: 'nativeAudio', fields: {} },
     // v1.399.0 nativeVideo: the ONE new intent - where the picture goes (public/js/native-audio.js sends it, coalesced per frame).
-    'video.surface': { cap: 'nativeVideo', fields: { rect: surfaceRectSpec(), space: { enum: SURFACE_SPACES.slice(), req: true }, visible: { is: 'boolean', req: true }, fit: { enum: SURFACE_FITS.slice(), req: true }, radius: { is: 'number', min: 0, req: true } } },
+    // v1.401.0 nativeVideoDock: `layer` rides the same intent, gated by its own capability (fieldCaps: the field, not the message).
+    'video.surface': { cap: 'nativeVideo', fieldCaps: { layer: 'nativeVideoDock' }, fields: { rect: surfaceRectSpec(), space: { enum: SURFACE_SPACES.slice(), req: true }, visible: { is: 'boolean', req: true }, fit: { enum: SURFACE_FITS.slice(), req: true }, radius: { is: 'number', min: 0, req: true }, layer: { enum: SURFACE_LAYERS.slice() } } },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -305,6 +313,14 @@
         if (def.cap && !has(def.cap)) { warn('capability not announced (' + def.cap + ')', type); return false; }
         var f = fields && typeof fields === 'object' ? fields : {};
         if (!fieldsOk(def.fields, f)) { warn('fields do not match the contract', type); return false; }
+        // v1.401.0: a field gated by its own capability (video.surface.layer by nativeVideoDock) never leaves the page without it -
+        // the whole message is refused, never silently trimmed (a trimmed 'above' would mean 'below' to the host)
+        if (def.fieldCaps) {
+          for (var fk in def.fieldCaps) {
+            if (Object.prototype.hasOwnProperty.call(def.fieldCaps, fk) && f[fk] !== undefined && !has(def.fieldCaps[fk])) { warn('field ' + fk + ' needs capability (' + def.fieldCaps[fk] + ')', type); return false; }
+          }
+        }
+        if (type === 'video.surface' && f.layer === 'above' && f.space !== 'viewport') { warn("layer 'above' needs space 'viewport'", type); return false; } // v1.401.0: the pairing native enforces
         if (type === 'audio.load' && !audioQueueOk(f.queue)) { warn('an Item breaks the src / artworkSrc / radioSeed rules', type); return false; } // v1.398.0 (V4)
         var msg = pick(def.fields, f);
         msg.v = 1;
@@ -379,7 +395,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX, SURFACE_SPACES: SURFACE_SPACES, SURFACE_FITS: SURFACE_FITS };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX, SURFACE_SPACES: SURFACE_SPACES, SURFACE_FITS: SURFACE_FITS, SURFACE_LAYERS: SURFACE_LAYERS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};
