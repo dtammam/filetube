@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.400.0 multi-select (plan docs/exec-plans/active/2026-11-01-multi-select.md) - the pure
+// [UNIT] v1.400.0 multi-select (plan docs/exec-plans/completed/2026-11-01-multi-select.md) - the pure
 // pieces of the action bar:
 //   - buildBulkActions / bulkActionApplies: the bar's verbs for a selection are the card menu's OWN
 //     applicability (M5): a card applies to queue / Watch later / Like / Reheat / Move to Trash iff

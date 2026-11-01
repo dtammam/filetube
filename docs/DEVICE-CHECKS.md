@@ -5,6 +5,26 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Multi-select (v1.400.0)
+
+- [ ] v1.400.0 - Downloads folder: tap the checklist glyph in the toolbar (Select); tick three cards: the bar reads "3 selected";
+  a tap on a ticked card unticks it and never opens the video; the thumbnails do not start their hover clips.
+- [ ] v1.400.0 - Long-press a card: the menu's first row is Select; it enters select mode with that card ticked.
+- [ ] v1.400.0 - "Select N shown" ticks what is loaded; scroll until more cards load: the new ones stay unticked and the label grows.
+- [ ] v1.400.0 - Add to queue on three: one toast "Added 3 items to the queue.", the queue holds them in grid order, the cards
+  untick and select mode ends. Like on a set that includes an already-liked video: no video is unliked.
+- [ ] v1.400.0 - Reheat metadata on three Downloads videos: one toast "Reheating 3 items." and the download status chip shows
+  the run; nothing moves on disk (they are already in Downloads). Say if the count read "N of M".
+- [ ] v1.400.0 - Move to Trash on two: the confirm says "Move 2 items (<size>) to Trash?"; Cancel leaves both ticked and in
+  place; confirm again: both leave the grid, Settings > Trash lists them, the toast says "Moved 2 items to Trash."
+- [ ] v1.400.0 - Move to folder on two: the picker says "Move 2 items to:"; pick a folder: both leave this grid and show in
+  that folder.
+- [ ] v1.400.0 - Phone: with a video in the mini player, the bar sits above it and above the bottom bar, the verbs scroll
+  sideways, and the last row of cards is reachable above the bar at the end of the scroll; Cancel clears everything.
+- [ ] v1.400.0 - Desktop: shift-click ticks the range between the last tick and the clicked card; Escape leaves select mode.
+- [ ] v1.400.0 - Awareness, not a tap: Reheat on a selection OUTSIDE Downloads behaves like Settings' Library Reheat (with
+  "relocate imports" on, a hydrated import moves into its channel folder). Say if that surprises you and it becomes a switch.
+
 ## Native video surface (v1.399.0; after the iOS app build that pins this tag)
 
 The surface spike never ran (Dean lifted that gate 2026-10-30): (0a)-(0d) are the first checks, and a failure there is a

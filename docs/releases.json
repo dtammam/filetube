@@ -3772,5 +3772,11 @@
     "date": "2026-10-30",
     "title": "Watch a video through the iPhone app's own player",
     "intent": "In the FileTube app, a video you watch now plays through the phone's own player, picture and sound, with FileTube's controls, chapters, scrubbing, captions and skins on top exactly as before. Lock the phone or switch apps and the sound keeps going; the lock screen and your AirPods control it; unlock and the picture is back where the sound is. The small corner player shows the video's thumbnail while the sound plays on. Full screen is the same full screen as before. 360 videos, the Feed and previews play as they did. This needs the matching app update; in Safari, the home-screen app and older app builds nothing changes."
+  },
+  {
+    "version": "1.400.0",
+    "date": "2026-11-01",
+    "title": "Select several videos and act on them together",
+    "intent": "On any video grid (Home, a folder, the Downloads folder, search, Liked, Watch later), tap Select in the toolbar, or long-press a card and choose Select, then tick as many videos as you like and use the bar at the bottom: add them to the queue, save them for Watch later, like them, mark them watched, move them to a folder, reheat their details, or move them to Trash, all at once instead of one menu at a time. Moving to Trash asks once, naming how many and how much; anything that fails stays ticked so you can try again."
   }
 ]

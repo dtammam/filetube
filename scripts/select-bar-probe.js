@@ -1,6 +1,6 @@
 'use strict';
 // select-bar-probe - the headless instrument for v1.400.0 multi-select's action bar (plan
-// docs/exec-plans/active/2026-11-01-multi-select.md, acceptance 10). Boots the real app (this tree, or
+// docs/exec-plans/completed/2026-11-01-multi-select.md, acceptance 10). Boots the real app (this tree, or
 // FT_ROOT=<other worktree>) on a scratch DATA_DIR with eight real H.264 clips, opens the home grid at a phone
 // (390x844, touch) and a desktop (1280x800) viewport, enters select mode through the grid header's Select,
 // ticks two cards, and prints ONE JSON line per cell: the bar's rect, the bottom nav's rect (phone), the

@@ -3588,7 +3588,7 @@ const PreviewCards = (function () {
     }
 
 
-    // ---- v1.400.0 multi-select (plan docs/exec-plans/active/2026-11-01-multi-select.md) -------
+    // ---- v1.400.0 multi-select (plan docs/exec-plans/completed/2026-11-01-multi-select.md) -------
     //
     // Select several cards and act on them together. The state is the `selected` Set of ids
     // (M10); the DOM carries it as #video-grid.is-select-mode, .video-card.is-selected and a

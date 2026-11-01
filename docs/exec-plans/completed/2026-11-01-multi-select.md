@@ -3,10 +3,10 @@ plan: multi-select
 harness: v2 · full
 branch: feat/v1.400.0-multi-select
 anchor: spec
-status: Approved (kickoff rulings below; the builder writes Design + Steps, then builds)
-next: the fix commit for r1, re-confirmation by the same three seat instances (r2), then the release
+status: Shipped v1.400.0
+next: release v1.400.0 (protected-main PR flow); the close-out is bookkeeping only (no seat re-check, bound below)
 design: Rulings approved by Dean 2026-11-01 (AskUserQuestion); the builder's Design must stay inside them
-gate: running - full (adversary, qa, security-brief; data-loss forced); r1 @1f49d923 security APPROVED, qa + adversary CHANGES; r2 on the fix sha
+gate: APPROVED r2 @c501fc2e (adversary, qa, security-brief; the full gate, data-loss forced) - r1 @1f49d923 security APPROVED, qa + adversary CHANGES, fixed in c501fc2e
 builder: extreme
 ---
 
@@ -300,6 +300,12 @@ W3 (Trash + Move + layout)
   re-render under the picker, the preview refusal and a mixed run are bound by tests (A3, A6, S3). Not taken: S5
   (clearing the sidebar on desktop - the toast host's own full-width posture; a ROADMAP note), security INFO 1
   (`requested` counts the caller's duplicates - the bar never sends any).
+- Gate r2 (all three APPROVED @c501fc2e) non-blocking notes, left for a later wave (ROADMAP Planned > Features): the two
+  "r1 A1" full-chain titles overclaim (the freeze refuses the join before `sameIdSet` is reached; `sameIdSet` is defence in
+  depth with no direct binding); no bulk 401 fixture; the modern glyph's aria-pressed sync untested; `exitSelectMode`'s picker
+  teardown is masked by the shown-view abort listener; `openBulkMovePicker` latches before `showMoveModal` (unreachable
+  stick: the bar itself needs `ui`). The bulkBusy early-returns in `runBulk` / `startBulkRun` are masked on every tap path by
+  the disabled paint (adversary r1 m10).
 
 ## Evidence
 
@@ -356,6 +362,18 @@ lift). Measured on the fix tree, CSS px from the viewport top:
 
 The bar, nav and dock rects are unchanged from the r1 table.
 
+### Gate r2 and the close-out
+
+- Fix commit c501fc2e. Full Node 22 suite (`npm test`) at c501fc2e: 13126 tests, 13113 pass, 0 fail, 0 cancelled, 13 skipped.
+- Verdicts (the lines below): r1 @1f49d923 security-brief APPROVED, qa CHANGES (W1-W3, S1-S5, I1-I5), adversary CHANGES
+  (A1-A3 WARNING, A4-A6 SUGGESTION, A7-A10 INFO); r2 @c501fc2e APPROVED by security-brief, qa and adversary (adversary r2: 19
+  mutants, 15 killed, 4 masked survivors disclosed above).
+- Close-out binding (Dean's 2026-10-12 ruling: bookkeeping after approval needs no re-check). `git diff --name-only
+  c501fc2e..HEAD` on the release commit is expected to name exactly: ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS.md,
+  docs/LESSONS-rules.md, docs/releases.json, package.json, package-lock.json (version lines only) and this plan's move to
+  docs/exec-plans/completed/2026-11-01-multi-select.md. The builder's final report quotes the command's output.
+
+
 Gate: APPROVED r1 @1f49d923 — security-brief
 - Gap (stated, not smoothed): no Bash, so no `git diff 1f5e2c5c`; the server-side change set was located by a tree-wide grep for the v1.400 / multi-select / onlyIds / validateRepullIds markers plus the plan's commit list (lib/ytdlp/index.js and lib/ytdlp/relocation.js are the only lib files touched; lib/media, lib/user, server.js carry no marker). An unmarked server change would have escaped this review.
 - No CRITICAL, no WARNING. Verified: guard order (RBAC 403 -> read-only 403 -> single-flight 409 -> wiring 503 -> body rule 400 -> loadDatabase) with no await between the 409 check and the latch set; the enumerator drops a hidden id at the visibility predicate BEFORE the ids filter, so a hidden id and an unknown id take the same `continue` path and yield the same 202 body (bound by rbac-reheat-visibility.test.js:231); no 400 message echoes a submitted id; the Set is string-only (no prototype write surface); the batch runner is untouched, so relocation is the existing manage-subscriptions capability narrowed, never widened; no new route; every bulk verb is the existing per-item request (requestQueueAdd / requestWatchLater / requestCardLike / POST /api/watched/:id / DELETE /api/videos/:id / POST /api/videos/:id/move) behind its existing server gate; the bar count, labels, confirm body (ui.confirm textContent), picker label (textContent) and toasts (ui.toast spanText) never touch innerHTML; the Move picker's targetFolder reaches moveItemToFolder unchanged; CSRF: every entry is a click handler (select button, modern glyph, menu row, bar pills, dialog buttons), nothing fires from a URL parameter, cookie is SameSite=Lax.
@@ -387,3 +405,25 @@ Gate: CHANGES r1 @1f49d923 — adversary
 - SUGGESTION A6: survivors on correct code: m16 (PreviewCards select-mode refusal, start + begin) - M2's "no hover preview" has no test; m18 (startBulkRun ignoring applicability) - the fixture is all-media, a mixed media+podcast run would bind it (measured: a mixed grid labels "Mark watched 1 of 2" and routes Trash per kind correctly); m10 (the bulkBusy early-returns) - masked by the disabled paint on every tap path, document as masked.
 - INFO A7: bulkTrashConfirmCopy says "restore them from Settings" for a podcast in a mixed selection; episodes restore from the show's episode list (podcastTrashConfirmCopy). INFO A8: Evidence says home-mobile-scale was updated in lockstep - the file is unchanged (the tree complied). INFO A9: the modern header glyph's aria-pressed goes stale after Escape / Cancel (syncSelection updates #select-mode-btn only). INFO A10 equivalent mutants, not gaps: r05 (ids filter before the visibility check - two conjunctive continues) and m24 (Select all via the DOM).
 - Measured: lint:ui OK (TOTAL 3142); overlay-containment 0; eslint 0 errors, 6 warnings identical to base; the 9 touched suites 167/167; 18 census/lock suites 79/79; select-bar-probe 4 cells ok, every rect identical to the table above; RBAC folder-kind twin of rbac-reheat-visibility 9/9 (the gate kind that diverges binds; a library:video twin hides the public clip too, as it should); server mutants r01-r04, i02-i08 all killed (hidden id with ids scoped, Set check, threading, every 400 shape, parity, latch order). 38 mutants: 29 killed, 9 survived (listed). Full suite NOT re-run by this seat (the hook refuses it on the docs-only HEAD); the 13117/13104/0 line above is the builder's measurement at 4f34397f.
+
+Gate: APPROVED r2 @c501fc2e — security-brief
+- r1 gap closed by the Architect's `git diff --stat 1f5e2c5c..1f49d923` (server side = lib/ytdlp/index.js + lib/ytdlp/relocation.js only) and the fix commit's file list (no server file); I still have no Bash, so the delta was read by Read/Grep on the files named, not from a diff.
+- Delta reviewed, no new surface: `bulkRefusal` (main.js:3797) reads `body.readOnlyMedia === true` on a 403 - a same-origin server JSON flag chosen between two fixed client strings, no echo; the quiet delete / podcast delete read the 403 (and quiet-only 401) body with `res.json().catch(() => ({}))` (main.js:2907, 2936) - a non-JSON body is `{}`, never a throw; the dead 409 read-only arm is gone, a 409 is a per-file failure. The confirm and the picker now carry `confirmedIds` and `startBulkRun` refuses on `sameIdSet` inequality (main.js:3922-3939) - strictly tighter than the r1 count check, a data-loss guard, not a security change; `toggleSelected` refuses while `bulkBusy` (3753). `showMoveModal`'s new `opts.onClose` (common.js:14018) is forwarded only when a function and lands on a `ui.sheet` option that is live (ui.js:574); the picker copy stays textContent (13987). No new route, no new request body, no new URL-parameter entry, no innerHTML; the server's `targetFolder` confinement and every per-item gate are unchanged.
+- r1 findings: INFO 1 (`requested` counts duplicates) not fixed, disclosed in Deviations - accepted, the bar sends a Set-derived list and the number reflects only the caller's own input; INFO 2-5 pre-existing / advisory, unchanged; INFO 6 (reheat 403 wording, main.js:3993) unchanged and still cosmetic.
+
+Gate: APPROVED r2 @c501fc2e — qa
+- W1 fixed as prescribed: syncSelection in renderMediaGridPage's empty arm and fetchModernGrid's empty + error arms; bound by the "r1 A2 / W1" fullchain test (empty re-render -> "0 selected", no verbs; returning cards unticked).
+- W2 fixed as prescribed: bulkRefusal maps 403 readOnlyMedia to the read-only message, the dead 409 regex branch and its comment are gone (409 = per-file failure), the quiet delete reads the 403 body, requestMoveItem's error body reaches it; plan R3 and Design corrected; three fixtures bound (Trash 403 read-only, per-file 409, Move 403 read-only).
+- W3 fixed as prescribed and MEASURED by this seat: html.has-player-dock .video-grid.is-select-mode adds --player-dock-h to the clearance; probe at c501fc2e: 4 cells ok, last-card bottom / bar top 643/680, 509/538, 647/706, 463/514 (identical to the plan's r2 table); bar/nav/dock rects unchanged from r1.
+- S1 fixed (401 reaches the refusal branch only when quiet; the single-card paths fall through to their old toasts; comment accurate). S2 fixed: syncSelection writes .modern-select .ui-btn's aria-pressed (chromeButtonEl emits ui-btn, so the selector is live - verified by reading, no modern-home jsdom case). S3 bound (the preview test proves the path is live after Cancel). S4 fixed (slice ends at bulkTargets). S5 not taken, acceptable. I1-I4 corrected; I5 unchanged by choice.
+- Delta introduced nothing new that blocks: showMoveModal's fifth `opts` parameter leaves its three other callers (watch.js, skin-surface.js, common.js doc) on <= 4 args; `onClose` is a real ui.sheet option; startBulkRun re-latches synchronously (no await before `bulkBusy = action`); exitSelectMode nulls bulkPicker before teardown so onClose's release path cannot repaint a closed bar.
+- INFO (non-blocking): the two "r1 A1" fullchain test titles overclaim ("one that joined", "v6 joins") - the freeze refuses the join, so a same-count swap never reaches sameIdSet; sameIdSet is closure-local defense in depth with no direct binding. Retitle, or export and unit-test it.
+- Verified at c501fc2e: 10 targeted suites 179/179 pass (0 fail); lint:ui OK (TOTAL 3142, equals docs/ui-exceptions.json); overlay-containment 0; eslint 0 errors (6 pre-existing warnings); select-bar-probe SUMMARY cells=4 ok. Full suite not re-run by this seat; the builder's 13126/13113/0 line stands as their measurement.
+
+Gate: APPROVED r2 @c501fc2e — adversary
+- A1 fixed as prescribed and verified: my r1 repro (5 confirmed, a live refresh drops v2, Select all + Enter on v6 behind the scrim, Confirm) now sends NO delete - the selection is frozen while busy (Select all disabled, toggleSelected / selectAllShown refuse) and the shrunken set is refused with "The selection changed. Nothing was moved to Trash." New mutants: sameIdSet -> true (4 red), the toggleSelected freeze, the selectAllShown freeze and the Select-all busy clause each dropped (1 red each). Masked, documented: sameIdSet reduced to a count comparison survives (72/72) because no UI path can grow the selection while bulkBusy; the freeze is the binding, identity is belt-and-braces.
+- A2 fixed as prescribed and verified: my leave-and-return and empty-then-return scenarios are green on c501fc2e; m06 (drop the prune) and the empty-arm syncSelection each go red (1 each). The stale bar over an empty grid is gone (0 selected, no verbs).
+- A3 fixed: m19 (mid-run abort) red by the new Escape/leave-mid-run test, and my held-DELETE S3a/S3b scenarios are green; m23 (picker without confirmedIds) red; i01 (cap 500 -> 5000) red by the pinned value and anchored regex.
+- A4 / qa W2 fixed and measured with the real server bodies: instance 403 {readOnlyMedia:true} -> the run stops with "Read-only mode: nothing was changed."; per-file 409 -> per-item failures, run continues; the readOnlyMedia mapping dropped goes red (1). A5 fixed: the picker latches the bar (Cancel and every verb disabled), a close without a pick releases it (latch-not-released and picker-not-latched each red, 2 each). A6: m16 and m18 now red (1 each). A7 (episode restore copy) and A9 (modern glyph aria-pressed) implemented; A9 is unbound (dropping the sync survives 72/72, a11y only).
+- Survivors on the fix, none destructive: exitSelectMode's picker teardown (redundant with the shown-view abort listener and the disabled Cancel; masked); the quiet delete's 401-as-refusal arm (no bulk test sends a 401: under the mutant an expired session yields N 401s and "N failed" instead of one stop with "Sign in again to continue." - SUGGESTION, bind with a 401 fixture); the modern glyph aria-pressed sync (SUGGESTION). INFO: openBulkMovePicker sets bulkBusy before showMoveModal and would stick if the picker returned null (no ui) - unreachable while the bar itself needs ui; the "m10 documented in Deviations" note is not in the tree (the plan does not claim it).
+- Measured on c501fc2e: lint:ui OK (TOTAL 3142); overlay-containment 0; eslint 0 errors / 6 pre-existing warnings; the touched suites 176/176; explicit-file runs in a git-archive sandbox: test/integration 2859 tests, 2847 pass, 0 fail, 12 skipped; test/unit 10267 tests, 10259 pass, 6 fail, 2 skipped - the 6 are four source locks that shell out to `git ls-files` and cannot run without a .git (dbjson-never-read, app-settings-store, media-items-store, media-trash-store); the same four files pass 31/31 in the worktree, so 13126 tests / 0 product failures agree with the builder's line. select-bar-probe on this tree: 4 cells ok, every rect identical to the r1 table, the end-of-scroll numbers identical to the W3 table (643/680, 509/538, 647/706, 463/514). r2 mutants: 19 run, 15 killed, 4 survived (listed above). Delta reviewed for new surface: showMoveModal's 5th `opts` is forwarded only when `onClose` is a function onto a live ui.sheet option; the single-card paths keep a 401 on the old toast path (`quiet &&`); the dock clearance CSS adds `--player-dock-h` under html.has-player-dock only.

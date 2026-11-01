@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.400.0 multi-select (plan docs/exec-plans/active/2026-11-01-multi-select.md) -
+// [INTEGRATION] v1.400.0 multi-select (plan docs/exec-plans/completed/2026-11-01-multi-select.md) -
 // select mode and the action bar, FULL CHAIN: a real jsdom `index.html` (runScripts:
 // 'dangerously', the static files served from disk, so ui.js / interaction.js / icons.js /
 // common.js / main.js load as in the browser), the REAL main.js grid, its handlers and its bar,
