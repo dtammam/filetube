@@ -100,8 +100,8 @@ branch (remote via `gh api -X DELETE`, local `-d`), confirm the tag's Publish Do
 
 ## Evidence (the builder fills this)
 
-- W1 (test red on mutant, WebKit base vs branch): 
-- Full suite (Node 22), before the gate and on the release commit: 
+- W1 (test red on mutant, WebKit base vs branch): test/unit/native-video-surface-rect.test.js (10/10 green); mutant (the toggle replaced by `void 0`) = 1 fail, restored = 0 fail. Deviation from the plan text, forced by `npm run lint:ui` (display-ownership: JS `style.display` writes are banned, live 2 > allowed 0): the renderer rebuild is `el.hidden = true; void el.offsetWidth; el.hidden = false` (the global `[hidden]` rule = display none), re-measured in WebKit. WebKit (Playwright 1.20 / webkit-1616, the Root's bd-wk.js probe, centre pixel of the docked picture, thumbnail = 33,204,66): base docks 1-3 = (33,204,66), (0,0,0), (0,0,0); base with a poster set and removed before dock 1 = (0,0,0) x3; branch docks 1-3 = (33,204,66) x3, also with the pre-removal (PRE=1) x3; 0 page errors. Screenshots: wk-base/c{1,2,3}-docked-px.png, wk-branch/..., wk-base-pre/..., wk-branch-pre/... under the builder scratchpad.
+- Full suite (Node 22), before the gate and on the release commit: pre-gate (W1 as first written, before the lint-forced `hidden` change): 13175 tests, 13162 pass, 0 fail; the W1 commit's pre-commit hook ran the unit suite green on the final code.
 - Gate verdicts (bound to sha): 
 - Release: tag, PR, Publish run: 
 

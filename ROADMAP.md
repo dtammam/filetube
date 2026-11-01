@@ -920,6 +920,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.401.1 - On the iPhone app, the mini player shows the thumbnail every time, not black from the second time (2026-11-01)
+
+- Dean (2026-11-01, app v0.16.0, web v1.401.0): "i swipe down, miniplayer shows the thumbnail. bring it back. go back down, it's
+  black?". Root cause (reproduced in headless WebKit with a fake host, 2026-11-01): present since v1.399.0, not a regression of the
+  recent releases. In WebKit a `<video>` whose poster was removed while it had a renderer does not load or paint a poster set again
+  until the renderer is rebuilt; `dockArt` removes the poster on every expand, and the dock's own renderer rebuild happens before the
+  poster is set. Fix, web only: when `dockArt` actually changes the poster it rebuilds the renderer once (`hidden`, a layout read,
+  shown), so the thumbnail paints on every dock, the live-dock covered fallback included. Measured in WebKit, centre pixel of the
+  docked picture: base black at docks 2 and 3 (also at dock 1 when a poster had been removed first), branch the thumbnail at docks 1-3
+  in both runs. Nothing else changes: no `src` under native, so playback is untouched; Safari, the home-screen app and desktop never
+  reach `dockArt`. Gate and evidence: docs/exec-plans/completed/2026-11-01-dock-poster-repaint.md, docs/DEVICE-CHECKS.md.
+
 ### v1.401.0 - On the iPhone app, the mini player keeps playing the video, not just its thumbnail (2026-11-01)
 
 - Dean (2026-11-01, after v1.400.1): "the only regression is the MiniPlayer not showing video when docked in the bottom corner".
