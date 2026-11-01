@@ -4,9 +4,9 @@ harness: v2 · full
 branch: feat/v1.400.0-multi-select
 anchor: spec
 status: Approved (kickoff rulings below; the builder writes Design + Steps, then builds)
-next: builder - W1 (select mode + bar + client verbs), then W2 (ids reheat), W3 (Trash + Move + layout), full gate
+next: the full gate r1 (adversary with the data-loss brief, qa, security-brief), then the release
 design: Rulings approved by Dean 2026-11-01 (AskUserQuestion); the builder's Design must stay inside them
-gate: pending
+gate: running - full (adversary, qa, security-brief; data-loss forced), r1 on the W3 sha
 builder: extreme
 ---
 
@@ -286,3 +286,42 @@ W3 (Trash + Move + layout)
   DELETEs when liked and POSTs when not; the Escape listener is bubble-phase and classified).
 
 ## Evidence
+
+### Commits (branch feat/v1.400.0-multi-select, base main 1f5e2c5c)
+
+- b90e5e8c docs(plan): research R1-R4, Design, Steps
+- b1a56d3f W1: select mode on every video grid, the action bar, the four client verbs
+- c8d01a97 W2: Reheat on a selection through an ids-scoped library batch
+- 4f34397f W3: Move to Trash and Move to folder on a selection, the layout probe, the visual scene
+
+### Suites
+
+- Full Node 22 suite (`npm test`, v22.23.1) at 4f34397f: 13117 tests, 13104 pass, 0 fail, 0 cancelled, 13 skipped.
+- `npm run lint:ui`: OK, the live debt equals docs/ui-exceptions.json (TOTAL 3142, unchanged); overlay containment: 0.
+- New suites: test/unit/multi-select-actions.test.js (8), test/integration/multi-select-fullchain.test.js (24: entry /
+  toggling / Escape / Cancel / the menu row / shift range / Select N shown vs an append / re-render / leaving the view /
+  the capability-gated bar / queue, Like, Watch later, Mark watched, Reheat, Trash, Move, each with its failure and
+  refusal shapes), the ids tests in test/integration/ytdlp-repull-metadata-endpoint.test.js (5) and
+  test/integration/rbac-reheat-visibility.test.js (4). Locks updated in lockstep: card-like, home-mobile-scale
+  (the icon-only tools group), pocket-kb-search (the key-listener census), card-action-menu-fullchain (two
+  confirm-gated delete callers), move-trigger-wiring (the picker reached only from the bar).
+
+### Acceptance 10: the layout probe (`node scripts/select-bar-probe.js <out>`, real Chromium, this tree vs main)
+
+Rects are x / y / w / h in CSS px; overlap = the intersection area of the bar with the nav or the dock (0 required);
+overflow = scrollWidth > innerWidth (false required). Two cards ticked; "dock" = a video playing in the mini player.
+
+| cell | tree | bar | bottom nav | dock | overlap nav / dock | overflow | verbs (rows) |
+|---|---|---|---|---|---|---|---|
+| phone 390x844 | main (before) | none | 0/792/390/52 | none | 0 / 0 | no | - |
+| phone 390x844 | branch (after) | 8/680/374/84 | 0/792/390/52 | none | 0 / 0 | no | 6 (1, scrolls) |
+| phone 390x844 + dock | main (before) | none | 0/792/390/52 | 222/630/160/134 | 0 / 0 | no | - |
+| phone 390x844 + dock | branch (after) | 8/538/374/84 | 0/792/390/52 | 222/630/160/134 | 0 / 0 | no | 6 (1, scrolls) |
+| desktop 1280x800 | main (before) | none | hidden | none | 0 / 0 | no | - |
+| desktop 1280x800 | branch (after) | 12/706/1256/82 | hidden | none | 0 / 0 | no | 6 (1) |
+| desktop 1280x800 + dock | main (before) | none | hidden | 984/601/280/184 | 0 / 0 | no | - |
+| desktop 1280x800 + dock | branch (after) | 12/514/1256/82 | hidden | 984/601/280/184 | 0 / 0 | no | 6 (1) |
+
+The nav and dock rects are identical on both trees (the bar changes nothing else). The bar sits 28 px above the
+nav on a phone and 8 px above the dock when it shows (the dock lift reads `--player-dock-h`: 134 px phone, 184 px
+desktop). Six verbs here because the probe's instance has no yt-dlp module (no Reheat); with it, seven.
