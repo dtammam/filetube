@@ -315,6 +315,10 @@ test('R4 CONTROL: without nativeVideoDock a sheet over the thumbnail dock change
     scrim.remove(); s.remove(); await settle(80);
     assert.strictEqual(r.surfaces().length, n0, 'no post');
     assert.strictEqual(h.hits.n, 0, 'no hit test without the capability');
+    // and no cover wiring at all: a body child coming and going is not a signal to a v0.16 app's sampler (qa r1 S1; it was one box read per signal before)
+    r.reads.n = 0;
+    const stray = r.w.document.createElement('div'); r.w.document.body.appendChild(stray); await settle(60); stray.className = 'x'; await settle(60); stray.remove(); await settle(60);
+    assert.strictEqual(r.reads.n, 0, 'a v0.16 app never measures on a body-child mutation: reads = ' + r.reads.n);
   } finally { r.close(); }
 });
 
