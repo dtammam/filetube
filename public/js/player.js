@@ -5777,6 +5777,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // The ONE remover (R5): every end path (snap end, commit end, close, a new load, backgrounding, a rotate)
   // lands here, via resetTransientPlaybackUi or directly.
   var minimizeSlotHold = null; // v1.400.1 (R4c): the slot whose height is held while the page leaves under a native picture
+  var minimizeCommitting = false; // v1.401.0 (R2): dock()'s own surface sync waits until the fly-in pose is set, so native never sees the rest rect for a frame before the FLIP start
   function clearMinimizeDrag() {
     if (minimizeSettleTimer) { clearTimeout(minimizeSettleTimer); minimizeSettleTimer = null; }
     minimizeGestureLive = false;
@@ -6043,12 +6044,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362.4: marked BEFORE dock(), whose clearMinimizeDrag would otherwise flash the page back up mid-leave.
     var leaving = (minimizeFadeEnabled() && watchViewRoot()) || null;
     if (leaving) markViewArrival(leaving);
-    dock();
-    if (state !== STATE_DOCKED) { if (leaving) endViewFade(); return false; }
+    minimizeCommitting = true;
+    try { dock(); } finally { minimizeCommitting = false; }
+    if (state !== STATE_DOCKED) { if (leaving) endViewFade(); nativeSurfaceSync(); return false; }
     if (holdH > 0) { var sl1 = document.getElementById('player-slot'); if (sl1) { sl1.style.minHeight = holdH + 'px'; minimizeSlotHold = sl1; } }
     // The watch page holds at its floor while it leaves; the page that arrives fades in.
     if (leaving) setMinimizeFade(1, true);
     playMinimizeSettle(from);
+    nativeSurfaceSync(); // v1.401.0 (R2): the one sync dock() skipped, now with the fly-in's first pose (live -> the rect follows per frame; the live picture flies into the dock under nativeVideoDock, the thumbnail without it)
     if (minimizeSlotHold && !minimizeSettleTimer) minimizeSettleTimer = setTimeout(clearMinimizeDrag, 600); // reduced motion: no settle timer, the hold still ends
     if (window.FileTube && typeof window.FileTube.leaveWatchForBrowse === 'function') window.FileTube.leaveWatchForBrowse();
     return true;
@@ -10244,7 +10247,10 @@ if (typeof module !== 'undefined' && module.exports) {
   function nativeAudioBeginLoad() { var n = nativeAudioApi(); if (n) { try { n.beginLoad(); } catch (_) { /* inert */ } } }
   function nativeAudioRelease() { var n = nativeAudioApi(); if (n) { try { n.release(); } catch (_) { /* inert */ } } }
   function nativeAudioModesChanged() { var n = nativeAudioApi(); if (n) { try { n.modesChanged(); } catch (_) { /* inert */ } } }
-  function nativeSurfaceSync() { var n = nativeAudioApi(); if (n && typeof n.syncSurface === 'function') { try { n.syncSurface(); } catch (_) { /* inert */ } } } // v1.399.0: a placement change measures the surface now
+  // v1.399.0: a placement change measures the surface now. v1.401.0 (R2): held while minimizeToDock commits (dock() and the
+  // setCssFullscreen(false) inside its applyControlsMode both land here), so native never sees the dock's rest rect for a frame before
+  // the fly-in's FLIP start; minimizeToDock runs the one sync itself once the pose is set.
+  function nativeSurfaceSync() { if (minimizeCommitting) return; var n = nativeAudioApi(); if (n && typeof n.syncSurface === 'function') { try { n.syncSurface(); } catch (_) { /* inert */ } } }
   // v1.399.0: what a native video claim means for the web element, applied at BOTH claim sites (setupForMedia's branch, and the
   // transcode poll's late claim - gate r1 CRITICAL: that path had already set the poster, the track src and the sidecar at load, when
   // the rendition was not ready and the load was a stand-down). The element loads and paints nothing (no poster: it would sit over
@@ -10899,7 +10905,7 @@ if (typeof module !== 'undefined' && module.exports) {
     setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
-    nativeSurfaceSync(); // v1.399.0 (S3a): the dock shows no picture (visible: false; the sound plays on, the thumbnail shows)
+    nativeSurfaceSync(); // v1.399.0 (S3a): the dock shows no picture (visible: false; the sound plays on, the thumbnail shows); v1.401.0: a live picture above under nativeVideoDock (minimizeToDock holds every sync until the fly-in pose is set, R2)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
   }
 
