@@ -443,6 +443,11 @@
 
 ### Features
 
+- **Plan B: a live picture in the docked mini player on the iPhone app** _(Dean, 2026-11-01; after plan A, v1.400.1
+  minimize-native-follow)_: today the dock shows the thumbnail (ruled 2026-10-28) because native's picture sits UNDER the
+  web view and the page scrolling under the dock would paint its text over the picture. A live dock picture needs native
+  to draw the layer ABOVE the web view while docked (a `video.surface` contract addition, e.g. a placement flag, plus an
+  iOS build), with the dock's bar staying web. Web + iOS, designed with the iOS Root first; Smart or Extreme tier.
 - **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
   spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
   selection freeze, not directly (qa r2 INFO) - export it, unit-test it, retitle the two "r1 A1" full-chain tests to what they
