@@ -182,13 +182,17 @@ test('M7: bulkTrashConfirmCopy names the count and the total size, the single ca
   const many = bulkTrashConfirmCopy([yt('a', 1000), yt('b', 2000), podcast('p')]);
   assert.strictEqual(many.count, 3);
   assert.strictEqual(many.bytes, 3000);
-  assert.strictEqual(many.body, 'Move 3 items (3000 B plus 1 of unknown size) to Trash? They leave your library now and stay in Trash, where you can restore them from Settings, until the Trash retention window empties it.');
+  assert.strictEqual(many.body, 'Move 3 items (3000 B plus 1 of unknown size) to Trash? They leave your library now and stay in Trash, where you can restore them from Settings, a podcast episode from its show, until the Trash retention window empties it.');
+  // only episodes: they restore from their shows (gate r1 A7)
+  assert.ok(bulkTrashConfirmCopy([podcast('p'), podcast('q')]).body.includes('restore them from their shows, until'));
+  assert.ok(bulkTrashConfirmCopy([podcast('p')]).body.includes('restore it from its show, until'));
   // a plain local file in the set: the warning rides along, once
   const local = bulkTrashConfirmCopy([yt('a', 10), media('l', { size: 20 })]);
   assert.ok(local.body.endsWith(' until the Trash retention window empties it. Local files cannot be re-downloaded.'), local.body);
   assert.strictEqual((local.body.match(/Local files/g) || []).length, 1);
   // no sizes at all
   assert.ok(bulkTrashConfirmCopy([podcast('p'), podcast('q')]).body.startsWith('Move 2 items (size unknown) to Trash?'));
+  assert.ok(bulkTrashConfirmCopy([media('m', { size: 5 })]).body.includes('restore it from Settings, until'));
   assert.strictEqual(bulkTrashConfirmCopy([]).count, 0);
 });
 

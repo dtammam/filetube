@@ -1007,6 +1007,10 @@ a.sidebar-item {
   /* the fixed bar must not cover the last row: one bar of clearance under the grid */
   margin-bottom: calc(var(--space-16) * 4);
 }
+html.has-player-dock .video-grid.is-select-mode {
+  /* the bar is lifted by the dock's height, so the clearance is too (gate r1 qa W3, measured by the probe) */
+  margin-bottom: calc(var(--space-16) * 4 + var(--player-dock-h, 0px));
+}
 .select-bar {
   position: fixed;
   left: var(--space-6);

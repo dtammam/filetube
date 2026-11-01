@@ -572,7 +572,7 @@ test('source guard: every caller of the delete request sits behind a confirm tha
   const bulk = src.slice(src.indexOf('async function runBulkOne('), src.indexOf('async function runBulk('));
   assert.match(bulk, /if \(action === 'delete'\) \{\s*return item\.kind === 'podcast' \? await deletePodcastCard\(item\.id, \{ quiet: true \}\) : await deleteCardById\(item\.id, \{ quiet: true \}\);/, 'the bulk call is the quiet twin inside runBulkOne');
   const gate = src.slice(src.indexOf('async function runBulk('), src.indexOf('async function startBulkRun('));
-  assert.match(gate, /if \(action === 'delete'\) \{[\s\S]*?try \{ ok = await confirmBulkTrash\(targets\); \} finally \{ bulkBusy = false; \}\s*if \(!ok\) \{ paintSelectBar\(\); return; \}\s*return startBulkRun\(action, \{ confirmedCount: targets\.length \}\);/, 'runBulk(delete) reaches startBulkRun only after confirmBulkTrash resolved true');
+  assert.match(gate, /if \(action === 'delete'\) \{[\s\S]*?try \{ ok = await confirmBulkTrash\(targets\); \} finally \{ bulkBusy = false; \}\s*if \(!ok\) \{ paintSelectBar\(\); return; \}\s*return startBulkRun\(action, \{ confirmedIds \}\);/, 'runBulk(delete) reaches startBulkRun only after confirmBulkTrash resolved true, with the confirmed id set');
   assert.strictEqual((src.match(/startBulkRun\('delete'/g) || []).length, 0, 'nothing starts a delete run by name, bypassing runBulk');
   const confirmFn = src.slice(src.indexOf('async function confirmBulkTrash('), src.indexOf('function openBulkMovePicker('));
   assert.match(confirmFn, /return ok === true && !shown\.aborted && !signal\.aborted && selectMode;/, 'the bulk confirm answers true only for its own button, with the view still shown');

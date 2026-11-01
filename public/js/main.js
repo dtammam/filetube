@@ -806,15 +806,19 @@ function bulkTrashConfirmCopy(items) {
   let bytes = 0;
   let unsized = 0;
   let local = false;
+  let podcasts = 0;
   for (const it of list) {
     if (typeof it.size === 'number' && it.size >= 0) bytes += it.size; else unsized += 1;
     if ((!it.kind || it.kind === 'media') && typeof isYtdlpManagedItem === 'function' && !isYtdlpManagedItem(it)) local = true;
+    if (it.kind === 'podcast') podcasts += 1;
   }
   const sizeLabel = typeof formatFileSize === 'function' ? formatFileSize(bytes) : Math.round(bytes / (1024 * 1024)) + ' MB';
   const size = unsized === 0 ? sizeLabel : (unsized === n ? 'size unknown' : sizeLabel + ' plus ' + unsized + ' of unknown size');
+  // A podcast episode restores from its show's episode list, not Settings (gate r1 A7).
+  const where = podcasts === 0 ? 'from Settings' : (podcasts === n ? (n === 1 ? 'from its show' : 'from their shows') : 'from Settings, a podcast episode from its show');
   const body = 'Move ' + n + (n === 1 ? ' item' : ' items') + ' (' + size + ') to Trash? '
     + (n === 1 ? 'It leaves' : 'They leave') + ' your library now and ' + (n === 1 ? 'stays' : 'stay')
-    + ' in Trash, where you can restore ' + (n === 1 ? 'it' : 'them') + ' from Settings, until the Trash retention window empties it.'
+    + ' in Trash, where you can restore ' + (n === 1 ? 'it' : 'them') + ' ' + where + ', until the Trash retention window empties it.'
     + (local ? ' Local files cannot be re-downloaded.' : '');
   return { title: 'Move to Trash?', body, confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true, count: n, bytes };
 }
@@ -1444,7 +1448,8 @@ const PreviewCards = (function () {
     let lastTickedId = null;      // shift-click ranges start here (M2)
     let selectSession = null;     // an AbortController per select-mode session (Escape, the shown-view abort)
     let selectBar = null;         // the action bar's DOM, built once per instance
-    let bulkBusy = false;         // a run in flight: a second tap does nothing (M9)
+    let bulkBusy = false;         // a run, a confirm or a picker in flight: a second tap does nothing, the selection is frozen (M9, gate r1 A1 / A5)
+    let bulkPicker = null;        // the open Move picker (gate r1 A5: latched like the confirm, torn down with the selection)
     const selectBtn = root.querySelector('#select-mode-btn');
     const storedSortPick = localStorage.getItem('filetube_sort');
     let currentSort = storedSortPick || 'release-date';
@@ -1825,7 +1830,7 @@ const PreviewCards = (function () {
             data = res.ok ? await res.json() : { items: [] };
           } catch (err) {
             if (err && err.name === 'AbortError') return;
-            if (token === modernReqToken) videoGrid.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' });
+            if (token === modernReqToken) { videoGrid.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' }); syncSelection(); } // v1.400.0 gate r1: an emptied grid is reconciled too
             return;
           }
           if (token !== modernReqToken) return; // a newer chip click superseded this
@@ -1835,7 +1840,7 @@ const PreviewCards = (function () {
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
           if (items.length) putCards(items, false);
-          else videoGrid.innerHTML = buildModernEmptyHtml(filter);
+          else { videoGrid.innerHTML = buildModernEmptyHtml(filter); syncSelection(); } // v1.400.0 gate r1 (qa W1 / adversary A2)
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -1968,8 +1973,7 @@ const PreviewCards = (function () {
           btn.title = 'Select';
           btn.setAttribute('aria-pressed', 'false');
           btn.addEventListener('click', () => {
-            if (selectMode) exitSelectMode(); else enterSelectMode();
-            btn.setAttribute('aria-pressed', selectMode ? 'true' : 'false');
+            if (selectMode) exitSelectMode(); else enterSelectMode(); // syncSelection paints aria-pressed on every exit path
           }, { signal: sig });
           wrap.appendChild(btn);
           const toggle = headerRight.querySelector('.modern-view-toggle');
@@ -2900,7 +2904,7 @@ const PreviewCards = (function () {
       const say = (msg) => { if (!quiet) showToast(msg); };
       try {
         const res = await fetch('/api/podcasts/episodes/' + encodeURIComponent(id), { method: 'DELETE' });
-        if (res.status === 403 || res.status === 401) { say("You don't have permission to delete library files."); return { status: 'refused', message: bulkRefusal(res.status) }; }
+        if (res.status === 403 || (quiet && res.status === 401)) { const body = await res.json().catch(() => ({})); say("You don't have permission to delete library files."); return { status: 'refused', message: bulkRefusal(res.status, body) }; }
         if (!res.ok) { say('Could not delete the episode.'); return { status: 'failed' }; }
         currentItems = currentItems.filter((item) => item.id !== id);
         currentTotal = Math.max(0, currentTotal - 1);
@@ -2920,15 +2924,18 @@ const PreviewCards = (function () {
       try {
         const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
         if (res.status === 409) {
+          // a per-FILE answer (a read-only location, an unreadable folder): that card's failure, the run goes on
           say('File is on a read-only location -- not deleted.');
-          const body = await res.json().catch(() => ({}));
-          // the instance-wide read-only mode refuses the whole run; a per-file unconfirmable delete is that file's failure
-          return body && body.readOnly === true && /read-only media mode/i.test(String(body.error || '')) ? { status: 'refused', message: bulkRefusal(409, body) } : { status: 'failed' };
+          return { status: 'failed' };
         }
-        if (res.status === 403 || res.status === 401) {
-          // v1.81 write-RBAC: no capability -> plain message, card stays put.
+        if (res.status === 403 || (quiet && res.status === 401)) {
+          // v1.81 write-RBAC: no capability -> plain message, card stays put. The instance-wide read-only
+          // mode is ALSO a 403, `{ readOnlyMedia: true }` (server.js refuseIfReadOnlyMedia): the bulk run
+          // stops on either and names the right reason (gate r1 qa W2 / adversary A4). The single-card
+          // path keeps its one message and lets a 401 fall through to the error toast below, as before.
+          const body = await res.json().catch(() => ({}));
           say("You don't have permission to delete library files.");
-          return { status: 'refused', message: bulkRefusal(res.status) };
+          return { status: 'refused', message: bulkRefusal(res.status, body) };
         }
         const data = await res.json().catch(() => ({}));
         if (data.success) {
@@ -3009,6 +3016,10 @@ const PreviewCards = (function () {
         videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
         const showAllBtn = videoGrid.querySelector('[data-format-show-all]');
         if (showAllBtn) showAllBtn.addEventListener('click', showAllFormats, { signal });
+        // v1.400.0 gate r1 (qa W1 / adversary A2): an emptied grid drops every ticked id (M3 / M10) -
+        // without this the bar kept "N selected" and live verbs over no cards, and the ids came back
+        // ticked when the cards returned.
+        syncSelection();
         return;
       }
 
@@ -3628,6 +3639,8 @@ const PreviewCards = (function () {
         selectBtn.hidden = currentItems.length === 0;
         selectBtn.setAttribute('aria-pressed', selectMode ? 'true' : 'false');
       }
+      const modernGlyph = document.querySelector('.modern-select .ui-btn');
+      if (modernGlyph) modernGlyph.setAttribute('aria-pressed', selectMode ? 'true' : 'false'); // gate r1 (qa S2 / adversary A9)
       paintSelectBar();
     }
 
@@ -3682,7 +3695,7 @@ const PreviewCards = (function () {
       const all = bar.querySelector('.select-bar__all');
       const shown = currentItems.length;
       all.querySelector('.ui-btn__label').textContent = 'Select ' + shown + ' shown';
-      all.disabled = shown === 0 || items.length === shown;
+      all.disabled = bulkBusy !== false || shown === 0 || items.length === shown; // never while a confirm, a picker or a run is up (gate r1 A1)
       bar.querySelector('.select-bar__cancel').disabled = bulkBusy;
       const verbs = bar.querySelector('.select-bar__verbs');
       const actions = buildBulkActions(items, cardCaps);
@@ -3729,6 +3742,7 @@ const PreviewCards = (function () {
       selected.clear();
       lastTickedId = null;
       if (selectSession) { selectSession.abort(); selectSession = null; }
+      if (bulkPicker && typeof bulkPicker.teardown === 'function') { const p = bulkPicker; bulkPicker = null; p.teardown(); } // gate r1 A5: no picker outlives the selection
       syncSelection();
     }
     signal.addEventListener('abort', () => exitSelectMode(), { once: true });
@@ -3736,6 +3750,7 @@ const PreviewCards = (function () {
     // Toggles one card; with `range`, ticks (never unticks) every card between the last tick and
     // this one in grid order (M2: desktop shift-click).
     function toggleSelected(id, opts) {
+      if (bulkBusy) return; // a confirm, a picker or a run is up: the selection is frozen (gate r1 A1 - Enter on a focused card link reaches here past the scrim)
       const key = String(id);
       if (opts && opts.range && lastTickedId !== null && lastTickedId !== key) {
         const order = currentItems.map((it) => String(it.id));
@@ -3755,6 +3770,7 @@ const PreviewCards = (function () {
 
     // "Select N shown": exactly the loaded cards, now (M3). A page loaded later is not ticked.
     function selectAllShown() {
+      if (bulkBusy) return;
       currentItems.forEach((it) => { if (it && it.id != null) selected.add(String(it.id)); });
       syncSelection();
     }
@@ -3774,12 +3790,13 @@ const PreviewCards = (function () {
     }
 
     // The refusal the whole run stops on (M9): the server says the ACTION is refused for this
-    // user / instance, not this item. 401 / 403 everywhere; a 409 `{readOnly:true}` for a move or
-    // a Trash. Returns the message, or null for a per-item failure.
+    // user / instance, not this item. 401 / 403 everywhere; the instance-wide read-only mode is a
+    // 403 whose body carries `readOnlyMedia: true` (server.js refuseIfReadOnlyMedia, the media
+    // delete and move routes). A 409 is always per-file (an unconfirmable delete), never a refusal.
+    // Returns the message, or null for a per-item failure.
     function bulkRefusal(status, body) {
       if (status === 401) return 'Sign in again to continue.';
-      if (status === 403) return "You don't have permission for that.";
-      if (status === 409 && body && body.readOnly === true) return 'Read-only mode: nothing was changed.';
+      if (status === 403) return body && body.readOnlyMedia === true ? 'Read-only mode: nothing was changed.' : "You don't have permission for that.";
       return null;
     }
 
@@ -3859,14 +3876,28 @@ const PreviewCards = (function () {
     }
 
     // M8: the shared Move picker (common.js showMoveModal) for the set; its Move hands the folder
-    // to the run. The picker closes as the run starts (the bar shows the progress).
+    // to the run with the ids the picker was opened on. While it is up the bar is latched exactly
+    // like the Trash confirm (gate r1 A5: a bar Cancel behind the scrim no longer leaves a picker
+    // whose Move runs nothing); closing it without a pick releases the latch.
     function openBulkMovePicker(items) {
-      if (typeof showMoveModal !== 'function') return;
+      if (typeof showMoveModal !== 'function' || items.length === 0) return;
       const n = items.length;
+      const confirmedIds = items.map((it) => String(it.id));
+      let picked = false;
+      bulkBusy = 'move';
+      paintSelectBar();
       const picker = showMoveModal({ label: n === 1 ? '1 item' : n + ' items' }, allFolders, (targetFolder, ctl) => {
+        picked = true;
         ctl.teardown();
-        startBulkRun('move', { targetFolder, confirmedCount: n });
+        bulkBusy = false;
+        startBulkRun('move', { targetFolder, confirmedIds });
+      }, undefined, {
+        onClose: () => {
+          if (bulkPicker === picker) bulkPicker = null;
+          if (!picked && bulkBusy === 'move') { bulkBusy = false; paintSelectBar(); }
+        },
       });
+      bulkPicker = picker;
       if (picker && typeof picker.teardown === 'function') shownViewSignal().addEventListener('abort', picker.teardown, { once: true });
     }
 
@@ -3876,23 +3907,32 @@ const PreviewCards = (function () {
       if (action === 'delete') {
         const targets = bulkTargets(action);
         if (targets.length === 0) return;
-        bulkBusy = action; // a second tap during the confirm does nothing
+        const confirmedIds = targets.map((it) => String(it.id)); // what the confirm names (count and size came from these)
+        bulkBusy = action; // a second tap during the confirm does nothing; the selection is frozen
         paintSelectBar();
         let ok = false;
         try { ok = await confirmBulkTrash(targets); } finally { bulkBusy = false; }
         if (!ok) { paintSelectBar(); return; }
-        return startBulkRun(action, { confirmedCount: targets.length });
+        return startBulkRun(action, { confirmedIds });
       }
       return startBulkRun(action, opt);
+    }
+    // The confirmed ids and the ids about to run must be the SAME SET (gate r1 adversary A1: a count
+    // let a card that joined under the confirm stand in for one that left). Pure.
+    function sameIdSet(confirmed, now) {
+      if (!Array.isArray(confirmed) || confirmed.length !== now.length) return false;
+      const want = new Set(confirmed);
+      return now.every((id) => want.has(id)) && want.size === now.length;
     }
     async function startBulkRun(action, opt) {
       if (bulkBusy || !selectMode) return;
       const shown = shownViewSignal();
       const items = bulkTargets(action);
       if (items.length === 0) return;
-      // M7 / the data-loss brief: what was confirmed is what runs. A selection that changed under
-      // the confirm or the picker (a live update dropped a card) runs nothing and says so.
-      if (opt && typeof opt.confirmedCount === 'number' && opt.confirmedCount !== items.length) {
+      // M7 / the data-loss brief: what was confirmed (or shown to the picker) is what runs - the same
+      // ids, not the same count. A selection that changed underneath (a live update dropped a card,
+      // a key toggled one) runs nothing and says so.
+      if (opt && Array.isArray(opt.confirmedIds) && !sameIdSet(opt.confirmedIds, items.map((it) => String(it.id)))) {
         showToast('The selection changed. Nothing was ' + (action === 'delete' ? 'moved to Trash.' : 'moved.'));
         syncSelection();
         return;

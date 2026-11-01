@@ -13971,7 +13971,7 @@ function isYtdlpManagedItem(item) {
  * `reenable` (a failed request) or closes it with `teardown` (success). A closing dialog
  * answers nothing either (`ctrl.isOpen()`).
  */
-function showMoveModal(item, folders, onMove, doc) {
+function showMoveModal(item, folders, onMove, doc, opts) {
   const d = doc || document;
   const win = d.defaultView || (typeof window !== 'undefined' ? window : null);
   const U = (win && win.ui) || dialogUi();
@@ -14014,7 +14014,8 @@ function showMoveModal(item, folders, onMove, doc) {
   body.appendChild(actions);
 
   let busy = false;
-  const ctrl = U.sheet({ variant: 'dialog', title: 'Move to…', content: body, canDismiss: () => !busy, doc: d, win });
+  // v1.400.0 (M8): `opts.onClose` tells the caller the picker went away without a pick (Cancel, Esc, the scrim, Close).
+  const ctrl = U.sheet({ variant: 'dialog', title: 'Move to…', content: body, canDismiss: () => !busy, onClose: opts && typeof opts.onClose === 'function' ? opts.onClose : undefined, doc: d, win });
 
   function setBusy(nextBusy) {
     busy = nextBusy;

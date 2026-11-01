@@ -1768,10 +1768,12 @@ test('v1.400.0 ids: every malformed shape is a 400 with NOTHING started - no db 
 });
 
 test('v1.400.0 validateRepullIds (pure): the cap and the per-id rule', () => {
+  assert.equal(ytdlp.REPULL_IDS_CAP, 500, 'the cap is 500 (the plan states it; a raised cap is a finding - gate r1 i01)');
   assert.equal(ytdlp.validateRepullIds(['a']), null);
   assert.equal(ytdlp.validateRepullIds(Array.from({ length: ytdlp.REPULL_IDS_CAP }, (_, i) => 'id' + i)), null, 'exactly the cap is allowed');
   assert.equal(ytdlp.validateRepullIds(['x'.repeat(512)]), null, 'exactly the per-id length is allowed');
-  assert.match(ytdlp.validateRepullIds(Array.from({ length: ytdlp.REPULL_IDS_CAP + 1 }, () => 'a')), /at most 500/);
+  assert.match(ytdlp.validateRepullIds(Array.from({ length: 501 }, () => 'a')), /at most 500 media ids$/);
+  assert.equal(ytdlp.validateRepullIds(Array.from({ length: 500 }, () => 'a')), null);
   assert.match(ytdlp.validateRepullIds([]), /at least one/);
   for (const v of [undefined, null, 'a', 1, {}, ['a', 1], [''], ['a\u0000'], ['x'.repeat(513)], [null]]) {
     assert.ok(typeof ytdlp.validateRepullIds(v) === 'string', 'rejected: ' + JSON.stringify(v && v.length > 50 ? '(long)' : v));

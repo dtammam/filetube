@@ -50,7 +50,7 @@ test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, n
   assert.ok(!buildCardMenuItems({ id: 'x', title: 'X' }, caps, { selectable: true }).some((en) => en.id === 'move'), 'the card menu offers no Move row');
   const live = mainJs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
   const picker = live.slice(live.indexOf('function openBulkMovePicker('), live.indexOf('async function runBulk('));
-  const bulkOne = live.slice(live.indexOf('async function runBulkOne('), live.indexOf('async function runBulk('));
+  const bulkOne = live.slice(live.indexOf('async function runBulkOne('), live.indexOf('function bulkTargets(')); // runBulkOne only (gate r1 S4)
   assert.strictEqual((live.match(/showMoveModal/g) || []).length, (picker.match(/showMoveModal/g) || []).length, 'every showMoveModal reference is inside openBulkMovePicker');
   assert.ok((picker.match(/showMoveModal\(/g) || []).length === 1, 'the bar opens the shared picker once');
   assert.strictEqual((live.match(/requestMoveItem/g) || []).length, (bulkOne.match(/requestMoveItem/g) || []).length, 'every requestMoveItem reference is inside runBulkOne');

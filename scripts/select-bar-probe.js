@@ -130,8 +130,6 @@ async function main() {
   await send('Network.setCookie', { name: cname, value: cvalue, url: base });
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   let cells = 0, bad = 0;
-  const hasBar = await ev('true'); // placeholder for symmetry
-  void hasBar;
   const shoot = async (name) => {
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.data, 'base64'));
@@ -147,15 +145,25 @@ async function main() {
       realCards: await ev("document.querySelectorAll('#video-grid .video-card[data-id]').length"), skeletonCards: await ev("document.querySelectorAll('#video-grid .skeleton-card').length") }));
     return entered;
   };
+  // The last row must stay reachable: scrolled to the very end, the LAST card's bottom edge must sit
+  // above the bar's top edge (gate r1 qa W3: the clearance under the grid follows the dock lift).
+  const END = `(function () { window.scrollTo(0, document.documentElement.scrollHeight); return new Promise(function (res) { setTimeout(function () {
+    var cards = document.querySelectorAll('#video-grid .video-card[data-id]'); var last = cards[cards.length - 1]; var bar = document.querySelector('.select-bar:not([hidden])');
+    var lr = last ? last.getBoundingClientRect() : null; var br = bar ? bar.getBoundingClientRect() : null;
+    res({ lastCardBottom: lr ? Math.round(lr.bottom) : null, barTop: br ? Math.round(br.top) : null, scrollY: Math.round(window.scrollY), lastRowClear: !(lr && br) || lr.bottom <= br.top });
+  }, 250); }); })()`;
   const measure = async (cell, withDock) => {
     const m = await ev(MEASURE);
     const name = `${cell.name}${withDock ? '-dock' : ''}`;
     await shoot(name);
+    const end = await ev(END);
+    await shoot(name + '-end');
+    await ev('window.scrollTo(0, 0); true');
     const treeHasBar = fs.existsSync(path.join(ROOT, 'public', 'js', 'main.js')) && /select-bar__verbs/.test(fs.readFileSync(path.join(ROOT, 'public', 'js', 'main.js'), 'utf8'));
     const overflow = m.scrollWidth > m.innerWidth;
-    const fail = overflow || m.overlapNav > 0 || m.overlapDock > 0 || m.barBelowViewport > 0 || (treeHasBar && !m.bar) || (withDock && !m.dock);
+    const fail = overflow || m.overlapNav > 0 || m.overlapDock > 0 || m.barBelowViewport > 0 || (treeHasBar && !m.bar) || (withDock && !m.dock) || (treeHasBar && !end.lastRowClear);
     cells += 1; if (fail) bad += 1;
-    console.log(JSON.stringify(Object.assign({ cell: name, tree: treeHasBar ? 'bar' : 'no-bar', ok: !fail, overflow }, m)));
+    console.log(JSON.stringify(Object.assign({ cell: name, tree: treeHasBar ? 'bar' : 'no-bar', ok: !fail, overflow }, m, { end })));
   };
   for (const cell of CELLS) {
     if (cell.mobile) {

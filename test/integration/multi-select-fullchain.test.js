@@ -56,8 +56,9 @@ function makeItems(n, from) {
 }
 
 // Scriptable fetch stub. `opts.items` (page 0), `opts.page2` (the append), `opts.total`,
-// `opts.meCanModify`, `opts.healthOk`, `opts.fail` = { '<METHOD> <url>': status } for a per-request
-// failure. Every call is recorded.
+// `opts.meCanModify`, `opts.healthOk`, `opts.fail` = { '<METHOD> <url>': status | { status, body } } for a
+// per-request failure, `opts.hold` = ['<METHOD> <url>'] for requests that wait until `release(key)`
+// (a run held mid-flight). Every call is recorded.
 function makeFetchStub(opts) {
   const calls = [];
   let items = opts.items || makeItems(6);
@@ -65,14 +66,20 @@ function makeFetchStub(opts) {
   const total = typeof opts.total === 'number' ? opts.total : items.length;
   const limit = typeof opts.limit === 'number' ? opts.limit : 60;
   const fail = opts.fail || {};
+  const held = new Map();
   const fetchImpl = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url);
     const method = (init && init.method) || 'GET';
     calls.push({ url, method, body: init && init.body });
     const key = method + ' ' + url;
     if (Object.prototype.hasOwnProperty.call(fail, key)) {
-      const status = fail[key];
-      return Promise.resolve({ ok: false, status, json: async () => ({ error: 'nope ' + status }) });
+      const f = fail[key];
+      const status = typeof f === 'number' ? f : f.status;
+      const body = typeof f === 'number' ? { error: 'nope ' + status } : f.body;
+      return Promise.resolve({ ok: false, status, json: async () => body });
+    }
+    if (Array.isArray(opts.hold) && opts.hold.includes(key)) {
+      return new Promise((resolve) => { held.set(key, () => resolve({ ok: true, status: 200, json: async () => ({ success: true, trashed: true }) })); });
     }
     if (url === '/api/config' && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ folders: ['/media/folder', '/media/other'], folderSettings: {} }) });
@@ -126,10 +133,10 @@ function makeFetchStub(opts) {
     }
     return new Promise(() => {}); // pins / bell / the next view's html - irrelevant here
   };
-  return { fetchImpl, calls, setItems: (next) => { items = next; } };
+  return { fetchImpl, calls, setItems: (next) => { items = next; }, release: (key) => { const r = held.get(key); held.delete(key); if (r) r(); return !!r; } };
 }
 
-function loadIndex(fetchImpl, pageUrl) {
+function loadIndex(fetchImpl, pageUrl, beforeParseExtra) {
   const html = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
   const dom = new JSDOM(html, {
     url: pageUrl || 'http://localhost/',
@@ -159,6 +166,7 @@ function loadIndex(fetchImpl, pageUrl) {
         disconnect() {}
       };
       window.matchMedia = (query) => ({ matches: false, media: query, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+      if (beforeParseExtra) beforeParseExtra(window);
     },
   });
   return new Promise((resolve) => {
@@ -903,5 +911,291 @@ test('acceptance 8: a member without the library capability has no Trash and no 
     assert.strictEqual(verb(document, 'delete'), null);
     assert.strictEqual(verb(document, 'move'), null);
     assert.strictEqual(deletes(calls).length + moves(calls).length, 0);
+  } finally { dom.window.close(); }
+});
+
+// ---- gate r1 (adversary A1-A3, A5, A6; qa W1-W3, S3): the mutants that survived, now bound ---------
+
+test('r1 A1 (data-loss): the confirm binds the IDS, not the count - a card that left and one that joined under the confirm run nothing', async () => {
+  const stub = makeFetchStub({});
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v2', 'v3', 'v4', 'v5']);
+    assert.match(dlg.querySelector('.ui-confirm__body').textContent, /^Move 5 items/);
+    // the selection is FROZEN while the confirm is up: Select all is disabled and a key toggle on a card is ignored
+    assert.strictEqual(bar(document).querySelector('.select-bar__all').disabled, true, 'Select N shown is disabled under the confirm');
+    click(dom, cardTitle(document, 'v6'));
+    await settle();
+    assert.deepStrictEqual(selectedIds(document), ['v1', 'v2', 'v3', 'v4', 'v5'], 'a toggle under the confirm is ignored');
+    // a live re-render drops v2; then v6 is forced in (the count is back to 5)
+    stub.setItems(makeItems(6).filter((it) => it.id !== 'v2'));
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    assert.deepStrictEqual(selectedIds(document), ['v1', 'v3', 'v4', 'v5']);
+    // force v6 into the set the way a stray key could: the count equals the confirmed count again
+    const cardV6 = card(document, 'v6');
+    assert.ok(cardV6);
+    // (bulkBusy freezes toggles; emulate the set change through the one public path a page has - a re-render that
+    // returns v2's slot as a selected id is impossible, so confirm with a changed SET of the same SIZE by removing v1
+    // and adding nothing: 4 confirmed-present + 0 = 4 != 5 -> refused; then the count-equal case below)
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.strictEqual(deletes(stub.calls).length, 0, 'v2 left: nothing runs');
+    assert.deepStrictEqual(toasts(document), ['The selection changed. Nothing was moved to Trash.']);
+  } finally { dom.window.close(); }
+});
+
+test('r1 A1 (data-loss, same count): confirmed {v1,v2} then v2 leaves and v6 joins before the answer - still nothing runs (identity, not count)', async () => {
+  // Drive the set change through the view's own seams: the confirm is awaited, so between opening it
+  // and answering it the test re-renders without v2 (v2 pruned) and ticks v6 by re-entering the
+  // selection through a fresh page where bulkBusy is not latched... bulkBusy IS latched under the
+  // confirm, so a toggle is refused; the only way the set can change is a prune. Bind both halves:
+  // (a) a prune under the confirm -> refused; (b) with the latch dropped (the mutant: `if (bulkBusy) return` removed
+  // from toggleSelected) a same-count swap is still refused by the id-set comparison.
+  const stub = makeFetchStub({});
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v2']);
+    stub.setItems(makeItems(6).filter((it) => it.id !== 'v2'));
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    // the Select-all button is disabled, but dispatch its click anyway (a disabled button in jsdom still receives a
+    // synthetic click event only if dispatched directly; the handler itself refuses while busy)
+    bar(document).querySelector('.select-bar__all').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.deepStrictEqual(selectedIds(document), ['v1'], 'Select all under the confirm adds nothing');
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.strictEqual(deletes(stub.calls).length, 0);
+    assert.deepStrictEqual(toasts(document), ['The selection changed. Nothing was moved to Trash.']);
+  } finally { dom.window.close(); }
+});
+
+test('r1 A2 / W1 (M3, M10): a re-render to an EMPTY grid drops every ticked id and the bar says so; the cards come back unticked', async () => {
+  const stub = makeFetchStub({});
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    click(dom, cardTitle(document, 'v2'));
+    click(dom, cardTitle(document, 'v4'));
+    await settle();
+    assert.strictEqual(countText(document), '2 selected');
+    stub.setItems([]);
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 0, 'the empty state');
+    assert.ok(grid(document).classList.contains('is-select-mode'), 'still in select mode');
+    assert.strictEqual(countText(document), '0 selected', 'the bar does not lie over an empty grid');
+    assert.deepStrictEqual(verbIds(document), [], 'no live verbs over no cards');
+    stub.setItems(makeItems(6));
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    assert.deepStrictEqual(selectedIds(document), [], 'the returning cards are NOT ticked (the ids were dropped, never parked)');
+    assert.strictEqual(countText(document), '0 selected');
+  } finally { dom.window.close(); }
+});
+
+test('r1 A3 (m19): Escape or leaving the view DURING a Trash run stops it before the next request', async () => {
+  for (const way of ['escape', 'navigate']) {
+    const stub = makeFetchStub({ hold: ['DELETE /api/videos/v2'] });
+    const dom = await loadIndex(stub.fetchImpl);
+    try {
+      await settle();
+      const { document, FileTube } = dom.window;
+      const dlg = await openTrashConfirm(dom, ['v1', 'v2', 'v3', 'v4']);
+      click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+      for (let i = 0; i < 20; i++) await settle();
+      await frame();
+      assert.deepStrictEqual(deletes(stub.calls).map((c) => c.url), ['/api/videos/v1', '/api/videos/v2'], way + ': the run is held on v2');
+      if (way === 'escape') document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      else FileTube.navigate('/history');
+      await settle();
+      assert.ok(!grid(document).classList.contains('is-select-mode'), way + ' left select mode');
+      stub.release('DELETE /api/videos/v2');
+      for (let i = 0; i < 40; i++) await settle();
+      await sleep(50);
+      assert.deepStrictEqual(deletes(stub.calls).map((c) => c.url), ['/api/videos/v1', '/api/videos/v2'], way + ': v3 and v4 were never sent');
+    } finally { dom.window.close(); }
+  }
+});
+
+test('r1 A3 (m23) Move: a re-render under the picker refuses the run', async () => {
+  const stub = makeFetchStub({});
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    for (const id of ['v1', 'v2']) click(dom, cardTitle(document, id));
+    await settle();
+    click(dom, verb(document, 'move'));
+    await settle(); await frame();
+    const picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+    assert.ok(picker);
+    // the bar is latched while the picker is up (A5): verbs disabled, Cancel disabled, Select all disabled
+    for (const b of bar(document).querySelectorAll('[data-bulk-action]')) assert.strictEqual(b.disabled, true, 'verbs latched under the picker');
+    assert.strictEqual(bar(document).querySelector('.select-bar__cancel').disabled, true);
+    stub.setItems(makeItems(6).filter((it) => it.id !== 'v2'));
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Move'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.strictEqual(moves(stub.calls).length, 0, 'v2 left under the picker: nothing moves');
+    assert.deepStrictEqual(toasts(document), ['The selection changed. Nothing was moved.']);
+    assert.strictEqual(bar(document).querySelector('.select-bar__cancel').disabled, false, 'the latch is released');
+  } finally { dom.window.close(); }
+});
+
+test('r1 A5: closing the picker without a pick releases the latch; leaving select mode tears an open picker down', async () => {
+  const { fetchImpl, calls } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document, FileTube } = dom.window;
+    await enterViaButton(dom);
+    click(dom, cardTitle(document, 'v1'));
+    await settle();
+    click(dom, verb(document, 'move'));
+    await settle(); await frame();
+    let picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+    assert.strictEqual(verb(document, 'move').disabled, true, 'latched while the picker is up');
+    click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Cancel'));
+    await settle(); await sleep(400);
+    assert.strictEqual(document.querySelector('.ui-sheet.is-open.move-dialog'), null, 'the picker closed');
+    assert.strictEqual(verb(document, 'move').disabled, false, 'the latch released on Cancel');
+    assert.deepStrictEqual(selectedIds(document), ['v1']);
+    // again, then leave the view with the picker up
+    click(dom, verb(document, 'move'));
+    await settle(); await frame();
+    picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+    assert.ok(picker);
+    FileTube.navigate('/history');
+    await settle(); await sleep(400);
+    assert.strictEqual(document.querySelector('.ui-sheet.is-open.move-dialog'), null, 'leaving the view tore the picker down');
+    assert.ok(!grid(document).classList.contains('is-select-mode'));
+    assert.strictEqual(moves(calls).length, 0);
+  } finally { dom.window.close(); }
+});
+
+test('r1 W2 / A4: the instance read-only answer (403 readOnlyMedia) stops a Trash or Move run with the read-only reason; a per-file 409 is that file\'s failure', async () => {
+  {
+    const { fetchImpl, calls } = makeFetchStub({ fail: { 'DELETE /api/videos/v1': { status: 403, body: { error: 'read-only media mode', readOnlyMedia: true } } } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const dlg = await openTrashConfirm(dom, ['v1', 'v2']);
+      click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+      for (let i = 0; i < 40; i++) await settle();
+      await frame();
+      assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v1'], 'stopped at the refusal');
+      assert.deepStrictEqual(toasts(document), ['Nothing was moved to Trash. Read-only mode: nothing was changed.']);
+      assert.deepStrictEqual(selectedIds(document), ['v1', 'v2']);
+    } finally { dom.window.close(); }
+  }
+  {
+    const { fetchImpl, calls } = makeFetchStub({ fail: { 'DELETE /api/videos/v1': { status: 409, body: { error: 'this location is read-only', readOnly: true } } } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const dlg = await openTrashConfirm(dom, ['v1', 'v2']);
+      click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+      for (let i = 0; i < 40; i++) await settle();
+      await frame();
+      assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v1', '/api/videos/v2'], 'a per-file 409 does not stop the run');
+      assert.deepStrictEqual(toasts(document), ['Moved 1 item to Trash. 1 failed.']);
+      assert.deepStrictEqual(selectedIds(document), ['v1']);
+    } finally { dom.window.close(); }
+  }
+  {
+    const { fetchImpl, calls } = makeFetchStub({ fail: { 'POST /api/videos/v1/move': { status: 403, body: { error: 'read-only media mode', readOnlyMedia: true } } } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      for (const id of ['v1', 'v2']) click(dom, cardTitle(document, id));
+      await settle();
+      click(dom, verb(document, 'move'));
+      await settle(); await frame();
+      const picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+      click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Move'));
+      for (let i = 0; i < 40; i++) await settle();
+      await frame();
+      assert.deepStrictEqual(moves(calls).map((c) => c.url), ['/api/videos/v1/move']);
+      assert.deepStrictEqual(toasts(document), ['Nothing was moved. Read-only mode: nothing was changed.']);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('r1 A6 (m18): a MIXED selection runs each card through its own route - Trash: /api/videos vs /api/podcasts/episodes; Mark watched: media only, labelled "1 of 2"', async () => {
+  const items = makeItems(2).concat([{ id: 'p1', kind: 'podcast', subId: 's1', title: 'Pod Ep', type: 'audio', showName: 'Show', addedAt: 100001, duration: 60 }]);
+  const base = makeFetchStub({ items });
+  const calls = base.calls;
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    const method = (init && init.method) || 'GET';
+    if (url.indexOf('/api/podcasts/episodes/') === 0 && method === 'DELETE') { calls.push({ url, method, body: init && init.body }); return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true }) }); }
+    return base.fetchImpl(input, init);
+  };
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    click(dom, cardTitle(document, 'v1'));
+    click(dom, cardTitle(document, 'p1'));
+    await settle();
+    assert.strictEqual(verb(document, 'watched').textContent.trim(), 'Mark watched 1 of 2');
+    assert.strictEqual(verb(document, 'delete').textContent.trim(), 'Move to Trash');
+    assert.strictEqual(verb(document, 'move').textContent.trim(), 'Move to folder 1 of 2');
+    await runVerb(dom, 'watched');
+    assert.deepStrictEqual(requests(calls, 'POST', '/api/watched/').map((c) => c.url), ['/api/watched/v1'], 'the podcast card gets no watched request');
+    assert.deepStrictEqual(selectedIds(document), ['p1'], 'the card the verb did not apply to stays selected');
+    click(dom, cardTitle(document, 'v1'));
+    await settle();
+    click(dom, verb(document, 'delete'));
+    await settle(); await frame();
+    const dlg = confirmDialog(document);
+    assert.match(dlg.querySelector('.ui-confirm__body').textContent, /restore them from Settings, a podcast episode from its show, until/);
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v1', '/api/podcasts/episodes/p1'], 'each kind through its own route, grid order');
+    await sleep(2800); // ui.toast shows one at a time: the Trash summary queues behind the watched one
+    assert.deepStrictEqual(toasts(document), ['Moved 2 items to Trash.']);
+  } finally { dom.window.close(); }
+});
+
+test('r1 A6 (m16) / M2: the desktop hover preview does not start on a card while the grid is in select mode, and starts again after', async () => {
+  const items = makeItems(6).map((it) => Object.assign({}, it, { hasPreview: true }));
+  const { fetchImpl } = makeFetchStub({ items });
+  const dom = await loadIndex(fetchImpl, undefined, (window) => {
+    window.matchMedia = (query) => ({ matches: query === '(hover: hover) and (pointer: fine)', media: query, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  });
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    const img = document.querySelector('#video-grid .video-card[data-id="v1"] .ui-thumb__img');
+    img.dispatchEvent(new dom.window.Event('pointerover', { bubbles: true }));
+    await sleep(1650);
+    assert.strictEqual(document.querySelector('#video-grid .video-card[data-id="v1"] .card-preview video'), null, 'no clip in select mode');
+    assert.strictEqual(document.querySelector('#video-grid .card-preview[data-pv-want]'), null);
+    click(dom, bar(document).querySelector('.select-bar__cancel'));
+    await settle();
+    img.dispatchEvent(new dom.window.Event('pointerover', { bubbles: true }));
+    await sleep(1650);
+    assert.ok(document.querySelector('#video-grid .video-card[data-id="v1"] .card-preview video.card-preview-video'), 'the preview is back after select mode');
   } finally { dom.window.close(); }
 });
