@@ -165,11 +165,14 @@ before this merges). Ask with AskUserQuestion when CI is green; then merge, `git
 
 ## Evidence (the builder fills this)
 
-- W1: 
-- W2: 
-- W3: 
-- Full suite (Node 22), before the gate and on the release commit: 
-- Gate verdicts (bound to sha): 
+- W1: native-audio.js surfaceLiveDecision + per-frame loop + hole intersection; test/unit/native-minimize-follow.test.js (R1/R2 tests). Mutants red: loop start removed (tests 2, 3, 5), intersection removed (test 5). Idle census: 0 posts, <= 2 box reads per idle second.
+- W2: occludeApply/occludeClear + clearMinimizeDrag -> clearOcclusion; tests: clip applied only to a meeting faded sibling, never the stage or wrapper; gone after classes clear, dock(), release. Mutants red: occludeApply removed (tests 6, 7).
+- W3: headless probe (Chromium 1208, iPhone emulation, real CDP touch pull, native fake host, base = 6cd45465 vs branch): the watch title jumped 80 px at the release on the base (387 -> 307, slot 299 -> 219), 0 px on the branch. A web-only dock() left the slot at 219 before and after (no jump), so the hold is native-only. The probe clip has no thumbnail, so the poster timing is bound in jsdom (preload at the claim; no poster during the pull; poster when docked). Mutants red: hold removed, preloadArt removed.
+- Full suite (Node 22), before the gate and on the release commit: pre-commit hook run on 9f5b4c53: tests 10277, pass 10276, fail 0, skipped 1 (the unit suite; Node 24 runs in PR CI).
+- Gate verdicts (bound to sha):
+  - SECURITY r1 @9f5b4c53: APPROVED (no findings; the artwork preload is the same same-origin value the dock already uses; package files differ by the version field only, checked by diff).
+  - QA r1 @9f5b4c53: APPROVED (115/115 targeted tests, lint:ui OK, overlay-containment 0 violations; 3 INFO).
+  - ADVERSARY r1 @9f5b4c53: CHANGES - 3 WARNINGs, all test-binding gaps (web-only guard on the slot hold, the reduced-motion fallback timer, the detached-wrapper guard); no behaviour defect. Closed by three tests (each mutated red); r2 re-confirmation pending.
 - Release: tag, PR, Publish run: 
 
 ## Out of scope

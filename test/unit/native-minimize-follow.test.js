@@ -25,10 +25,11 @@ const ITEM = { kind: 'video', id: 'v1', src: '/api/offline/file/video/v1', title
 const STATE = (rev, extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 12, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
 const BASE = { left: 0, top: 300, width: 393, height: 221 };
 
-function realm() {
+function realm(opts) {
+  opts = opts || {};
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
-  w.matchMedia = (q) => ({ matches: /max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  w.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q)) || (!!opts.reduced && /prefers-reduced-motion/.test(q)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
   w.HTMLMediaElement.prototype.load = function () {};
   w.HTMLMediaElement.prototype.pause = function () {};
@@ -46,7 +47,7 @@ function realm() {
     else if (/^\/api\/progress\//.test(url)) body = { timestamp: 0 };
     return Promise.resolve({ ok: true, status: 200, json: async () => body });
   };
-  const fake = installFakeHost(w, CAPS);
+  const fake = installFakeHost(w, opts.caps || CAPS);
   const style = w.document.createElement('style'); style.textContent = '#player-wrapper { border-top-left-radius: 12px; }'; w.document.head.appendChild(style);
   for (const f of SCRIPTS) w.eval(read(f));
   const reads = { n: 0 };
@@ -254,5 +255,50 @@ test('R4c: committing the minimize under a native picture holds the slot height 
     await settle(900);
     assert.strictEqual(r.slot.style.minHeight, '', 'the hold ends with the pull (the one remover)');
     void p;
+  } finally { r.close(); }
+});
+
+// ---- gate r1 (adversary): the guards the first tests did not bind -----------------------------------------------------------
+
+test('R4c (gate r1 W1): a player WITHOUT nativeVideo holds nothing - the same commit leaves the slot style untouched', async () => {
+  const r = realm({ caps: { capabilities: ['nativeAudio', 'nativeVideoAudio'] } });
+  try {
+    watchPage(r);
+    r.w.document.body.setAttribute('data-view', 'watch');
+    r.player.load('v1', VIDEO, { slot: r.slot });
+    await settle(120);
+    r.slot.getBoundingClientRect = () => ({ left: 0, top: 300, width: 393, height: 321, right: 393, bottom: 621, x: 0, y: 300 });
+    r.wrapper().classList.remove('native-controls'); // a web-only phone defaults to the browser's own bar, which refuses minimize; the custom bar is the case under test
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked', 'the web-only commit must really dock, or this proves nothing');
+    assert.strictEqual(r.slot.style.minHeight, '', 'no hold without a native surface');
+  } finally { r.close(); }
+});
+
+test('R4c (gate r1 W2): under reduced motion (no settle timer) the hold still ends on its own', async () => {
+  const r = realm({ reduced: true });
+  try {
+    watchPage(r);
+    r.w.document.body.setAttribute('data-view', 'watch');
+    await loaded(r);
+    r.slot.getBoundingClientRect = () => ({ left: 0, top: 300, width: 393, height: 321, right: 393, bottom: 621, x: 0, y: 300 });
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.strictEqual(r.slot.style.minHeight, '321px', 'held right after the commit');
+    await settle(900);
+    assert.strictEqual(r.slot.style.minHeight, '', 'released by the fallback timer, not left until some other clear');
+  } finally { r.close(); }
+});
+
+test('R1 (gate r1 W3): a wrapper detached mid-pull never keeps the loop alive (no box reads at 60 Hz)', async () => {
+  const r = realm();
+  try {
+    await loaded(r);
+    r.pull(100); await settle(60);
+    r.slot.remove();
+    await settle(80);
+    r.reads.n = 0;
+    await settle(400);
+    assert.ok(r.reads.n <= 2, 'a detached wrapper with is-minimize-drag still on it: reads in 400 ms = ' + r.reads.n);
   } finally { r.close(); }
 });
