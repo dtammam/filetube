@@ -5984,6 +5984,53 @@ html:has(> body.ft-audio-expanded),
   overflow: hidden;
 }
 
+/* v1.401.0 live dock picture (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, L2 + L3 + R3). `html.ft-native-dock` is set
+   by public/js/native-audio.js only while the iPhone app (the nativeVideoDock capability) draws the docked picture ABOVE the web view:
+   the picture box is native's, so (L2) the X leaves the picture's corner for the bar's right end and play/pause stays at the left, both
+   a full thumb (--size-touch), and (L3) captions leave the picture for a fixed two-line STRIP between the picture and the bar while
+   captions are on (#player-wrapper.is-cc-on, player.js setCaptionsOn): the dock grows by --ft-dock-cc-h once, never per cue, and the
+   picture rect native receives is the #media-player box alone. The class stays while the dock is covered (R4: the thumbnail dock keeps
+   the bar layout, nothing jumps). Safari, the PWA and app builds without the capability never carry the class. The strip height lives
+   on #player-dock unconditionally so player.js dockRestingRect can read it before the dock shows (the pull aims at the taller dock).
+   Specificity (html.class + #id) beats every #player-dock rule above at every width; file order after them too. */
+#player-dock {
+  --ft-dock-cc-h: var(--size-control-sm); /* two --fs-xs caption lines at 1.2 plus --space-1 padding fit a small control's height */
+}
+html.ft-native-dock #player-dock .player-controls {
+  height: var(--size-touch);
+  padding: 0 var(--size-touch) 0 var(--space-3); /* the X's seat at the right end of the bar */
+}
+html.ft-native-dock #player-dock #player-wrapper {
+  padding-bottom: var(--size-touch);
+}
+html.ft-native-dock #player-dock #player-wrapper.is-cc-on {
+  padding-bottom: calc(var(--size-touch) + var(--ft-dock-cc-h));
+}
+html.ft-native-dock #player-dock .player-dock-close {
+  top: auto;
+  bottom: 0;
+  right: 0;
+  width: var(--size-touch);
+  height: var(--size-touch);
+  line-height: var(--size-touch);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-1);
+  z-index: calc(var(--z-sticky) - 21); /* = 9: the player's local rung over the bar (8), as the caption overlay; under the resume / transcode overlays (10) */
+}
+html.ft-native-dock #player-dock .cc-overlay {
+  bottom: var(--size-touch);
+  height: var(--ft-dock-cc-h);
+  align-items: center;
+  padding: 0 var(--space-2);
+}
+html.ft-native-dock #player-dock .cc-overlay-text {
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  background: transparent; /* the strip sits on the dock's own letterbox black */
+  border-radius: 0;
+}
+
 /* FULLSCREEN restore: desktop fullscreen targets the container and keeps the
    custom bar overlaying (AC14); a reserved strip would clip the picture. Put
    the overlay layout back for both the standard and -webkit- fullscreen. */

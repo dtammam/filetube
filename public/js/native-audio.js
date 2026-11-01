@@ -166,6 +166,7 @@
     var enabled = !!(host && typeof host.has === 'function' && host.has('nativeAudio'));
     var videoOn = enabled && host.has('nativeVideoAudio'); // v1.398.0: the engine also takes a video's sound (a Listen row)
     var surfaceOn = videoOn && host.has('nativeVideo'); // v1.399.0: and a watch-page video's PICTURE (one native player, the web's controls on top)
+    var dockOn = surfaceOn && host.has('nativeVideoDock'); // v1.401.0: and the DOCKED picture stays live, native's layer above the web view (plan 2026-11-01-live-dock-picture)
     var noop = function () {};
     if (!enabled) {
       return {
@@ -203,6 +204,12 @@
     var holeEl = null;       // #ft-video-hole: the page colour with the player box cut out (S5), appended to body on first use
     var holeClip = '';       // the clip path last written (a same-value style write would wake the body observer)
     var dockPoster = false;  // the thumbnail we put on the element while docked (S3a), removed on expand
+    var aboveHold = 0;       // v1.401.0 (R2): frames the hole stays open after a 'below' -> 'above' post (native may land the switch a frame late)
+    var belowPending = false; // v1.401.0 (R2): the hole was opened this frame for an 'above' -> 'below' switch; the post goes out on the next
+    var covered = false;     // v1.401.0 (R4): a web surface (a sheet, menu, dialog, popover, toast) overlaps the docked picture: the layer hides, the thumbnail shows
+    var coverDirty = false;  // v1.401.0 (R4): something that can cover or uncover the dock changed since the last scan (event-driven: never the backstop)
+    var coverScanned = false; // v1.401.0 (R4): the current docked-above spell has been scanned at least once (dock() itself is a signal)
+    var coverMo = null;      // v1.401.0 (R4): body's direct children (ui.js appends every sheet, scrim, toast host and the speed sheet there) and their class / hidden / style
     var followed = false;    // the last claim was a FOLLOW: 'adopt' (a fresh page took what native plays) | 'advance' (native moved on itself) | false
     var adopting = false;    // true while the bound view's adopt() runs (its load's claim is the 'adopt' follow)
     var pendingJump = null;  // { key, left, at } after an audio.jump: snapshots still showing the item LEFT are dropped for a moment (S-A)
@@ -351,6 +358,11 @@
     // corners rounded like the player box, the bottom ones square: the control bar sits below the picture); (3) while DOCKED the picture is hidden
     // (visible: false; the page keeps scrolling under the fixed mini player, S3a), the dock shows the video's thumbnail as the
     // element's poster, and the sound plays on. Without `nativeVideo` none of this exists (S11).
+    // v1.401.0 (plan 2026-11-01-live-dock-picture, R1 + R2): under `nativeVideoDock` the DOCKED picture stays live - native draws it
+    // ABOVE the web view (`layer: 'above'`, viewport space, the #media-player box, the dock's own radius; touches pass through), so
+    // the page scrolling under the fixed dock can never paint over it. The layer switch lands on native's side after the post:
+    // going above (the fly-in's first frame) the hole stays open two more frames; going below (expand) the hole opens FIRST and the
+    // post waits a frame. `layer` is sent only under the capability (the adapter refuses it otherwise); without it: S3a as above.
     // v1.400.1 (plan 2026-11-01-minimize-native-follow, R1): while the minimize pull, its spring-back or its fly-in moves the
     // wrapper with a TRANSFORM, no observer hears it (a transform changes no layout size, class or child list), so the picture
     // used to move once per second (the backstop). `surfaceLiveDecision` names those three states; surfaceSync keeps asking for
@@ -358,12 +370,13 @@
     function surfaceSchedule() {
       if (!surfaceOn || surfaceRaf || !ownedSurface || !ownedId) return; // only while native plays a video WITH its picture (a track never samples)
       var raf = typeof win.requestAnimationFrame === 'function' ? win.requestAnimationFrame.bind(win) : function (fn) { return win.setTimeout(fn, 16); };
-      surfaceRaf = raf(function () { surfaceRaf = 0; surfaceSync(); });
+      surfaceRaf = raf(function () { surfaceRaf = 0; surfaceSync(true); });
     }
     function surfaceWire() {
       if (surfaceWired || !surfaceOn) return;
       surfaceWired = true;
       var doc = win.document;
+      var wake = dockOn ? coverWake : surfaceSchedule; // v1.401.0 (gate r1, qa S1): only under nativeVideoDock does a signal also dirty the cover scan; without it the sampler is v1.400.1's exactly
       try {
         if (typeof win.ResizeObserver === 'function') {
           surfaceObs = new win.ResizeObserver(surfaceSchedule);
@@ -376,7 +389,7 @@
           // Deliberately NOT the whole body subtree: the player's own per-frame writes (the time label, the fill) live there and
           // would wake the sampler every frame (gate r1 WARNING). A reparent is heard on the container (surfaceWatchContainer),
           // content growing above the box on the document's ResizeObserver, anything else by the 1 s backstop.
-          surfaceMo = new win.MutationObserver(surfaceSchedule);
+          surfaceMo = new win.MutationObserver(wake);
           surfaceMo.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
           if (doc.documentElement) surfaceMo.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
           var viewRoot = doc.getElementById('view-root'); if (viewRoot) surfaceMo.observe(viewRoot, { childList: true });
@@ -384,9 +397,10 @@
           var slotEl = doc.getElementById('player-slot'); if (slotEl) surfaceMo.observe(slotEl, { childList: true });
           var stageEl = doc.getElementById('fs-stage'); if (stageEl) surfaceMo.observe(stageEl, { childList: true });
         }
-        win.addEventListener('resize', surfaceSchedule);
-        win.addEventListener('orientationchange', surfaceSchedule);
-        if (win.visualViewport && typeof win.visualViewport.addEventListener === 'function') win.visualViewport.addEventListener('resize', surfaceSchedule);
+        win.addEventListener('resize', wake);
+        win.addEventListener('orientationchange', wake);
+        if (win.visualViewport && typeof win.visualViewport.addEventListener === 'function') win.visualViewport.addEventListener('resize', wake);
+        if (dockOn) coverWire(doc);
         win.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) { surfaceLast = null; surfaceSchedule(); } }); // the host hid the layer at the navigation commit: a restored page re-sends
         if (typeof doc.addEventListener === 'function') doc.addEventListener('fullscreenchange', surfaceSchedule);
       } catch (_) { /* observers are a convenience: the backstop below still measures */ }
@@ -399,30 +413,118 @@
       if (surfaceLast && surfaceLast.visible) { var last = Object.assign({}, surfaceLast, { visible: false }); post('video.surface', last); surfaceLast = last; }
       if (surfaceObs && target) { try { surfaceObs.unobserve(target); } catch (_) { /* best-effort */ } }
       if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; }
+      aboveHold = 0; belowPending = false; covered = false; coverDirty = false; coverScanned = false;
       occludeClear();
+      dockClassApply(false);
       holeApply(null, target);
+    }
+    // v1.401.0 (R3): html.ft-native-dock while the docked picture is native's above layer (style.css: the X moves into the bar, the
+    // caption strip under the picture). Kept while the dock is covered (R4: the thumbnail dock keeps the bar layout, nothing jumps);
+    // removed on expand, close and every stand-down (surfaceOff). Idempotent: the html class is a placement signal the observer hears.
+    function dockClassApply(on) {
+      var de = win.document.documentElement;
+      if (!de || !de.classList) return;
+      if (on) { if (!de.classList.contains('ft-native-dock')) de.classList.add('ft-native-dock'); }
+      else if (de.classList.contains('ft-native-dock')) de.classList.remove('ft-native-dock');
+    }
+    // ---- v1.401.0 (R4, L4): covered = thumbnail ----------------------------------------------------------------------
+    // While the docked picture is native's layer ABOVE the web view, nothing on the page can paint over it - including a sheet, a
+    // menu, a dialog, a popover or a toast that opens over the dock. So while any rendered web surface overlaps the picture rect the
+    // web posts visible: false (the layer hides, the thumbnail poster under it shows, the sound never stops) and visible: true the
+    // moment the dock is clear. The census is the browser's own hit test (elementsFromPoint at the centre and four inset corners of
+    // the picture's box - its rest rect while the fly-in runs: anything above the dock in the stack that is not see-through covers
+    // it); the families above the dock's z rung are
+    // enumerated by test/unit/native-dock-covered.test.js from the stylesheets. EVENT-DRIVEN, zero cost while idle (the v1.399.0 gate
+    // r1 WARNING): a scan runs only on the next frame after a signal that can cover or clear the dock - body's direct children
+    // changing (every ui.js surface is appended to body and removed on close), their class / hidden / style (is-open, a toast host's
+    // children), #view-root's children, the body / html class (a skin takeover), a transition or animation ending anywhere, a resize
+    // or rotation - never the 1 s backstop, never a per-frame write of the player's own (the dock and the hole are not observed).
+    function coverWake() { coverDirty = true; surfaceSchedule(); }
+    function coverWire(doc) {
+      if (!doc.body || typeof win.MutationObserver !== 'function') return;
+      coverMo = new win.MutationObserver(function () { coverWatchChildren(doc); coverWake(); });
+      coverMo.observe(doc.body, { childList: true });
+      // a view's own fixed panel (the Pocket cover, .mms-full) is toggled by its hidden attribute deep inside #view-root: that one
+      // attribute, subtree-wide, is cheap (nothing toggles hidden per frame) and names the reveal
+      var viewRoot = doc.getElementById('view-root'); if (viewRoot) coverMo.observe(viewRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+      coverWatchChildren(doc);
+      try { doc.addEventListener('transitionend', coverWake, true); doc.addEventListener('animationend', coverWake, true); } catch (_) { /* no events */ }
+    }
+    function coverWatchChildren(doc) {
+      // observing an already-observed node again is a no-op (same options); the dock and the hole are never watched (per-frame writes)
+      var kids = doc.body ? doc.body.children : [];
+      for (var i = 0; i < kids.length; i++) {
+        var k = kids[i];
+        if (!k || k.id === 'player-dock' || k.id === 'ft-video-hole' || k.id === 'view-root') continue;
+        try { coverMo.observe(k, { attributes: true, attributeFilter: ['class', 'hidden', 'style'], childList: true }); } catch (_) { /* a detached node */ }
+      }
+    }
+    var TRANSPARENT_BG = /^(?:rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)|transparent)$/;
+    // a childless, textless element painting nothing (ui.js's clear scrim behind a menu or popover) hides nothing: the stack continues below it
+    function seeThrough(n) {
+      if (n.childElementCount > 0 || (n.textContent || '').trim()) return false;
+      var cs; try { cs = win.getComputedStyle(n); } catch (_) { return false; }
+      return TRANSPARENT_BG.test(cs.backgroundColor) && (cs.backgroundImage === 'none' || cs.backgroundImage === '') && (cs.boxShadow === 'none' || cs.boxShadow === '');
+    }
+    // the picture's rest rect: the dock's (untransformed) box at its own 16:9 height (style.css: the docked #media-player is always
+    // 16 / 9 of the dock's width; the strip and the bar sit below it)
+    function dockPictureRest(dockEl) {
+      var d = dockEl.getBoundingClientRect();
+      return { left: num(d.left, 0), top: num(d.top, 0), width: num(d.width, 0), height: Math.min(num(d.height, 0), num(d.width, 0) * 9 / 16) };
+    }
+    function coverScan(dockEl, r, radius) {
+      var doc = win.document;
+      if (!dockEl || typeof doc.elementsFromPoint !== 'function' || !(r.width > 0 && r.height > 0)) return false;
+      var inset = Math.min(r.width / 4, r.height / 4, Math.max(4, num(radius, 0) + 2)); // inside the dock's rounded corners
+      var l = num(r.left, 0), t = num(r.top, 0), rt = l + num(r.width, 0), bt = t + num(r.height, 0);
+      var pts = [[(l + rt) / 2, (t + bt) / 2], [l + inset, t + inset], [rt - inset, t + inset], [l + inset, bt - inset], [rt - inset, bt - inset]];
+      for (var p = 0; p < pts.length; p++) {
+        var stack; try { stack = doc.elementsFromPoint(pts[p][0], pts[p][1]) || []; } catch (_) { stack = []; }
+        for (var i = 0; i < stack.length; i++) {
+          var n = stack[i];
+          if (dockEl.contains(n)) break; // the dock itself: nothing above it at this point
+          if (n === doc.documentElement || n === doc.body) break;
+          if (seeThrough(n)) continue;
+          return true;
+        }
+      }
+      return false;
     }
     function surfaceMeasure() {
       var doc = win.document;
       if (!el || !ownedSurface || !ownedId) return null;
       var wrapper = (typeof el.closest === 'function' && el.closest('#player-wrapper')) || el.parentNode;
-      var docked = typeof el.closest === 'function' && !!el.closest('#player-dock');
+      var dockEl = typeof el.closest === 'function' ? el.closest('#player-dock') : null;
+      var docked = !!dockEl;
       var cssFs = !!(wrapper && wrapper.classList && wrapper.classList.contains('css-fullscreen'));
       var nativeFs = !!(doc.fullscreenElement || doc.webkitFullscreenElement);
+      // v1.401.0 (R1): under nativeVideoDock the docked picture is native's layer ABOVE the web view at the dock's picture rect (a hole
+      // cannot keep the page scrolling under the fixed dock off the picture); without the capability the dock hides the layer (S3a)
+      var dockLive = docked && dockOn;
+      var live = !!(wrapper && wrapper.classList && el.isConnected !== false && surfaceLiveDecision(wrapper.className)); // a detached wrapper never loops
       var r = el.getBoundingClientRect();
+      if (!dockLive) { covered = false; coverScanned = false; } // R4 is a docked-above state only (a signal seen in the slot still counts for the next dock)
       var w = Math.max(0, num(r.width, 0)), h = Math.max(0, num(r.height, 0));
       var cs = null;
       try { cs = win.getComputedStyle(el); } catch (_) { cs = null; }
       var fit = cs && cs.objectFit === 'cover' ? 'cover' : 'contain';
       var radius = 0;
-      if (!cssFs && !nativeFs && wrapper) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(wrapper).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } }
-      var viewportSpace = cssFs || nativeFs;
+      if (dockLive) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(dockEl).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } } // the dock clips its whole box by its own radius (the wrapper has none there)
+      else if (!cssFs && !nativeFs && wrapper) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(wrapper).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } }
+      // R4: the first docked measure and every signal after it, never idle. While the fly-in runs the box is the FLIP pose (it starts
+      // where the slot was, under the header on a scrolled page): the scan looks at the PICTURE's rest rect inside the dock's own
+      // box (gate r1 adversary C1, r2 WARNING 8), so a cover is judged where the picture lands, never where it passes nor by the bar
+      if (dockLive && (coverDirty || !coverScanned)) { coverDirty = false; coverScanned = true; try { covered = coverScan(dockEl, live ? dockPictureRest(dockEl) : r, radius); } catch (_) { covered = false; } }
+      var fs = cssFs || nativeFs;
+      var viewportSpace = fs || dockLive; // the dock is position: fixed
       var x = num(r.left, 0), y = num(r.top, 0);
       if (!viewportSpace) { x += num(win.scrollX, 0); y += num(win.scrollY, 0); }
       var round = function (v) { return Math.round(v * 100) / 100; };
-      var visible = !docked && w > 0 && h > 0 && !(cs && cs.display === 'none');
-      var live = !!(wrapper && wrapper.classList && el.isConnected !== false && surfaceLiveDecision(wrapper.className)); // a detached wrapper never loops
-      return { live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked };
+      var shown = w > 0 && h > 0 && !(cs && cs.display === 'none');
+      var visible = docked ? (dockLive && shown && !covered) : shown; // R4: covered = the layer hides, the thumbnail shows
+      var m = { live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked, fs: fs };
+      if (dockOn) m.layer = dockLive ? 'above' : 'below'; // v1.401.0: only under the capability (absent = below on the wire)
+      return m;
     }
     // the wrapper's class (css-fullscreen, audio-expanded) and its container's children (a reparent) are the placement signals
     // nearest the box; (re)observed at every measure since the slot node is rebuilt per view
@@ -440,23 +542,40 @@
         if (container) surfaceMo.observe(container, container.id === 'player-dock' ? { childList: true, attributes: true, attributeFilter: ['hidden'] } : { childList: true });
       } catch (_) { /* observing twice is a no-op; a detached node is harmless */ }
     }
-    function surfaceSync() {
+    function surfaceSync(fromFrame) {
       if (!surfaceOn) return;
       var m = null;
       try { surfaceWatchContainer(); m = surfaceMeasure(); } catch (_) { return; } // a window being torn down: nothing to place
       if (!m) { if (el) surfaceOff(el); return; }
+      try { dockClassApply(!!(m.docked && dockOn)); } catch (_) { /* a paint detail never breaks playback */ }
       var msg = { rect: m.rect, space: m.space, visible: m.visible, fit: m.fit, radius: m.radius };
+      if (m.layer) msg.layer = m.layer;
       var same = surfaceLast && JSON.stringify(surfaceLast) === JSON.stringify(msg);
-      // R2: native's layer lands on the frame AFTER this post, the hole on this one. During live motion the hole opens only where
+      // v1.401.0 (R2): a layer switch lands on native's side a frame (or more) after the post, and the web cannot see when. The rule:
+      // the picture is always covered by a hole or above the page, never neither. Going BELOW (expand from the dock) the hole opens
+      // FIRST, this frame, and the 'below' post waits for the next one; going ABOVE (the fly-in's first frame, a reduced-motion dock)
+      // the hole stays open two more frames (harmless under an above layer), then closes and the body paints again.
+      var wasAbove = !!(surfaceLast && surfaceLast.layer === 'above');
+      if (wasAbove && msg.layer === 'below' && m.visible && !belowPending) {
+        belowPending = true;
+        try { dockArt(false); holeApply(m, el); } catch (_) { /* a paint detail never breaks playback */ } // the poster would paint over the hole: off first
+        surfaceSchedule();
+        return;
+      }
+      belowPending = false;
+      // R2 (v1.400.1): native's layer lands on the frame AFTER this post, the hole on this one. During live motion the hole opens only where
       // the picture is under either lag: the intersection of this rect and the one posted before it. The final measure is exact.
       var prev = (m.live && surfaceLast && surfaceLast.visible && surfaceLast.space === m.space) ? surfaceLast.rect : null;
-      if (!same && post('video.surface', msg)) surfaceLast = msg;
+      if (!same && post('video.surface', msg)) { if (msg.layer === 'above' && !wasAbove) aboveHold = 2; surfaceLast = msg; }
       try {
         var hm = m;
         if (m.live && m.visible && prev) hm = Object.assign({}, m, { rect: rectIntersect(m.rect, prev) });
-        holeApply(m.visible ? hm : null, el); dockArt(m.docked);
+        var holeOpen = m.visible && (msg.layer !== 'above' || m.live || aboveHold > 0);
+        dockArt(m.docked && (!(dockOn && m.live) || !m.visible)); // v1.401.0: the LIVE picture flies into the dock; the poster waits for the rest (it sits under the above layer, ready for a covered dock, R4) - unless the dock is covered mid-flight, then the thumbnail flies as in v1.400.1. Without the capability: the v1.400.1 rule, the thumbnail from the fly-in's first frame
+        holeApply(holeOpen ? hm : null, el);
         if (m.live) occludeApply(m); else occludeClear();
       } catch (_) { /* a paint detail never breaks playback */ }
+      if (aboveHold > 0) { if (fromFrame === true) aboveHold -= 1; surfaceSchedule(); } // the two FRAMES after the switch (an explicit sync in the same tick is not a frame)
       if (m.live) surfaceSchedule(); // R1: the next frame, while the pull / spring / fly-in runs
     }
     function rectIntersect(a, b) {
@@ -539,11 +658,12 @@
         if (!holeEl) { holeEl = doc.createElement('div'); holeEl.id = 'ft-video-hole'; holeEl.setAttribute('aria-hidden', 'true'); body.insertBefore(holeEl, body.firstChild); }
       }
       if (!body.classList.contains('ft-native-video')) body.classList.add('ft-native-video');
-      if (m.space === 'viewport') { if (holeEl.hasAttribute('style')) { holeEl.removeAttribute('style'); holeClip = ''; } return; } // CSS fullscreen: the whole viewport is the picture box (the wrapper and body paint nothing)
+      if (m.fs) { if (holeEl.hasAttribute('style')) { holeEl.removeAttribute('style'); holeClip = ''; } return; } // CSS fullscreen: the whole viewport is the picture box (the wrapper and body paint nothing)
       var de = doc.documentElement;
       var docH = Math.max(num(de && de.scrollHeight, 0), num(body.scrollHeight, 0), num(win.innerHeight, 0));
       var docW = Math.max(num(de && de.clientWidth, 0), num(win.innerWidth, 0));
       var rct = m.rect, rad = Math.max(0, Math.min(m.radius, rct.w / 2, rct.h / 2));
+      if (m.space === 'viewport') rct = { x: rct.x + num(win.scrollX, 0), y: rct.y + num(win.scrollY, 0), w: rct.w, h: rct.h }; // v1.401.0: the docked (fixed) box in the document-space layer
       // the page (an outer rectangle) minus the player box (an inner path, its top corners rounded, its bottom ones square),
       // as one even-odd clip path in the layer's own px; the layer scrolls with the document, so the hole needs no scroll work
       var x0 = rct.x, y0 = rct.y, x1 = rct.x + rct.w, y1 = rct.y + rct.h;
@@ -901,6 +1021,9 @@
       subscribed: function () { return subscribed; },
       syncSurface: function () { if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; } surfaceSync(); }, // v1.399.0: measure now (the player calls it on a placement change; tests too)
       lastSurface: function () { return surfaceLast; },
+      dockLive: function () { return dockOn; }, // v1.401.0: a docked surface video shows LIVE above the web view (player.js: the dock's bar layout and the pull's target)
+      dockCovered: function () { return covered; }, // v1.401.0 (R4): a web surface overlaps the docked picture right now (tests)
+      markDocked: function (on) { dockClassApply(!!(on && dockOn && ownedSurface && ownedId)); }, // v1.401.0 (gate r1 adversary C2): player.js dock() / mountInSlot set the bar-and-strip layout at the reparent, BEFORE the fly-in pose and the first docked measure are read (the strip's height must be in both); surfaceSync keeps it true after
       clearOcclusion: occludeClear, // v1.400.1 (R3): player.js clearMinimizeDrag, the one remover of the pull's state, calls this
     };
   }

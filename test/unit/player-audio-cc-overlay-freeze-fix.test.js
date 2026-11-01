@@ -180,7 +180,8 @@ test('v1.124 F1: video captions route through the custom overlay - the native sh
   // media types (audioCaptionsOn flag + mode hidden/disabled, never showing).
   assert.match(
     PLAYER_JS,
-    /audioCaptionsOn = !audioCaptionsOn;\s*\n\s*track\.mode = audioCaptionsOn \? 'hidden' : 'disabled';\s*\n\s*ccBtn\.classList\.toggle\('active', audioCaptionsOn\);/,
+    // v1.401.0 (R3): the flag is written through its ONE writer, setCaptionsOn (it also marks the host is-cc-on for the dock's caption strip)
+    /setCaptionsOn\(!audioCaptionsOn\);\s*\n\s*track\.mode = audioCaptionsOn \? 'hidden' : 'disabled';\s*\n\s*ccBtn\.classList\.toggle\('active', audioCaptionsOn\);/,
     'expected the unified overlay toggle in the #cc-btn click handler (audio + video)'
   );
 });
@@ -225,10 +226,20 @@ test('teardownMediaState() and close() are found and isolated for inspection', (
   assert.ok(closeBody, 'expected to find close()\'s source body in player.js');
 });
 
+// v1.401.0 (R3): both resets go through setCaptionsOn(false), the one writer of the flag (and of the host's is-cc-on mark); the writer
+// itself is locked to the flag so the reset is still a reset
+test('setCaptionsOn is the one writer of audioCaptionsOn and the is-cc-on mark', () => {
+  const body = extractFunctionBody(PLAYER_JS, 'setCaptionsOn');
+  assert.ok(body, 'setCaptionsOn exists');
+  assert.match(body, /audioCaptionsOn = !!on;/);
+  assert.match(body, /host\.classList\.toggle\('is-cc-on', audioCaptionsOn && nativeDockLive\(\)\)/);
+  assert.strictEqual(PLAYER_JS.split('audioCaptionsOn = ').length - 1, 2, 'exactly the declaration and the writer assign the flag (the toggle, teardown and close all call the writer)');
+});
+
 test('teardownMediaState() resets audioCaptionsOn AND calls hideCaptionOverlay() (outgoing media\'s overlay must never bleed into the next item)', () => {
-  assert.match(teardownMediaStateBody, /audioCaptionsOn = false;\s*\n\s*hideCaptionOverlay\(\);/);
+  assert.match(teardownMediaStateBody, /setCaptionsOn\(false\);\s*\n\s*hideCaptionOverlay\(\);/);
 });
 
 test('close() resets audioCaptionsOn AND calls hideCaptionOverlay() (a closed player must never leave a stale overlay for a future re-open)', () => {
-  assert.match(closeBody, /audioCaptionsOn = false;\s*\n\s*hideCaptionOverlay\(\);/);
+  assert.match(closeBody, /setCaptionsOn\(false\);\s*\n\s*hideCaptionOverlay\(\);/);
 });

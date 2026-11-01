@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo", "nativeVideoDock"] }
         }
       }
     },
@@ -62,7 +62,7 @@
         { "properties": { "type": { "const": "audio.stop" } } },
         { "properties": { "type": { "const": "audio.subscribe" } } },
         { "properties": { "type": { "const": "audio.unsubscribe" } } },
-        { "properties": { "type": { "const": "video.surface" }, "rect": { "$ref": "#/$defs/surfaceRect" }, "space": { "enum": ["document", "viewport"] }, "visible": { "type": "boolean" }, "fit": { "enum": ["contain", "cover"] }, "radius": { "type": "number", "minimum": 0 } }, "required": ["rect", "space", "visible", "fit", "radius"] }
+        { "properties": { "type": { "const": "video.surface" }, "rect": { "$ref": "#/$defs/surfaceRect" }, "space": { "enum": ["document", "viewport"] }, "visible": { "type": "boolean" }, "fit": { "enum": ["contain", "cover"] }, "radius": { "type": "number", "minimum": 0 }, "layer": { "$ref": "#/$defs/surfaceLayer" } }, "required": ["rect", "space", "visible", "fit", "radius"] }
       ]
     },
     "audioItem": {
@@ -84,10 +84,14 @@
       }
     },
     "surfaceRect": {
-      "description": "v1.399.0 nativeVideo: where the picture goes, in CSS px. The web sends video.surface { rect, space, visible, fit, radius } on every layout change of the player box (the #media-player element's box), coalesced to one per animation frame; nothing while nothing moves. space 'document' = rect relative to the document origin (the in-page player: the page scrolls, so native follows scrollView.contentOffset itself and no message is sent per scroll frame); space 'viewport' = a fixed placement (CSS fullscreen). visible false hides the layer (the docked mini player: the sound is unaffected). fit is the element's object-fit. radius is the box's corner radius as the web draws it: the web's own transparent hole is already clipped to the box's rounded TOP corners (the bottom corners are square, the control bar sits below the picture), so native needs it only to round its own layer to match - a square layer is equally correct, and native never rounds the bottom corners. Native clamps: non-finite values and w or h <= 0 are rejected; x, y, w, h are clamped to the web view (document space by scrollView.contentSize, viewport space by bounds) and the area is capped at the web view's; the layer is always a sibling BELOW the non-opaque web view, so it can never draw over native UI or web content, only show through the hole the page paints; a new rect only moves the layer frame and never retargets the player.",
+      "description": "v1.399.0 nativeVideo: where the picture goes, in CSS px. The web sends video.surface { rect, space, visible, fit, radius } on every layout change of the player box (the #media-player element's box), coalesced to one per animation frame; nothing while nothing moves. space 'document' = rect relative to the document origin (the in-page player: the page scrolls, so native follows scrollView.contentOffset itself and no message is sent per scroll frame); space 'viewport' = a fixed placement (CSS fullscreen). visible false hides the layer (the docked mini player: the sound is unaffected). fit is the element's object-fit. radius is the box's corner radius as the web draws it: the web's own transparent hole is already clipped to the box's rounded TOP corners (the bottom corners are square, the control bar sits below the picture), so native needs it only to round its own layer to match - a square layer is equally correct, and native never rounds the bottom corners. Native clamps: non-finite values and w or h <= 0 are rejected; x, y, w, h are clamped to the web view (document space by scrollView.contentSize, viewport space by bounds) and the area is capped at the web view's; with layer absent or 'below' the layer is a sibling BELOW the non-opaque web view, so it can never draw over native UI or web content, only show through the hole the page paints (v1.401.0: layer 'above', sent only under nativeVideoDock, puts the docked mini player's picture above the web view - see surfaceLayer); a new rect only moves the layer frame and never retargets the player.",
       "type": "object",
       "required": ["x", "y", "w", "h"],
       "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number", "minimum": 0 }, "h": { "type": "number", "minimum": 0 } }
+    },
+    "surfaceLayer": {
+      "description": "v1.401.0 nativeVideoDock (announced only beside nativeVideo): which side of the web view the picture view sits on. Absent or 'below' = the v1.399.0 placement (a sibling below the web view, shown through the page's hole). 'above' = the DOCKED mini player: the picture view moves ABOVE the web view at the rect (viewport space, CSS px, the same clamps), its view has isUserInteractionEnabled = false so every touch reaches the web (tap to expand, play/pause, the X), all four corners are rounded by radius (the dock clips its whole box), and every frame or layer change is applied with implicit animations disabled (CATransaction.setDisableActions(true)). The web sends layer ONLY when the host announces nativeVideoDock (a v0.16 app never receives the field), and 'above' only with space 'viewport' (native rejects 'above' with 'document'). A switch below <-> above keeps the AVPlayer and never re-buffers; the web keeps its hole open for two frames across a switch. visible false still hides the layer (the dock covered by a sheet, menu, dialog, popover or toast shows the thumbnail; the sound never stops) and the host still hides it on every main-frame navigation commit.",
+      "enum": ["below", "above"]
     },
     "videoSize": {
       "description": "v1.399.0 nativeVideo: the presentation size of the playing video Item in pixels (AVPlayerItem.presentationSize), on audioState while it is known (absent for an audio Item and before the first frame is known). The web's element proxy answers videoWidth / videoHeight from it and fires loadedmetadata and resize as an element would.",

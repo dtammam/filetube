@@ -443,11 +443,6 @@
 
 ### Features
 
-- **Plan B: a live picture in the docked mini player on the iPhone app** _(Dean, 2026-11-01; after plan A, v1.400.1
-  minimize-native-follow)_: today the dock shows the thumbnail (ruled 2026-10-28) because native's picture sits UNDER the
-  web view and the page scrolling under the dock would paint its text over the picture. A live dock picture needs native
-  to draw the layer ABOVE the web view while docked (a `video.surface` contract addition, e.g. a placement flag, plus an
-  iOS build), with the dock's bar staying web. Web + iOS, designed with the iOS Root first; Smart or Extreme tier.
 - **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
   spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
   selection freeze, not directly (qa r2 INFO) - export it, unit-test it, retitle the two "r1 A1" full-chain tests to what they
@@ -465,11 +460,6 @@
   the browse context / track nav for the next video) stands down as it does for every native load. A native-driven next video
   needs a queue the watch page builds from its browse context (the Music pattern: `nativeQueue` + a bound view) or a web `ended`
   follow that loads the next item; design with the iOS Root (lock-screen Next, the dock's row).
-- **Picture in the mini player (iOS app), unasked** _(v1.399.0 S3a, 2026-10-28)_ - under `nativeVideo` the app's player draws
-  the picture in a layer BELOW the web view, which shows only where the page paints nothing. The docked mini player is fixed
-  over page content that keeps scrolling under it, so the dock shows the video's thumbnail while the sound continues. A
-  picture there needs a layer ABOVE the web view with touches passed through (a `layer: 'above'` field on `video.surface`,
-  bridge v1 add-only; the dock's bar sits below the picture, only its close button would be covered).
 - **Native audio (v1.397.0) follow-ups, unasked:** (1) Feed song and podcast cards still play on the web element inside the app
   (the Feed plays a SLICE of a song with its own end-at logic on the element, and its podcast progress route is not one of the
   native progress routes); a Feed load stops native first. (2) After the iOS web view is reloaded while native keeps playing (a
@@ -929,6 +919,23 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.401.0 - On the iPhone app, the mini player keeps playing the video, not just its thumbnail (2026-11-01)
+
+- Dean (2026-11-01, after v1.400.1): "the only regression is the MiniPlayer not showing video when docked in the bottom corner".
+  Not a regression (the dock showed the thumbnail by the 2026-10-28 ruling) but the goal: YouTube keeps the video playing in its
+  mini player. Why the dock could not just open a hole: native's picture sits BELOW the web view and the page keeps scrolling under
+  the fixed dock, so its text would paint over the picture. Contract (bridge v1, add-only): a new capability `nativeVideoDock`
+  (beside nativeVideo) and one optional field on `video.surface`, `layer: 'below' | 'above'` (sent only under the capability;
+  'above' only with a viewport rect). With it the docked picture is native's layer ABOVE the web view at the dock's picture rect,
+  touches passing through, every frame change without implicit animations. The web keeps every switch covered (a hole open two
+  frames across below -> above; the hole first and the post next frame on expand), posts 'above' from the fly-in's first frame so
+  nothing from the arriving page can paint over the flying picture, moves the X into the bar (play/pause left, X right, both a full
+  thumb), draws captions in a fixed two-line strip between the picture and the bar, and hides the layer (the thumbnail shows, the
+  sound plays on) while a sheet, menu, dialog, popover or toast overlaps the picture - detected by the browser's own hit test, only
+  on a signal, zero cost idle (measured: 0 posts, 0 hit tests, 2 box reads per 2 s, docked and covered). Safari, the home-screen app
+  and app builds without the capability are byte-identical to v1.400.1. Needs filetube-ios v0.17.0; the device checks run on that
+  build. Gate and evidence: docs/exec-plans/completed/2026-11-01-live-dock-picture.md, docs/DEVICE-CHECKS.md.
 
 ### v1.400.1 - On the iPhone app, the picture follows your finger every frame when you pull the player down (2026-11-01)
 
