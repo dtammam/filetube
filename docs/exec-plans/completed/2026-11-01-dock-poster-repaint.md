@@ -3,10 +3,10 @@ plan: dock-poster-repaint
 harness: v2 · full
 branch: fix/v1.401.1-dock-poster-repaint
 anchor: spec
-status: Planned
+status: Shipped v1.401.1
 next: builder Step 0, then W1
 design: Root-caused by the Root 2026-11-01 (WebKit repro, below); the fix shape is fixed here
-gate: pending
+gate: APPROVED (adversary r2 @c1fdef69; qa + security-brief @7b1ba7a7)
 builder: standard
 ---
 
@@ -101,8 +101,8 @@ branch (remote via `gh api -X DELETE`, local `-d`), confirm the tag's Publish Do
 ## Evidence (the builder fills this)
 
 - W1 (test red on mutant, WebKit base vs branch): test/unit/native-video-surface-rect.test.js (10/10 green); mutant (the toggle replaced by `void 0`) = 1 fail, restored = 0 fail. Deviation from the plan text, forced by `npm run lint:ui` (display-ownership: JS `style.display` writes are banned, live 2 > allowed 0): the renderer rebuild is `el.hidden = true; void el.offsetWidth; el.hidden = false` (the global `[hidden]` rule = display none), re-measured in WebKit. WebKit (Playwright 1.20 / webkit-1616, the Root's bd-wk.js probe, centre pixel of the docked picture, thumbnail = 33,204,66): base docks 1-3 = (33,204,66), (0,0,0), (0,0,0); base with a poster set and removed before dock 1 = (0,0,0) x3; branch docks 1-3 = (33,204,66) x3, also with the pre-removal (PRE=1) x3; 0 page errors. Screenshots: wk-base/c{1,2,3}-docked-px.png, wk-branch/..., wk-base-pre/..., wk-branch-pre/... under the builder scratchpad.
-- Full suite (Node 22), before the gate and on the release commit: pre-gate (W1 as first written, before the lint-forced `hidden` change): 13175 tests, 13162 pass, 0 fail; the W1 commit's pre-commit hook ran the unit suite green on the final code.
-- Gate verdicts (bound to sha): r1 @7b1ba7a7: security-brief APPROVED (package.json/lock diff = version lines only, verified by the builder); qa APPROVED (4 mutants red, instruments green); adversary CHANGES (W1: the idle-census assertion called the nonexistent `r.na.sync`, so dropping the changed-guard survived; fixed with `r.na.syncSurface()` twice, no-guard mutant now red: 9 pass 1 fail, real code 10 pass 0 fail). Note (not blocking): the live-dock covered path is reasoned through the same dockArt, not separately tested. r2: pending.
+- Full suite (Node 22), before the gate and on the release commit: the pre-commit hook runs the unit suite on every commit (green on 7b1ba7a7 and c1fdef69); pre-gate (W1 as first written, before the lint-forced `hidden` change): 13175 tests, 13162 pass, 0 fail; the W1 commit's pre-commit hook ran the unit suite green on the final code.
+- Gate verdicts (bound to sha): r1 @7b1ba7a7: security-brief APPROVED (package.json/lock diff = version lines only, verified by the builder); qa APPROVED (4 mutants red, instruments green); adversary CHANGES (W1: the idle-census assertion called the nonexistent `r.na.sync`, so dropping the changed-guard survived; fixed with `r.na.syncSurface()` twice, no-guard mutant now red: 9 pass 1 fail, real code 10 pass 0 fail). Note (not blocking): the live-dock covered path is reasoned through the same dockArt, not separately tested. r2 @c1fdef69: adversary APPROVED (no-guard, no-toggle, no-read, never-restored and read-before-hidden mutants all red; tree untouched). qa's r1 approval stands on the test-only delta 7b1ba7a7..c1fdef69 (one test line + plan evidence). Close-out binding: `git diff --name-only c1fdef69..HEAD` = docs/exec-plans/** only (plan move + status), no code, no package change.
 - Release: tag, PR, Publish run: 
 
 ## Out of scope
