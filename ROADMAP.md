@@ -443,6 +443,11 @@
 
 ### Features
 
+- **Plan B: a live picture in the docked mini player on the iPhone app** _(Dean, 2026-11-01; after plan A, v1.400.1
+  minimize-native-follow)_: today the dock shows the thumbnail (ruled 2026-10-28) because native's picture sits UNDER the
+  web view and the page scrolling under the dock would paint its text over the picture. A live dock picture needs native
+  to draw the layer ABOVE the web view while docked (a `video.surface` contract addition, e.g. a placement flag, plus an
+  iOS build), with the dock's bar staying web. Web + iOS, designed with the iOS Root first; Smart or Extreme tier.
 - **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
   spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
   selection freeze, not directly (qa r2 INFO) - export it, unit-test it, retitle the two "r1 A1" full-chain tests to what they
@@ -924,6 +929,19 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.400.1 - On the iPhone app, the picture follows your finger every frame when you pull the player down (2026-11-01)
+
+- Dean (2026-11-01, with a screen recording): the native picture lagged the pull by up to 700 ms and could be made to glitch. Root
+  cause (measured on the recording, 507 frames at 60 fps): the pull and its spring-back move the wrapper with a transform that no
+  observer hears, so the picture moved only on the 1 s backstop (snaps exactly 1.00 s apart). Fix, web only (contract and app
+  unchanged): while the wrapper carries `is-minimize-drag` / `-snap` / `-settle` the surface is measured and posted every frame and
+  ends with one exact measure (idle cost unchanged); during that motion the hole opens on the intersection of this and the previous
+  rect (no black edge); the page's faded text and rows meeting the box are clipped out each frame (no title over the picture),
+  removed by `clearMinimizeDrag`; the artwork is preloaded at the claim so the dock shows the thumbnail on the frame the picture
+  hides; the slot keeps its height under a native picture until the pull's end (headless probe, real touch pull: the watch page
+  jumped 80 px at the release on the base, 0 px here; a web-only player never jumped). Not here (plan B, Planned): a live picture
+  in the dock. Gate and device checks: docs/exec-plans/completed/2026-11-01-minimize-native-follow.md, docs/DEVICE-CHECKS.md.
 
 ### v1.400.0 - Select several videos at once and act on them together (2026-11-01)
 
