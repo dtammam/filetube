@@ -232,7 +232,7 @@ test('setCaptionsOn is the one writer of audioCaptionsOn and the is-cc-on mark',
   const body = extractFunctionBody(PLAYER_JS, 'setCaptionsOn');
   assert.ok(body, 'setCaptionsOn exists');
   assert.match(body, /audioCaptionsOn = !!on;/);
-  assert.match(body, /host\.classList\.toggle\('is-cc-on', audioCaptionsOn\)/);
+  assert.match(body, /host\.classList\.toggle\('is-cc-on', audioCaptionsOn && nativeDockLive\(\)\)/);
   assert.strictEqual(PLAYER_JS.split('audioCaptionsOn = ').length - 1, 2, 'exactly the declaration and the writer assign the flag (the toggle, teardown and close all call the writer)');
 });
 

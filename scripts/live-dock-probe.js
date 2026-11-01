@@ -206,7 +206,7 @@ async function main() {
       await crop(`dock-${tag}-cc${cc ? 1 : 0}`, m);
       console.log(JSON.stringify(Object.assign({ shot: `dock-${tag}-cc${cc ? 1 : 0}` }, m)));
       check(`${tag} cc${cc ? 1 : 0}: docked`, m.state === 'docked' && m.dock && m.media && m.bar && m.x && m.pp);
-      check(`${tag} cc${cc ? 1 : 0}: the captions mark follows the CC button`, m.ccOn === cc);
+      check(`${tag} cc${cc ? 1 : 0}: the captions mark follows the CC button only under the capability (a v0.16 app never carries it)`, m.ccOn === (cc && dockCap));
       check(`${tag} cc${cc ? 1 : 0}: the bar is a full thumb tall at the dock's bottom`, near(m.bar.h, 44) && near(m.bar.y + m.bar.h, m.dock.y + m.dock.h));
       check(`${tag} cc${cc ? 1 : 0}: play/pause sits at the bar's left`, m.pp.y >= m.bar.y - 1 && m.pp.x < m.dock.x + m.dock.w / 2);
       if (dockCap) {

@@ -376,6 +376,7 @@
       if (surfaceWired || !surfaceOn) return;
       surfaceWired = true;
       var doc = win.document;
+      var wake = dockOn ? coverWake : surfaceSchedule; // v1.401.0 (gate r1, qa S1): only under nativeVideoDock does a signal also dirty the cover scan; without it the sampler is v1.400.1's exactly
       try {
         if (typeof win.ResizeObserver === 'function') {
           surfaceObs = new win.ResizeObserver(surfaceSchedule);
@@ -388,7 +389,7 @@
           // Deliberately NOT the whole body subtree: the player's own per-frame writes (the time label, the fill) live there and
           // would wake the sampler every frame (gate r1 WARNING). A reparent is heard on the container (surfaceWatchContainer),
           // content growing above the box on the document's ResizeObserver, anything else by the 1 s backstop.
-          surfaceMo = new win.MutationObserver(coverWake);
+          surfaceMo = new win.MutationObserver(wake);
           surfaceMo.observe(doc.body, { attributes: true, attributeFilter: ['class'] });
           if (doc.documentElement) surfaceMo.observe(doc.documentElement, { attributes: true, attributeFilter: ['class'] });
           var viewRoot = doc.getElementById('view-root'); if (viewRoot) surfaceMo.observe(viewRoot, { childList: true });
@@ -396,10 +397,10 @@
           var slotEl = doc.getElementById('player-slot'); if (slotEl) surfaceMo.observe(slotEl, { childList: true });
           var stageEl = doc.getElementById('fs-stage'); if (stageEl) surfaceMo.observe(stageEl, { childList: true });
         }
-        win.addEventListener('resize', coverWake);
-        win.addEventListener('orientationchange', coverWake);
-        if (win.visualViewport && typeof win.visualViewport.addEventListener === 'function') win.visualViewport.addEventListener('resize', coverWake);
-        coverWire(doc);
+        win.addEventListener('resize', wake);
+        win.addEventListener('orientationchange', wake);
+        if (win.visualViewport && typeof win.visualViewport.addEventListener === 'function') win.visualViewport.addEventListener('resize', wake);
+        if (dockOn) coverWire(doc);
         win.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) { surfaceLast = null; surfaceSchedule(); } }); // the host hid the layer at the navigation commit: a restored page re-sends
         if (typeof doc.addEventListener === 'function') doc.addEventListener('fullscreenchange', surfaceSchedule);
       } catch (_) { /* observers are a convenience: the backstop below still measures */ }
@@ -493,6 +494,7 @@
       // v1.401.0 (R1): under nativeVideoDock the docked picture is native's layer ABOVE the web view at the dock's picture rect (a hole
       // cannot keep the page scrolling under the fixed dock off the picture); without the capability the dock hides the layer (S3a)
       var dockLive = docked && dockOn;
+      var live = !!(wrapper && wrapper.classList && el.isConnected !== false && surfaceLiveDecision(wrapper.className)); // a detached wrapper never loops
       var r = el.getBoundingClientRect();
       if (!dockLive) { covered = false; coverScanned = false; } // R4 is a docked-above state only (a signal seen in the slot still counts for the next dock)
       var w = Math.max(0, num(r.width, 0)), h = Math.max(0, num(r.height, 0));
@@ -502,7 +504,10 @@
       var radius = 0;
       if (dockLive) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(dockEl).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } } // the dock clips its whole box by its own radius (the wrapper has none there)
       else if (!cssFs && !nativeFs && wrapper) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(wrapper).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } }
-      if (dockLive && (coverDirty || !coverScanned)) { coverDirty = false; coverScanned = true; try { covered = coverScan(dockEl, r, radius); } catch (_) { covered = false; } } // R4: the first docked measure and every signal after it, never idle
+      // R4: the first docked measure and every signal after it, never idle. While the fly-in runs the box is the FLIP pose (it starts
+      // where the slot was, under the header on a scrolled page): the scan looks at the dock's own box, the picture's destination
+      // (gate r1 adversary C1), so a cover is judged where the picture lands, never where it passes
+      if (dockLive && (coverDirty || !coverScanned)) { coverDirty = false; coverScanned = true; try { covered = coverScan(dockEl, live ? dockEl.getBoundingClientRect() : r, radius); } catch (_) { covered = false; } }
       var fs = cssFs || nativeFs;
       var viewportSpace = fs || dockLive; // the dock is position: fixed
       var x = num(r.left, 0), y = num(r.top, 0);
@@ -510,7 +515,6 @@
       var round = function (v) { return Math.round(v * 100) / 100; };
       var shown = w > 0 && h > 0 && !(cs && cs.display === 'none');
       var visible = docked ? (dockLive && shown && !covered) : shown; // R4: covered = the layer hides, the thumbnail shows
-      var live = !!(wrapper && wrapper.classList && el.isConnected !== false && surfaceLiveDecision(wrapper.className)); // a detached wrapper never loops
       var m = { live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked, fs: fs };
       if (dockOn) m.layer = dockLive ? 'above' : 'below'; // v1.401.0: only under the capability (absent = below on the wire)
       return m;
@@ -1012,6 +1016,7 @@
       lastSurface: function () { return surfaceLast; },
       dockLive: function () { return dockOn; }, // v1.401.0: a docked surface video shows LIVE above the web view (player.js: the dock's bar layout and the pull's target)
       dockCovered: function () { return covered; }, // v1.401.0 (R4): a web surface overlaps the docked picture right now (tests)
+      markDocked: function (on) { dockClassApply(!!(on && dockOn && ownedSurface && ownedId)); }, // v1.401.0 (gate r1 adversary C2): player.js dock() / mountInSlot set the bar-and-strip layout at the reparent, BEFORE the fly-in pose and the first docked measure are read (the strip's height must be in both); surfaceSync keeps it true after
       clearOcclusion: occludeClear, // v1.400.1 (R3): player.js clearMinimizeDrag, the one remover of the pull's state, calls this
     };
   }

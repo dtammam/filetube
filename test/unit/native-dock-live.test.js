@@ -51,6 +51,17 @@ test('CONTROL (R1, R5): without nativeVideoDock the same dock() is v1.400.1 byte
     assert.strictEqual(r.surfaces().length, n0 + 2, 'expand posts at once (no deferred frame without a layer switch)');
     assert.deepStrictEqual(strip(r.last()), { rect: { x: 0, y: 300, w: 393, h: 221 }, space: 'document', visible: true, fit: 'contain', radius: 12 });
     assert.strictEqual(r.poster(), null);
+    // the chevron commit: main posts the dock's REST rect (visible false) on the commit tick, then the fly-in's poses (gate r1 adversary W3)
+    await settle(40);
+    const n1 = r.surfaces().length;
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.strictEqual(r.surfaces().length, n1 + 1, 'one post on the commit tick, as on main');
+    assert.deepStrictEqual(strip(r.last()), { rect: { x: 225, y: 640, w: 160, h: 90 }, space: 'document', visible: false, fit: 'contain', radius: 0 }, 'the rest rect, hidden, no layer: byte for byte v1.400.1');
+    assert.strictEqual(r.poster(), '/thumbnail/v1', 'the thumbnail from the fly-in\'s first frame (v1.400.1 R4b)');
+    await settle(40);
+    assert.ok(r.surfaces().length > n1 + 1 && r.surfaces().every((m) => !('layer' in m)), 'the fly-in follows, still without a layer key');
+    assert.strictEqual(r.w.document.documentElement.classList.contains('ft-native-dock'), false);
   } finally { r.close(); }
 });
 
@@ -71,6 +82,35 @@ test('R2 (above -> below): expand from the dock opens the hole FIRST (the poster
     assert.deepStrictEqual(strip(r.last()), { rect: { x: 0, y: 300, w: 393, h: 221 }, space: 'document', visible: true, fit: 'contain', radius: 12, layer: 'below' });
     await settle(300);
     assert.strictEqual(r.surfaces().length, n0 + 1, 'and nothing more');
+    // a second round: dock, expand again - the ordering holds every time (gate r1 adversary W4: belowPending is reset)
+    r.player.dock(); await settle(80);
+    assert.strictEqual(r.bodyOn(), false);
+    const n2 = r.surfaces().length;
+    r.player.expand(r.slot);
+    assert.strictEqual(r.surfaces().length, n2, 'second expand: nothing posted on the tick');
+    assert.strictEqual(r.bodyOn(), true, 'second expand: the hole opened first');
+    await settle(40);
+    assert.strictEqual(r.surfaces().length, n2 + 1); assert.strictEqual(r.last().layer, 'below');
+  } finally { r.close(); }
+});
+
+test('R3 + R2 (gate r1 adversary C2): the dock\'s layout class is on BEFORE the first docked post and before the fly-in pose reads the dock\'s box (the caption strip is part of both)', async () => {
+  const r = realm();
+  try {
+    await loaded(r);
+    const classAt = []; const origPost = r.fake.host.post;
+    r.fake.host.post = function (msg) { if (msg.type === 'video.surface') classAt.push(r.w.document.documentElement.classList.contains('ft-native-dock')); return origPost.call(this, msg); };
+    const wrapperReads = []; const proto = r.w.HTMLDivElement.prototype; const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function () { if (this.id === 'player-wrapper' && this.closest('#player-dock')) wrapperReads.push(r.w.document.documentElement.classList.contains('ft-native-dock')); return orig.call(this); };
+    r.player.dock();
+    assert.deepStrictEqual(classAt, [true], 'dock(): the one post saw the class on');
+    r.player.expand(r.slot); await settle(60);
+    classAt.length = 0; wrapperReads.length = 0;
+    r.wrapper().querySelector('.player-minimize').click(); // minimizeToDock: dock() marks, playMinimizeSettle reads `to` in the dock, then the one sync
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.ok(wrapperReads.length >= 1 && wrapperReads.every((c) => c === true), 'every read of the wrapper box inside the dock saw the class: ' + JSON.stringify(wrapperReads));
+    assert.deepStrictEqual(classAt, [true], 'the fly-in\'s first post saw the class on');
+    proto.getBoundingClientRect = orig;
   } finally { r.close(); }
 });
 
@@ -117,8 +157,10 @@ test('R2 (reduced motion, no settle): dock() posts above at once and the hole st
     assert.strictEqual(r.last().layer, 'above');
     assert.deepStrictEqual(r.last().rect, { x: 225, y: 640, w: 160, h: 90 }, 'no FLIP: the rest rect');
     assert.strictEqual(r.bodyOn(), true, 'frame 0: open');
-    await new Promise((res) => r.w.requestAnimationFrame(() => res()));
-    assert.strictEqual(r.bodyOn(), true, 'frame 1: still open');
+    const frame = () => new Promise((res) => r.w.requestAnimationFrame(() => res()));
+    await frame(); assert.strictEqual(r.bodyOn(), true, 'frame 1: still open');
+    await frame(); assert.strictEqual(r.bodyOn(), true, 'frame 2: still open (two FRAMES after the post; the commit tick\'s explicit syncs are not frames)');
+    await frame(); assert.strictEqual(r.bodyOn(), false, 'frame 3: closed');
     await settle(80);
     assert.strictEqual(r.bodyOn(), false, 'closed after the hold');
   } finally { r.close(); }
@@ -286,7 +328,7 @@ test('R3: the pull aims at the dock WITH the caption strip while captions are on
       dockGeometry(r);
       r.player.load('v1', VIDEO_CC, { slot: r.slot }); await settle(80);
       r.fake.emit(STATE(r.fake.of('audio.load')[0].rev)); await settle(60);
-      if (cc) { c.ccBtn().click(); assert.strictEqual(c.ccOn(), true, label); }
+      if (cc) { c.ccBtn().click(); assert.strictEqual(c.ccOn(), caps === DOCK_CAPS, label + ': the is-cc-on mark exists only where it has a consumer (the live dock)'); }
       pull(r, 100);
       const s = scaleOf(r.wrapper().style.transform);
       assert.ok(s !== null, label + ': the pull claimed and moved the picture: ' + r.wrapper().style.transform);

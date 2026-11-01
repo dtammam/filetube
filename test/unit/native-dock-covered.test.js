@@ -42,7 +42,9 @@ function fixedFamiliesAbove(z) {
       if (!/position\s*:\s*fixed\b/.test(body)) continue;
       const zm = /z-index\s*:\s*([^;]+);/.exec(body);
       const zv = zm ? resolveZ(zm[1], tok) : null;
-      if (zv !== null && zv > z) out.push({ file, selector: m[1].trim().split('\n').pop().trim(), z: zv });
+      const selector = m[1].trim().split('\n').pop().trim();
+      if (zv !== null && zv > z) out.push({ file, selector, z: zv });
+      else if (zv === null) out.push({ file, selector, z: null, raw: zm ? zm[1].trim() : '(none)' }); // gate r1 adversary: never dropped silently
     }
   }
   return out.sort((a, b) => a.selector.localeCompare(b.selector));
@@ -64,10 +66,21 @@ const FAMILIES = {
   '.ui-toast-host': 'covers',
 };
 
-test('R4 census: every position: fixed rule above --z-dock in style.css and ui.css is a known family with a disposition (a new one fails here until classified)', () => {
+// fixed rules with NO resolvable z-index: z auto paints in the root context's 0 layer, under the dock's 950 whatever the DOM order
+// (a new one must be classified here too)
+const UNRESOLVED = {
+  ':where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel': '(none)',
+  ':where(html.is-phone, html.mms-popout) .ipm-kb': '(none)',
+};
+
+test('R4 census: every position: fixed rule above --z-dock in style.css and ui.css is a known family with a disposition (a new one fails here until classified); a fixed rule with no resolvable z is listed too', () => {
   const tok = tokens();
   assert.strictEqual(tok['--z-dock'], 950, 'the dock rung');
-  const fams = fixedFamiliesAbove(tok['--z-dock']);
+  const all = fixedFamiliesAbove(tok['--z-dock']);
+  const unresolved = all.filter((f) => f.z === null);
+  assert.deepStrictEqual(Object.fromEntries(unresolved.map((f) => [f.selector, f.raw])), UNRESOLVED, 'every fixed rule whose z-index cannot be resolved is classified (z auto = under the dock)');
+  for (const f of unresolved) assert.strictEqual(f.raw, '(none)', f.selector + ': no z-index at all (auto), never above the dock');
+  const fams = all.filter((f) => f.z !== null);
   assert.ok(fams.length >= 9, 'the census sees the families: ' + fams.length);
   assert.deepStrictEqual(fams.map((f) => f.selector).sort(), Object.keys(FAMILIES).sort(), 'every family classified, nothing extra: ' + JSON.stringify(fams));
   // the toast HOST is pointer-events: none (the hit test skips it) and the toasts themselves are auto (the hit test finds them)
@@ -215,6 +228,32 @@ test('R4 idle census: docked above, and docked covered, an idle second costs not
   } finally { r.close(); }
 });
 
+test('R4 (gate r1 adversary C1): the fly-in is judged where the picture LANDS - a static band over the slot (where the FLIP starts) never hides the flying picture; a band over the dock\'s rest box does', async () => {
+  const r = realm();
+  try {
+    const h = hitTest(r);
+    await loaded(r);
+    const band = h.overlay({ cls: 'some-header', rect: { x: 0, y: 280, w: 393, h: 60 }, z: 1000, bg: 'rgb(255, 255, 255)', text: 'FileTube' }); // meets the slot box (300..521), not the dock (640..774)
+    await settle(60);
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.strictEqual(r.last().visible, true, 'the first fly-in post is visible: the band over the FLIP start does not count');
+    assert.strictEqual(r.na.dockCovered(), false);
+    r.wrapper().style.transform = 'translate(-100px, 100px) scale(0.6)'; await settle(40);
+    assert.strictEqual(r.last().visible, true, 'still visible mid-flight');
+    await settle(400);
+    assert.strictEqual(r.last().visible, true, 'and at rest');
+    band.remove();
+    r.player.expand(r.slot); await settle(80);
+    const over = h.overlay({ cls: 'some-panel', rect: { x: 0, y: 630, w: 393, h: 200 }, z: 1600, text: 'A panel over the dock' }); // meets the dock\'s rest box, not the slot
+    await settle(60);
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.last().visible, false, 'judged at the destination: hidden from the first fly-in frame');
+    assert.strictEqual(r.poster(), '/thumbnail/v1', 'the thumbnail flies');
+    over.remove();
+  } finally { r.close(); }
+});
+
 test('R4: covered mid-fly-in - a toast lands while the picture flies: the layer hides and the thumbnail flies instead (never a black box)', async () => {
   const r = realm();
   try {
@@ -281,7 +320,9 @@ test('R4 CONTROL: without nativeVideoDock a sheet over the thumbnail dock change
 
 // ---- gate prep: the two mutants the first round left standing (a survivor on correct code is a WARNING, LESSONS 2) ---------------
 
-test('R4: a sheet left open across close() and a new load is seen on the next dock FIRST measure with no new signal (dock() itself scans)', async () => {
+// NOTE (gate r1 adversary M16): the `!coverScanned` term is a belt - every signal since the close (the new load's own reparent) dirties
+// the flag and nothing consumes it off the dock, so the scan is reachable through the flag alone; this test binds the OUTCOME
+test('R4: a sheet left open across close() and a new load is seen on the next dock first measure (the load own signals carry over to the dock)', async () => {
   const r = realm();
   try {
     const h = hitTest(r);

@@ -74,7 +74,9 @@ function realm(opts) {
   const boxNow2 = () => { const wr = w.document.getElementById('player-wrapper'); if (wr && !wr.style.transform && wr.classList.contains('is-minimize-settle') && pose) { tdesc.set.call(wr.style, pose); const b = boxNowT(); tdesc.set.call(wr.style, ''); return b; } return boxNowT(); };
   w.HTMLVideoElement.prototype.getBoundingClientRect = () => { reads.n += 1; return boxNow2(); };
   // the wrapper's own box (playMinimizeSettle reads `from` and `to` from it): the same geometry
-  w.HTMLDivElement.prototype.getBoundingClientRect = function () { return this.id === 'player-wrapper' ? boxNowT() : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0, x: 0, y: 0 }; };
+  // the dock's own box (never transformed: the picture box over its 44px bar); the wrapper's; nothing else has a box here
+  const DOCK_REST = () => ({ left: DOCK_BOX.left, top: DOCK_BOX.top, width: DOCK_BOX.width, height: DOCK_BOX.height + 44, right: DOCK_BOX.left + DOCK_BOX.width, bottom: DOCK_BOX.top + DOCK_BOX.height + 44, x: DOCK_BOX.left, y: DOCK_BOX.top });
+  w.HTMLDivElement.prototype.getBoundingClientRect = function () { return this.id === 'player-wrapper' ? boxNowT() : (this.id === 'player-dock' ? DOCK_REST() : { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0, x: 0, y: 0 }); };
   return {
     w, fake, reads, player: w.FileTube.player, na: w.FileTube.nativeAudio, slot: w.document.getElementById('player-slot'),
     el: () => w.document.getElementById('media-player'),

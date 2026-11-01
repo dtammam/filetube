@@ -1143,6 +1143,9 @@ function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof 
 // v1.401.0 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md): the host also announces `nativeVideoDock` - a docked surface
 // video shows LIVE above the web view, so the dock carries the bar layout (the X in the bar) and the caption strip (R3)
 function nativeDockLive() { var n = nativeAudioApi(); return !!(n && typeof n.dockLive === 'function' && n.dockLive()); }
+// v1.401.0 (gate r1 adversary C2): the live dock's layout class (html.ft-native-dock) is set at the reparent, before the fly-in pose
+// and the first docked measure read the dock's box (the caption strip is part of both); a no-op without the capability or a surface video
+function nativeDockMark(on) { var n = nativeAudioApi(); if (n && typeof n.markDocked === 'function') { try { n.markDocked(on); } catch (_) { /* inert */ } } }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
 // proxy; so it is a fresh web load, carrying the position and the paused state read from the proxy (LESSONS 5, v1.344.2).
@@ -2522,7 +2525,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // strip open while captions are on (html.ft-native-dock: a fixed two-line strip between the picture and the bar; L3), never per cue.
   function setCaptionsOn(on) {
     audioCaptionsOn = !!on;
-    if (host && host.classList) host.classList.toggle('is-cc-on', audioCaptionsOn);
+    if (host && host.classList) host.classList.toggle('is-cc-on', audioCaptionsOn && nativeDockLive()); // only where it has a consumer (html.ft-native-dock's strip): a browser or a v0.16 app never carries it
   }
   // v1.399.0 (S7): the parsed cue list for the video native plays ({ id, cues } once loaded, { id, cues: null } while the fetch is
   // in flight), and the 250 ms repaint loop that reads the proxy's extrapolated currentTime while captions are on (the proxy fires
@@ -6056,14 +6059,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362.4: marked BEFORE dock(), whose clearMinimizeDrag would otherwise flash the page back up mid-leave.
     var leaving = (minimizeFadeEnabled() && watchViewRoot()) || null;
     if (leaving) markViewArrival(leaving);
-    minimizeCommitting = true;
+    var hold = nativeDockLive() && nativeSurfaceOwned(); // v1.401.0 (R2): only a LIVE docked picture needs the first post at the fly-in pose; without the capability every sync runs where v1.400.1 ran it (gate r1 adversary W3)
+    minimizeCommitting = hold;
     try { dock(); } finally { minimizeCommitting = false; }
-    if (state !== STATE_DOCKED) { if (leaving) endViewFade(); nativeSurfaceSync(); return false; }
+    if (state !== STATE_DOCKED) { if (leaving) endViewFade(); if (hold) nativeSurfaceSync(); return false; }
     if (holdH > 0) { var sl1 = document.getElementById('player-slot'); if (sl1) { sl1.style.minHeight = holdH + 'px'; minimizeSlotHold = sl1; } }
     // The watch page holds at its floor while it leaves; the page that arrives fades in.
     if (leaving) setMinimizeFade(1, true);
     playMinimizeSettle(from);
-    nativeSurfaceSync(); // v1.401.0 (R2): the one sync dock() skipped, now with the fly-in's first pose (live -> the rect follows per frame; the live picture flies into the dock under nativeVideoDock, the thumbnail without it)
+    if (hold) nativeSurfaceSync(); // v1.401.0 (R2): the one sync dock() skipped, now with the fly-in's first pose (live -> the rect follows per frame; the live picture flies into the dock)
     if (minimizeSlotHold && !minimizeSettleTimer) minimizeSettleTimer = setTimeout(clearMinimizeDrag, 600); // reduced motion: no settle timer, the hold still ends
     if (window.FileTube && typeof window.FileTube.leaveWatchForBrowse === 'function') window.FileTube.leaveWatchForBrowse();
     return true;
@@ -10714,6 +10718,7 @@ if (typeof module !== 'undefined' && module.exports) {
     state = STATE_FULL;
     applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
+    nativeDockMark(false); // v1.401.0: the dock's layout class leaves with the host
     nativeSurfaceSync(); // v1.399.0 (S3a): the picture returns in the slot
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
     startFrozenSampler(); // v1.362.2 (D5): the dock stopped it; a still-playing expand resumes it (a no-op when the flag is off)
@@ -10916,6 +10921,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     setDockShown(dockEl, true);
     state = STATE_DOCKED;
+    nativeDockMark(true); // v1.401.0: the bar-and-strip layout before any box is read (the sync below, the fly-in's pose)
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
     nativeSurfaceSync(); // v1.399.0 (S3a): the dock shows no picture (visible: false; the sound plays on, the thumbnail shows); v1.401.0: a live picture above under nativeVideoDock (minimizeToDock holds every sync until the fly-in pose is set, R2)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
