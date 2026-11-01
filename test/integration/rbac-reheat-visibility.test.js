@@ -165,3 +165,91 @@ test('POST /api/ytdlp/repull-metadata: an ADMIN batch enumerates both (the guard
     assert.strictEqual(run.eligible, 2, 'admin batch enumerates the full library');
   }
 });
+
+// ---- v1.400.0 multi-select (M6): the ids-scoped batch keeps the visibility axis -----------------
+//
+// The bar's Reheat names ids; a restricted member who names a hidden id must not reheat it,
+// and the response must not reveal that the id exists (it is simply not counted).
+
+const activityMod = require('../../lib/ytdlp/activity');
+async function waitReheatIdle() {
+  const start = Date.now();
+  while (Date.now() - start < 10000) {
+    const snap = activityMod.getSnapshot().oneShots && activityMod.getSnapshot().oneShots['repull-metadata'];
+    if (!snap || snap.state === 'done' || snap.state === 'error' || snap.state === 'cancelled') break;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  ytdlp.resetRepullMetadataStateForTests(); // the latch, once the loop has drained
+}
+const postIds = (ids, cookie) => fetch(`${base}/api/ytdlp/repull-metadata`, {
+  method: 'POST',
+  headers: Object.assign({ 'Content-Type': 'application/json' }, cookie ? { Cookie: cookie } : {}),
+  body: JSON.stringify({ ids }),
+});
+
+test('v1.400.0 enumerateRepullableItems(onlyIds): narrows to the named ids AFTER the visibility predicate', () => {
+  const db = loadDatabase();
+  const config = ytdlp.parseYtdlpConfig();
+  const pubId = getMediaId(pubFile);
+  const hidId = getMediaId(hidFile);
+  const onlyPublic = (item) => !item.filePath.startsWith(hiddenDir);
+  // admin (no predicate): the named ids, nothing else
+  const both = enumerateRepullableItems(db, config, undefined, new Set([pubId, hidId, 'unknown-id']));
+  assert.deepStrictEqual(both.items.map((it) => it.mediaId).sort(), [pubId, hidId].sort());
+  assert.strictEqual(both.eligible, 2);
+  const one = enumerateRepullableItems(db, config, undefined, new Set([hidId]));
+  assert.deepStrictEqual(one.items.map((it) => it.mediaId), [hidId], 'an admin naming only the hidden id gets exactly it');
+  // restricted: a hidden id named explicitly never enters the worklist or the counts
+  const scoped = enumerateRepullableItems(db, config, onlyPublic, new Set([pubId, hidId]));
+  assert.deepStrictEqual(scoped.items.map((it) => it.mediaId), [pubId]);
+  assert.strictEqual(scoped.eligible, 1);
+  assert.strictEqual(scoped.withSourceId, 0);
+  const hiddenOnly = enumerateRepullableItems(db, config, onlyPublic, new Set([hidId]));
+  assert.deepStrictEqual(hiddenOnly.items, [], 'naming only the hidden id yields an EMPTY worklist');
+  assert.strictEqual(hiddenOnly.eligible, 0);
+  // a non-Set 4th argument is ignored (the unscoped library), never a crash
+  assert.strictEqual(enumerateRepullableItems(db, config, undefined, [pubId]).items.length, 2);
+  assert.strictEqual(enumerateRepullableItems(db, config, undefined, null).items.length, 2);
+});
+
+test('v1.400.0 POST /api/ytdlp/repull-metadata with ids: a restricted member naming the hidden id reheats only the visible one, and the response does not reveal the hidden id', async () => {
+  await waitReheatIdle();
+  const pubId = getMediaId(pubFile);
+  const hidId = getMediaId(hidFile);
+  const res = await postIds([pubId, hidId], restricted.cookie);
+  assert.strictEqual(res.status, 202);
+  const run = await res.json();
+  assert.deepStrictEqual(run, { started: true, eligible: 1, ineligible: 0, withSourceId: 0, requested: 2 });
+  const text = JSON.stringify(run);
+  assert.ok(!text.includes(hidId) && !text.includes('Sécret') && !text.includes(hiddenDir), 'no hidden id, title or path in the response');
+  await waitReheatIdle();
+  assert.strictEqual(fs.readFileSync(hidFile, 'utf8'), 'SECRET', 'hidden file bytes untouched');
+  assert.strictEqual(loadDatabase().metadata[hidId].filePath, hidFile, 'hidden record path untouched');
+  assert.strictEqual(loadDatabase().metadata[hidId].metadataRepulledAt, undefined, 'the hidden item was never reheated');
+});
+
+test('v1.400.0 POST /api/ytdlp/repull-metadata with ids: naming ONLY a hidden id, or an unknown one, is a 202 with eligible 0 - indistinguishable from each other', async () => {
+  await waitReheatIdle();
+  const hidId = getMediaId(hidFile);
+  const a = await (await postIds([hidId], restricted.cookie)).json();
+  await waitReheatIdle();
+  const b = await (await postIds(['0000000000000000000000000000dead'], restricted.cookie)).json();
+  await waitReheatIdle();
+  assert.deepStrictEqual(a, { started: true, eligible: 0, ineligible: 0, withSourceId: 0, requested: 1 });
+  assert.deepStrictEqual(b, a, 'a hidden id and an unknown id answer identically (no existence oracle)');
+  // the admin naming the hidden id reheats it (the guard is visibility, not breakage)
+  const c = await (await postIds([hidId], undefined)).json();
+  await waitReheatIdle();
+  assert.strictEqual(c.eligible, 1, 'admin: the hidden id is a visible one');
+  assert.strictEqual(c.requested, 1);
+});
+
+test('v1.400.0 POST /api/ytdlp/repull-metadata with ids: the write-RBAC gate runs first (a malformed body from a member without manage-subscriptions is a 403, not a 400)', async () => {
+  await waitReheatIdle();
+  const nobody = __mintTestSession({ username: 'reheatnobody', role: 'member' });
+  userStore.setCanManageSubscriptions(nobody.user.id, false); // the admin route's own setter (lib/auth/routes.js)
+  const r = await postIds('not-an-array', nobody.cookie);
+  assert.strictEqual(r.status, 403, 'the capability gate precedes the body rule');
+  const bad = await postIds('not-an-array', restricted.cookie);
+  assert.strictEqual(bad.status, 400, 'a capable member sends a malformed body: 400');
+});

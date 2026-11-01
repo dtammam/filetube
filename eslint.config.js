@@ -220,6 +220,10 @@ module.exports = [
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
         addToQueue: 'readonly',
+        // v1.400.0 multi-select: the silent queue add + the queue chrome refresh (common.js),
+        // run once per selected card by main.js's bulk Add to queue.
+        requestQueueAdd: 'readonly',
+        refreshQueueChrome: 'readonly',
         // v1.251 (Dean): THE audio-destination rule (common.js) - every tap
         // surface (main.js delegate, history rows, watch related rail) consults it.
         audioOpenHref: 'readonly',
@@ -349,6 +353,7 @@ module.exports = [
         watchLaterSnapshot: 'readonly',
         watchLaterHas: 'readonly', // v1.376.0 W2
         watchLaterKey: 'readonly',
+        requestWatchLater: 'readonly', // v1.400.0 multi-select: the silent Watch later request
         podcastShareUrl: 'readonly',
         podcastTrashConfirmCopy: 'readonly',
         setWatchLater: 'readonly',

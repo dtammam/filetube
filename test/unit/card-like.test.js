@@ -90,9 +90,12 @@ test('main.js: the card menu\'s Like toggles via POST/DELETE on the item\'s kind
   assert.ok(nativeArm !== -1, 'track arm');
   assert.ok(chapterArm < nativeArm, 'the chapter arm precedes the native track arm');
   assert.ok(mainSrc.includes("if (kind === 'book') return '/api/books/liked/' + encId;"), 'book arm');
-  assert.ok(mainSrc.includes("method: currentlyLiked ? 'DELETE' : 'POST'"), 'DELETE when liked, POST when not');
+  // v1.400.0 multi-select: the request moved into requestCardLike(item, on) (the bar's bulk Like SETS through
+  // the same function); the toggle asks for the opposite of the current state, so the method rule is unchanged.
+  assert.ok(mainSrc.includes("method: on ? 'POST' : 'DELETE'"), 'POST to set, DELETE to clear');
+  assert.ok(mainSrc.includes('await requestCardLike(item, !currentlyLiked);'), 'the toggle flips the current state: DELETE when liked, POST when not');
   // Non-optimistic: the item flips only after res.ok.
-  assert.ok(mainSrc.includes("if (!res.ok) throw new Error('like request failed"), 'a failed request never fakes success');
+  assert.ok(mainSrc.includes("if (!res.ok) throw Object.assign(new Error('like request failed"), 'a failed request never fakes success');
 });
 
 test('server.js: the GET /api/videos list tags each item with a `liked` flag from the USER\'s membership', () => {

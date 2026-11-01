@@ -39,11 +39,22 @@ const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 
 // ---- main.js: the home/library card trigger stays REMOVED (v1.24.3) --------
 
-test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, no moveCardById helper, no showMoveModal/requestMoveItem reference', () => {
+// v1.400.0 multi-select (M8): the SELECTION bar's Move to folder reuses the shared picker and the
+// per-item request from main.js - the one sanctioned reference, inside the bulk path only. The
+// per-CARD trigger stays gone: no corner button, no helper, no card-menu row.
+test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, no moveCardById helper, no card-menu row; showMoveModal/requestMoveItem are reached ONLY from the selection bar', () => {
   assert.ok(!/card-move-btn/.test(mainJs), 'expected no .card-move-btn markup/hook in main.js');
   assert.ok(!/moveCardById/.test(mainJs), 'expected no moveCardById helper in main.js');
-  assert.ok(!/showMoveModal/.test(mainJs), 'expected main.js to no longer reference showMoveModal');
-  assert.ok(!/requestMoveItem/.test(mainJs), 'expected main.js to no longer reference requestMoveItem');
+  const { buildCardMenuItems } = require('../../public/js/main.js');
+  const caps = { canModifyLibrary: true, reheatEnabled: true };
+  assert.ok(!buildCardMenuItems({ id: 'x', title: 'X' }, caps, { selectable: true }).some((en) => en.id === 'move'), 'the card menu offers no Move row');
+  const live = mainJs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
+  const picker = live.slice(live.indexOf('function openBulkMovePicker('), live.indexOf('async function runBulk('));
+  const bulkOne = live.slice(live.indexOf('async function runBulkOne('), live.indexOf('function bulkTargets(')); // runBulkOne only (gate r1 S4)
+  assert.strictEqual((live.match(/showMoveModal/g) || []).length, (picker.match(/showMoveModal/g) || []).length, 'every showMoveModal reference is inside openBulkMovePicker');
+  assert.ok((picker.match(/showMoveModal\(/g) || []).length === 1, 'the bar opens the shared picker once');
+  assert.strictEqual((live.match(/requestMoveItem/g) || []).length, (bulkOne.match(/requestMoveItem/g) || []).length, 'every requestMoveItem reference is inside runBulkOne');
+  assert.match(bulkOne, /await requestMoveItem\(item\.id, opt && opt\.targetFolder\);/, 'the bulk move is the existing per-item request');
 });
 
 // ---- watch.js: current-item trigger -----------------------------------------
