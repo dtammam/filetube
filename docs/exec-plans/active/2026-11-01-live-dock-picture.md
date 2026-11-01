@@ -178,10 +178,81 @@ accepted the contract). Ask with AskUserQuestion when CI is green; then merge, `
 
 ## Evidence (the builder fills this)
 
-- W1: 
-- W2: 
-- W3: 
-- W4 (idle census numbers): 
+### Step 0 (2026-11-01, Fable builder, worktree feat-v1.401.0-live-dock-picture at 08d8a967 = main 958f86f2 + this plan)
+
+Read as listed. Seams verified by name: host-adapter.js CAPABILITIES + MESSAGES['video.surface'] + post(); native-audio.js
+surfaceMeasure / surfaceSync / holeApply / dockArt / surfaceOff / surfaceWire; player.js dock() / expand() / mountInSlot() /
+minimizeToDock() / playMinimizeSettle() / dockRestingRect() / ensureDockChrome() (the X) / the cc overlay build + setCaptionsOn;
+style.css #player-dock, .player-dock-close, the M5 phone block, #player-dock .cc-overlay(-text); the z ladder (tokens.css --z-dock 950,
+--z-sheet 1500, --z-panel 1600, --z-modal 2000, --z-top 2200, --z-player-max 1100, --z-header 1000). The covering families above 950
+were enumerated from the stylesheets (every position: fixed rule with a z above the dock): header, .ui-scrim / .ui-sheet (every ui.js
+sheet, dialog, menu, popover, confirm), .ui-toast-host (+ .ui-toast), .speed-sheet-backdrop, .whcal-overlay, .mms-full, and the player's
+own css-fullscreen / audio-expanded wrapper (which the dock never holds).
+
+**One stated deviation from R2's sentence** ('below' during the fly-in, 'above' at its end): the v1.400.1 recording shows Home
+arriving 6 frames after the release (n = 446 -> 452) while the fly-in runs ~17 frames (--dur-sheet 280 ms); a below layer during the
+fly-in would be painted over by Home's cards for the rest of it (a hole removes backgrounds only, and the v1.400.1 clips cover the WATCH
+page's siblings alone). So the web posts 'above' on the fly-in's FIRST frame (the FLIP start pose) and follows per frame; the hole stays
+open through the fly-in as the belt for the switch frames and closes two frames after rest (R2's invariant, covered by a hole or above,
+never neither, holds on every frame). The device falsifier stands as written in R2; one more for the pass: a picture trailing the dock's
+chrome by a frame during the fly-in (the bridge hop under an above layer) is a native-side latency reading, not a web patch.
+
+- W1 (84cef94f): host-adapter.js CAPABILITIES + nativeVideoDock; video.surface gains `layer: 'below' | 'above'` (optional) gated by the
+  FIELD's own capability (fieldCaps: a message carrying layer to a host without it is refused whole, never trimmed to a 'below' it did
+  not mean), 'above' only with space 'viewport'; the schema ($defs/surfaceLayer, the capability enum) and native-bridge.md sections 1, 2,
+  3 (the Live dock picture block), 5, 6. test/unit/native-bridge-dock.test.js (4); the conformance mirror and native-bridge-video stay
+  green (28/28). Mutants (sandbox): M1 the field gate removed -> red by name; M2 the above/viewport pairing removed -> red by name.
+- W2 (34594c9c): native-audio.js surfaceMeasure (R1: docked under the cap = visible, viewport, layer above, the #media-player box, the
+  dock's own radius; explicit 'below' elsewhere; no layer key without the cap), surfaceSync (R2: aboveHold = two FRAMES of open hole
+  after a below -> above post, counted in rAF syncs only; belowPending = the hole opens first on above -> below and the post waits a
+  frame, the poster off before it), holeApply (a fixed box converted to the document-space layer; fullscreen keyed on fs), dockArt (the
+  live picture flies, the poster waits for the rest under the layer), dockLive(). player.js: nativeSurfaceSync is held while
+  minimizeToDock commits (dock() AND the setCssFullscreen(false) inside its applyControlsMode both synced before - measured by a stack
+  trace in jsdom: two syncs in the commit tick, the first posting the dock's REST rect before the FLIP start); minimizeToDock runs the
+  one sync once the pose is set. test/unit/native-dock-live.test.js (8 at W2): the docked measure with a scrolled page (the hole in
+  document space, the post in viewport space), the v1.400.1 byte-for-byte CONTROL, expand's hole-first ordering, the fly-in's first
+  post at the FLIP start pose and the per-frame follow, reduced motion, rotation, close(), a track taking the dock, the idle census.
+  Mutants (sandbox, 9): aboveHold never set, no hole-first, dockLive never, layer dropped, the sync not held while committing, the dock
+  radius not read, the poster during the fly-in, the hole not converted to document space, the hold ignoring frames: all red by name.
+  Families (v1.400.1 follow, surface x5, bridge, audio, lifecycle, dock): 323 pass, 0 fail.
+- W3 (54f55946): html.ft-native-dock (dockClassApply, idempotent, from the fly-in's first frame, kept while covered, off on expand /
+  close / stand-down); style.css under the class: the X in the bar's right end (--size-touch square, over the bar via the ladder idiom
+  calc(var(--z-sticky) - 21) = 9), the bar --size-touch tall with the X's seat reserved, the caption strip (32 px = --size-control-sm,
+  between the picture and the bar, #player-wrapper.is-cc-on grows the reserve once); player.js setCaptionsOn (the ONE writer of the flag
+  and the mark), dockRestingRect + the strip under the cap with captions on. lint:ui TOTAL 3142 = docs/ui-exceptions.json (no new
+  debt); overlay-containment 0. Tests (+5 in native-dock-live): the class lifecycle, the captions writer, the pull's target through the
+  real touch pull (the scale at dy 100 against minimizeDragTransform with and without the strip / the cap), the CSS source lock; the old
+  locks in player-audio-cc-overlay-freeze-fix updated in place (the pre-commit hook caught them red). Mutants (sandbox, 8): the class
+  never added / never removed / ignoring the cap, the mark not written, the strip ignored / taken without the cap, the X at the top
+  (CSS), the strip height off #player-dock (CSS): all red by name. **Headless crops** (scripts/live-dock-probe.js, Chromium 1234, the
+  real app, a fake host with and without nativeVideoDock, a clip with a VTT sidecar): dock-on-cc0 / dock-on-cc1 / dock-off-cc0 /
+  dock-off-cc1 (the scratchpad, sent with the report) and 41 measured checks ok - cap on: the X 44x44 at (338, 720) = the bar's right
+  end below the picture, play/pause at the left, the seek bar ending before the X, the surface above / viewport at the #media-player
+  box (radius 12 = the dock's --r-md), the hole closed, the dock 134 -> 166 with captions (the strip 32 tall between the picture and the
+  bar, the picture box unchanged at 160x90, --player-dock-h 166), the posted rect the picture alone, every hit test inside the picture
+  landing on the picture; cap off: the v1.400.1 dock byte for byte (visible false, no layer key, the X at the picture's top-right,
+  captions over the picture).
+- W4 (this commit): native-audio.js coverScan (the browser's elementsFromPoint at the picture's centre and four inset corners; anything
+  above the dock in the stack that is not see-through covers it; a childless transparent element - ui.js's clear scrim - hides nothing),
+  event-driven only: coverWake on body's direct childList + each body child's class / hidden / style / childList (never the dock, never
+  the hole), #view-root's childList + its subtree's hidden attribute (the Pocket cover), the body / html / wrapper / container signals
+  the surface sampler already hears, transitionend / animationend (capture), resize / orientation / visualViewport; the first docked
+  measure always scans (dock() is a signal); never the 1 s backstop. covered -> visible: false (the poster under the layer shows; the
+  html class stays so the bar never jumps), clear -> visible: true; a cover mid-fly-in puts the thumbnail on the flying box.
+  test/unit/native-dock-covered.test.js (12): the CSS-derived census (every fixed rule above --z-dock in style.css + ui.css must be a
+  classified family: covers / self / static; a new one fails), one reveal + clear test per covering family (.ui-sheet + scrim,
+  .speed-sheet-backdrop, .whcal-overlay, .ui-toast-host + .ui-toast with the host pointer-events none, .mms-full toggled by hidden deep
+  in #view-root), the see-through clear scrim, a static body child over the dock at dock time, the idle census, covered mid-fly-in,
+  rotation while covered + expand while covered, the cap-off control (no post, no hit test). jsdom has no hit test: the tests install a
+  geometry stack over fixture overlays; the REAL hit test is measured by the probe.
+- W4 (idle census numbers): jsdom, docked above, one idle second: 0 posts, <= 2 box reads (the backstop), 0 hit tests, 0 attribute
+  records on body / html / the hole; docked covered (a sheet held open), one idle second: the same. Headless Chromium (the probe, the real
+  app, 2 s each): docked above 0 posts, 0 hit tests, 3 box reads (2 = the backstop, 1 = the instrument's own read); docked covered (a
+  bottom sheet held open) 0 posts, 0 hit tests, 3 box reads. Real ui.js surfaces over the docked live picture, the controller's verdict
+  against an INDEPENDENT measure (every rendered fixed element above z 950 intersecting the picture rect) - agreed in all five: a toast
+  (on the phone it meets the bar, not the picture: visible stays true, 0 posts), a confirm dialog (its dim scrim covers: false, then
+  true at Escape, 2 posts), a bottom sheet (false / true, 2 posts), a menu anchored at the header and one beside the dock (on a phone
+  ui.menu is a bottom sheet with a dim scrim: false / true, 2 posts each). One scan = 5 hit tests. SUMMARY shots=5 checks=53 failed=0.
 - Full suite (Node 22), before the gate and on the release commit: 
 - Gate verdicts (bound to sha): 
 - Release: tag, PR, Publish run: 

@@ -74,6 +74,29 @@ const MEASURE = `(function () {
       return pts.map(function (p) { var e = document.elementFromPoint(p[0], p[1]); return e ? (e.id || e.className || e.tagName) : null; }); })()
   };
 })()`;
+// W4: the controller's verdict beside an INDEPENDENT second opinion - does any rendered ui.js surface (a sheet, a dim scrim, a toast) or
+// any other fixed element above the dock's rung intersect the picture rect? The two must agree in every scenario.
+const COVER = `(function () {
+  var v = document.getElementById('media-player'); var r = v.getBoundingClientRect();
+  var hit = function (b) { return b.right > r.left && b.left < r.right && b.bottom > r.top && b.top < r.bottom; };
+  var over = [];
+  var all = document.querySelectorAll('body *');
+  for (var i = 0; i < all.length; i++) {
+    var e = all[i]; if (e.closest('#player-dock')) continue;
+    var cs = getComputedStyle(e); if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility === 'hidden') continue;
+    var z = parseInt(cs.zIndex, 10); if (!(z > 950)) continue;
+    var b = e.getBoundingClientRect(); if (!(b.width > 0 && b.height > 0) || !hit(b)) continue;
+    var clear = e.classList.contains('ui-scrim--clear');
+    if (clear) continue;
+    over.push((e.id || e.className || e.tagName) + ' ' + Math.round(b.left) + ',' + Math.round(b.top) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height) + ' z' + z);
+  }
+  var s = window.__posts.filter(function (m) { return m.type === 'video.surface'; });
+  return { expectedCovered: over.length > 0, over: over, visible: s.length ? s[s.length - 1].visible : null, posts: s.length, hits: window.__hits || 0, reads: window.__reads || 0, poster: v.getAttribute('poster'), htmlDock: document.documentElement.classList.contains('ft-native-dock') };
+})()`;
+const COUNTERS = `(function () { if (window.__counted) return true; window.__counted = true; window.__hits = 0; window.__reads = 0;
+  var efp = document.elementsFromPoint.bind(document); document.elementsFromPoint = function (x, y) { window.__hits += 1; return efp(x, y); };
+  var gb = HTMLVideoElement.prototype.getBoundingClientRect; HTMLVideoElement.prototype.getBoundingClientRect = function () { window.__reads += 1; return gb.call(this); };
+  return true; })()`;
 const VTT = 'WEBVTT\n\n00:00:00.000 --> 00:00:20.000\nA caption line in the strip, long enough that the mini player has to wrap it onto a second line and clamp\n';
 
 async function main() {
@@ -131,6 +154,39 @@ async function main() {
     fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.data, 'base64')); shots += 1;
   };
   const results = {};
+  // W4 (R4 + L4): real ui.js surfaces over the docked live picture, and the idle census (box reads, hit tests, posts over 2 s)
+  const coveredPass = async () => {
+    await ev('window.FileTube.player.dock(); true'); await sleep(400);
+    await ev(COUNTERS);
+    const idle0 = await ev(COVER);
+    await sleep(2000);
+    const idle1 = await ev(COVER);
+    check('W4 idle docked above (2 s): 0 posts, 0 hit tests, at most the backstop\'s 2 box reads', idle1.posts === idle0.posts && idle1.hits - idle0.hits === 0 && idle1.reads - idle0.reads <= 3, { posts: idle1.posts - idle0.posts, hits: idle1.hits - idle0.hits, reads: idle1.reads - idle0.reads });
+    const scenarios = [
+      ['a toast', 'window.__t = true; window.ui.toast("Added 3 items to the queue.", { duration: 60000 }); true', 'var t = document.querySelector(".ui-toast"); if (t) t.remove(); var h = document.querySelector(".ui-toast-host"); if (h) h.remove(); true'],
+      ['a confirm dialog', 'window.__c = window.ui.confirm({ title: "Move 3 items to Trash?", body: "They stay in Trash for 30 days.", danger: true }); true', 'document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true'],
+      ['a bottom sheet', 'var d = document.createElement("div"); d.textContent = "Playlists"; d.style.height = "320px"; window.__s = window.ui.sheet({ variant: "bottom", title: "Save to", content: d }).open(); true', 'window.__s.close(); true'],
+      ['a menu anchored at the header (far from the dock)', 'window.__m = window.ui.menu({ anchor: document.querySelector("header .logo, header a, header button"), items: [{ label: "Select" }, { label: "Add to queue" }] }); true', 'window.__m.close(); true'],
+      ['a menu anchored beside the dock', 'var a = document.createElement("button"); a.textContent = "x"; a.style.cssText = "position:fixed;left:40px;bottom:200px"; document.body.appendChild(a); window.__a = a; window.__m2 = window.ui.menu({ anchor: a, items: [{ label: "Select" }, { label: "Add to queue" }, { label: "Watch later" }, { label: "Move to Trash", danger: true }] }); true', 'window.__m2.close(); window.__a.remove(); true'],
+    ];
+    for (const [name, open, close] of scenarios) {
+      const before = await ev(COVER);
+      await ev(open); await sleep(450);
+      const during = await ev(COVER);
+      console.log(JSON.stringify(Object.assign({ scenario: name, phase: 'open' }, during)));
+      check(`W4 ${name} open: the controller agrees with the independent measure (covered = ${during.expectedCovered})`, during.visible === !during.expectedCovered && during.htmlDock && (!during.expectedCovered || during.poster !== undefined), { visible: during.visible, over: during.over });
+      if (name === 'a bottom sheet') {
+        await sleep(300); const c0 = await ev(COVER); await sleep(2000); const c1 = await ev(COVER);
+        check('W4 idle docked covered (2 s, the sheet held open): 0 posts, 0 hit tests, at most the backstop\'s 2 box reads', c1.posts === c0.posts && c1.hits - c0.hits === 0 && c1.reads - c0.reads <= 3, { posts: c1.posts - c0.posts, hits: c1.hits - c0.hits, reads: c1.reads - c0.reads });
+        await crop('dock-on-covered', await ev(MEASURE));
+      }
+      await ev(close); await sleep(700);
+      const after = await ev(COVER);
+      console.log(JSON.stringify(Object.assign({ scenario: name, phase: 'closed' }, after)));
+      check(`W4 ${name} closed: the picture is back (visible true, nothing over the picture), posts = ${after.posts - before.posts}`, after.visible === true && !after.expectedCovered && after.posts - before.posts === (during.expectedCovered ? 2 : 0), { over: after.over });
+    }
+    await ev('window.FileTube.player.expand(document.getElementById("player-slot")); true'); await sleep(400);
+  };
   for (const dockCap of [true, false]) {
     const tag = dockCap ? 'on' : 'off';
     const inj = await send('Page.addScriptToEvaluateOnNewDocument', { source: HOST(dockCap) });
@@ -174,12 +230,13 @@ async function main() {
       await ev('window.FileTube.player.expand(document.getElementById("player-slot")); true'); await sleep(400);
       if (cc) { await ev('document.getElementById("cc-btn").click(); true'); await sleep(100); }
     }
+    if (dockCap) await coveredPass();
     const back = await ev(MEASURE);
     check(`${tag}: expanded again - the surface is back below / document and the class is off`, back.surface && back.surface.visible && back.surface.space === 'document' && !back.htmlDock, back.surface);
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
   }
-  console.log(`SUMMARY shots=${shots} checks=${checks} failed=${failed} ${failed === 0 && shots === 4 ? 'ok' : 'FAIL'}`);
-  if (failed !== 0 || shots !== 4) process.exitCode = 1;
+  console.log(`SUMMARY shots=${shots} checks=${checks} failed=${failed} ${failed === 0 && shots === 5 ? 'ok' : 'FAIL'}`);
+  if (failed !== 0 || shots !== 5) process.exitCode = 1;
   cleanup();
 }
 
