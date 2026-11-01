@@ -13982,8 +13982,13 @@ function showMoveModal(item, folders, onMove, doc) {
   const body = d.createDocumentFragment();
   const label = d.createElement('p');
   label.className = 'ui-confirm__body';
-  const displayName = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
-  label.textContent = `Move "${displayName}" to:`;
+  // v1.400.0 multi-select (M8): a SET passes `label` ("12 items"), unquoted; a single file keeps its quoted title.
+  if (typeof it.label === 'string' && it.label !== '') {
+    label.textContent = `Move ${it.label} to:`;
+  } else {
+    const displayName = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
+    label.textContent = `Move "${displayName}" to:`;
+  }
   body.appendChild(label);
 
   const field = U.select({
@@ -15197,7 +15202,8 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
   }).then((res) => {
     return res.json().catch(() => ({})).then((data) => {
       if (!res.ok) {
-        throw new Error((data && data.error) || `Move failed (${res.status})`);
+        // v1.400.0: the status and body ride the error (a bulk run tells a refusal from a failure)
+        throw Object.assign(new Error((data && data.error) || `Move failed (${res.status})`), { status: res.status, body: data });
       }
       return data;
     });

@@ -38,15 +38,19 @@ function contentTypeFor(filePath) {
   return 'application/octet-stream';
 }
 
-// Six media items (v2 already liked), plus a second page of three for the append test.
+// Six media items (v2 already liked; v6 a plain LOCAL file - no channel identity, so the Trash
+// confirm's local-file sentence has a card to speak of), plus a second page of three for the
+// append test.
 function makeItems(n, from) {
   const out = [];
   for (let i = 0; i < n; i++) {
     const k = (from || 1) + i;
-    out.push({
+    const it = {
       id: 'v' + k, title: 'Video ' + k, type: 'video', ext: '.mp4', duration: 100 + k, size: 1000 * k,
       addedAt: 100000 - k, folderName: 'folder', progressPercent: 0, channelName: 'A Channel', liked: k === 2,
-    });
+    };
+    if (k === 6) delete it.channelName;
+    out.push(it);
   }
   return out;
 }
@@ -105,6 +109,13 @@ function makeFetchStub(opts) {
     }
     if (url === '/api/queue' && method === 'GET') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ entries: [] }) });
+    }
+    if (url.indexOf('/api/videos/') === 0 && method === 'DELETE') {
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, trashed: true }) });
+    }
+    if (/^\/api\/videos\/[^/]+\/move$/.test(url) && method === 'POST') {
+      const id = url.split('/')[3];
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, id: 'moved-' + id, filePath: '/media/other/' + id + '.mp4' }) });
     }
     if (url === '/api/ytdlp/repull-metadata' && method === 'POST') {
       const ids = JSON.parse(init.body).ids;
@@ -640,4 +651,257 @@ test('M6 Reheat: without the module (no health) the bar offers no Reheat; a 403 
       assert.deepStrictEqual(selectedIds(document), ['v1']);
     } finally { dom.window.close(); }
   }
+});
+
+// ---- W3: Move to Trash (M7) and Move to folder (M8) - the data-loss surface --------------------
+
+const confirmDialog = (doc) => openSheets(doc).find((s) => s.querySelector('.ui-confirm__actions')) || null;
+const deletes = (calls) => calls.filter((c) => c.method === 'DELETE');
+const moves = (calls) => calls.filter((c) => c.method === 'POST' && /\/move$/.test(c.url));
+async function openTrashConfirm(dom, ids) {
+  const { document } = dom.window;
+  await enterViaButton(dom);
+  for (const id of ids) click(dom, cardTitle(document, id));
+  await settle();
+  click(dom, verb(document, 'delete'));
+  await settle(); await frame();
+  const dlg = confirmDialog(document);
+  assert.ok(dlg, 'Move to Trash opens ONE confirm, never a direct delete');
+  return dlg;
+}
+
+test('M7 Trash: the confirm names the count and the total size; Cancel, Esc, the scrim and Close each send NO delete', async () => {
+  const { fetchImpl, calls } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v3', 'v6']); // sizes 1000, 3000, 6000
+    assert.strictEqual(dlg.querySelector('.ui-sheet__title').textContent, 'Move to Trash?');
+    const body = dlg.querySelector('.ui-confirm__body').textContent;
+    assert.match(body, /^Move 3 items \(/);
+    assert.ok(body.includes(dom.window.formatFileSize(10000)), 'the total size of exactly the selected cards: ' + body);
+    assert.match(body, /They leave your library now and stay in Trash, where you can restore them from Settings, until the Trash retention window empties it\. Local files cannot be re-downloaded\.$/, 'v6 is a local file: the warning rides along');
+    const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+    assert.strictEqual(ok.textContent.trim(), 'Move to Trash');
+    assert.ok(ok.classList.contains('ui-btn--destructive'), 'the danger fill');
+    // the bar is busy while the confirm is up: a second tap on the verb does nothing
+    assert.strictEqual(verb(document, 'delete').disabled, true);
+    const ways = {
+      cancel: (d) => click(dom, d.querySelector('.ui-confirm__actions .ui-btn--secondary')),
+      esc: () => document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })),
+      scrim: () => { const s = Array.from(document.querySelectorAll('.ui-scrim.is-open')).pop(); click(dom, s); },
+      close: (d) => click(dom, d.querySelector('.ui-sheet__close')),
+    };
+    let first = true;
+    for (const [name, leave] of Object.entries(ways)) {
+      const d = first ? dlg : (click(dom, verb(document, 'delete')), await settle(), await frame(), confirmDialog(document));
+      first = false;
+      assert.ok(d, name + ': the confirm opened');
+      leave(d);
+      await settle(); await sleep(400);
+      assert.strictEqual(deletes(calls).length, 0, name + ' sends no delete');
+      assert.ok(grid(document).classList.contains('is-select-mode'), name + ': still in select mode (Escape closed the dialog, not the selection)');
+      assert.deepStrictEqual(selectedIds(document), ['v1', 'v3', 'v6'], name + ': the selection is intact');
+      assert.strictEqual(verb(document, 'delete').disabled, false, name + ': the verb is live again');
+    }
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 6, 'nothing left the grid');
+  } finally { dom.window.close(); }
+});
+
+test('M7 Trash: Confirm sends ONE DELETE per selected id in grid order and nothing else; the cards leave the grid; one toast', async () => {
+  const { fetchImpl, calls } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v5', 'v2']);
+    const before = calls.length;
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v2', '/api/videos/v5'], 'grid order, exactly the selected ids');
+    const others = calls.slice(before).filter((c) => c.method !== 'DELETE');
+    assert.deepStrictEqual(others.map((c) => c.method + ' ' + c.url), [], 'nothing else was sent during the run');
+    assert.deepStrictEqual(toasts(document), ['Moved 2 items to Trash.']);
+    assert.strictEqual(card(document, 'v2'), null, 'v2 left the grid');
+    assert.strictEqual(card(document, 'v5'), null, 'v5 left the grid');
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 4);
+    assert.ok(!grid(document).classList.contains('is-select-mode'), 'nothing stayed ticked');
+    assert.strictEqual(document.getElementById('library-item-count').textContent, '4 items', 'the count badge follows');
+  } finally { dom.window.close(); }
+});
+
+test('M7/M9 Trash: a failed id stays selected and the summary says "1 failed"; a double-click on Confirm never doubles the run', async () => {
+  const { fetchImpl, calls } = makeFetchStub({ fail: { 'DELETE /api/videos/v3': 500 } });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v3', 'v4']);
+    const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+    click(dom, ok);
+    click(dom, ok); // the second half of a double-tap
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v1', '/api/videos/v3', '/api/videos/v4'], 'each id once; a failure does not abort the rest');
+    assert.deepStrictEqual(toasts(document), ['Moved 2 items to Trash. 1 failed.']);
+    assert.ok(grid(document).classList.contains('is-select-mode'));
+    assert.deepStrictEqual(selectedIds(document), ['v3'], 'exactly the failed card stays selected');
+    assert.ok(card(document, 'v3'), 'and it is still in the grid');
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 4);
+  } finally { dom.window.close(); }
+});
+
+test('M7/M9 Trash: a 403 on the second id STOPS the run - the unsent ids stay selected and in the grid, the summary says why', async () => {
+  const { fetchImpl, calls } = makeFetchStub({ fail: { 'DELETE /api/videos/v2': 403 } });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v2', 'v3', 'v4']);
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/videos/v1', '/api/videos/v2'], 'the run stopped at the refusal');
+    assert.deepStrictEqual(toasts(document), ["Moved 1 item to Trash. You don't have permission for that."]);
+    assert.deepStrictEqual(selectedIds(document), ['v2', 'v3', 'v4']);
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 5);
+  } finally { dom.window.close(); }
+});
+
+test('M7 Trash (the data-loss brief): the confirm is seeded from the selection at confirm time; a selection that changed under the confirm runs NOTHING', async () => {
+  const stub = makeFetchStub({});
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v2']);
+    assert.match(dlg.querySelector('.ui-confirm__body').textContent, /^Move 2 items/);
+    // a live re-render drops v2 while the confirm is up (the download chip's refresh hook)
+    stub.setItems(makeItems(6).filter((it) => it.id !== 'v2'));
+    dom.window.__filetubeRefreshLibrary();
+    await settle(30);
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.strictEqual(deletes(stub.calls).length, 0, 'what was confirmed (2) is not what is selected (1): nothing runs');
+    assert.deepStrictEqual(toasts(document), ['The selection changed. Nothing was moved to Trash.']);
+    assert.deepStrictEqual(selectedIds(document), ['v1'], 'the surviving selection is intact for a fresh confirm');
+  } finally { dom.window.close(); }
+});
+
+test('M7 Trash: leaving the view while the confirm is up dismisses it and deletes nothing', async () => {
+  const { fetchImpl, calls } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document, FileTube } = dom.window;
+    const dlg = await openTrashConfirm(dom, ['v1', 'v2']);
+    FileTube.navigate('/history');
+    await settle(); await sleep(400);
+    assert.strictEqual(confirmDialog(document), null, 'the confirm is gone');
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary')); // a late tap on the detached OK
+    for (let i = 0; i < 20; i++) await settle();
+    assert.strictEqual(deletes(calls).length, 0);
+    assert.ok(!grid(document).classList.contains('is-select-mode'));
+  } finally { dom.window.close(); }
+});
+
+test('M8 Move to folder: the shared picker names the set; Move sends one POST /api/videos/:id/move per id with the chosen folder; the cards leave; Cancel sends nothing', async () => {
+  const { fetchImpl, calls } = makeFetchStub({});
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    for (const id of ['v4', 'v1']) click(dom, cardTitle(document, id));
+    await settle();
+    click(dom, verb(document, 'move'));
+    await settle(); await frame();
+    let picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+    assert.ok(picker, 'the shared Move picker (common.js showMoveModal) opened');
+    assert.strictEqual(picker.querySelector('.ui-confirm__body').textContent, 'Move 2 items to:');
+    const select = picker.querySelector('select');
+    assert.deepStrictEqual(Array.from(select.options).map((o) => o.value), ['/media/folder', '/media/other'], 'the GET /api/config folders');
+    // Cancel: nothing moves
+    click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Cancel'));
+    await settle(); await sleep(400);
+    assert.strictEqual(moves(calls).length, 0, 'Cancel sends nothing');
+    assert.deepStrictEqual(selectedIds(document), ['v1', 'v4'], 'the selection is intact');
+    // again, pick the other folder, Move
+    click(dom, verb(document, 'move'));
+    await settle(); await frame();
+    picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+    picker.querySelector('select').value = '/media/other';
+    click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Move'));
+    for (let i = 0; i < 40; i++) await settle();
+    await frame();
+    assert.deepStrictEqual(moves(calls).map((c) => [c.url, JSON.parse(c.body).targetFolder]), [['/api/videos/v1/move', '/media/other'], ['/api/videos/v4/move', '/media/other']], 'grid order, the chosen folder, nothing outside the selection');
+    assert.deepStrictEqual(toasts(document), ['Moved 2 items.']);
+    assert.strictEqual(card(document, 'v1'), null);
+    assert.strictEqual(card(document, 'v4'), null);
+    assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 4);
+    assert.ok(!grid(document).classList.contains('is-select-mode'));
+  } finally { dom.window.close(); }
+});
+
+test('M8/M9 Move to folder: a failed id stays selected (and in the grid); a 403 stops the run', async () => {
+  {
+    const { fetchImpl, calls } = makeFetchStub({ fail: { 'POST /api/videos/v2/move': 500 } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      for (const id of ['v1', 'v2', 'v3']) click(dom, cardTitle(document, id));
+      await settle();
+      click(dom, verb(document, 'move'));
+      await settle(); await frame();
+      const picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+      click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Move'));
+      for (let i = 0; i < 40; i++) await settle();
+      await frame();
+      assert.strictEqual(moves(calls).length, 3);
+      assert.deepStrictEqual(toasts(document), ['Moved 2 items. 1 failed.']);
+      assert.deepStrictEqual(selectedIds(document), ['v2']);
+      assert.ok(card(document, 'v2'));
+    } finally { dom.window.close(); }
+  }
+  {
+    const { fetchImpl, calls } = makeFetchStub({ fail: { 'POST /api/videos/v1/move': 403 } });
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      await enterViaButton(dom);
+      for (const id of ['v1', 'v2']) click(dom, cardTitle(document, id));
+      await settle();
+      click(dom, verb(document, 'move'));
+      await settle(); await frame();
+      const picker = document.querySelector('.ui-sheet.is-open.move-dialog');
+      click(dom, Array.from(picker.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => b.textContent.trim() === 'Move'));
+      for (let i = 0; i < 40; i++) await settle();
+      await frame();
+      assert.deepStrictEqual(moves(calls).map((c) => c.url), ['/api/videos/v1/move'], 'stopped at the refusal');
+      assert.deepStrictEqual(toasts(document), ["Nothing was moved. You don't have permission for that."]);
+      assert.deepStrictEqual(selectedIds(document), ['v1', 'v2']);
+      assert.strictEqual(document.querySelectorAll('#video-grid .video-card').length, 6);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('acceptance 8: a member without the library capability has no Trash and no Move in the bar, and a delete-shaped request is never sent', async () => {
+  const { fetchImpl, calls } = makeFetchStub({ meCanModify: false });
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    await enterViaButton(dom);
+    for (const id of ['v1', 'v2']) click(dom, cardTitle(document, id));
+    await settle();
+    assert.strictEqual(verb(document, 'delete'), null);
+    assert.strictEqual(verb(document, 'move'), null);
+    assert.strictEqual(deletes(calls).length + moves(calls).length, 0);
+  } finally { dom.window.close(); }
 });

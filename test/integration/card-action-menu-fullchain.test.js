@@ -559,13 +559,23 @@ test('DELETE by RIGHT-CLICK (desktop): the contextmenu opens the SAME menu (nati
   } finally { dom.window.close(); }
 });
 
-test('source guard: the ONLY caller of the delete request is confirmAndDeleteCard, after `ok !== true` returns', () => {
+test('source guard: every caller of the delete request sits behind a confirm that resolved exactly true (the card menu\'s confirmAndDeleteCard; the bar\'s confirmBulkTrash)', () => {
   const src = fs.readFileSync(path.join(PUBLIC_DIR, 'js', 'main.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
   assert.strictEqual((src.match(/method: 'DELETE' \}\)/g) || []).length >= 1, true);
+  // v1.400.0 multi-select (M7): a SECOND caller, the bar's bulk Trash (runBulkOne, quiet mode), reachable only
+  // from startBulkRun('delete'), which runBulk enters only after confirmBulkTrash resolved true. Two calls, each
+  // behind its own confirm; a third caller is a finding.
   const callers = src.match(/deleteCardById\(/g) || [];
-  assert.strictEqual(callers.length, 2, 'the definition + ONE call');
+  assert.strictEqual(callers.length, 3, 'the definition + the card menu call + the bulk call');
   // v1.376.0 W2: a podcast card trashes through its own route, behind the SAME confirm.
-  assert.strictEqual((src.match(/deletePodcastCard\(/g) || []).length, 2, 'the podcast delete: the definition + ONE call');
+  assert.strictEqual((src.match(/deletePodcastCard\(/g) || []).length, 3, 'the podcast delete: the definition + the card menu call + the bulk call');
+  const bulk = src.slice(src.indexOf('async function runBulkOne('), src.indexOf('async function runBulk('));
+  assert.match(bulk, /if \(action === 'delete'\) \{\s*return item\.kind === 'podcast' \? await deletePodcastCard\(item\.id, \{ quiet: true \}\) : await deleteCardById\(item\.id, \{ quiet: true \}\);/, 'the bulk call is the quiet twin inside runBulkOne');
+  const gate = src.slice(src.indexOf('async function runBulk('), src.indexOf('async function startBulkRun('));
+  assert.match(gate, /if \(action === 'delete'\) \{[\s\S]*?try \{ ok = await confirmBulkTrash\(targets\); \} finally \{ bulkBusy = false; \}\s*if \(!ok\) \{ paintSelectBar\(\); return; \}\s*return startBulkRun\(action, \{ confirmedCount: targets\.length \}\);/, 'runBulk(delete) reaches startBulkRun only after confirmBulkTrash resolved true');
+  assert.strictEqual((src.match(/startBulkRun\('delete'/g) || []).length, 0, 'nothing starts a delete run by name, bypassing runBulk');
+  const confirmFn = src.slice(src.indexOf('async function confirmBulkTrash('), src.indexOf('function openBulkMovePicker('));
+  assert.match(confirmFn, /return ok === true && !shown\.aborted && !signal\.aborted && selectMode;/, 'the bulk confirm answers true only for its own button, with the view still shown');
   const fn = src.slice(src.indexOf('async function confirmAndDeleteCard(item) {'), src.indexOf('function runCardAction('));
   // Gate r1 (adversary 3): the confirm carries the router's shown-view signal (this view is
   // cached on nav-away), and both signals are re-checked after the answer.

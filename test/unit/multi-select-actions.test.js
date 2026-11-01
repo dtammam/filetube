@@ -21,7 +21,9 @@ const common = require('../../public/js/common.js');
 for (const k of ['resolveViewCountLabel', 'isFabricatedViewCount', 'formatRelativeTime', 'getStarRating',
   'isYtdlpManagedItem', 'eraShowsFabricated', 'applyEraFlourish', 'podcastShareUrl', 'podcastTrashConfirmCopy']) global[k] = common[k];
 
-const { buildBulkActions, bulkActionApplies, bulkSummary, buildCardMenuItems } = require('../../public/js/main.js');
+// common.js keeps formatFileSize un-exported; the copy only interpolates it, so a visible stub binds the seam.
+global.formatFileSize = (bytes) => bytes + ' B';
+const { buildBulkActions, bulkActionApplies, bulkSummary, buildCardMenuItems, bulkTrashConfirmCopy } = require('../../public/js/main.js');
 
 const media = (id, extra) => Object.assign({ id, title: 'V ' + id, ext: '.mp4', type: 'video', liked: false }, extra || {});
 const podcast = (id) => ({ id, kind: 'podcast', title: 'Ep ' + id, subId: 's1', showName: 'Show' });
@@ -165,4 +167,42 @@ test('requestQueueAdd (common.js): the silent queue add resolves the body and re
   } finally {
     global.fetch = realFetch;
   }
+});
+
+test('M7: bulkTrashConfirmCopy names the count and the total size, the single card\'s own second sentence, and the local-file warning', () => {
+  const yt = (id, size) => media(id, { size, channelName: 'A Channel', channelUrl: 'https://www.youtube.com/@a' });
+  const one = bulkTrashConfirmCopy([yt('a', 1024 * 1024)]);
+  assert.strictEqual(one.title, 'Move to Trash?');
+  assert.strictEqual(one.confirmLabel, 'Move to Trash');
+  assert.strictEqual(one.cancelLabel, 'Cancel');
+  assert.strictEqual(one.danger, true);
+  assert.strictEqual(one.count, 1);
+  assert.strictEqual(one.bytes, 1024 * 1024);
+  assert.strictEqual(one.body, 'Move 1 item (' + (1024 * 1024) + ' B) to Trash? It leaves your library now and stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.');
+  const many = bulkTrashConfirmCopy([yt('a', 1000), yt('b', 2000), podcast('p')]);
+  assert.strictEqual(many.count, 3);
+  assert.strictEqual(many.bytes, 3000);
+  assert.strictEqual(many.body, 'Move 3 items (3000 B plus 1 of unknown size) to Trash? They leave your library now and stay in Trash, where you can restore them from Settings, until the Trash retention window empties it.');
+  // a plain local file in the set: the warning rides along, once
+  const local = bulkTrashConfirmCopy([yt('a', 10), media('l', { size: 20 })]);
+  assert.ok(local.body.endsWith(' until the Trash retention window empties it. Local files cannot be re-downloaded.'), local.body);
+  assert.strictEqual((local.body.match(/Local files/g) || []).length, 1);
+  // no sizes at all
+  assert.ok(bulkTrashConfirmCopy([podcast('p'), podcast('q')]).body.startsWith('Move 2 items (size unknown) to Trash?'));
+  assert.strictEqual(bulkTrashConfirmCopy([]).count, 0);
+});
+
+test('M8: showMoveModal reads an unquoted `label` for a set and keeps the quoted title for one file', () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<!doctype html><body></body>');
+  const doc = dom.window.document;
+  const set = common.showMoveModal({ label: '12 items' }, ['/a', '/b'], () => {}, doc);
+  assert.strictEqual(set.label.textContent, 'Move 12 items to:');
+  set.teardown();
+  const one = common.showMoveModal({ title: 'A file' }, ['/a'], () => {}, doc);
+  assert.strictEqual(one.label.textContent, 'Move "A file" to:');
+  one.teardown();
+  const empty = common.showMoveModal({ label: '' , title: 'B' }, ['/a'], () => {}, doc);
+  assert.strictEqual(empty.label.textContent, 'Move "B" to:', 'an empty label falls back to the title form');
+  empty.teardown();
 });

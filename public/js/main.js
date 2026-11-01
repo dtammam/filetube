@@ -796,6 +796,29 @@ function buildBulkActions(items, caps) {
   }
   return out;
 }
+// Pure (M7): the Move to Trash confirm for a SELECTION - the Clean up shape (count and total size,
+// cleanup.js) with the single card's own second sentence (cardDeleteConfirmCopy), plus the local-file
+// warning when any selected media item is not yt-dlp-managed. `items` is the selection at confirm
+// time; the size is summed from each item's own `size` (a missing size counts 0 and says so).
+function bulkTrashConfirmCopy(items) {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  const n = list.length;
+  let bytes = 0;
+  let unsized = 0;
+  let local = false;
+  for (const it of list) {
+    if (typeof it.size === 'number' && it.size >= 0) bytes += it.size; else unsized += 1;
+    if ((!it.kind || it.kind === 'media') && typeof isYtdlpManagedItem === 'function' && !isYtdlpManagedItem(it)) local = true;
+  }
+  const sizeLabel = typeof formatFileSize === 'function' ? formatFileSize(bytes) : Math.round(bytes / (1024 * 1024)) + ' MB';
+  const size = unsized === 0 ? sizeLabel : (unsized === n ? 'size unknown' : sizeLabel + ' plus ' + unsized + ' of unknown size');
+  const body = 'Move ' + n + (n === 1 ? ' item' : ' items') + ' (' + size + ') to Trash? '
+    + (n === 1 ? 'It leaves' : 'They leave') + ' your library now and ' + (n === 1 ? 'stays' : 'stay')
+    + ' in Trash, where you can restore ' + (n === 1 ? 'it' : 'them') + ' from Settings, until the Trash retention window empties it.'
+    + (local ? ' Local files cannot be re-downloaded.' : '');
+  return { title: 'Move to Trash?', body, confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true, count: n, bytes };
+}
+
 // Pure: the one summary toast of a bulk run (M9). `r` = { ok: n, failed: n, refusal: string|null }.
 function bulkSummary(action, r) {
   const n = r.ok;
@@ -1097,6 +1120,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildBulkActions, // v1.400.0 multi-select: the bar's verbs (the menu's own applicability)
     bulkActionApplies,
     bulkSummary,
+    bulkTrashConfirmCopy, // M7: the selection's Trash confirm
     cardDeleteConfirmCopy,
     buildVideoCardEl,
     buildSkeletonCardEl,
@@ -2868,32 +2892,43 @@ const PreviewCards = (function () {
     // v1.376.0 W2: a podcast card's Move to Trash - the episode's ONE route (DELETE
     // /api/podcasts/episodes/:id: the podcasts Trash, restorable from the show's episode list).
     // Non-optimistic: the card leaves only on a 2xx.
-    async function deletePodcastCard(id) {
+    // v1.400.0 (M7, M9): `opts.quiet` is the bar's bulk Trash - the SAME request and the same
+    // in-place removal, no per-item toast; the outcome comes back as { status: 'ok' | 'failed' |
+    // 'refused', message } for the one summary. The single-card path (no opts) is unchanged.
+    async function deletePodcastCard(id, opts) {
+      const quiet = !!(opts && opts.quiet);
+      const say = (msg) => { if (!quiet) showToast(msg); };
       try {
         const res = await fetch('/api/podcasts/episodes/' + encodeURIComponent(id), { method: 'DELETE' });
-        if (res.status === 403) { showToast("You don't have permission to delete library files."); return; }
-        if (!res.ok) { showToast('Could not delete the episode.'); return; }
+        if (res.status === 403 || res.status === 401) { say("You don't have permission to delete library files."); return { status: 'refused', message: bulkRefusal(res.status) }; }
+        if (!res.ok) { say('Could not delete the episode.'); return { status: 'failed' }; }
         currentItems = currentItems.filter((item) => item.id !== id);
         currentTotal = Math.max(0, currentTotal - 1);
         removeCardFromGrid(id);
         updateItemCountBadge();
-        showToast('Moved to Trash');
+        say('Moved to Trash');
+        return { status: 'ok' };
       } catch (_) {
-        showToast('Could not delete the episode.');
+        say('Could not delete the episode.');
+        return { status: 'failed' };
       }
     }
 
-    async function deleteCardById(id) {
+    async function deleteCardById(id, opts) {
+      const quiet = !!(opts && opts.quiet);
+      const say = (msg) => { if (!quiet) showToast(msg); };
       try {
         const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
         if (res.status === 409) {
-          showToast('File is on a read-only location -- not deleted.');
-          return;
+          say('File is on a read-only location -- not deleted.');
+          const body = await res.json().catch(() => ({}));
+          // the instance-wide read-only mode refuses the whole run; a per-file unconfirmable delete is that file's failure
+          return body && body.readOnly === true && /read-only media mode/i.test(String(body.error || '')) ? { status: 'refused', message: bulkRefusal(409, body) } : { status: 'failed' };
         }
-        if (res.status === 403) {
+        if (res.status === 403 || res.status === 401) {
           // v1.81 write-RBAC: no capability -> plain message, card stays put.
-          showToast("You don't have permission to delete library files.");
-          return;
+          say("You don't have permission to delete library files.");
+          return { status: 'refused', message: bulkRefusal(res.status) };
         }
         const data = await res.json().catch(() => ({}));
         if (data.success) {
@@ -2905,13 +2940,15 @@ const PreviewCards = (function () {
           // file that could not actually be removed (held open / read-only) --
           // surfacing only "File deleted." for all of them hid every honest
           // message this API sends. Same three-way toast as watch.js's delete.
-          showToast(deleteResultToast(data));
-        } else {
-          showToast('Error deleting file: ' + (data.error || 'unknown error'));
+          say(deleteResultToast(data));
+          return { status: 'ok' };
         }
+        say('Error deleting file: ' + (data.error || 'unknown error'));
+        return { status: 'failed' };
       } catch (err) {
         console.error('Failed to delete video from card:', err);
-        showToast('Network error occurred while trying to delete file.');
+        say('Network error occurred while trying to delete file.');
+        return { status: 'failed' };
       }
     }
 
@@ -3780,8 +3817,19 @@ const PreviewCards = (function () {
           if (wl) wl.delete(watchLaterKey(item.id, kind));
           return { status: 'ok' };
         }
-        if (action === 'delete' || action === 'move' || action === 'reheat') {
-          return await runBulkOneLater(action, item, opt); // the W2 / W3 verbs
+        if (action === 'delete') {
+          // M7: ONE ordinary DELETE per id through the card's own path (quiet), after the one confirm
+          return item.kind === 'podcast' ? await deletePodcastCard(item.id, { quiet: true }) : await deleteCardById(item.id, { quiet: true });
+        }
+        if (action === 'move') {
+          // M8: the existing per-item move; the server re-keys the item (a new id), so its card
+          // leaves this grid on every scope (the old id would 404) and the counts shrink.
+          await requestMoveItem(item.id, opt && opt.targetFolder);
+          currentItems = currentItems.filter((it) => String(it.id) !== String(item.id));
+          currentTotal = Math.max(0, currentTotal - 1);
+          removeCardFromGrid(item.id);
+          updateItemCountBadge();
+          return { status: 'ok' };
         }
         return { status: 'failed' };
       } catch (err) {
@@ -3793,11 +3841,62 @@ const PreviewCards = (function () {
     // success unticks its card; a failure leaves it ticked; a refusal stops the run and leaves
     // every unsent card ticked; leaving the view stops it before the next request. One summary
     // toast; when nothing stays ticked the view leaves select mode.
+    // The applicable selected cards for `action`, in grid order, read NOW (M7: a confirm or a
+    // picker is seeded from the selection at that moment, never a stale render).
+    function bulkTargets(action) {
+      return selectedItemsInGridOrder().filter((it) => bulkActionApplies(action, it, cardCaps));
+    }
+
+    // M7: the one danger confirm for the selection, bound to the shown-view signal (leaving the
+    // view dismisses it, resolving false). Resolves true only for its own Move to Trash button.
+    async function confirmBulkTrash(items) {
+      const u = cardUi();
+      if (!u || typeof u.confirm !== 'function') return false;
+      const shown = shownViewSignal();
+      const copy = bulkTrashConfirmCopy(items);
+      const ok = await u.confirm({ title: copy.title, body: copy.body, confirmLabel: copy.confirmLabel, cancelLabel: copy.cancelLabel, danger: true, signal: shown });
+      return ok === true && !shown.aborted && !signal.aborted && selectMode;
+    }
+
+    // M8: the shared Move picker (common.js showMoveModal) for the set; its Move hands the folder
+    // to the run. The picker closes as the run starts (the bar shows the progress).
+    function openBulkMovePicker(items) {
+      if (typeof showMoveModal !== 'function') return;
+      const n = items.length;
+      const picker = showMoveModal({ label: n === 1 ? '1 item' : n + ' items' }, allFolders, (targetFolder, ctl) => {
+        ctl.teardown();
+        startBulkRun('move', { targetFolder, confirmedCount: n });
+      });
+      if (picker && typeof picker.teardown === 'function') shownViewSignal().addEventListener('abort', picker.teardown, { once: true });
+    }
+
     async function runBulk(action, opt) {
       if (bulkBusy || !selectMode) return;
+      if (action === 'move') { openBulkMovePicker(bulkTargets(action)); return; }
+      if (action === 'delete') {
+        const targets = bulkTargets(action);
+        if (targets.length === 0) return;
+        bulkBusy = action; // a second tap during the confirm does nothing
+        paintSelectBar();
+        let ok = false;
+        try { ok = await confirmBulkTrash(targets); } finally { bulkBusy = false; }
+        if (!ok) { paintSelectBar(); return; }
+        return startBulkRun(action, { confirmedCount: targets.length });
+      }
+      return startBulkRun(action, opt);
+    }
+    async function startBulkRun(action, opt) {
+      if (bulkBusy || !selectMode) return;
       const shown = shownViewSignal();
-      const items = selectedItemsInGridOrder().filter((it) => bulkActionApplies(action, it, cardCaps));
+      const items = bulkTargets(action);
       if (items.length === 0) return;
+      // M7 / the data-loss brief: what was confirmed is what runs. A selection that changed under
+      // the confirm or the picker (a live update dropped a card) runs nothing and says so.
+      if (opt && typeof opt.confirmedCount === 'number' && opt.confirmedCount !== items.length) {
+        showToast('The selection changed. Nothing was ' + (action === 'delete' ? 'moved to Trash.' : 'moved.'));
+        syncSelection();
+        return;
+      }
       bulkBusy = action;
       paintSelectBar();
       const r = { ok: 0, failed: 0, refusal: null };
@@ -3858,12 +3957,6 @@ const PreviewCards = (function () {
       } catch (_) {
         r.failed = ids.length;
       }
-    }
-
-    // The verbs W3 adds (Move to folder / Move to Trash). Until they land, an id that reaches
-    // here is a per-item failure, never a silent success.
-    async function runBulkOneLater() {
-      return { status: 'failed' };
     }
 
     videoGrid.addEventListener('click', (e) => {
