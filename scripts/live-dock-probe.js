@@ -1,5 +1,5 @@
 'use strict';
-// live-dock-probe - the headless instrument for the v1.401.0 live dock picture (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md,
+// live-dock-probe - the headless instrument for the v1.401.0 live dock picture (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md,
 // W3 + W4). Like scripts/native-video-surface-probe.js it boots the real app on a scratch DATA_DIR with one real H.264 clip (plus a VTT
 // sidecar so captions exist), emulates an iPhone (390x844, touch, reduced motion so the fly-in is instant) and injects a FAKE HOST before
 // any page script; here the host announces nativeVideoDock in the ON runs and only nativeVideo in the OFF (control) runs. Then, per run:

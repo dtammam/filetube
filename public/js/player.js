@@ -1140,7 +1140,7 @@ function nativeActive() { var n = nativeAudioApi(); return !!(n && n.active()); 
 function nativeVideoOn() { var n = nativeAudioApi(); return !!(n && n.videoSurface); }
 // ...and native plays the CURRENT video with its picture (the web's controls, captions and skins are on top; the element is the proxy)
 function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof n.surfaceOwned === 'function' && n.surfaceOwned()); }
-// v1.401.0 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md): the host also announces `nativeVideoDock` - a docked surface
+// v1.401.0 (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md): the host also announces `nativeVideoDock` - a docked surface
 // video shows LIVE above the web view, so the dock carries the bar layout (the X in the bar) and the caption strip (R3)
 function nativeDockLive() { var n = nativeAudioApi(); return !!(n && typeof n.dockLive === 'function' && n.dockLive()); }
 // v1.401.0 (gate r1 adversary C2): the live dock's layout class (html.ft-native-dock) is set at the reparent, before the fly-in pose

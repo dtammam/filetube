@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.401.0 live dock picture, W4 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, R4 + L4): covered = thumbnail.
+// [UNIT] v1.401.0 live dock picture, W4 (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, R4 + L4): covered = thumbnail.
 // While the docked picture is native's layer ABOVE the web view, a web surface opening over the dock (a sheet, a menu, a dialog, a
 // popover, a toast) would be painted UNDER the picture, so the web posts visible: false while any rendered surface overlaps the
 // picture rect and visible: true the moment the dock is clear. The census of the families above the dock's z rung is DERIVED from
@@ -251,6 +251,29 @@ test('R4 (gate r1 adversary C1): the fly-in is judged where the picture LANDS - 
     assert.strictEqual(r.last().visible, false, 'judged at the destination: hidden from the first fly-in frame');
     assert.strictEqual(r.poster(), '/thumbnail/v1', 'the thumbnail flies');
     over.remove();
+  } finally { r.close(); }
+});
+
+test('R4 (gate r2 WARNING 8): a band over the dock\'s BAR alone never covers - not at rest, not during the fly-in (the scan judges the picture\'s rest rect, 16:9 of the dock\'s width); one over the picture\'s rest rect does', async () => {
+  const r = realm();
+  try {
+    const h = hitTest(r);
+    await loaded(r);
+    const bar = h.overlay({ cls: 'ui-toast-host', rect: { x: 0, y: 732, w: 393, h: 40 }, z: 2200, bg: 'transparent', pointerEvents: 'none' }); // the bar band: 730..774, the picture ends at 730
+    h.overlay({ cls: 'ui-toast', parent: bar, rect: { x: 40, y: 732, w: 313, h: 40 }, z: 2200, bg: 'rgb(30, 30, 30)', text: 'Added to the queue.' });
+    await settle(60);
+    r.wrapper().querySelector('.player-minimize').click();
+    assert.strictEqual(r.player.getState(), 'docked');
+    assert.strictEqual(r.last().visible, true, 'the first fly-in post is visible: a toast on the bar is not over the picture');
+    assert.strictEqual(r.poster(), null, 'the live picture flies');
+    await settle(400);
+    assert.strictEqual(r.last().visible, true, 'at rest: still not covered');
+    assert.strictEqual(r.na.dockCovered(), false);
+    bar.firstChild.remove(); h.overlay({ cls: 'ui-toast', parent: bar, rect: { x: 40, y: 700, w: 313, h: 40 }, z: 2200, bg: 'rgb(30, 30, 30)', text: 'A taller toast' }); // the next toast meets the picture (ends 730): the host's childList is the signal
+    await settle(60);
+    assert.strictEqual(r.last().visible, false, 'over the picture: covered');
+    bar.remove(); await settle(60);
+    assert.strictEqual(r.last().visible, true);
   } finally { r.close(); }
 });
 

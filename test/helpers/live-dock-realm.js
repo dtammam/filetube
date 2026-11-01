@@ -1,6 +1,6 @@
 'use strict';
 
-// v1.401.0 live dock picture (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md): the jsdom realm the live-dock tests share -
+// v1.401.0 live dock picture (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md): the jsdom realm the live-dock tests share -
 // the REAL player.js + native-audio.js + host-adapter.js in a phone-shaped window with a fake host, the box derived from where the
 // wrapper IS (the slot, or the dock once reparented) and from its own inline transform (the pull, the FLIP fly-in; a settle keeps the
 // transition's start pose), never a pre-moved rect (LESSONS 2, 11).

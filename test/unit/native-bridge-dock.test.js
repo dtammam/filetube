@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.401.0 live dock picture, W1 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, the Contract): the
+// [UNIT] v1.401.0 live dock picture, W1 (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, the Contract): the
 // `nativeVideoDock` half of the bridge contract AT THE ADAPTER. The conformance net (native-bridge-contract.test.js) proves the
 // tables equal the schema; this file proves they BIND: `video.surface.layer` leaves the page only under `nativeVideoDock` (a host
 // without the capability never receives the field - the whole message is refused, never trimmed to a 'below' it did not mean),

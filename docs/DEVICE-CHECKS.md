@@ -5,17 +5,19 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
-## Minimize follow (v1.400.1)
+## Live mini player (v1.401.0; after the app build that announces nativeVideoDock)
 
-On the iPhone app with the native picture on, a video playing on the watch page (the app needs no new build):
+On the iPhone app build that announces `nativeVideoDock` (filetube-ios v0.17.0), a video playing on the watch page. A failure here is a
+re-root-cause, never a re-patch; the one falsifier to name first: a black or page-coloured flash in the dock box at the end of the fly-in
+or the start of an expand means native applies the layer switch later than the web's two-frame hold.
 
-- [ ] v1.400.1 - (a) Pull down slowly: the picture shrinks and follows the finger continuously, top edge under the finger, no steps.
-- [ ] v1.400.1 - (b) Pull halfway, swipe back up fast, then down again: the picture never trails the controls, no black frame, no clipped strip.
-- [ ] v1.400.1 - (c) During the pull, the title / Like row / Subscribe never show on top of the picture.
-- [ ] v1.400.1 - (d) Let go early (snap back): the picture springs back with the controls.
-- [ ] v1.400.1 - (e) Let go past the commit point: the picture flies into the dock with no black flash, the thumbnail shows in the dock, the watch page does not jump before Home appears, the sound plays on.
-- [ ] v1.400.1 - (f) Tap the mini player: the picture returns in the slot (unchanged from v1.399.0).
-- [ ] v1.400.1 - (g) Safari (no app): the pull looks exactly as before.
+- [ ] v1.401.0 - (a) Pull a playing video down into the dock: the picture keeps playing in the mini player, no black or page-coloured flash at the end of the fly-in; say if the picture trails the dock's frame by a beat during the fly-in.
+- [ ] v1.401.0 - (b) Scroll Home and the Feed under the mini player: no text or thumbnail ever shows on top of the video.
+- [ ] v1.401.0 - (c) The bar: play/pause on the left, X on the right; ten thumb taps each without a mis-tap into expand. Captions on: they show in a strip under the picture, never on it, and the dock does not jump as the lines change.
+- [ ] v1.401.0 - (d) Open the sticker sheet, a card menu and a dialog over the dock, and trigger a toast: the dock shows the thumbnail while covered and the live picture right after; the sound never stops.
+- [ ] v1.401.0 - (e) Tap the mini player: it expands with the picture in place, no flash; pull it down again: still smooth (v1.400.1).
+- [ ] v1.401.0 - (f) Rotate the phone while docked; lock and unlock while docked: the picture is in the dock at the right frame.
+- [ ] v1.401.0 - (g) Music or a podcast in the dock: unchanged (no picture). Safari, and the app before v0.17.0: the mini player exactly as in v1.400.1.
 
 ## Multi-select (v1.400.0)
 

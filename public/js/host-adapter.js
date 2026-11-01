@@ -106,7 +106,7 @@
   // videoSize on audioState = the playing video's presentation size, which the element proxy answers videoWidth / videoHeight from.
   var SURFACE_SPACES = ['document', 'viewport'];
   var SURFACE_FITS = ['contain', 'cover'];
-  // v1.401.0 nativeVideoDock (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, the Contract): one optional field on
+  // v1.401.0 nativeVideoDock (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, the Contract): one optional field on
   // video.surface, `layer` - 'below' (absent = below: the v1.399.0 sibling under the web view, shown through the page's hole) or
   // 'above' (the docked mini player: the picture view moves ABOVE the web view at the rect, touches pass through to the web,
   // all four corners rounded by radius). The web sends `layer` ONLY when the host announces `nativeVideoDock` (fieldCaps below:

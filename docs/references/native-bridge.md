@@ -208,7 +208,7 @@ surface is released** like the other held capabilities (section 6): on every mai
 (the sound plays on) and the next page sends a new `video.surface` when it shows the item; a persisted `pageshow` re-sends it.
 Browsers, the PWA, desktop and app builds without `nativeVideo`: byte-identical.
 
-**Live dock picture (v1.401.0; add-only, plan docs/exec-plans/active/2026-11-01-live-dock-picture.md).** With **`nativeVideoDock`** announced (only
+**Live dock picture (v1.401.0; add-only, plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md).** With **`nativeVideoDock`** announced (only
 ever beside `nativeVideo`), the docked mini player keeps the LIVE picture instead of the thumbnail. Why a new placement: native's layer
 sits BELOW the web view and the page keeps scrolling UNDER the fixed mini player, so a hole cannot hide the page's text from a docked
 picture (v1.400.1 measured it mid-drag). So `video.surface` gains one optional field, **`layer: 'below' | 'above'`** (absent = `'below'`,

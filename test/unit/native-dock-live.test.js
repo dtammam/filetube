@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.401.0 live dock picture, W2 (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, R1 + R2 + R5): under a host that
+// [UNIT] v1.401.0 live dock picture, W2 (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, R1 + R2 + R5): under a host that
 // announces `nativeVideoDock` the DOCKED picture is native's layer ABOVE the web view: the web posts the dock's picture rect in viewport
 // space with `layer: 'above'`, and every layer switch keeps the picture covered by a hole or above the page, never neither. The REAL
 // player.js + native-audio.js run in a phone jsdom realm; the box is moved ONLY through the real dock() / expand() / minimizeToDock

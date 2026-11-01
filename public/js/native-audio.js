@@ -431,8 +431,9 @@
     // While the docked picture is native's layer ABOVE the web view, nothing on the page can paint over it - including a sheet, a
     // menu, a dialog, a popover or a toast that opens over the dock. So while any rendered web surface overlaps the picture rect the
     // web posts visible: false (the layer hides, the thumbnail poster under it shows, the sound never stops) and visible: true the
-    // moment the dock is clear. The census is the browser's own hit test (elementsFromPoint at the picture's centre and four inset
-    // corners: anything above the dock in the stack that is not see-through covers it); the families above the dock's z rung are
+    // moment the dock is clear. The census is the browser's own hit test (elementsFromPoint at the centre and four inset corners of
+    // the picture's box - its rest rect while the fly-in runs: anything above the dock in the stack that is not see-through covers
+    // it); the families above the dock's z rung are
     // enumerated by test/unit/native-dock-covered.test.js from the stylesheets. EVENT-DRIVEN, zero cost while idle (the v1.399.0 gate
     // r1 WARNING): a scan runs only on the next frame after a signal that can cover or clear the dock - body's direct children
     // changing (every ui.js surface is appended to body and removed on close), their class / hidden / style (is-open, a toast host's
@@ -464,6 +465,12 @@
       if (n.childElementCount > 0 || (n.textContent || '').trim()) return false;
       var cs; try { cs = win.getComputedStyle(n); } catch (_) { return false; }
       return TRANSPARENT_BG.test(cs.backgroundColor) && (cs.backgroundImage === 'none' || cs.backgroundImage === '') && (cs.boxShadow === 'none' || cs.boxShadow === '');
+    }
+    // the picture's rest rect: the dock's (untransformed) box at its own 16:9 height (style.css: the docked #media-player is always
+    // 16 / 9 of the dock's width; the strip and the bar sit below it)
+    function dockPictureRest(dockEl) {
+      var d = dockEl.getBoundingClientRect();
+      return { left: num(d.left, 0), top: num(d.top, 0), width: num(d.width, 0), height: Math.min(num(d.height, 0), num(d.width, 0) * 9 / 16) };
     }
     function coverScan(dockEl, r, radius) {
       var doc = win.document;
@@ -505,9 +512,9 @@
       if (dockLive) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(dockEl).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } } // the dock clips its whole box by its own radius (the wrapper has none there)
       else if (!cssFs && !nativeFs && wrapper) { try { radius = Math.max(0, num(parseFloat(win.getComputedStyle(wrapper).borderTopLeftRadius), 0)); } catch (_) { radius = 0; } }
       // R4: the first docked measure and every signal after it, never idle. While the fly-in runs the box is the FLIP pose (it starts
-      // where the slot was, under the header on a scrolled page): the scan looks at the dock's own box, the picture's destination
-      // (gate r1 adversary C1), so a cover is judged where the picture lands, never where it passes
-      if (dockLive && (coverDirty || !coverScanned)) { coverDirty = false; coverScanned = true; try { covered = coverScan(dockEl, live ? dockEl.getBoundingClientRect() : r, radius); } catch (_) { covered = false; } }
+      // where the slot was, under the header on a scrolled page): the scan looks at the PICTURE's rest rect inside the dock's own
+      // box (gate r1 adversary C1, r2 WARNING 8), so a cover is judged where the picture lands, never where it passes nor by the bar
+      if (dockLive && (coverDirty || !coverScanned)) { coverDirty = false; coverScanned = true; try { covered = coverScan(dockEl, live ? dockPictureRest(dockEl) : r, radius); } catch (_) { covered = false; } }
       var fs = cssFs || nativeFs;
       var viewportSpace = fs || dockLive; // the dock is position: fixed
       var x = num(r.left, 0), y = num(r.top, 0);

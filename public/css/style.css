@@ -5984,7 +5984,7 @@ html:has(> body.ft-audio-expanded),
   overflow: hidden;
 }
 
-/* v1.401.0 live dock picture (plan docs/exec-plans/active/2026-11-01-live-dock-picture.md, L2 + L3 + R3). `html.ft-native-dock` is set
+/* v1.401.0 live dock picture (plan docs/exec-plans/completed/2026-11-01-live-dock-picture.md, L2 + L3 + R3). `html.ft-native-dock` is set
    by public/js/native-audio.js only while the iPhone app (the nativeVideoDock capability) draws the docked picture ABOVE the web view:
    the picture box is native's, so (L2) the X leaves the picture's corner for the bar's right end and play/pause stays at the left, both
    a full thumb (--size-touch), and (L3) captions leave the picture for a fixed two-line STRIP between the picture and the bar while

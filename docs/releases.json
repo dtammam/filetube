@@ -3784,5 +3784,11 @@
     "date": "2026-11-01",
     "title": "The picture follows your finger when you pull the player down",
     "intent": "On the iPhone app, pulling the video down to minimize it now shrinks the picture smoothly, right under your finger, instead of jumping into place a second later. Nothing from the page shows over the picture while you pull, letting go early springs it back with the controls, and letting go to minimize flies it into the mini player without a black flash or the page jumping first. Safari and the home-screen app are unchanged."
+  },
+  {
+    "version": "1.401.0",
+    "date": "2026-11-01",
+    "title": "The mini player keeps playing the video on the iPhone app",
+    "intent": "On the iPhone app, pulling a video down into the mini player now keeps the picture playing there, like YouTube, instead of showing its thumbnail. The mini player's bar holds play/pause on the left and the close button on the right, both thumb-sized, and captions show in a small strip under the picture. While a menu, sheet, dialog or message covers the mini player it shows the thumbnail and the sound keeps playing; the picture is back as soon as it is clear. This needs the next iPhone app update; in Safari, the home-screen app and older app builds the mini player is unchanged."
   }
 ]
