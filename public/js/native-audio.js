@@ -637,7 +637,17 @@
     function dockArt(docked) {
       if (!el) return;
       var art = ownedItem && typeof ownedItem.artworkSrc === 'string' ? ownedItem.artworkSrc : '';
-      if (docked && art) { if (el.getAttribute('poster') !== art) el.setAttribute('poster', art); dockPoster = true; }
+      if (docked && art) {
+        if (el.getAttribute('poster') !== art) {
+          el.setAttribute('poster', art);
+          // v1.401.1 (WebKit platform fact, LESSONS 8): a <video> whose poster was REMOVED while it had a renderer does not load or paint a
+          // poster set again until the renderer is rebuilt (black, from the second dock on). dock() rebuilt it BEFORE this set, so rebuild
+          // it once more now: hidden (the global [hidden] rule = display none), a layout read, shown. Once per actual change - the unchanged
+          // path writes nothing. `hidden`, not style.display: the UI ratchet bans JS display writes, and nothing else ever hides this element.
+          try { el.hidden = true; void el.offsetWidth; el.hidden = false; } catch (_) { /* a paint detail never breaks playback */ }
+        }
+        dockPoster = true;
+      }
       else if (dockPoster) { el.removeAttribute('poster'); dockPoster = false; }
     }
     // S5: the hole. `m` is the visible measure, or null to close it.
