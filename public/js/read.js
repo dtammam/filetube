@@ -108,9 +108,11 @@ function readerFontStepper(size, format) {
 //     putting content, a body or a CDATA before <head> - the HTML parser then moved a head-placed meta into
 //     <body>, where browsers ignore it);
 //   - the chapter is re-parsed as HTML (what the frame will build, names case-insensitive: gate r1 W1, an
-//     uppercase <SCRIPT> or HTTP-EQUIV survived an XML-DOM strip) and every script, nested frame, object,
-//     embed, <base>, http-equiv meta (a refresh navigates the frame), inline on* handler and javascript:
-//     URL is removed there, then serialized again.
+//     uppercase <SCRIPT> or HTTP-EQUIV survived an XML-DOM strip); every script, nested frame, object,
+//     embed, <base>, noscript and http-equiv meta (a refresh navigates the frame) is NEUTRALIZED in place (an
+//     empty <template>, so saved places keep their sibling counts), every inline on* handler and code URL is
+//     removed, a link keeps only http(s), mailto or a relative chapter path (a book's own blob: files are
+//     same-origin documents), and the chapter is serialized again; a guard that throws renders a blank page.
 // The serialized chapter has no doctype either way (epub.js serializes the root element), so the page's
 // layout mode is unchanged. Measured: the gate's hostile chapters run nothing in WebKit and Chromium
 // (scripts/page-turn-probe.js csp). The policy names only what runs code or embeds another document; a
@@ -124,15 +126,26 @@ const READER_URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', '
 // in the tests). Returns the markup the frame gets: the policy meta first, then the cleaned chapter.
 function hardenChapterMarkup(output, DomParser) {
   const doc = new DomParser().parseFromString(String(output || ''), 'text/html');
-  for (const el of Array.from(doc.querySelectorAll(READER_CHAPTER_DROP))) el.remove();
+  // Neutralized IN PLACE, never removed (gate r2 adversary): epub.js finds a saved place by counting sibling
+  // elements, so removing one would move every place saved by v1.401 (whose frame kept these elements) and the
+  // reader would then save the wrong place over it. An empty <template> is inert, renders nothing, is valid in
+  // <head> and <body> alike (the HTML parser never moves it), and keeps every sibling count.
+  for (const el of Array.from(doc.querySelectorAll(READER_CHAPTER_DROP))) {
+    el.replaceWith(doc.createElement('template'));
+  }
   for (const el of Array.from(doc.querySelectorAll('*'))) {
+    const link = el.localName === 'a' || el.localName === 'area';
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
-      // any scheme that runs or synthesizes a document, however it is spelled or padded
+      // the value without whitespace or control characters, however it is padded
       const value = Array.from(String(attr.value)).filter((ch) => ch.charCodeAt(0) > 32).join('').toLowerCase();
-      if (name.startsWith('on') || (READER_URL_ATTRS.includes(name) && /^(javascript|vbscript|data:text\/html)/.test(value))) {
-        el.removeAttribute(attr.name);
-      }
+      const scheme = /^([a-z][a-z0-9+.-]*):/.exec(value);
+      const codeUrl = READER_URL_ATTRS.includes(name) && /^(javascript|vbscript|data:text\/html)/.test(value);
+      // A link (HTML or SVG <a>, <area>) keeps only http(s), mailto and a relative chapter path: epub.js swaps a
+      // book's own files for app-origin blob: URLs, and a link that navigates the frame to one would load an
+      // unguarded same-origin document with scripts on (gate r2 security-brief).
+      const linkOut = link && (name === 'href' || name === 'xlink:href') && scheme && !['http', 'https', 'mailto'].includes(scheme[1]);
+      if (name.startsWith('on') || codeUrl || linkOut) el.removeAttribute(attr.name);
     }
   }
   return READER_CHAPTER_CSP_META + doc.documentElement.outerHTML;
@@ -619,8 +632,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // No page view exists before this (every renderTo comes after it). epub.js resolves render() with
     // section.output read after the hooks, so the hardened markup is what renders. Each pool view renders the
     // chapter again: the hardened markup is kept per chapter and reused.
-    try { await book.ready; } catch (_) { /* openFailed shows the error state */ }
-    if (signal.aborted) return null;
+    // openFailed is heard BEFORE the wait (gate r2 qa: book.ready never settles on a failed open - a damaged
+    // file hung on "Opening book..." again, the v1.37.1 class): the wait races the failure and the view's abort.
+    let failed = false;
+    const openFail = new Promise((resolve) => { book.on('openFailed', () => { failed = true; resolve(); }); });
+    const aborted = new Promise((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', resolve, { once: true }); });
+    try { await Promise.race([book.ready, openFail, aborted]); } catch (_) { failed = true; }
+    if (failed) setStatus(root, 'Could not open this book', { error: true, body: 'The file may be damaged or not a valid EPUB.' });
+    if (failed || signal.aborted) return null;
     const hardened = new Map();
     book.spine.hooks.serialize.register((output, section) => {
       if (!section) return;
@@ -628,7 +647,10 @@ if (typeof module !== 'undefined' && module.exports) {
       const key = section.href || section.idref || String(section.index);
       const hit = hardened.get(key);
       if (hit && hit.raw === raw) { section.output = hit.out; return; }
-      const out = hardenChapterMarkup(raw, window.DOMParser);
+      let out;
+      // Fails CLOSED: epub.js only logs a hook's exception and renders the markup as it was (scripts on), so a
+      // guard that throws renders a blank page under the policy instead (gate r2 security-brief NOTE).
+      try { out = hardenChapterMarkup(raw, window.DOMParser); } catch (_) { out = `${READER_CHAPTER_CSP_META}<html><head></head><body></body></html>`; }
       hardened.set(key, { raw, out });
       section.output = out;
     });

@@ -489,3 +489,153 @@ Probe set on the fix tree (before the drain change; `taps` and the end-of-book l
 7/7 WebKit; landing 8/8 at 0 px; place PASS both (blockIndex 11 / 18 = the visible page's first block); reduced PASS both; pdfscroll
 PASS both; link PASS both. Targeted units after the last change: `# pass 103`, `# fail 0` (page-turn, books-reader-ui,
 books-router-nav, pocket-kb-search, shortcut-typing-guards); lint:ui OK (3142); overlay census clean.
+
+Gate: CHANGES r2 @106f4b2a — security-brief
+
+Owned first: my r1 APPROVED missed C1. I reasoned that the meta's position did not matter because the strip existed, and never
+checked that the HTML parser keeps a head-placed meta in <head>. qa and the adversary measured the bypass; my W1/NOTE were the same
+casing class. Static review only (no browser, no git); I read read.js and the plan as the worktree holds them for 106f4b2a.
+
+C1 re-verified: FIXED as prescribed (static trace, consistent with the builder's two-engine probe). Hook.trigger (epub.min.js) runs
+hooks synchronously in registration order. replacements() registers epub.js's own substitute hook synchronously inside unpack(),
+in the same block that resolves the loading.* promises book.ready waits on, so it is in place before `await book.ready` resumes, and
+the guard (read.js:625) runs LAST and reads section.output. Section.render resolves this.output after the serialize hooks;
+IframeView passes that string straight to load() -> srcdoc. No renderTo exists before the registration (openEpub, read.js:600-645).
+read.js never calls book.store(), so the offline-storage serialize hook is never registered. Locations/search/feed use
+section.load, not render, and never reach a frame. The prepended meta is the first bytes the frame parses, so the HTML parser puts it
+first in <head>, and nothing it parses later can move it. So any script-class markup that survives the parse/serialize/parse round
+trip (template contents, which querySelectorAll does not enter; noscript under DOMParser's scripting-off parse; foreign-content
+re-nesting) sits after an enforcing script-src 'none'. The strip is now the belt, the policy is the brace. Cache (read.js:628-633):
+keyed by href, reused only when the raw markup is byte-equal. Sound. W1 and my NOTE are closed by the HTML-side strip.
+
+WARNING (new class, plausible, NOT browser-verified; I wrongly called it contained in r1): navigation to the book's own blob:
+assets. epub.js's substitute hook runs BEFORE the guard, so asset references in a chapter are already app-origin blob: URLs when
+hardenChapterMarkup sees them, and the guard only filters javascript:/vbscript:/data:text/html. epub.js's link munging (a[href]
+only) forces target=_blank on blob: links, which the no-popups sandbox blocks. But navigational elements it does not munge (<area
+href>, SVG <a xlink:href>) keep a blob: target, and a tap navigates the frame itself. The new document is app-origin (the blob's
+creator), keeps the frame's allow-same-origin allow-scripts, and is a NEW document the chapter's meta does not govern (the reader page
+sends no CSP to inherit). If the asset is a document type that runs script, that is the parent compromise C1 was. It needs one tap
+on a book link, which is normal reading. I traced the guard and epub.js paths statically. I did NOT run browser navigation or policy
+inheritance for blob documents, so this is a strong suspicion. Prescription: in hardenChapterMarkup, remove href / xlink:href from
+every `a` (any namespace) and `area` whose normalized value has any scheme except http/https/mailto (blob: and every data: included).
+Leave src and SVG <image> references alone, because images need their blob: URLs. Add a probe case per element in `csp both`.
+Re-verdict on that.
+
+NOTE: fail-open. epub.js's Hook.trigger catches and only logs a hook's exception, so if hardenChapterMarkup ever threw, the
+unhardened output would render with scripts on. I found no input that throws it. Hardening: wrap the guard and, on error, set
+section.output to an empty policy-only document.
+
+NOTE: still open from r1 and in ROADMAP Planned: no default-src (remote image/CSS beacons on open), and self-navigation to remote
+or opaque data: documents via <area>/SVG links (cross-origin, so contained). The blob: case above is split out because it is not
+cross-origin.
+
+Gate: CHANGES r2 @106f4b2a — qa
+
+Delta on 439b7150..106f4b2a, each r1 qa finding:
+- r1 CRITICAL P9 bypass: FIXED as prescribed (prefix + HTML re-parse strip, serialize hook after book.ready). Verified,
+  real server + reader (sandbox /tmp/qa-v1402-r2, qa/p9.js): body-first <SCRIPT>, body-first srcdoc frame, CDATA before
+  head, head-first <SCRIPT>, CDATA img onerror, uppercase refresh: ran nothing in Chromium (all six) and WebKit
+  (body-first <SCRIPT>, CDATA before head); the policy meta is the head's first element every time, the frame stays
+  about:srcdoc. `page-turn-probe.js csp both`: PASS (incl. "csp shapes" 5 chapters x 30 frame reads, both engines).
+  The epub.js order claim checked at source: Book.replacements() registers its serialize hook synchronously before the
+  loaded.* promises' continuations run, and Section.render resolves this.output read after the hooks.
+- r1 WARNING P8 TOC to page 1: FIXED. qa/toc.js (Chromium): place 1:4 saved block 14 -> tap "Chap 2" -> shows "Chap 2",
+  saved {spineIndex:2, blockIndex:0}. here() now carries placeSpine; only the resume may fall back to the start.
+- r1 WARNING lying comments: FIXED (the block comment now describes the markup guard).
+- r1 NOTEs: epubLocationReport comment fixed; v1.37.3 removal now explained + device check (j); READER_PDF_LAYOUT_KEY
+  used everywhere; resolveBookLink exact-first; ROADMAP follow-ups added (the column-one-page-early entry exists now).
+
+NEW, introduced by the fix:
+- WARNING (regression, read.js ~L622 + ~L640): `await book.ready` now runs BEFORE `book.on('openFailed', ...)` is
+  subscribed. epub.js never resolves book.ready on an open failure (open().catch only emits OPEN_FAILED), so the await
+  hangs and the subscription is never made: the v1.37.1 "hang at Opening book..." the comment beside it guards against.
+  Verified (qa/broken.js, Chromium, the probe book overwritten with junk after the scan): 106f4b2a after 12 s shows
+  "Opening book…"; the same script on 439b7150 shows "Could not open this book / The file may be damaged or not a valid
+  EPUB." Fix: subscribe openFailed before the await, and race book.ready against the failure (and the abort signal).
+Checked, no finding: the pending-tap queue (drain on every rig-ready and every tap; a turn that cannot start clears the
+queue; PENDING_MAX 12).
+Measured (Node 22.23.1): eslint 0 errors / 6 warnings (common.js, pre-existing); lint:ui OK; overlay-containment clean
+(0 violations); the 5 targeted unit files: 103 tests, 103 pass, 0 fail.
+
+Gate: CHANGES r2 @106f4b2a — adversary
+
+Delta on 439b7150..106f4b2a. Mutants ran in a /tmp `git archive 106f4b2a` sandbox (worktree untouched); Node 22.23.1; Playwright
+Chromium + WebKit; one browser probe at a time. Instruments: the 5 targeted unit files 103/103 pass; lint:ui OK; overlay-containment
+clean (0); eslint on page-turn.js, read.js, the probe and the two changed tests: 0 problems. `page-turn-probe.js csp both`: PASS
+(csp + csp shapes, both engines).
+
+r1 findings:
+- C1 FIXED as prescribed. My r1 e2e-csp chapter (element before head) now gives metaParent HEAD and inlineRan false in both engines.
+  I widened it to 9 chapters: normal, element before head, text before head, body before head, CDATA before head, an SVG-root spine
+  item, a processing instruction before head, raw-text title/style holding `</title><body>`, and an .html-extension chapter with a
+  `<p>` and a doctype before `<html>`. In both engines every chapter had the policy meta as head's first element and refused the
+  page-appended inline script. I checked the order claim in epub.min.js: Book.replacements() registers its serialize hook
+  synchronously in unpack(), in the same block that resolves the loaded.* promises book.ready waits on. Hook.trigger runs hooks in
+  order and synchronously, and Section.render resolves this.output after the hooks. No other code writes section.output except
+  load/unload, and IframeView hands that string to srcdoc. Locations use section.load, not render. read.js passes no `store`, so the
+  "offline" serialize hook (which would register AFTER the guard and rebuild the output from the original markup) is never
+  registered. NOTE: if a store is ever added, that hook undoes the guard. Bind it with a lock.
+- W1 FIXED. My uppercase-refresh / uppercase-SCRIPT chapter: the frame stays about:srcdoc in both engines and has 0 scripts.
+- W2 FIXED. 10 tap-zone taps, fresh data folder per run, settle 1.5 s: 40 / 60 / 120 ms apart -> 10 / 10 / 10 pages in Chromium AND
+  WebKit, end state `q0 f1 b1 s0 d0`. My r1 numbers with a 300 ms settle partly counted a queue still draining: the r1 unit repro
+  (3 taps -> 2 pages) was the binding proof. The new five-taps test kills Q3, Q4 and Q6 by name.
+- W3 FIXED. Deleting the serialize-hook registration, registering it before book.ready, reading the trigger's argument instead of
+  section.output, dropping the prefix, and appending the meta instead of prefixing it all die by name ("reader P9 wiring: ...",
+  "P9 hardenChapterMarkup: after the frame's HTML parse ..."). The iframe, noscript, javascript: and on* strips die too.
+- W4: with Dean (not re-judged).
+
+NEW, introduced by the strip (r1 started it, r2 widened it):
+- WARNING N-W1 (P8, existing bookmarks move): hardenChapterMarkup REMOVES elements (script, iframe, frame, object, embed, base,
+  meta[http-equiv], noscript). epub.js CFIs count element siblings by position, so a place saved by v1.401 (whose frame kept those
+  elements) resolves to a different node when a removed element comes before it at the same level. The reader then saves the
+  moved place over the bookmark.
+  - Repro (cfishift.js): one chapter, `<h1>`, 3 paragraphs, `<noscript>n</noscript><script></script><object data="none.bin">`,
+    then 30 paragraphs.
+  - Base tree 857a2c3f: 4 turns save `epubcfi(/6/2!/4/64/1:0)`, block 28, showing q27, and reopening it shows q27.
+  - Branch, same locator posted to /progress: the reader opens on q29 and saves `epubcfi(/6/2!/4/62/1:0)`, block 30.
+  - The bookmark moved forward and the old one was overwritten. blockIndex stays consistent: Listen and the Feed count blocks, not
+    removed elements.
+  - Scope: books with those elements in the body flow (EPUB3 interactive, noscript fallbacks, embedded objects).
+  - Fix: neutralize in place, never remove. Replace each dropped element with an inert empty element (e.g. `<span hidden>`) so every
+    element index is kept. The prepended policy is the defense either way. Add a test that the element count at each level is the
+    same before and after hardening.
+- NOTE: unbound guards on the r2 code paths (behavior correct today). Survivors: Q17, where any jump may fall back to the book's start
+  instead of only the resume. That is the data path qa's r1 TOC finding was about. Only a TOC entry that resolves to nothing is
+  bound, not a refused CFI from a font change or rebuild. Also: Q18 here() dropping placeSpine; Q2 a tap not calling drain()
+  (rig-ready also drains); Q15 the cache reusing a hit without the raw compare. Q20 is an equivalent mutant (attr.name is already
+  lowercase in an HTML document).
+- Agreed with, not re-measured by me: qa's openFailed hang (await book.ready before the openFailed subscription) and security-brief's
+  blob: navigation suspicion (<area>/SVG xlink:href to the book's own app-origin assets). I did not build the navigation case.
+
+### Fix round r2 -> r3 (builder, 2026-11-03)
+
+**Dean's ruling on the Paint acceptance line (AskUserQuestion, 2026-11-03): "Ship, disclosed"** - the EPUB's one burst of 3 Paint
+events on a turn's first folded frame is accepted (frames hold 16.7 ms, 0 over 20 ms, ~1.7 ms/frame; PDF 0; the approved prototype 42);
+it stays a ROADMAP follow-up.
+
+Reviewed sha 106f4b2a (every r1 finding confirmed fixed by all three seats); the three new r2 findings, answered in the commit that
+carries this section:
+
+- **qa WARNING, damaged EPUB hangs on "Opening book".** `openFailed` is subscribed before the wait, and the wait races `book.ready`,
+  the failure and the view's abort; a failed open shows the error state and builds no page view. Unit: "reader: a damaged book
+  (epub.js openFailed; book.ready never settles) shows the error state, never a stuck 'Opening book'". Probe `broken both` (the
+  file overwritten with junk after the scan): "Could not open this book" after 8 s in Chromium and WebKit.
+- **adversary WARNING, places saved by v1.401 move.** Dropped elements are NEUTRALIZED in place (an empty `<template>`, inert, valid
+  in head and body, never moved by the HTML parser): every kept element keeps its index and child count at every level. Unit:
+  "neutralized elements keep every sibling count, so places saved before v1.402 still land" (against the frame v1.401 built from
+  the same chapter). Disclosed: a place saved INSIDE a `<noscript>`'s content cannot land (its children are gone).
+- **security-brief WARNING, a link to the book's own file.** A link (HTML `<a>`, `<area>`, SVG `<a>`, `href` and `xlink:href`) keeps
+  only http(s), mailto and a relative chapter path. Unit: "links keep http(s), mailto and relative chapter paths; blob:, data: and
+  other schemes go". Probe `csp both`, new shape "links to the book's own scripted SVG" (an `<area>`, an SVG `<a>` and an `<a>`
+  to the book's SVG that carries a script; every link clicked): 6 shapes, 36 frame reads per engine, book code that ran `[]`, 0 frames
+  navigated away, Chromium and WebKit. **The probe sees the attack:** with the link filter disabled the same run reads 18 (Chromium) /
+  30 (WebKit) frames navigated to `blob:http://...` and in WebKit the SVG's script RAN (`["blob-svg" x6]`) - the r2 suspicion was a
+  real same-origin compromise path.
+- **security-brief NOTE, fails open.** The guard's call is wrapped: a throw renders an empty page under the policy.
+- **adversary NOTE Q17/Q18.** "reader P8: a re-anchor epub.js refuses (font change) falls back to the place's CHAPTER, never the
+  book's start".
+
+Mutants (restored byte-identical each): remove instead of neutralize, links unfiltered, ready not raced, no chapter fallback, `here()`
+without the chapter: 5 of 5 killed by name. Targeted units: page-turn + books-reader-ui `# pass 54`, `# fail 0`.
+Probe set on this tree: smoke, trigger (7/7 x2), landing (8/8 at 0 px), place, reduced, taps (10/10/10 x2 engines), pdfscroll, link,
+csp, broken: all PASS; frames: EPUB 1.68 / 1.73 ms/frame, 0 over 20 ms, 3 Paint events (accepted above), PDF unchanged.

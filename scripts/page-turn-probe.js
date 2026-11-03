@@ -19,6 +19,7 @@
 //               the choice is remembered; Turn pages brings the turning pages back
 //     link      an in-book link moves the whole pool: the visible page AND the turn after it are the target's
 //     taps      ten tap-zone taps at 60 / 120 / 200 ms apart land ten pages (quick taps chain, none lost)
+//     broken    a damaged EPUB shows the "Could not open this book" state, never a stuck "Opening book"
 //     csp       P9: a hostile EPUB (inline script, onerror, javascript: link, SVG script, meta refresh) runs NONE
 //               of its code, while the reader still hears a drag that starts on its text
 // Not a CI gate: a proof tool. Prints one line per case and a PASS/FAIL summary; exit 1 on any failure.
@@ -40,12 +41,13 @@ const { buildEpub, buildZip } = require(path.join(REPO, 'test/helpers/build-zip'
 
 // An EPUB whose chapters are RAW XHTML documents (buildEpub wraps a body; the gate's hostile shapes need
 // content before <head>, a body before <head>, a CDATA section, an SVG root).
-function buildRawEpub(title, docs) {
+function buildRawEpub(title, docs, assets = []) {
   const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title><dc:creator>X</dc:creator></metadata>`
-    + `<manifest>${docs.map((d, i) => `<item id="c${i}" href="c${i}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest><spine>${docs.map((_, i) => `<itemref idref="c${i}"/>`).join('')}</spine></package>`;
+    + `<manifest>${docs.map((d, i) => `<item id="c${i}" href="c${i}.xhtml" media-type="application/xhtml+xml"/>`).join('')}${assets.map((a, i) => `<item id="a${i}" href="${a.href}" media-type="${a.type}"/>`).join('')}</manifest><spine>${docs.map((_, i) => `<itemref idref="c${i}"/>`).join('')}</spine></package>`;
   const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
   return buildZip([{ name: 'mimetype', data: 'application/epub+zip', method: 0 }, { name: 'META-INF/container.xml', data: container }, { name: 'OEBPS/content.opf', data: opf },
-    ...docs.map((d, i) => ({ name: `OEBPS/c${i}.xhtml`, data: `<?xml version="1.0" encoding="utf-8"?>${d}` }))]);
+    ...docs.map((d, i) => ({ name: `OEBPS/c${i}.xhtml`, data: `<?xml version="1.0" encoding="utf-8"?>${d}` })),
+    ...assets.map((a) => ({ name: `OEBPS/${a.href}`, data: a.data }))]);
 }
 
 // ---- fixtures
@@ -487,8 +489,12 @@ async function csp(env) {
     ['body before head, srcdoc frame', `<html xmlns="${X}"><body>${filler}<iframe srcdoc="&lt;script&gt;${PWN('srcdoc')}&lt;/script&gt;"></iframe></body><head/></html>`],
     ['CDATA before head', `<html xmlns="${X}"><![CDATA[><iframe srcdoc="<script>${PWN('cdata')}</script>">]]><head><title>t</title></head><body>${filler}</body></html>`],
     ['uppercase refresh to the app', `<html xmlns="${X}"><head><META HTTP-EQUIV="Refresh" content="0;url=/robots.txt"/><title>t</title></head><body>${filler}<P ONCLICK="${PWN('onclick')}">tap</P></body></html>`],
+    // gate r2 (security-brief): links to the book's OWN script-bearing SVG (epub.js swaps it for a same-origin
+    // blob: URL) from an <area> and an SVG <a>; the probe clicks every link in the frame
+    ['links to the book\'s own scripted SVG', `<html xmlns="${X}" xmlns:xlink="http://www.w3.org/1999/xlink"><head><title>t</title></head><body>${filler}<img usemap="#m" src="evil.svg" width="60" height="60" alt=""/><map name="m"><area id="ar" href="evil.svg" shape="rect" coords="0,0,60,60"/></map><svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><a id="sa" xlink:href="evil.svg"><rect width="60" height="60"/></a></svg><a id="ha" href="evil.svg">h</a></body></html>`],
   ];
-  fsx.writeFileSync(path.join(booksDir, 'shapes.epub'), buildRawEpub('Shapes', shapes.map((x) => x[1])));
+  const evilSvg = `<svg xmlns="http://www.w3.org/2000/svg"><script>${PWN('blob-svg')}</script><rect width="10" height="10"/></svg>`;
+  fsx.writeFileSync(path.join(booksDir, 'shapes.epub'), buildRawEpub('Shapes', shapes.map((x) => x[1]), [{ href: 'evil.svg', type: 'image/svg+xml', data: evilSvg }]));
   await scanBooks();
   const shapesId = Object.values(booksDb.read().items).find((i) => i.title === 'Shapes').id;
   for (const engine of ENGINES) {
@@ -504,6 +510,7 @@ async function csp(env) {
           if (!d) { out.push({ cross: true }); continue; }
           const first = d.head && d.head.firstElementChild;
           const p = d.querySelector('p[onclick], p'); if (p) p.click();
+          for (const l of d.querySelectorAll('a, area')) { try { l.dispatchEvent(new d.defaultView.MouseEvent('click', { bubbles: true, cancelable: true })); } catch (_) { /* fine */ } }
           out.push({ url: d.location.href.slice(0, 12), policyFirst: !!(first && first.getAttribute('http-equiv') === 'Content-Security-Policy'), scripts: d.querySelectorAll('script').length, frames: d.querySelectorAll('iframe').length });
         }
         return out;
@@ -647,11 +654,35 @@ async function taps(env) {
   return fail;
 }
 
+async function broken(env) {
+  let fail = 0;
+  const fsx = require('node:fs');
+  const file = path.join(process.env.DATA_DIR, 'books', 'broken.epub');
+  fsx.writeFileSync(file, buildEpub({ title: 'Broken', author: 'X', chapters: ['<p>x</p>'] }));
+  await env.server.scanBooks();
+  const id = Object.values(env.server.booksDb.read().items).find((i) => i.title === 'Broken').id;
+  fsx.writeFileSync(file, Buffer.alloc(4096, 7)); // the file goes bad after the scan
+  for (const engine of ENGINES) {
+    const browser = await pw[engine].launch();
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await ctx.addCookies([{ name: env.cookie.split('=')[0], value: env.cookie.split('=')[1].split(';')[0], url: env.base }]);
+    const page = await ctx.newPage();
+    await page.goto(`${env.base}/read.html?b=${encodeURIComponent(id)}`, { waitUntil: 'load' });
+    await page.waitForTimeout(8000);
+    const st = await page.evaluate(() => document.getElementById('reader-status').textContent.trim().slice(0, 60));
+    const ok = /Could not open this book/.test(st);
+    if (!ok) fail++;
+    console.log(`${ok ? 'PASS' : 'FAIL'} broken ${engine}: after 8 s the status reads "${st}"`);
+    await browser.close();
+  }
+  return fail;
+}
+
 if (require.main === module) {
   (async () => {
     const env = await boot();
     const modes = { smoke };
-    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll, link, taps });
+    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll, link, taps, broken });
     if (!modes[MODE]) throw new Error(`unknown mode ${MODE}`);
     const fail = await modes[MODE](env);
     console.log(`${MODE}: ${fail ? 'FAIL' : 'PASS'} (${fail} failing)`);

@@ -223,7 +223,7 @@ test('books: Scan is busy (spinner, no double request) until the refresh', async
 // ------------------------------------------------------------------ Reader
 const READER_TOKENS = ['--reader-paper-fg', '--reader-paper-bg', '--reader-sepia-fg', '--reader-sepia-bg', '--reader-night-fg', '--reader-night-bg'];
 
-function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
+function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, broken = false }) {
   const dom = new JSDOM(`<!DOCTYPE html><head></head><body>${viewRootOf('read.html')}</body>`,
     { url: 'http://localhost/read.html?b=b1', pretendToBeVisual: true });
   setGlobals(dom);
@@ -256,7 +256,7 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
       themes: { override: (k, v) => flips.overrides.push([k, v]), fontSize: (v) => flips.fontSize.push(v) },
       hooks: { content: { register: () => {} } },
       on: (ev, fn) => { (handlers[ev] = handlers[ev] || []).push(fn); },
-      display: async (x) => { flips.displayed.push(x); },
+      display: async (x) => { flips.displayed.push(x); if (typeof x === 'string' && x.startsWith('refuse')) throw new Error('No Section Found'); },
       next: async () => { flips.next++; },
       prev: async () => { flips.prev++; },
       currentLocation: () => ({ start: { cfi: r.cfi, index: 0, displayed: { page: 1, total: 9 } } }),
@@ -272,7 +272,7 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
   // guard registered before it is undone here as it is in the browser.
   const epubOwnHook = (t, e) => { e.output = t.replace(/OEBPS\//g, 'blob:x/'); };
   win.ePub = () => ({
-    on: () => {},
+    on: (ev, fn) => { if (ev === 'openFailed') { flips.openFailed = fn; if (broken) setTimeout(fn, 0); } },
     renderTo: (el, opts) => makeRendition(el, opts),
     spine: {
       spineItems: [{ href: 'c1.xhtml' }, { href: 'c2.xhtml' }],
@@ -281,7 +281,7 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
         serialize: { register: (fn) => { flips.serializeHooks.push(fn); flips.order.push('serialize'); } },
       },
     },
-    ready: Promise.resolve().then(() => { flips.serializeHooks.push(epubOwnHook); flips.order.push('epub-hook'); }),
+    ready: broken ? new Promise(() => {}) : Promise.resolve().then(() => { flips.serializeHooks.push(epubOwnHook); flips.order.push('epub-hook'); }),
     locations: { length: () => 0, generate: async () => {}, save: () => '', load: () => {} },
     loaded: { navigation: Promise.resolve({ toc }) },
     destroy: () => {},
@@ -536,6 +536,36 @@ test('reader P8: a Contents entry that names no chapter leaves the reader where 
   rows[1].click();
   await flush(10);
   assert.deepStrictEqual(r.flips.displayed.slice(-1), ['c2.xhtml#s'], 'a chapter entry jumps to the spine\'s own href, fragment kept');
+});
+
+test('reader: a damaged book (epub.js openFailed; book.ready never settles) shows the error state, never a stuck "Opening book" (gate r2 qa)', async () => {
+  const r = mountReader({ detail: EPUB, broken: true });
+  r.releaseDetail();
+  await flush(20);
+  await frame();
+  const status = r.doc.getElementById('reader-status');
+  assert.strictEqual(status.hidden, false);
+  assert.match(status.textContent, /Could not open this book/);
+  assert.strictEqual(r.flips.renditions, 0, 'no page view is built for a book that failed to open');
+});
+
+test('reader P8: a re-anchor epub.js refuses (font change) falls back to the place\'s CHAPTER, never the book\'s start (gate r2 adversary Q17/Q18)', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const visibleEl = r.doc.querySelector('.pt-rig.is-top > .pt-mask > .pt-inner > .reader-epub-page');
+  const visible = r.flips.pool.find((x) => x.el === visibleEl);
+  visible.fire('relocated', { start: { cfi: 'refuse-this-cfi', index: 3, displayed: { page: 1, total: 9 } } });
+  const before = r.flips.displayed.length;
+  r.doc.getElementById('reader-settings-btn').click();
+  r.doc.querySelector('#reader-font-larger').click(); // a font change re-anchors the pool on the place
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const after = r.flips.displayed.slice(before);
+  assert.ok(after.includes('refuse-this-cfi'), 'the pool re-anchors on the place');
+  assert.ok(after.includes(3), "a refused CFI falls back to the place's chapter");
+  assert.ok(!after.includes(undefined), "never display() with no target (the book's start)");
 });
 
 test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-root)', async () => {

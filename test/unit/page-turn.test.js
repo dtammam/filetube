@@ -373,6 +373,12 @@ test('P9 hardenChapterMarkup: after the frame\'s HTML parse the policy is the FI
     assert.ok(policyFirst(frame), `${name}: the policy is the first element of the frame's <head>`);
     assert.strictEqual(frame.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').length, 1, `${name}: exactly one policy`);
     assert.strictEqual(frame.querySelectorAll('script, iframe, frame, object, embed, base, noscript').length, 0, `${name}: no script, frame, object, embed, base`);
+    for (const el of frame.querySelectorAll('a, area')) {
+      for (const attrName of ['href', 'xlink:href']) {
+        const v = (el.getAttribute(attrName) || '').toLowerCase();
+        assert.ok(!/^[a-z][a-z0-9+.-]*:/.test(v) || /^(https?|mailto):/.test(v), `${name}: a link keeps only http(s) / mailto / relative (${v})`);
+      }
+    }
     assert.strictEqual(frame.querySelectorAll('meta[http-equiv]:not([http-equiv="Content-Security-Policy"])').length, 0, `${name}: no refresh`);
     assert.deepStrictEqual(handlers(frame), [], `${name}: no inline handler`);
     for (const el of frame.querySelectorAll('[href], [src]')) {
@@ -382,6 +388,44 @@ test('P9 hardenChapterMarkup: after the frame\'s HTML parse the policy is the FI
   }
   assert.match(read.READER_CHAPTER_CSP, /(^|; )script-src 'none'(;|$)/);
   assert.match(read.READER_CHAPTER_CSP, /frame-src 'none'/);
+});
+
+test('P9 hardenChapterMarkup: neutralized elements keep every sibling count, so places saved before v1.402 still land (gate r2)', () => {
+  const xml = `<html xmlns="${XHTML}"><head><title>t</title><script>x</script><base href="/"/></head><body><h1>H</h1><p>a</p><p>b</p>`
+    + '<noscript><p>n</p></noscript><script>x</script><object data="x"></object><div><p>c</p><iframe src="x"></iframe><p>d</p></div>'
+    + Array.from({ length: 5 }, (_, i) => `<p>q${i}</p>`).join('') + '</body></html>';
+  // the frame v1.401 built: the same XML serialization, parsed as HTML, nothing removed
+  const xmlWin = new JSDOM('', { contentType: 'text/html' }).window;
+  const serialized = new xmlWin.XMLSerializer().serializeToString(new xmlWin.DOMParser().parseFromString(xml, 'application/xhtml+xml').documentElement);
+  const before = new JSDOM(serialized).window.document;
+  const { frame } = frameOf(xml);
+  // a neutralized element's own children are gone (a place saved INSIDE a <noscript> cannot land; disclosed);
+  // every kept element keeps its position and its own child count
+  const NEUTRAL = /^(script|iframe|frame|object|embed|base|noscript|template)$/;
+  const shape = (el) => Array.from(el.children).map((c) => (NEUTRAL.test(c.localName) ? 'x' : `${c.localName}:${c.children.length}`));
+  assert.strictEqual(frame.body.children.length, before.body.children.length, 'the body keeps its element count');
+  assert.deepStrictEqual(shape(frame.body), shape(before.body), 'every kept element keeps its index and child count');
+  const div = (d) => d.body.querySelector('div');
+  assert.deepStrictEqual(shape(div(frame)), shape(div(before)), 'a nested level keeps its counts too (an iframe between two paragraphs)');
+  assert.strictEqual(frame.head.children.length, before.head.children.length + 1, 'the head gains only the policy meta');
+  const qBefore = Array.from(before.body.children).findIndex((c) => c.textContent === 'q2');
+  const qAfter = Array.from(frame.body.children).findIndex((c) => c.textContent === 'q2');
+  assert.strictEqual(qAfter, qBefore, 'a paragraph after the neutralized elements keeps its index (its CFI step)');
+});
+
+test('P9 hardenChapterMarkup: links keep http(s), mailto and relative chapter paths; blob:, data: and other schemes go (HTML <a>, <area>, SVG <a>)', () => {
+  const { frame } = frameOf(`<html xmlns="${XHTML}" xmlns:xlink="http://www.w3.org/1999/xlink"><head/><body>`
+    + '<a id="rel" href="c2.xhtml#n">r</a><a id="web" href="https://example.com/">w</a><a id="mail" href="mailto:a@b.c">m</a>'
+    + '<a id="blob" href="blob:http://127.0.0.1/abc">b</a><a id="data" href="data:image/svg+xml,&lt;svg/&gt;">d</a>'
+    + '<map name="m"><area id="area" href="blob:http://127.0.0.1/def" shape="rect" coords="0,0,9,9"/></map>'
+    + '<svg xmlns="http://www.w3.org/2000/svg"><a id="svga" xlink:href="blob:http://127.0.0.1/ghi"><text>s</text></a></svg>'
+    + '<img id="img" src="blob:http://127.0.0.1/img"/></body></html>');
+  const href = (id) => { const el = frame.getElementById(id); return el.getAttribute('href') || el.getAttribute('xlink:href'); };
+  assert.strictEqual(href('rel'), 'c2.xhtml#n');
+  assert.strictEqual(href('web'), 'https://example.com/');
+  assert.strictEqual(href('mail'), 'mailto:a@b.c');
+  for (const id of ['blob', 'data', 'area', 'svga']) assert.strictEqual(href(id), null, `${id}: no navigation to a non-web scheme`);
+  assert.strictEqual(frame.getElementById('img').getAttribute('src'), 'blob:http://127.0.0.1/img', "an image keeps epub.js's blob: URL");
 });
 
 test('P9 hardenChapterMarkup: an ordinary chapter keeps its text, structure and attributes', () => {
