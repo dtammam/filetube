@@ -443,6 +443,21 @@
 
 ### Features
 
+- **Page turn (v1.402.0) follow-ups** _(2026-11-03, the build and its gate; none blocks the release)_: (1) the PDF **Scroll
+  pages** column (today's openPdf, kept as-is) can settle one page early on open in Chromium: it scrolls to the page before the
+  canvases around it have rendered and they then grow (probe `pdfscroll`: page 3 opened at page 2; WebKit exact); (2) an EPUB
+  turn re-records paint ONCE, on its first folded frame (3 Paint events in the Chrome trace; 0 for a PDF and for one-page
+  chapters; frames hold 16.7 ms) - the long chapter frame's off-page columns entering Chromium's culled area; tried and
+  falsified in the build: the press, the pointer-events switch, the mask's rest pose, the back's opacity; (3) desktop: a
+  sideways mouse drag on the text is a page turn now, so text is selected by a vertical drag or a double-click; (4) the
+  chapter policy has no `default-src`, so a book can load remote images / CSS (a beacon on open; pre-existing before P9):
+  add `img-src 'self' blob: data:` and friends after measuring real books; (5) epub.js routes `<a href>` only - `<area>` and
+  SVG `xlink:href` links in a book navigate the frame itself (contained by the sandbox and policy, but the page leaves the
+  book until a turn); (6) the edge tap zones (22% each side) sit over the start and end of text lines, so a link there cannot
+  be tapped (pre-existing); (7) two font-size steps move the place back a few blocks (pre-existing; measured on main too);
+  (8) 120 Hz in the iOS app: relayed to the iOS Root (WKWebView caps page rendering near 60 fps; only a private toggle is
+  known).
+
 - **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
   spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
   selection freeze, not directly (qa r2 INFO) - export it, unit-test it, retitle the two "r1 A1" full-chain tests to what they

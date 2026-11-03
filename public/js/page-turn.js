@@ -221,7 +221,8 @@ function createPageTurn(opts) {
   let swapAfter = null;
   let T = null;       // the turn in progress
   let drag = null;
-  let pending = 0;    // a tap or arrow that waits for its rig to be ready
+  let pending = [];   // taps and arrows that wait for their rig (oldest first): quick taps chain, none is lost
+  const PENDING_MAX = 12;
   let destroyed = false;
   let lastDragEnd = -1e9;
   let current = null; // the viewer showing the base page on the top rig (its place is the reader's place)
@@ -366,7 +367,7 @@ function createPageTurn(opts) {
   // A jump starts a generation: every viewer re-parks from page 0 of the new place.
   function jump(to) {
     if (T && T.raf) caf(T.raf);
-    T = null; drag = null; pending = 0; swapAfter = null;
+    T = null; drag = null; pending = []; swapAfter = null;
     host.classList.remove('is-dragging');
     gen += 1; base = 0; anchor = to;
     settledOnce = false;
@@ -375,15 +376,30 @@ function createPageTurn(opts) {
     pointRig(rigs.f); pointRig(rigs.b);
   }
   // The place as DATA on the host (gen:base, and whether a turn is in flight), for probes and the tests.
-  function stamp() { host.dataset.ptPlace = `${gen}:${base}`; host.dataset.ptTurning = T ? '1' : '0'; }
+  function stamp() {
+    host.dataset.ptPlace = `${gen}:${base}`;
+    host.dataset.ptTurning = T ? '1' : '0';
+    // the engine's state for probes: queued taps, which rigs are ready (forward, back), a pending swap
+    if (rigs) host.dataset.ptState = `q${pending.length} f${rigs.f.ready ? 1 : 0} b${rigs.b.ready ? 1 : 0} s${swapAfter ? 1 : 0} d${drag ? 1 : 0}`;
+  }
   function onRigReady(r) {
     maybeSwap(r);
     if (r === topRig() && !settledOnce && !T) { settledOnce = true; stamp(); if (opts.onPlace) opts.onPlace(current); }
-    if (pending && !T) {
-      const dir = pending;
-      const want = dir > 0 ? rigs.f : rigs.b;
-      if (r === want) { pending = 0; turnAuto(dir); }
-    }
+    drain();
+    stamp();
+  }
+  // Run the oldest waiting tap once its rig is ready and nothing is in flight. Called on every rig-ready AND on
+  // every new tap, so no missed wake-up can strand the queue (the build's tap loop left one tap behind at the
+  // book's end, and every later tap queued behind it).
+  function drain() {
+    if (destroyed || !rigs || T || !pending.length) return;
+    const dir = pending[0];
+    const r = dir > 0 ? rigs.f : rigs.b;
+    if (!r.ready) return;
+    pending.shift();
+    turnAuto(dir, true);
+    // More taps are waiting: land this one at once and go on (the prototype's tap-during-a-turn, chained).
+    if (pending.length) finishNow();
   }
 
   function beginTurn(dir, cy) {
@@ -459,14 +475,16 @@ function createPageTurn(opts) {
     T.p = 1; renderRig(T.rig, 1, 0); done(1);
     return true;
   }
-  function turnAuto(dir) {
+  function turnAuto(dir, fromQueue) {
     if (destroyed || !rigs) return;
+    if (!fromQueue && pending.length) { if (pending.length < PENDING_MAX) pending.push(dir); drain(); return; } // keep the order
     finishNow();
     if (T) return;
     const r = dir > 0 ? rigs.f : rigs.b;
-    if (!r.ready) { pending = dir; return; } // runs the moment its rig has painted
-    if (opts.reducedMotion && opts.reducedMotion()) { instant(dir); return; }
-    if (!beginTurn(dir, G.H)) return;
+    if (!r.ready) { if (pending.length < PENDING_MAX) pending.unshift(dir); return; } // runs once its rig has painted
+    // A turn that cannot start (the first or last page) ends the queue: nothing behind it may wait forever.
+    if (opts.reducedMotion && opts.reducedMotion()) { if (!instant(dir)) pending = []; return; }
+    if (!beginTurn(dir, G.H)) { pending = []; return; }
     settle(1, PT_AUTO_V0 * (PT_SPEED / 100));
   }
 
@@ -596,7 +614,7 @@ function createPageTurn(opts) {
     next: () => turnAuto(1),
     prev: () => turnAuto(-1),
     // A size or orientation change rebuilds the rigs (new viewers) and the source jumps back to its place.
-    rebuild: (to) => { if (T && T.raf) caf(T.raf); T = null; drag = null; pending = 0; swapAfter = null; build(); jump(to); },
+    rebuild: (to) => { if (T && T.raf) caf(T.raf); T = null; drag = null; pending = []; swapAfter = null; build(); jump(to); },
     attachDocument,
     isCurrent: (v) => v === current && !T && !swapAfter,
     current: () => current,

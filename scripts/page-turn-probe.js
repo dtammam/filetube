@@ -18,6 +18,7 @@
 //     pdfscroll P4: a PDF opens paged; More > Scroll pages brings back the scroll column on the same page, and
 //               the choice is remembered; Turn pages brings the turning pages back
 //     link      an in-book link moves the whole pool: the visible page AND the turn after it are the target's
+//     taps      ten tap-zone taps at 60 / 120 / 200 ms apart land ten pages (quick taps chain, none lost)
 //     csp       P9: a hostile EPUB (inline script, onerror, javascript: link, SVG script, meta refresh) runs NONE
 //               of its code, while the reader still hears a drag that starts on its text
 // Not a CI gate: a proof tool. Prints one line per case and a PASS/FAIL summary; exit 1 on any failure.
@@ -35,7 +36,17 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pageturn-
 process.env.PROGRESS_FLUSH_MS = '50';
 
 const pw = require(require.resolve('playwright', { paths: [path.join(REPO, 'tools/capture'), '/home/coder/projects/filetube/tools/capture'] }));
-const { buildEpub } = require(path.join(REPO, 'test/helpers/build-zip'));
+const { buildEpub, buildZip } = require(path.join(REPO, 'test/helpers/build-zip'));
+
+// An EPUB whose chapters are RAW XHTML documents (buildEpub wraps a body; the gate's hostile shapes need
+// content before <head>, a body before <head>, a CDATA section, an SVG root).
+function buildRawEpub(title, docs) {
+  const opf = `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${title}</dc:title><dc:creator>X</dc:creator></metadata>`
+    + `<manifest>${docs.map((d, i) => `<item id="c${i}" href="c${i}.xhtml" media-type="application/xhtml+xml"/>`).join('')}</manifest><spine>${docs.map((_, i) => `<itemref idref="c${i}"/>`).join('')}</spine></package>`;
+  const container = '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+  return buildZip([{ name: 'mimetype', data: 'application/epub+zip', method: 0 }, { name: 'META-INF/container.xml', data: container }, { name: 'OEBPS/content.opf', data: opf },
+    ...docs.map((d, i) => ({ name: `OEBPS/c${i}.xhtml`, data: `<?xml version="1.0" encoding="utf-8"?>${d}` }))]);
+}
 
 // ---- fixtures
 function para(ch, i) {
@@ -465,6 +476,51 @@ async function csp(env) {
     console.log(`${ok ? 'PASS' : 'FAIL'} csp ${engine}: book code that ran ${JSON.stringify(pwned)}; frame ${JSON.stringify(frameState)}; a drag from the hostile page's text turned it: ${before} -> ${after}`);
     await r.browser.close();
   }
+  // Gate r1 (qa C1, adversary C1 / W1): chapters the HTML parser re-nests - content, a body or a CDATA before
+  // <head> - and uppercase names; each would run code if the policy were not the frame's first element.
+  const X = 'http://www.w3.org/1999/xhtml';
+  const PWN = (tag) => `top.__pwned=(top.__pwned||[]).concat('${tag}')`;
+  const filler = Array.from({ length: 6 }, (_, i) => para(7, i)).join('');
+  const shapes = [
+    ['element before head', `<html xmlns="${X}"><div>before head</div><head><title>t</title></head><body>${filler}<script>${PWN('div-first')}</script></body></html>`],
+    ['body before head', `<html xmlns="${X}"><body>${filler}<SCRIPT>${PWN('body-first')}</SCRIPT></body><head/></html>`],
+    ['body before head, srcdoc frame', `<html xmlns="${X}"><body>${filler}<iframe srcdoc="&lt;script&gt;${PWN('srcdoc')}&lt;/script&gt;"></iframe></body><head/></html>`],
+    ['CDATA before head', `<html xmlns="${X}"><![CDATA[><iframe srcdoc="<script>${PWN('cdata')}</script>">]]><head><title>t</title></head><body>${filler}</body></html>`],
+    ['uppercase refresh to the app', `<html xmlns="${X}"><head><META HTTP-EQUIV="Refresh" content="0;url=/robots.txt"/><title>t</title></head><body>${filler}<P ONCLICK="${PWN('onclick')}">tap</P></body></html>`],
+  ];
+  fsx.writeFileSync(path.join(booksDir, 'shapes.epub'), buildRawEpub('Shapes', shapes.map((x) => x[1])));
+  await scanBooks();
+  const shapesId = Object.values(booksDb.read().items).find((i) => i.title === 'Shapes').id;
+  for (const engine of ENGINES) {
+    const r = await openReader(env, engine, shapesId, { width: 390, height: 844 });
+    const rows = [];
+    for (let i = 0; i < shapes.length; i++) {
+      if (i > 0) { await r.page.evaluate((n) => { const b = document.getElementById('reader-toc-btn'); void b; return n; }, i); }
+      await r.page.waitForTimeout(1500); // a refresh would have fired by now
+      const st = await r.page.evaluate(() => {
+        const out = [];
+        for (const f of document.querySelectorAll('.pt-book iframe')) {
+          let d = null; try { d = f.contentDocument; } catch (_) { d = null; }
+          if (!d) { out.push({ cross: true }); continue; }
+          const first = d.head && d.head.firstElementChild;
+          const p = d.querySelector('p[onclick], p'); if (p) p.click();
+          out.push({ url: d.location.href.slice(0, 12), policyFirst: !!(first && first.getAttribute('http-equiv') === 'Content-Security-Policy'), scripts: d.querySelectorAll('script').length, frames: d.querySelectorAll('iframe').length });
+        }
+        return out;
+      });
+      rows.push(st);
+      await r.page.keyboard.press('ArrowRight'); await settle(r.page, 300);
+      // walk through every chapter's pages to the next chapter
+      for (let k = 0; k < 6; k++) { await r.page.keyboard.press('ArrowRight'); await settle(r.page, 150); }
+    }
+    await r.page.waitForTimeout(800);
+    const pwned = await r.page.evaluate(() => window.__pwned || []);
+    const bad = rows.flat().filter((x) => x.cross || !x.policyFirst || x.scripts || x.frames || x.url !== 'about:srcdoc');
+    const ok = pwned.length === 0 && bad.length === 0 && r.errors.length === 0;
+    if (!ok) fail++;
+    console.log(`${ok ? 'PASS' : 'FAIL'} csp shapes ${engine}: ${shapes.length} hostile chapters (${shapes.map((x) => x[0]).join('; ')}), ${rows.flat().length} frame reads: book code that ran ${JSON.stringify(pwned)}; frames without the policy first, with a script or nested frame, or navigated away: ${bad.length}${bad.length ? ' ' + JSON.stringify(bad.slice(0, 3)) : ''}`);
+    await r.browser.close();
+  }
   return fail;
 }
 
@@ -564,11 +620,38 @@ async function link(env) {
   return fail;
 }
 
+async function taps(env) {
+  let fail = 0;
+  for (const engine of ENGINES) {
+    for (const gap of [60, 120, 200]) {
+      // a fresh, long book per run: every run starts on page 1 and ten taps never reach the end
+      const title = `Taps ${engine} ${gap}`;
+      require('node:fs').writeFileSync(path.join(process.env.DATA_DIR, 'books', `taps-${engine}-${gap}.epub`),
+        buildEpub({ title, author: 'X', chapters: [1, 2, 3, 4, 5, 6, 7, 8].map((c) => `<h1>Chapter ${c}</h1>${Array.from({ length: 22 }, (_, i) => para(c, i)).join('')}`) }));
+      await env.server.scanBooks();
+      const bookId = Object.values(env.server.booksDb.read().items).find((i) => i.title === title).id;
+      const r = await openReader(env, engine, bookId, { width: 390, height: 844 });
+      const start = await place(r.page);
+      const btn = await r.page.$('#reader-tap-next');
+      const box = await btn.boundingBox();
+      for (let i = 0; i < 10; i++) { await r.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2); await r.page.waitForTimeout(gap); }
+      await settle(r.page, 1500);
+      const end = await place(r.page);
+      const moved = Number(end.split(':')[1]) - Number(start.split(':')[1]);
+      const ok = moved === 10 && start.split(':')[0] === end.split(':')[0] && r.errors.length === 0;
+      if (!ok) fail++;
+      console.log(`${ok ? 'PASS' : 'FAIL'} taps ${engine} 10 taps ${gap} ms apart: ${start} -> ${end} (${moved} pages)`);
+      await r.browser.close();
+    }
+  }
+  return fail;
+}
+
 if (require.main === module) {
   (async () => {
     const env = await boot();
     const modes = { smoke };
-    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll, link });
+    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll, link, taps });
     if (!modes[MODE]) throw new Error(`unknown mode ${MODE}`);
     const fail = await modes[MODE](env);
     console.log(`${MODE}: ${fail ? 'FAIL' : 'PASS'} (${fail} failing)`);

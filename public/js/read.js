@@ -101,42 +101,41 @@ function readerFontStepper(size, format) {
 // no-scripts sandbox. WebKit runs no listener the reader adds to a sandboxed no-scripts document (0 events
 // measured, mouse and touch; plan Evidence, Step 1), so the page turn could not hear a finger on the iPhone.
 // epub.js now runs with allowScriptedContent (sandbox "allow-same-origin allow-scripts": top navigation,
-// popups and forms stay blocked), and hardenChapterDocument runs on every chapter document BEFORE epub.js
-// serializes it into the frame's srcdoc (a book.spine content hook):
-//   - this policy goes in as the FIRST element of <head>, so it governs everything the parser meets after it;
-//   - every <script> element (any namespace, SVG too) is removed, and every inline on* handler attribute;
-//   - every <meta http-equiv="refresh"> is removed (a timed navigation of the frame).
-// Measured in the spike: with this policy in a srcdoc document an inline script, an onerror handler and a
-// javascript: link ran in none of WebKit, Chromium and Firefox. The policy names only what runs code or
-// embeds another document; a book's own images, fonts and styles load exactly as before.
+// popups and forms stay blocked), and hardenChapterMarkup rewrites every chapter's markup AFTER epub.js
+// serializes it and BEFORE it becomes the frame's srcdoc (a book.spine serialize hook):
+//   - the policy meta is PREPENDED: the first bytes the frame's HTML parser reads, so it lands first in
+//     <head> whatever the chapter does before its own head (gate r1: qa and the adversary ran book code by
+//     putting content, a body or a CDATA before <head> - the HTML parser then moved a head-placed meta into
+//     <body>, where browsers ignore it);
+//   - the chapter is re-parsed as HTML (what the frame will build, names case-insensitive: gate r1 W1, an
+//     uppercase <SCRIPT> or HTTP-EQUIV survived an XML-DOM strip) and every script, nested frame, object,
+//     embed, <base>, http-equiv meta (a refresh navigates the frame), inline on* handler and javascript:
+//     URL is removed there, then serialized again.
+// The serialized chapter has no doctype either way (epub.js serializes the root element), so the page's
+// layout mode is unchanged. Measured: the gate's hostile chapters run nothing in WebKit and Chromium
+// (scripts/page-turn-probe.js csp). The policy names only what runs code or embeds another document; a
+// book's own images, fonts and styles load exactly as before.
 const READER_CHAPTER_CSP = "script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
+const READER_CHAPTER_CSP_META = `<meta http-equiv="Content-Security-Policy" content="${READER_CHAPTER_CSP}">`;
+const READER_CHAPTER_DROP = 'script, iframe, frame, object, embed, base, meta[http-equiv], noscript';
+const READER_URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', 'data', 'srcdoc'];
 
-function hardenChapterDocument(doc) {
-  if (!doc || !doc.documentElement) return false;
-  const root = doc.documentElement;
-  const ns = root.namespaceURI || 'http://www.w3.org/1999/xhtml';
-  for (const el of Array.from(doc.getElementsByTagNameNS('*', 'script'))) el.parentNode.removeChild(el);
-  for (const el of Array.from(doc.getElementsByTagNameNS('*', 'meta'))) {
-    if (String(el.getAttribute('http-equiv') || '').trim().toLowerCase() === 'refresh') el.parentNode.removeChild(el);
-  }
-  for (const el of Array.from(doc.getElementsByTagNameNS('*', '*'))) {
+// output: epub.js's serialized chapter. DomParser: the DOMParser constructor (window's in the reader, jsdom's
+// in the tests). Returns the markup the frame gets: the policy meta first, then the cleaned chapter.
+function hardenChapterMarkup(output, DomParser) {
+  const doc = new DomParser().parseFromString(String(output || ''), 'text/html');
+  for (const el of Array.from(doc.querySelectorAll(READER_CHAPTER_DROP))) el.remove();
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
     for (const attr of Array.from(el.attributes)) {
-      if (/^on/i.test(attr.localName)) el.removeAttributeNode(attr);
+      const name = attr.name.toLowerCase();
+      // any scheme that runs or synthesizes a document, however it is spelled or padded
+      const value = Array.from(String(attr.value)).filter((ch) => ch.charCodeAt(0) > 32).join('').toLowerCase();
+      if (name.startsWith('on') || (READER_URL_ATTRS.includes(name) && /^(javascript|vbscript|data:text\/html)/.test(value))) {
+        el.removeAttribute(attr.name);
+      }
     }
   }
-  let head = null;
-  for (const child of Array.from(root.children || root.childNodes)) {
-    if (child.nodeType === 1 && String(child.localName).toLowerCase() === 'head') { head = child; break; }
-  }
-  if (!head) {
-    head = doc.createElementNS(ns, 'head');
-    root.insertBefore(head, root.firstChild);
-  }
-  const meta = doc.createElementNS(ns, 'meta');
-  meta.setAttribute('http-equiv', 'Content-Security-Policy');
-  meta.setAttribute('content', READER_CHAPTER_CSP);
-  head.insertBefore(meta, head.firstChild);
-  return true;
+  return READER_CHAPTER_CSP_META + doc.documentElement.outerHTML;
 }
 
 // v1.402.0: an in-book link names a chapter file the way epub.js hands it over (resolved against the book's
@@ -152,10 +151,13 @@ function resolveBookLink(target, spineHrefs) {
   const parts = file.split('/').filter((p) => p && p !== '.' && p !== '..');
   if (!parts.length) return null;
   const tail = parts.join('/');
-  const list = Array.isArray(spineHrefs) ? spineHrefs : [];
+  const list = (Array.isArray(spineHrefs) ? spineHrefs : []).map((h) => String(h || ''));
+  // an exact path first, so two chapters with one file name in different folders never swap places
+  const exact = list.indexOf(tail);
+  if (exact >= 0) return { target: list[exact] + hash, spine: exact };
   for (let i = 0; i < list.length; i++) {
-    const href = String(list[i] || '');
-    if (href === tail || href.endsWith(`/${tail}`) || tail.endsWith(`/${href}`)) return { target: href + hash, spine: i };
+    const href = list[i];
+    if (href && (href.endsWith(`/${tail}`) || tail.endsWith(`/${href}`))) return { target: href + hash, spine: i };
   }
   return null;
 }
@@ -163,13 +165,14 @@ function resolveBookLink(target, spineHrefs) {
 // v1.402.0 P4: PDFs open as turning pages; "Scroll pages" in the More menu brings back the scroll column,
 // remembered per device.
 const READER_PDF_LAYOUTS = ['pages', 'scroll'];
+const READER_PDF_LAYOUT_KEY = 'filetube_reader_pdf_layout';
 function normalizePdfLayout(value) { return READER_PDF_LAYOUTS.includes(value) ? value : 'pages'; }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
     READER_CHAPTER_CSP,
-    hardenChapterDocument,
+    hardenChapterMarkup,
     resolveBookLink,
     normalizePdfLayout,
     READER_TTS_REV,
@@ -572,8 +575,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // spread rule (minSpreadWidth 800).
 
   // The book's place (P8) is the CURRENT viewer's: the one showing the base page on the top rig. A parked
-  // neighbour (the next page, the leaf's back) never saves a place. Exported shape for the tests:
-  // epubLocationReport(location, contents) -> { locator, percent } or null.
+  // neighbour (the next page, the leaf's back) never saves a place. epubLocationReport(book, location,
+  // contents) -> { locator, percent } or null, from epub.js's own location object (relocated's, or
+  // currentLocation()'s: the same shape).
   function epubLocationReport(book, location, contents) {
     if (!location || !location.start) return null;
     let percent = 0;
@@ -605,9 +609,29 @@ if (typeof module !== 'undefined' && module.exports) {
     // none, so it was treated as an UNPACKED book directory and epub.js
     // fetched /book/<id>/file/META-INF/container.xml (404) forever.
     const book = window.ePub(`/book/${encodeURIComponent(detail.id)}/file`, { openAs: 'epub' });
-    // P9: every chapter document is hardened before epub.js serializes it into a frame (see
-    // hardenChapterDocument). Registered before any rendition exists, so no chapter loads without it.
-    book.spine.hooks.content.register((chapterDoc) => { hardenChapterDocument(chapterDoc); });
+    const spineHrefs = () => book.spine.spineItems.map((x) => x.href);
+    // P9: every chapter's markup is hardened after epub.js serializes it and before it becomes a frame's
+    // srcdoc (see hardenChapterMarkup). epub.js runs serialize hooks in registration order and its OWN hook (an
+    // archived book's resource URLs swapped for blob: URLs) rewrites section.output from the ORIGINAL markup,
+    // so a guard registered before it is silently undone (gate r1 fix round, measured: the frame got the
+    // book's markup untouched). That hook is registered while the book opens; book.ready resolves after it,
+    // so the guard is registered after book.ready, runs LAST, and hardens section.output as epub.js left it.
+    // No page view exists before this (every renderTo comes after it). epub.js resolves render() with
+    // section.output read after the hooks, so the hardened markup is what renders. Each pool view renders the
+    // chapter again: the hardened markup is kept per chapter and reused.
+    try { await book.ready; } catch (_) { /* openFailed shows the error state */ }
+    if (signal.aborted) return null;
+    const hardened = new Map();
+    book.spine.hooks.serialize.register((output, section) => {
+      if (!section) return;
+      const raw = typeof section.output === 'string' ? section.output : output;
+      const key = section.href || section.idref || String(section.index);
+      const hit = hardened.get(key);
+      if (hit && hit.raw === raw) { section.output = hit.out; return; }
+      const out = hardenChapterMarkup(raw, window.DOMParser);
+      hardened.set(key, { raw, out });
+      section.output = out;
+    });
     // Gate residual (v1.37.1 slim gate): epub.js converts ANY genuine open
     // failure into an 'openFailed' EVENT (never a promise rejection) --
     // without this subscription, a future failure class would hang at
@@ -691,7 +715,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }).catch(() => {});
 
     let engine = null;
-    let placeCfi = null; // the start CFI of the page the reader is on (re-anchors a font change or relayout)
+    let placeCfi = null;   // the start CFI of the page the reader is on (re-anchors a font change or relayout)
+    let placeSpine = null; // and its chapter (the fallback if that CFI is ever refused: never the book's start)
 
     function report(viewer, location) {
       if (!viewer.rendition) return;
@@ -699,6 +724,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const out = epubLocationReport(book, location, contents);
       if (!out) return;
       placeCfi = location.start.cfi;
+      placeSpine = Number.isInteger(location.start.index) ? location.start.index : placeSpine;
       updateProgressBar(root, out.percent);
       queueProgressPing(out.locator, out.percent);
       if (engine) engine.refreshStacks();
@@ -737,7 +763,7 @@ if (typeof module !== 'undefined' && module.exports) {
         r.display = (target) => {
           if (!linkTap) return ownDisplay(target);
           linkTap = false;
-          const to = resolveBookLink(target, book.spine.spineItems.map((x) => x.href));
+          const to = resolveBookLink(target, spineHrefs());
           if (to) engine.jump(to);
           return Promise.resolve();
         };
@@ -785,15 +811,18 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         try {
           await r.display(a ? a.target : undefined);
-        } catch (_) {
-          // A refused CFI lands in its CHAPTER when the locator names one, never at the
+        } catch (err) {
+          // A refused CFI lands in its CHAPTER when the anchor names one, never at the
           // start of the book: the first place saved after display() overwrites the
           // saved place, so a start fallback would move a real bookmark to page 1.
-          try {
-            await r.display(a && a.spine != null ? a.spine : undefined);
-          } catch (__) {
-            await r.display();
+          // Only the open (resume) may end at the book's start - a book with no usable
+          // place; a jump while reading (Contents, a font change, a relayout) never does
+          // (gate r1 qa: a Contents link epub.js refused moved the bookmark to page 1).
+          if (a && a.spine != null) {
+            try { await r.display(a.spine); return; } catch (_) { /* below */ }
           }
+          if (a && a.resume) { await r.display(); return; }
+          throw err;
         }
       }
       async function walk() {
@@ -851,7 +880,11 @@ if (typeof module !== 'undefined' && module.exports) {
       ? detail.locator.spineIndex : null;
     const feedBlock = startCfi === undefined && startSpine !== null
       && Number.isInteger(detail.locator.blockIndex) && detail.locator.blockIndex >= 0 ? detail.locator.blockIndex : null;
-    engine.jump(feedBlock !== null ? { feedBlock, spine: startSpine } : { target: startCfi, spine: startSpine });
+    // (v1.37.3's one-frame re-measure after display() is gone on purpose: it re-sized a rendition laid out
+    // against a pane that might still be settling. Each pool rendition is sized to the page box the engine laid
+    // out from the SETTLED pane (waitForPaneSize above) and is never resized; a new pane size rebuilds the
+    // pool. The first paint is a device check, DEVICE-CHECKS "Page turn (v1.402.0)" (j).)
+    engine.jump(feedBlock !== null ? { feedBlock, spine: startSpine, resume: true } : { target: startCfi, spine: startSpine, resume: true });
 
     const toc = [];
     try {
@@ -863,9 +896,15 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       }
     } catch (_) { /* no nav -- empty toc */ }
-    renderToc(root, toc, (entry) => { engine.jump({ target: entry.href }); });
+    // A Contents entry names its chapter the way the book's nav document does ("../Text/c2.xhtml#s3"); it is
+    // matched to the spine first (resolveBookLink), and an entry that names no chapter leaves the reader where
+    // it is - never a jump epub.js would refuse (gate r1 qa: that fell back to the book's start and saved it).
+    renderToc(root, toc, (entry) => {
+      const to = resolveBookLink(entry.href, spineHrefs());
+      if (to) engine.jump(to);
+    });
 
-    const here = () => ({ target: placeCfi || undefined });
+    const here = () => ({ target: placeCfi || undefined, spine: placeSpine });
     let lastSize = `${pane.clientWidth}x${pane.clientHeight}`;
     return {
       next: () => engine.next(),
@@ -900,9 +939,8 @@ if (typeof module !== 'undefined' && module.exports) {
   //
   // v1.402.0 P4: a PDF opens as turning pages (the same curl and two-page view as an EPUB); "Scroll pages" in
   // the More menu brings back the scroll column below (openPdfScroll, unchanged), remembered per device.
-  const PDF_LAYOUT_KEY = 'filetube_reader_pdf_layout';
   function openPdf(root, pane, detail, signal) {
-    return normalizePdfLayout(readPref(PDF_LAYOUT_KEY, 'pages')) === 'scroll'
+    return normalizePdfLayout(readPref(READER_PDF_LAYOUT_KEY, 'pages')) === 'scroll'
       ? openPdfScroll(root, pane, detail, signal)
       : openPdfPaged(root, pane, detail, signal);
   }
@@ -1454,7 +1492,7 @@ if (typeof module !== 'undefined' && module.exports) {
         trackSheet(ui.menu({
           label: 'More actions',
           anchor: moreBtn,
-          items: readerMoreMenuItems({ finished: bookFinished, format: bookFormat, pdfLayout: readPref('filetube_reader_pdf_layout', 'pages') }),
+          items: readerMoreMenuItems({ finished: bookFinished, format: bookFormat, pdfLayout: readPref(READER_PDF_LAYOUT_KEY, 'pages') }),
           onSelect: (value) => {
             if (signal.aborted) return;
             if (value === 'finished') toggleFinished();
@@ -1534,8 +1572,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // P4: the More menu's "Scroll pages" / "Turn pages" - remembered per device, the book reopens on its page.
     function switchPdfLayout() {
       if (!bookDetail || bookFormat !== 'pdf') return;
-      const now = normalizePdfLayout(readPref('filetube_reader_pdf_layout', 'pages'));
-      writePref('filetube_reader_pdf_layout', now === 'scroll' ? 'pages' : 'scroll');
+      const now = normalizePdfLayout(readPref(READER_PDF_LAYOUT_KEY, 'pages'));
+      writePref(READER_PDF_LAYOUT_KEY, now === 'scroll' ? 'pages' : 'scroll');
       const page = lastLocator && lastLocator.kind === 'pdf' ? lastLocator.page
         : (adapter && typeof adapter.page === 'function' ? adapter.page() : null);
       if (adapter) { try { adapter.destroy(); } catch (_) { /* torn down */ } adapter = null; }

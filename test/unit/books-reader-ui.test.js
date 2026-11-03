@@ -242,8 +242,10 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
   const pane = doc.getElementById('reader-pane');
   Object.defineProperty(pane, 'clientWidth', { value: 600 });
   Object.defineProperty(pane, 'clientHeight', { value: 800 });
-  const flips = { next: 0, prev: 0, displayed: [], fontSize: [], overrides: [], renditions: 0, pool: [] };
-  const makeRendition = (el) => {
+  const flips = { next: 0, prev: 0, displayed: [], fontSize: [], overrides: [], renditions: 0, pool: [], serializeHooks: [], contentHooks: [], renderOpts: [], order: [] };
+  const makeRendition = (el, opts) => {
+    flips.renderOpts.push(opts);
+    flips.order.push('renderTo');
     flips.renditions++;
     const n = flips.renditions;
     const handlers = {};
@@ -265,11 +267,21 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
     flips.pool.push(r);
     return r;
   };
+  // epub.js's own serialize hook (an archived book's blob: URL swap) is registered WHILE THE BOOK OPENS and
+  // rewrites section.output from the ORIGINAL markup it is handed (vendored source) - modelled exactly, so a
+  // guard registered before it is undone here as it is in the browser.
+  const epubOwnHook = (t, e) => { e.output = t.replace(/OEBPS\//g, 'blob:x/'); };
   win.ePub = () => ({
     on: () => {},
-    renderTo: (el) => makeRendition(el),
-    spine: { hooks: { content: { register: () => {} } } },
-    ready: Promise.resolve(),
+    renderTo: (el, opts) => makeRendition(el, opts),
+    spine: {
+      spineItems: [{ href: 'c1.xhtml' }, { href: 'c2.xhtml' }],
+      hooks: {
+        content: { register: (fn) => { flips.contentHooks.push(fn); } },
+        serialize: { register: (fn) => { flips.serializeHooks.push(fn); flips.order.push('serialize'); } },
+      },
+    },
+    ready: Promise.resolve().then(() => { flips.serializeHooks.push(epubOwnHook); flips.order.push('epub-hook'); }),
     locations: { length: () => 0, generate: async () => {}, save: () => '', load: () => {} },
     loaded: { navigation: Promise.resolve({ toc }) },
     destroy: () => {},
@@ -482,6 +494,48 @@ test('reader P8: the visible view relocating (a re-layout) does save its place',
   active.view = null;
   const sent = r.calls.filter((c) => c.url === '/api/books/b1/progress' && c.method === 'POST').map((c) => JSON.parse(c.body).locator);
   assert.deepStrictEqual(sent.map((l) => [l.cfi, l.spineIndex]), [['epubcfi(/6/8!/4/2/1:0)', 3]]);
+});
+
+test('reader P9 wiring: the chapter guard is registered on the book before any page view exists, it rewrites what renders, and the views run scripts ON only under it', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  assert.strictEqual(r.flips.serializeHooks.length, 2, "epub.js's hook and the reader's guard");
+  assert.ok(r.flips.order.indexOf('serialize') < r.flips.order.indexOf('renderTo'), 'the guard is registered before the first renderTo');
+  // epub.js triggers every serialize hook in registration order with (the original output, the section)
+  const render = (raw, section) => { section.output = raw; for (const h of r.flips.serializeHooks) h(raw, section); return section.output; };
+  assert.ok(r.flips.renderOpts.length >= 6 && r.flips.renderOpts.every((o) => o.allowScriptedContent === true && o.spread === 'none'), 'every pool view: scripts on (P9) and one page');
+  const hostile = '<html xmlns="http://www.w3.org/1999/xhtml"><div>x</div><head></head><body><SCRIPT>top.p=1</SCRIPT><p onclick="x()">t</p><img src="OEBPS/a.png"/></body></html>';
+  const out = render(hostile, { href: 'c1.xhtml', output: null });
+  assert.ok(out.startsWith('<meta http-equiv="Content-Security-Policy"'), 'what renders starts with the policy (the guard runs after epub.js\'s own hook)');
+  assert.doesNotMatch(out, /<script|onclick/i, 'and carries no code');
+  assert.match(out, /blob:x\/a\.png/, "and keeps epub.js's resource rewrite");
+  const again = render(hostile, { href: 'c1.xhtml', output: null }); // a second pool view rendering the same chapter
+  assert.ok(again.startsWith('<meta http-equiv="Content-Security-Policy"'), 'every render of the chapter gets it (the cached rewrite)');
+});
+
+test('reader P8: a Contents entry that names no chapter leaves the reader where it is (never the book\'s start)', async () => {
+  const toc = [{ label: 'Map', href: '../images/map.png' }, { label: 'Two', href: '../c2.xhtml#s' }];
+  const r = mountReader({ detail: EPUB, toc });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const placeOf = () => r.doc.getElementById('reader-pane').dataset.ptPlace;
+  const before = placeOf();
+  const shown = r.flips.displayed.length;
+  r.doc.getElementById('reader-toc-btn').click();
+  let rows = [...r.doc.querySelectorAll('.ui-sheet .ui-row')];
+  rows[0].click();
+  await flush(10);
+  assert.strictEqual(placeOf(), before, 'no jump');
+  assert.strictEqual(r.flips.displayed.length, shown, 'nothing displayed');
+  await new Promise((res) => setTimeout(res, 400));
+  r.doc.getElementById('reader-toc-btn').click();
+  rows = [...r.doc.querySelectorAll('.ui-sheet .ui-row')];
+  rows[1].click();
+  await flush(10);
+  assert.deepStrictEqual(r.flips.displayed.slice(-1), ['c2.xhtml#s'], 'a chapter entry jumps to the spine\'s own href, fragment kept');
 });
 
 test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-root)', async () => {

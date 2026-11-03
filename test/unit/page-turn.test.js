@@ -222,14 +222,65 @@ test('engine: turns land on the next / previous page; a turn never starts past t
   m.engine.destroy(); m.dom.window.close();
 });
 
-test('engine: a tap while the rig repaints waits for it (quick taps chain, nothing is dropped)', async () => {
+test('engine: quick taps chain - five taps in one go land five pages, in order, none dropped (reduced and animated)', async () => {
+  for (const reduced of [true, false]) {
+    const m = mountEngine({ reduced });
+    m.engine.jump(0);
+    await frames();
+    for (let i = 0; i < 5; i++) m.engine.next(); // every rig after the first is still repainting
+    await frames(reduced ? 30 : 80);
+    assert.deepStrictEqual(m.places, [0, 1, 2, 3, 4, 5], `reduced motion ${reduced}`);
+    m.engine.prev(); m.engine.prev(); m.engine.next();
+    await frames(reduced ? 30 : 80);
+    assert.deepStrictEqual(m.places.slice(6), [4, 3, 4], `mixed directions keep their order (reduced ${reduced})`);
+    m.engine.destroy(); m.dom.window.close();
+  }
+});
+
+test('engine: a queued tap past the end ends the queue; the next tap still works (reduced and animated)', async () => {
+  for (const reduced of [true, false]) {
+    const m = mountEngine({ reduced, present: (idx) => idx <= 2 });
+    m.engine.jump(0);
+    await frames();
+    for (let i = 0; i < 4; i++) m.engine.next(); // pages 1, 2, then nothing past the end
+    await frames(reduced ? 30 : 80);
+    assert.deepStrictEqual(m.places, [0, 1, 2], `reduced ${reduced}`);
+    m.engine.prev();
+    await frames(reduced ? 20 : 60);
+    assert.deepStrictEqual(m.places, [0, 1, 2, 1], `the queue did not stick (reduced ${reduced})`);
+    m.engine.destroy(); m.dom.window.close();
+  }
+});
+
+test('engine: a drag that falls back saves nothing (P8) and its click is swallowed (never also a tap-zone turn)', async () => {
   const m = mountEngine();
   m.engine.jump(0);
   await frames();
-  m.engine.next();
-  m.engine.next(); // the landed rig is not ready yet: this one waits for the re-point
-  await frames(16);
-  assert.deepStrictEqual(m.places, [0, 1, 2]);
+  const ev = (type, x, extra) => new m.win.PointerEvent(type, Object.assign({ pointerId: 3, pointerType: 'mouse', button: 0, isPrimary: true, clientX: x, clientY: 600, bubbles: true }, extra));
+  m.host.dispatchEvent(ev('pointerdown', 300));
+  m.host.dispatchEvent(ev('pointermove', 290));
+  m.host.dispatchEvent(ev('pointermove', 280)); // 5% travel
+  await new Promise((r) => setTimeout(r, 120)); // rests before lifting: no speed
+  let clicked = 0;
+  m.host.addEventListener('click', () => { clicked++; });
+  m.host.dispatchEvent(ev('pointerup', 280));
+  m.host.dispatchEvent(new m.win.MouseEvent('click', { bubbles: true, cancelable: true })); // the release's own click
+  assert.strictEqual(clicked, 0, 'the click that ends a drag is the drag\'s own');
+  await frames(20);
+  assert.deepStrictEqual(m.places, [0], 'a fall back reports no place');
+  m.host.dispatchEvent(new m.win.MouseEvent('click', { bubbles: true, cancelable: true }));
+  assert.strictEqual(clicked, 1, 'a later click is a click');
+  m.engine.destroy(); m.dom.window.close();
+});
+
+test('engine: right after a landing nothing is current until the twin rig has swapped up (P8 swap window)', async () => {
+  const m = mountEngine();
+  m.engine.jump(0);
+  await frames();
+  m.engine.next(); // reduced motion: lands at once, then the twin re-points
+  assert.strictEqual(m.engine.viewers().filter((v) => m.engine.isCurrent(v)).length, 0, 'the swap window: no viewer may save a place');
+  await frames();
+  assert.strictEqual(m.engine.viewers().filter((v) => m.engine.isCurrent(v)).length, 1);
   m.engine.destroy(); m.dom.window.close();
 });
 
@@ -283,38 +334,64 @@ test('engine: isCurrent names ONLY the viewer showing the base page on the top r
 // ---- read.js P9: the chapter guard
 
 const XHTML = 'http://www.w3.org/1999/xhtml';
-function xml(src) { return new JSDOM(src, { contentType: 'application/xhtml+xml' }).window.document; }
+// The frame's own path: epub.js parses the chapter as XML and serializes its root element (XMLSerializer); the
+// serialize hook rewrites that markup; the frame builds its document with the HTML parser.
+function frameOf(chapterXml) {
+  const xmlWin = new JSDOM('', { contentType: 'text/html' }).window;
+  const xdoc = new xmlWin.DOMParser().parseFromString(chapterXml, 'application/xhtml+xml');
+  const serialized = new xmlWin.XMLSerializer().serializeToString(xdoc.documentElement);
+  const out = read.hardenChapterMarkup(serialized, xmlWin.DOMParser);
+  const frame = new JSDOM(out).window.document; // HTML parse, as srcdoc
+  return { out, frame };
+}
+function policyFirst(frame) {
+  const first = frame.head.firstElementChild;
+  return Boolean(first && first.localName === 'meta' && first.getAttribute('http-equiv') === 'Content-Security-Policy'
+    && first.getAttribute('content') === read.READER_CHAPTER_CSP);
+}
+function handlers(frame) {
+  const out = [];
+  for (const el of frame.querySelectorAll('*')) for (const a of el.attributes) if (/^on/i.test(a.name)) out.push(a.name);
+  return out;
+}
+// The gate r1 shapes (qa C1 / adversary C1, W1): content before <head>, a body before <head>, a CDATA before
+// <head>, an SVG-rooted spine item, uppercase names; plus nested frames and javascript: URLs.
+const HOSTILE = {
+  'element before head': `<html xmlns="${XHTML}"><div>before head</div><head><title>t</title></head><body><p>x</p><script>parent.p=1</script></body></html>`,
+  'body before head': `<html xmlns="${XHTML}"><body><p>x</p><SCRIPT>top.p=1</SCRIPT></body><head/></html>`,
+  'text before head': `<html xmlns="${XHTML}">stray<head><title>t</title></head><body><p>x</p></body></html>`,
+  'CDATA before head': `<html xmlns="${XHTML}"><![CDATA[><iframe srcdoc="<script>top.p=1</script>">]]><head><title>t</title></head><body><p>x</p></body></html>`,
+  'uppercase script and refresh': `<html xmlns="${XHTML}"><head><META HTTP-EQUIV="Refresh" content="0;url=/robots.txt"/><title>t</title></head><body><SCRIPT>top.p=1</SCRIPT><P ONCLICK="top.p=1">x</P></body></html>`,
+  'nested frames and urls': `<html xmlns="${XHTML}"><head><base href="https://evil.example/"/></head><body><iframe srcdoc="&lt;script&gt;top.p=1&lt;/script&gt;"></iframe><object data="x.svg"></object><embed src="x.svg"/><a href=" JaVaScript:top.p=1">j</a><a href="data:text/html,&lt;script&gt;1&lt;/script&gt;">d</a><img src="a.png" onerror="top.p=1"/><noscript><p>n</p></noscript></body></html>`,
+  'svg root': `<svg xmlns="http://www.w3.org/2000/svg"><script>top.p=1</script><a href="javascript:top.p=1"><text>x</text></a></svg>`,
+};
 
-test('P9 hardenChapterDocument: the policy is the FIRST element of <head>; scripts, on* handlers and refresh are gone', () => {
-  const doc = xml(`<?xml version="1.0"?><html xmlns="${XHTML}" xmlns:svg="http://www.w3.org/2000/svg"><head><script>parent.x=1</script><title>t</title><meta http-equiv="Refresh" content="0;url=javascript:alert(1)"/></head>`
-    + '<body onload="parent.y=1"><p onclick="parent.z=1" class="k">Hi</p><img src="a.png" onerror="parent.w=1" ONMOUSEOVER="x()"/><script>parent.v=1</script>'
-    + '<svg:svg><svg:script>parent.u=1</svg:script><svg:a onclick="q()"/></svg:svg></body></html>');
-  assert.strictEqual(read.hardenChapterDocument(doc), true);
-  const head = doc.getElementsByTagNameNS(XHTML, 'head')[0];
-  const first = head.firstElementChild;
-  assert.strictEqual(first.localName, 'meta');
-  assert.strictEqual(first.getAttribute('http-equiv'), 'Content-Security-Policy');
-  assert.strictEqual(first.getAttribute('content'), read.READER_CHAPTER_CSP);
+test('P9 hardenChapterMarkup: after the frame\'s HTML parse the policy is the FIRST element of <head> for every hostile shape, and no code is left', () => {
+  for (const [name, xml] of Object.entries(HOSTILE)) {
+    const { out, frame } = frameOf(xml);
+    assert.ok(out.startsWith('<meta http-equiv="Content-Security-Policy"'), `${name}: the policy is the first bytes`);
+    assert.ok(policyFirst(frame), `${name}: the policy is the first element of the frame's <head>`);
+    assert.strictEqual(frame.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').length, 1, `${name}: exactly one policy`);
+    assert.strictEqual(frame.querySelectorAll('script, iframe, frame, object, embed, base, noscript').length, 0, `${name}: no script, frame, object, embed, base`);
+    assert.strictEqual(frame.querySelectorAll('meta[http-equiv]:not([http-equiv="Content-Security-Policy"])').length, 0, `${name}: no refresh`);
+    assert.deepStrictEqual(handlers(frame), [], `${name}: no inline handler`);
+    for (const el of frame.querySelectorAll('[href], [src]')) {
+      const v = (el.getAttribute('href') || el.getAttribute('src') || '').replace(/\s/g, '').toLowerCase();
+      assert.ok(!/^(javascript|vbscript|data:text\/html)/.test(v), `${name}: no code URL (${v})`);
+    }
+  }
   assert.match(read.READER_CHAPTER_CSP, /(^|; )script-src 'none'(;|$)/);
-  assert.match(read.READER_CHAPTER_CSP, /object-src 'none'/);
   assert.match(read.READER_CHAPTER_CSP, /frame-src 'none'/);
-  assert.strictEqual(doc.getElementsByTagNameNS('*', 'script').length, 0, 'every script, SVG too');
-  const handlers = [];
-  for (const el of Array.from(doc.getElementsByTagNameNS('*', '*'))) for (const a of Array.from(el.attributes)) if (/^on/i.test(a.localName)) handlers.push(a.localName);
-  assert.deepStrictEqual(handlers, [], 'no inline handler survives (any case)');
-  assert.strictEqual(Array.from(doc.getElementsByTagNameNS('*', 'meta')).filter((m) => /refresh/i.test(m.getAttribute('http-equiv') || '')).length, 0);
-  assert.strictEqual(doc.querySelector('p').getAttribute('class'), 'k', 'everything else is kept');
-  const serialized = new doc.defaultView.XMLSerializer().serializeToString(doc);
-  assert.ok(serialized.indexOf('Content-Security-Policy') < serialized.indexOf('<title'), 'the policy precedes every other head element in what epub.js serializes');
 });
 
-test('P9 hardenChapterDocument: a chapter with no <head> gets one, first, carrying the policy', () => {
-  const doc = xml(`<?xml version="1.0"?><html xmlns="${XHTML}"><body><p>x</p></body></html>`);
-  read.hardenChapterDocument(doc);
-  const root = doc.documentElement;
-  assert.strictEqual(root.firstElementChild.localName, 'head');
-  assert.strictEqual(root.firstElementChild.firstElementChild.getAttribute('content'), read.READER_CHAPTER_CSP);
-  assert.strictEqual(read.hardenChapterDocument(null), false);
+test('P9 hardenChapterMarkup: an ordinary chapter keeps its text, structure and attributes', () => {
+  const { frame } = frameOf(`<html xmlns="${XHTML}"><head><title>Ch</title><link rel="stylesheet" href="s.css"/></head><body><h1 class="k">One</h1><p>Hello <em>there</em>.</p><img src="a.png" alt="a"/></body></html>`);
+  assert.ok(policyFirst(frame));
+  assert.strictEqual(frame.querySelector('h1').className, 'k');
+  assert.strictEqual(frame.body.textContent, 'OneHello there.');
+  assert.strictEqual(frame.querySelector('img').getAttribute('src'), 'a.png');
+  assert.strictEqual(frame.querySelector('link').getAttribute('href'), 's.css');
+  assert.strictEqual(frame.body.firstElementChild.localName, 'h1', 'the body starts where the book starts (block indices unchanged)');
 });
 
 test('in-book links: epub.js\'s "../ch2.xhtml#n" resolves to the spine item (fragment kept); anything else stays put', () => {
@@ -322,6 +399,7 @@ test('in-book links: epub.js\'s "../ch2.xhtml#n" resolves to the spine item (fra
   assert.deepStrictEqual(read.resolveBookLink('../ch1.xhtml', spine), { target: 'ch1.xhtml', spine: 1 });
   assert.deepStrictEqual(read.resolveBookLink('../text/ch2.xhtml#note-3', spine), { target: 'text/ch2.xhtml#note-3', spine: 2 });
   assert.deepStrictEqual(read.resolveBookLink('ch2.xhtml', spine), { target: 'text/ch2.xhtml', spine: 2 }, 'a bare file name matches on a directory boundary');
+  assert.deepStrictEqual(read.resolveBookLink('../a/n.xhtml', ['b/n.xhtml', 'a/n.xhtml']), { target: 'a/n.xhtml', spine: 1 }, 'an exact path beats a same-name file in another folder');
   assert.strictEqual(read.resolveBookLink('xch1.xhtml', spine), null, 'never a partial file name');
   assert.strictEqual(read.resolveBookLink('../images/map.png', spine), null, 'not a chapter: the reader stays where it is');
   assert.strictEqual(read.resolveBookLink('https://example.com/ch1.xhtml', spine), null, 'an outside address is never a jump');
