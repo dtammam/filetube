@@ -317,6 +317,18 @@ test('P9 hardenChapterDocument: a chapter with no <head> gets one, first, carryi
   assert.strictEqual(read.hardenChapterDocument(null), false);
 });
 
+test('in-book links: epub.js\'s "../ch2.xhtml#n" resolves to the spine item (fragment kept); anything else stays put', () => {
+  const spine = ['ch0.xhtml', 'ch1.xhtml', 'text/ch2.xhtml'];
+  assert.deepStrictEqual(read.resolveBookLink('../ch1.xhtml', spine), { target: 'ch1.xhtml', spine: 1 });
+  assert.deepStrictEqual(read.resolveBookLink('../text/ch2.xhtml#note-3', spine), { target: 'text/ch2.xhtml#note-3', spine: 2 });
+  assert.deepStrictEqual(read.resolveBookLink('ch2.xhtml', spine), { target: 'text/ch2.xhtml', spine: 2 }, 'a bare file name matches on a directory boundary');
+  assert.strictEqual(read.resolveBookLink('xch1.xhtml', spine), null, 'never a partial file name');
+  assert.strictEqual(read.resolveBookLink('../images/map.png', spine), null, 'not a chapter: the reader stays where it is');
+  assert.strictEqual(read.resolveBookLink('https://example.com/ch1.xhtml', spine), null, 'an outside address is never a jump');
+  assert.strictEqual(read.resolveBookLink('javascript:alert(1)', spine), null);
+  assert.strictEqual(read.resolveBookLink('', spine), null);
+});
+
 test('P4 pure: the PDF layout pref and the More menu choice (its label says what a tap does)', () => {
   assert.strictEqual(read.normalizePdfLayout('scroll'), 'scroll');
   assert.strictEqual(read.normalizePdfLayout('nope'), 'pages', 'PDFs open paged by default');

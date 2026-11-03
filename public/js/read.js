@@ -139,6 +139,27 @@ function hardenChapterDocument(doc) {
   return true;
 }
 
+// v1.402.0: an in-book link names a chapter file the way epub.js hands it over (resolved against the book's
+// archive path: "../ch2.xhtml#note-3"), which epub.js's own spine lookup does not find - links in a book went
+// nowhere before this. Match it to the spine's own hrefs by path (dot segments dropped, a suffix on a
+// directory boundary), keep the #fragment, and name the spine index. null = not a chapter of this book (the
+// reader then stays where it is: a jump that failed would fall back to the book's start and save it).
+function resolveBookLink(target, spineHrefs) {
+  if (typeof target !== 'string' || !target || /^[a-z][a-z0-9+.-]*:/i.test(target)) return null;
+  const hashAt = target.indexOf('#');
+  const file = (hashAt >= 0 ? target.slice(0, hashAt) : target).split('?')[0];
+  const hash = hashAt >= 0 ? target.slice(hashAt) : '';
+  const parts = file.split('/').filter((p) => p && p !== '.' && p !== '..');
+  if (!parts.length) return null;
+  const tail = parts.join('/');
+  const list = Array.isArray(spineHrefs) ? spineHrefs : [];
+  for (let i = 0; i < list.length; i++) {
+    const href = String(list[i] || '');
+    if (href === tail || href.endsWith(`/${tail}`) || tail.endsWith(`/${href}`)) return { target: href + hash, spine: i };
+  }
+  return null;
+}
+
 // v1.402.0 P4: PDFs open as turning pages; "Scroll pages" in the More menu brings back the scroll column,
 // remembered per device.
 const READER_PDF_LAYOUTS = ['pages', 'scroll'];
@@ -149,6 +170,7 @@ if (typeof module !== 'undefined' && module.exports) {
     READER_BLOCK_SELECTOR,
     READER_CHAPTER_CSP,
     hardenChapterDocument,
+    resolveBookLink,
     normalizePdfLayout,
     READER_TTS_REV,
     clampReaderFontSize,
@@ -706,6 +728,20 @@ if (typeof module !== 'undefined' && module.exports) {
           allowScriptedContent: true, // P9: the frame needs scripts ON for the reader's listeners; the policy blocks the book's own
         });
         applyPrefs(r);
+        // An in-book link (a footnote, the book's own contents page) moves the WHOLE pool, not the one view
+        // that was tapped: epub.js follows a link by calling display() on that rendition, so a tap marks the
+        // click (below) and the marked display() becomes a jump. epub.js's own display() calls (a resize
+        // re-showing its place) pass through untouched.
+        const ownDisplay = r.display.bind(r);
+        let linkTap = false;
+        r.display = (target) => {
+          if (!linkTap) return ownDisplay(target);
+          linkTap = false;
+          const to = resolveBookLink(target, book.spine.spineItems.map((x) => x.href));
+          if (to) engine.jump(to);
+          return Promise.resolve();
+        };
+        viewer.markLinkTap = () => { linkTap = true; setTimeout(() => { linkTap = false; }, 0); };
         // P6: a sideways drag anywhere on the page turns it; the browser's own sideways pan never starts,
         // while a long press still selects and a tap on a link still follows it (vertical pan and pinch stay).
         r.themes.override('touch-action', 'pan-y pinch-zoom');
@@ -714,6 +750,10 @@ if (typeof module !== 'undefined' && module.exports) {
           const frame = cdoc && cdoc.defaultView && cdoc.defaultView.frameElement;
           if (!frame || !engine) return;
           engine.attachDocument(cdoc, frame);
+          cdoc.addEventListener('click', (event) => {
+            const a = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+            if (a && viewer.markLinkTap) viewer.markLinkTap();
+          }, { capture: true, signal });
           cdoc.addEventListener('keydown', (event) => { if (readerKeyHandler) readerKeyHandler(event); }, { signal });
         });
         // epub.js's own relocated stays the source of the place, but only for the CURRENT viewer (P8): a

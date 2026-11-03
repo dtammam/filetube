@@ -17,6 +17,7 @@
 //               for page content during the drag, from a Chrome trace
 //     pdfscroll P4: a PDF opens paged; More > Scroll pages brings back the scroll column on the same page, and
 //               the choice is remembered; Turn pages brings the turning pages back
+//     link      an in-book link moves the whole pool: the visible page AND the turn after it are the target's
 //     csp       P9: a hostile EPUB (inline script, onerror, javascript: link, SVG script, meta refresh) runs NONE
 //               of its code, while the reader still hears a drag that starts on its text
 // Not a CI gate: a proof tool. Prints one line per case and a PASS/FAIL summary; exit 1 on any failure.
@@ -512,11 +513,61 @@ async function pdfscroll(env) {
   return fail;
 }
 
+async function visibleText(page) {
+  return page.evaluate(() => {
+    const top = document.querySelector('.pt-rig.is-top');
+    const isF = top === document.querySelectorAll('.pt-rig')[1];
+    const el = isF ? top.querySelector(':scope > .pt-mask > .pt-inner > .reader-epub-page') : top.querySelector(':scope > .pt-slot > .reader-epub-page');
+    const container = el.querySelector('.epub-container'); const iframe = el.querySelector('iframe');
+    const box = container.getBoundingClientRect(); const fr = iframe.getBoundingClientRect();
+    for (const b of iframe.contentDocument.querySelectorAll('h1, p')) {
+      for (const rc of b.getClientRects()) { const l = fr.left + rc.left; if (l + rc.width > box.left + 1 && l < box.right - 1) return b.textContent.slice(0, 10); }
+    }
+    return '';
+  });
+}
+async function link(env) {
+  let fail = 0;
+  const fsx = require('node:fs');
+  const chapters = [
+    `<h1>Linked</h1><p style="text-align:center"><a id="go" href="ch2.xhtml">Go to part three</a></p>${Array.from({ length: 10 }, (_, i) => para(1, i)).join('')}`,
+    `<h1>Part two</h1>${Array.from({ length: 10 }, (_, i) => para(2, i)).join('')}`,
+    `<h1>Part three</h1>${Array.from({ length: 22 }, (_, i) => para(3, i)).join('')}`,
+  ];
+  fsx.writeFileSync(path.join(process.env.DATA_DIR, 'books', 'links.epub'), buildEpub({ title: 'Links', author: 'X', chapters }));
+  await env.server.scanBooks();
+  const id = Object.values(env.server.booksDb.read().items).find((i) => i.title === 'Links').id;
+  for (const engine of ENGINES) {
+    const r = await openReader(env, engine, id, { width: 390, height: 844 });
+    const before = await place(r.page);
+    const at = await r.page.evaluate(() => {
+      const top = document.querySelector('.pt-rig.is-top');
+      const isF = top === document.querySelectorAll('.pt-rig')[1];
+      const el = isF ? top.querySelector(':scope > .pt-mask > .pt-inner > .reader-epub-page') : top.querySelector(':scope > .pt-slot > .reader-epub-page');
+      const f = el.querySelector('iframe'); const a = f.contentDocument.getElementById('go');
+      const fr = f.getBoundingClientRect(); const rc = a.getBoundingClientRect();
+      return { x: fr.left + rc.left + rc.width / 2, y: fr.top + rc.top + rc.height / 2 };
+    });
+    await r.page.mouse.click(at.x, at.y);
+    await r.page.waitForFunction((b) => document.getElementById('reader-pane').dataset.ptPlace !== b, before, { timeout: 10000 }).catch(() => {});
+    await settle(r.page, 600);
+    const jumped = await place(r.page);
+    const shown = await visibleText(r.page);
+    await r.page.keyboard.press('ArrowRight'); await settle(r.page, 600);
+    const next = await visibleText(r.page);
+    const ok = jumped !== before && jumped.endsWith(':0') && shown === 'Part three' && /^c3p/.test(next) && r.errors.length === 0;
+    if (!ok) fail++;
+    console.log(`${ok ? 'PASS' : 'FAIL'} link ${engine}: ${before} -> ${jumped}, shows "${shown}"; the next turn shows "${next}"; errors ${JSON.stringify(r.errors)}`);
+    await r.browser.close();
+  }
+  return fail;
+}
+
 if (require.main === module) {
   (async () => {
     const env = await boot();
     const modes = { smoke };
-    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll });
+    Object.assign(modes, { trigger, landing, place: placeMode, reduced, frames, csp, pdfscroll, link });
     if (!modes[MODE]) throw new Error(`unknown mode ${MODE}`);
     const fail = await modes[MODE](env);
     console.log(`${MODE}: ${fail ? 'FAIL' : 'PASS'} (${fail} failing)`);
