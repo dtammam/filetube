@@ -90,6 +90,16 @@ turn after 30%.
   Listen from here, the TOC, chapter follow for narration, and "From the beginning" behave exactly as today. A turn
   that falls back saves nothing.
 
+- **P9 - the chapter frame is guarded by a script-blocking policy, not the no-scripts sandbox (Dean, 2026-11-03,
+  AskUserQuestion at the Step 1 stop rule).** WebKit runs no parent listener on a sandboxed no-scripts document
+  (Evidence, Step 1), so the reader cannot hear a drag on the iPhone. The ruling: epub.js runs with
+  `allowScriptedContent: true` (sandbox `allow-same-origin allow-scripts`, so top navigation, popups and forms
+  stay blocked) and every chapter document gets, before any book markup is parsed, a
+  `Content-Security-Policy` meta that refuses all script, plus the book's own `<script>` elements and inline
+  `on*` handlers stripped from the document epub.js serializes. Long-press selection and link taps keep working.
+  This replaces hard part 2's "never add allow-scripts" line; the policy is now the one defense, so the gate
+  runs the full security seat on it.
+
 ## The hard parts (each is a stop-and-measure point)
 
 1. **epub.js has one view; the curl needs several pages at once.** Today `book.renderTo(pane, { flow: 'paginated',
@@ -190,3 +200,35 @@ the iOS app (report only, hard part 6).
 ## Evidence
 
 (builder: Step 1 spike results, then the acceptance outputs, verbatim with counts)
+
+### Step 1 spike (2026-11-03, builder; scratch page, not merged)
+
+Book: War and Peace, Project Gutenberg EPUB 3 (`2600.epub3.images`, 1.8 MB, 368 spine items) - no library EPUB
+is on this box, so a real producer's book stands in for "a real EPUB from Dean's library". Vendored epub.js +
+JSZip, `book.renderTo(slot, { flow: 'paginated', spread: 'none', allowScriptedContent: false })` per view,
+390x700 slots, Playwright 1.62 (webkit-2248 / chromium headless shell 1234), headless, this box.
+
+- **(a) several renditions of one Book, each holding its own place:** PASS (WebKit). 8 renditions parked on
+  spine 5-8 pages 1-2: placed `["5:1/7","5:2/7","6:1/9","6:2/9","7:1/7","7:2/7","8:1/5","8:2/5"]`, re-read after
+  all eight moved: identical, 8 distinct CFIs, `stable: true`. Pool open 95 ms (WebKit), 81 ms (Chromium).
+- **(b) re-point time (WebKit, 10 samples each):** same-chapter `next()` median 17 ms, max 34; cross-chapter
+  `next()` median 54 ms, max 85 (n = 10); `display(spineIndex)` median 47 ms, max 69.
+- **(c) no blank when shown:** PASS (WebKit). A hidden view re-pointed across chapters and brought to the top at
+  promise-resolve + 0 frames and + 2 frames: screenshot PNG sizes 97-118 KB (r0) and 106-120 KB (r2) against
+  2397 bytes for a blank paper slot (6 samples each). The two-frame rule stays as the margin.
+- **(d) memory (headless, this box; the iPhone number is a device check):** whole-browser RSS with views parked
+  on 1 / 6 / 8 different chapters: WebKit 383.8 / 393.6 / 398.6 MB (+14.8 MB for 8); Chromium 425.8 / 449.7 /
+  455.4 MB (+29.6 MB for 8).
+- **Hard part 2 - parent listeners on the chapter document: INERT IN WEBKIT (the stop rule).** Listeners the
+  parent adds to an epub.js chapter document (`sandbox="allow-same-origin"`, the vendored source's value with
+  `allowScriptedContent: false`) never fire in WebKit: 0 events for a mouse drag, a mouse click and a touch tap,
+  on `document` and on `window`, and epub.js's own `rendition.on('click'|'touchstart'|...)` relay got 0 too;
+  even a synthetic `dispatchEvent` from the parent ran no listener. A plain `srcdoc` control iframe with the same
+  sandbox: 0 events in WebKit; the same control without a sandbox: every event. Chromium and Firefox deliver all
+  events to the sandboxed document (`pointerdown, touchstart, pointerup, touchend, mousedown, click`).
+- **Measured alternative (for Dean's ruling, not built):** an unsandboxed `srcdoc` document whose head starts
+  with `<meta http-equiv="Content-Security-Policy" content="script-src 'none'; object-src 'none'">`: parent
+  listeners fire in WebKit, Chromium and Firefox (`pointerdown, touchstart, pointerup, touchend`), and its
+  inline `<script>`, `onerror=` handler and `javascript:` link ran in NONE of the three engines (the same
+  payload in an unprotected control ran all three: `["open-inline","open-onerror","open-jsurl"]`).
+

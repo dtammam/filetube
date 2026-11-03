@@ -232,25 +232,43 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true }) {
   win.ui = ui;
   for (const t of READER_TOKENS) doc.documentElement.style.setProperty(t, '#123456');
   // loadScriptOnce resolves for a script already on the page; ePub is the fake below.
-  for (const src of ['/vendor/jszip/jszip.min.js', '/vendor/epubjs/epub.min.js']) {
+  for (const src of ['/vendor/jszip/jszip.min.js', '/vendor/epubjs/epub.min.js', '/js/page-turn.js']) {
     const s = doc.createElement('script'); s.setAttribute('src', src); doc.head.appendChild(s);
   }
+  // v1.402.0: the real page turn holds the book as a POOL of renditions (page-turn.js, loaded for real);
+  // Reduce Motion is emulated so a turn lands in one step (P5) and the place can be read at once.
+  win.FileTubePageTurn = require('../../public/js/page-turn.js');
+  win.matchMedia = (q) => ({ matches: /prefers-reduced-motion: reduce/.test(q), addEventListener: () => {}, removeEventListener: () => {} });
   const pane = doc.getElementById('reader-pane');
   Object.defineProperty(pane, 'clientWidth', { value: 600 });
   Object.defineProperty(pane, 'clientHeight', { value: 800 });
-  const flips = { next: 0, prev: 0, displayed: [], fontSize: [], overrides: [] };
-  const rendition = {
-    themes: { override: (k, v) => flips.overrides.push([k, v]), fontSize: (v) => flips.fontSize.push(v) },
-    on: () => {},
-    display: async (x) => { flips.displayed.push(x); },
-    next: async () => { flips.next++; },
-    prev: async () => { flips.prev++; },
-    resize: () => {},
-    getContents: () => [],
+  const flips = { next: 0, prev: 0, displayed: [], fontSize: [], overrides: [], renditions: 0, pool: [] };
+  const makeRendition = (el) => {
+    flips.renditions++;
+    const n = flips.renditions;
+    const handlers = {};
+    const r = {
+      el,
+      cfi: `epubcfi(/6/${2 * n}!/4/2)`,
+      fire: (ev, arg) => (handlers[ev] || []).forEach((fn) => fn(arg)),
+      themes: { override: (k, v) => flips.overrides.push([k, v]), fontSize: (v) => flips.fontSize.push(v) },
+      hooks: { content: { register: () => {} } },
+      on: (ev, fn) => { (handlers[ev] = handlers[ev] || []).push(fn); },
+      display: async (x) => { flips.displayed.push(x); },
+      next: async () => { flips.next++; },
+      prev: async () => { flips.prev++; },
+      currentLocation: () => ({ start: { cfi: r.cfi, index: 0, displayed: { page: 1, total: 9 } } }),
+      resize: () => {},
+      getContents: () => [],
+      destroy: () => {},
+    };
+    flips.pool.push(r);
+    return r;
   };
   win.ePub = () => ({
     on: () => {},
-    renderTo: () => rendition,
+    renderTo: (el) => makeRendition(el),
+    spine: { hooks: { content: { register: () => {} } } },
     ready: Promise.resolve(),
     locations: { length: () => 0, generate: async () => {}, save: () => '', load: () => {} },
     loaded: { navigation: Promise.resolve({ toc }) },
@@ -367,7 +385,8 @@ test('reader: Contents is a PANEL sheet of the book TOC (sub-entries indented); 
   assert.deepStrictEqual(rows.map((x) => x.querySelector('.ui-row__title').textContent), ['The Quay', 'At Dusk', 'Ledger Lines']);
   assert.deepStrictEqual(rows.map((x) => x.classList.contains('reader-toc-sub')), [false, true, false]);
   rows[2].click();
-  assert.deepStrictEqual(r.flips.displayed.slice(-1), ['c2.xhtml']);
+  await flush(10);
+  assert.deepStrictEqual(r.flips.displayed.slice(-1), ['c2.xhtml'], 'the pick re-parks the page viewers on it');
   assert.strictEqual(sheet.classList.contains('is-open'), false, 'the pick closes the sheet');
 });
 
@@ -410,16 +429,59 @@ test('reader: the arrow keys stand down while a reader sheet is open (the segmen
   const r = mountReader({ detail: EPUB });
   r.releaseDetail();
   await flush(20);
+  // v1.402.0: an arrow is a page TURN (the page-turn engine; Reduce Motion emulated, so it lands in one step).
+  const placeOf = () => r.doc.getElementById('reader-pane').dataset.ptPlace;
+  const settled = async () => { for (let i = 0; i < 20; i++) { await frame(); } };
+  await settled();
+  assert.strictEqual(placeOf(), '1:0', 'precondition: the book opened on its first page');
   key(r.win, 'ArrowRight');
-  assert.strictEqual(r.flips.next, 1, 'a closed reader flips');
+  await settled();
+  assert.strictEqual(placeOf(), '1:1', 'a closed reader flips');
   r.doc.getElementById('reader-settings-btn').click();
   key(r.win, 'ArrowRight');
   key(r.win, 'ArrowLeft');
-  assert.strictEqual(r.flips.next, 1, 'no flip under the sheet');
-  assert.strictEqual(r.flips.prev, 0);
+  await settled();
+  assert.strictEqual(placeOf(), '1:1', 'no flip under the sheet');
   key(r.win, 'Escape');
   key(r.win, 'ArrowLeft');
-  assert.strictEqual(r.flips.prev, 1, 'flips again after Esc closes it');
+  await settled();
+  assert.strictEqual(placeOf(), '1:0', 'flips again after Esc closes it');
+});
+
+test('reader P8: a parked pool view moving (epub.js relocated) never saves the place; the visible page does', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 20; i++) await frame();
+  assert.strictEqual(r.flips.pool.length, 6, 'precondition: the one-page pool (6 renditions)');
+  // The visible page: the front of the top rig (the one-page forward rig at rest).
+  const visibleEl = r.doc.querySelector('.pt-rig.is-top > .pt-mask > .pt-inner > .reader-epub-page');
+  const visible = r.flips.pool.find((x) => x.el === visibleEl);
+  assert.ok(visible, 'precondition: the visible rendition is found');
+  for (const hidden of r.flips.pool.filter((x) => x !== visible)) {
+    hidden.fire('relocated', { start: { cfi: `hidden-${hidden.cfi}`, index: 3, displayed: { page: 2, total: 9 } } });
+  }
+  const posts = () => r.calls.filter((c) => c.url === '/api/books/b1/progress' && c.method === 'POST').map((c) => JSON.parse(c.body).locator);
+  r.view.destroy(); // sends the last place now (keepalive)
+  active.view = null;
+  const sent = posts();
+  assert.strictEqual(sent.length, 1, 'the place is sent on leave');
+  assert.strictEqual(sent[0].cfi, visible.cfi, 'it is the VISIBLE page, never a parked neighbour');
+  assert.strictEqual(sent[0].spineIndex, 0);
+});
+
+test('reader P8: the visible view relocating (a re-layout) does save its place', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 20; i++) await frame();
+  const visibleEl = r.doc.querySelector('.pt-rig.is-top > .pt-mask > .pt-inner > .reader-epub-page');
+  const visible = r.flips.pool.find((x) => x.el === visibleEl);
+  visible.fire('relocated', { start: { cfi: 'epubcfi(/6/8!/4/2/1:0)', index: 3, displayed: { page: 1, total: 9 } } });
+  r.view.destroy();
+  active.view = null;
+  const sent = r.calls.filter((c) => c.url === '/api/books/b1/progress' && c.method === 'POST').map((c) => JSON.parse(c.body).locator);
+  assert.deepStrictEqual(sent.map((l) => [l.cfi, l.spineIndex]), [['epubcfi(/6/8!/4/2/1:0)', 3]]);
 });
 
 test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-root)', async () => {

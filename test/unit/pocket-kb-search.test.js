@@ -674,7 +674,9 @@ const CLASSIFIED = [
   ['public/js/common.js', "doc.addEventListener('keydown', (e) => {\n    if (e.key === 'Escape') closeSidebarDrawer(sidebar);", 'bubble'],
   ['public/js/ui.js', "doc.addEventListener('keydown', onKey);", 'bubble'],
   ['public/js/ui.js', "doc.removeEventListener('keydown', onKey);", 'bubble'],
-  ['public/js/read.js', "document.addEventListener('keydown', (event) => {", 'bubble'],
+  ['public/js/read.js', "document.addEventListener('keydown', readerKeyHandler, { signal });", 'bubble'],
+  // v1.402.0: a press in a book page's text gives that chapter document the focus; its keys reach the same handler
+  ['public/js/read.js', "cdoc.addEventListener('keydown', (event) => { if (readerKeyHandler) readerKeyHandler(event); }, { signal });", 'element: a book chapter document (its own frame); the search input lives in the app document, so a key typed there never reaches it'],
   // v1.400.0 multi-select: Escape leaves select mode (home grid); bubble, live only while a select session is open
   ['public/js/main.js', "document.addEventListener('keydown', (e) => {\n          if (e.key !== 'Escape' && e.key !== 'Esc') return;", 'bubble'],
   // capture: each one, why it cannot act on a key typed into the input

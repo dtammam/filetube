@@ -68,13 +68,20 @@ function clampSpineIndex(idx, count) {
 
 // UI pass sweep S10: the reader toolbar's More menu (ui.menu items). Finished is a
 // toggle whose label says what a tap will do; Save and Share act on the book file.
+// v1.402.0 P4: a PDF adds the page layout choice; its label says what a tap will do.
 function readerMoreMenuItems(state) {
   const finished = Boolean(state && state.finished);
-  return [
+  const items = [
     { value: 'finished', icon: 'check', label: finished ? 'Mark as unfinished' : 'Mark as finished' },
     { value: 'save', icon: 'download', label: 'Save to device' },
     { value: 'share', icon: 'share', label: 'Share' },
   ];
+  if (state && state.format === 'pdf') {
+    items.push(normalizePdfLayout(state.pdfLayout) === 'scroll'
+      ? { value: 'pdf-layout', icon: 'menu_book', label: 'Turn pages' }
+      : { value: 'pdf-layout', icon: 'view_list', label: 'Scroll pages' });
+  }
+  return items;
 }
 
 // The Aa sheet's text-size stepper: the value it shows and whether each end is live.
@@ -90,9 +97,59 @@ function readerFontStepper(size, format) {
   };
 }
 
+// v1.402.0 P9 (Dean, 2026-11-03): the chapter frame is guarded by a script-blocking policy instead of the
+// no-scripts sandbox. WebKit runs no listener the reader adds to a sandboxed no-scripts document (0 events
+// measured, mouse and touch; plan Evidence, Step 1), so the page turn could not hear a finger on the iPhone.
+// epub.js now runs with allowScriptedContent (sandbox "allow-same-origin allow-scripts": top navigation,
+// popups and forms stay blocked), and hardenChapterDocument runs on every chapter document BEFORE epub.js
+// serializes it into the frame's srcdoc (a book.spine content hook):
+//   - this policy goes in as the FIRST element of <head>, so it governs everything the parser meets after it;
+//   - every <script> element (any namespace, SVG too) is removed, and every inline on* handler attribute;
+//   - every <meta http-equiv="refresh"> is removed (a timed navigation of the frame).
+// Measured in the spike: with this policy in a srcdoc document an inline script, an onerror handler and a
+// javascript: link ran in none of WebKit, Chromium and Firefox. The policy names only what runs code or
+// embeds another document; a book's own images, fonts and styles load exactly as before.
+const READER_CHAPTER_CSP = "script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
+
+function hardenChapterDocument(doc) {
+  if (!doc || !doc.documentElement) return false;
+  const root = doc.documentElement;
+  const ns = root.namespaceURI || 'http://www.w3.org/1999/xhtml';
+  for (const el of Array.from(doc.getElementsByTagNameNS('*', 'script'))) el.parentNode.removeChild(el);
+  for (const el of Array.from(doc.getElementsByTagNameNS('*', 'meta'))) {
+    if (String(el.getAttribute('http-equiv') || '').trim().toLowerCase() === 'refresh') el.parentNode.removeChild(el);
+  }
+  for (const el of Array.from(doc.getElementsByTagNameNS('*', '*'))) {
+    for (const attr of Array.from(el.attributes)) {
+      if (/^on/i.test(attr.localName)) el.removeAttributeNode(attr);
+    }
+  }
+  let head = null;
+  for (const child of Array.from(root.children || root.childNodes)) {
+    if (child.nodeType === 1 && String(child.localName).toLowerCase() === 'head') { head = child; break; }
+  }
+  if (!head) {
+    head = doc.createElementNS(ns, 'head');
+    root.insertBefore(head, root.firstChild);
+  }
+  const meta = doc.createElementNS(ns, 'meta');
+  meta.setAttribute('http-equiv', 'Content-Security-Policy');
+  meta.setAttribute('content', READER_CHAPTER_CSP);
+  head.insertBefore(meta, head.firstChild);
+  return true;
+}
+
+// v1.402.0 P4: PDFs open as turning pages; "Scroll pages" in the More menu brings back the scroll column,
+// remembered per device.
+const READER_PDF_LAYOUTS = ['pages', 'scroll'];
+function normalizePdfLayout(value) { return READER_PDF_LAYOUTS.includes(value) ? value : 'pages'; }
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
+    READER_CHAPTER_CSP,
+    hardenChapterDocument,
+    normalizePdfLayout,
     READER_TTS_REV,
     clampReaderFontSize,
     normalizeReaderTheme,
@@ -116,6 +173,8 @@ if (typeof module !== 'undefined' && module.exports) {
   let spineCount = null;      // number of chapters (from GET /api/books/:id)
   let currentTtsSpine = null; // the chapter whose audio is currently loaded
   let listenBusy = false;     // guards overlapping Listen/chapter-advance requests
+  let readerKeyHandler = null;  // init()'s arrow-key handler; v1.402.0 also hears it from inside a chapter
+                                // (a press in the page's text gives that document the keyboard focus)
   let sizeReaderSurface = null; // init() exposes its measure-and-fit fn so the
                                 // narration bar reveal can re-fit the chassis
   // UI pass sweep S10: the reader's sheets (Contents, Aa, More) live on <body>, outside
@@ -140,6 +199,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
   const FONT_KEY = 'filetube_reader_fontsize';
   const THEME_KEY = 'filetube_reader_theme';
+
+  // P5: with Reduce Motion on, a turn changes the page at once (no curl, no spring). Read at each turn, so
+  // switching the setting takes effect without reopening the book.
+  function readerReducedMotion() {
+    try { return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (_) { return false; }
+  }
 
   function readPref(key, fallback) {
     try { return localStorage.getItem(key) || fallback; } catch (_) { return fallback; }
@@ -473,12 +538,43 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   // ---- EPUB adapter ----------------------------------------------------------
+  //
+  // v1.402.0 (plan 2026-11-03-book-page-turn): books turn like paper. The page turn (page-turn.js) shows
+  // several pages at once - per direction the page under, the turning leaf's front and its back - so the book
+  // is held by a POOL of single-page epub.js renditions of the one Book (`spread: 'none'`, each sized to one
+  // page, all with the same theme and font so they paginate identically), each parked on a page by display() +
+  // next()/prev(). Measured in the Step 1 spike (plan Evidence): eight renditions of War and Peace coexist and
+  // each keeps its own place; a hidden view re-pointed across a chapter takes 54 ms median.
+  // P3: two pages when the reader is wider than tall and at least 640 px wide (page-turn.js ptLayout, one rule
+  // for EPUB and PDF), one page otherwise - phones in portrait are strictly one page. It replaced epub.js's own
+  // spread rule (minSpreadWidth 800).
+
+  // The book's place (P8) is the CURRENT viewer's: the one showing the base page on the top rig. A parked
+  // neighbour (the next page, the leaf's back) never saves a place. Exported shape for the tests:
+  // epubLocationReport(location, contents) -> { locator, percent } or null.
+  function epubLocationReport(book, location, contents) {
+    if (!location || !location.start) return null;
+    let percent = 0;
+    try {
+      percent = book.locations.length() ? book.locations.percentageFromCfi(location.start.cfi) * 100 : 0;
+    } catch (_) { percent = 0; }
+    // blockIndex: the listen-from-here bridge (see READER_BLOCK_SELECTOR's contract comment).
+    let blockIndex = null;
+    try {
+      if (contents && contents.document) {
+        const range = contents.range(location.start.cfi);
+        blockIndex = range ? blockIndexForNode(contents.document, range.startContainer) : null;
+      }
+    } catch (_) { blockIndex = null; }
+    return { locator: buildEpubLocator(location.start.cfi, location.start.index, blockIndex), percent };
+  }
 
   async function openEpub(root, pane, detail, signal) {
     setStatus(root, 'Loading reader…');
     // JSZip MUST load before epub.js (its runtime dependency).
     await loadScriptOnce('/vendor/jszip/jszip.min.js');
     await loadScriptOnce('/vendor/epubjs/epub.min.js');
+    await loadScriptOnce('/js/page-turn.js');
     if (signal.aborted) return null;
     setStatus(root, 'Opening book…');
 
@@ -487,6 +583,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // none, so it was treated as an UNPACKED book directory and epub.js
     // fetched /book/<id>/file/META-INF/container.xml (404) forever.
     const book = window.ePub(`/book/${encodeURIComponent(detail.id)}/file`, { openAs: 'epub' });
+    // P9: every chapter document is hardened before epub.js serializes it into a frame (see
+    // hardenChapterDocument). Registered before any rendition exists, so no chapter loads without it.
+    book.spine.hooks.content.register((chapterDoc) => { hardenChapterDocument(chapterDoc); });
     // Gate residual (v1.37.1 slim gate): epub.js converts ANY genuine open
     // failure into an 'openFailed' EVENT (never a promise rejection) --
     // without this subscription, a future failure class would hang at
@@ -494,18 +593,9 @@ if (typeof module !== 'undefined' && module.exports) {
     book.on('openFailed', () => setStatus(root, 'Could not open this book', { error: true, body: 'The file may be damaged or not a valid EPUB.' }));
     // v1.37.3: EXPLICIT PIXELS, never percentages -- see waitForPaneSize's
     // comment for the whole-chapter-as-one-page failure mode percentages
-    // caused on-device. minSpreadWidth 800 keeps phones strictly
-    // single-page; wide desktop panes get two.
+    // caused on-device. Each pool rendition gets the page's measured pixel size.
     const paneSize = await waitForPaneSize(pane, signal);
     if (!paneSize || signal.aborted) return null;
-    const rendition = book.renderTo(pane, {
-      width: paneSize.width,
-      height: paneSize.height,
-      flow: 'paginated',
-      spread: 'auto',
-      minSpreadWidth: 800,
-      allowScriptedContent: false,
-    });
 
     // Reading themes: applied to the chapter iframe via themes.override()
     // per property; the pane background is handled by the .reader-content
@@ -540,17 +630,15 @@ if (typeof module !== 'undefined' && module.exports) {
       sepia: { fg: readerToken('--reader-sepia-fg'), bg: readerToken('--reader-sepia-bg') },
       night: { fg: readerToken('--reader-night-fg'), bg: readerToken('--reader-night-bg') },
     };
-    function applyEpubTheme(name) {
+    function applyEpubTheme(rendition, name) {
       const t = EPUB_THEMES[normalizeReaderTheme(name)];
       rendition.themes.override('color', t.fg);
       rendition.themes.override('background', t.bg);
     }
-
-    function applyPrefs() {
-      applyEpubTheme(readPref(THEME_KEY, 'paper'));
+    function applyPrefs(rendition) {
+      applyEpubTheme(rendition, readPref(THEME_KEY, 'paper'));
       rendition.themes.fontSize(`${clampReaderFontSize(readPref(FONT_KEY, '100'))}%`);
     }
-    applyPrefs();
 
     // Locations power the percent readout. Generating them walks the whole
     // book once; cache the serialized result per book id+size so reopening
@@ -580,79 +668,150 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }).catch(() => {});
 
-    rendition.on('relocated', (location) => {
-      if (!location || !location.start) return;
-      let percent = 0;
-      try {
-        percent = book.locations.length() ? book.locations.percentageFromCfi(location.start.cfi) * 100 : 0;
-      } catch (_) { percent = 0; }
-      updateProgressBar(root, percent);
-      // blockIndex: the wave-2 listen-from-here bridge (see
-      // READER_BLOCK_SELECTOR's contract comment).
-      let blockIndex = null;
-      try {
-        const contents = rendition.getContents()[0];
-        if (contents && contents.document) {
-          const range = contents.range(location.start.cfi);
-          blockIndex = range ? blockIndexForNode(contents.document, range.startContainer) : null;
+    let engine = null;
+    let placeCfi = null; // the start CFI of the page the reader is on (re-anchors a font change or relayout)
+
+    function report(viewer, location) {
+      if (!viewer.rendition) return;
+      const contents = viewer.rendition.getContents()[0];
+      const out = epubLocationReport(book, location, contents);
+      if (!out) return;
+      placeCfi = location.start.cfi;
+      updateProgressBar(root, out.percent);
+      queueProgressPing(out.locator, out.percent);
+      if (engine) engine.refreshStacks();
+    }
+
+    // One page viewer: an epub.js rendition parked on one page. show(gen, idx, anchor) walks it there - a jump
+    // (a new generation) displays the anchor, then next()/prev() step; within a generation it steps from the
+    // page it holds. Past either end of the book it holds its last real page and reports present() false (the
+    // engine then draws plain paper). Calls queue; only the latest target is walked to.
+    function createEpubViewer() {
+      const el = document.createElement('div');
+      el.className = 'reader-epub-page';
+      const viewer = { el, rendition: null };
+      let atGen = -1;
+      let pos = 0;
+      let want = null;
+      let present = false;
+      let chain = Promise.resolve();
+      function ensure() {
+        if (viewer.rendition) return viewer.rendition;
+        const g = engine.layout();
+        const r = book.renderTo(el, {
+          width: g.W,
+          height: g.H,
+          flow: 'paginated',
+          spread: 'none',
+          allowScriptedContent: true, // P9: the frame needs scripts ON for the reader's listeners; the policy blocks the book's own
+        });
+        applyPrefs(r);
+        // P6: a sideways drag anywhere on the page turns it; the browser's own sideways pan never starts,
+        // while a long press still selects and a tap on a link still follows it (vertical pan and pinch stay).
+        r.themes.override('touch-action', 'pan-y pinch-zoom');
+        r.hooks.content.register((contents) => {
+          const cdoc = contents.document;
+          const frame = cdoc && cdoc.defaultView && cdoc.defaultView.frameElement;
+          if (!frame || !engine) return;
+          engine.attachDocument(cdoc, frame);
+          cdoc.addEventListener('keydown', (event) => { if (readerKeyHandler) readerKeyHandler(event); }, { signal });
+        });
+        // epub.js's own relocated stays the source of the place, but only for the CURRENT viewer (P8): a
+        // parked neighbour moving to the next page must never save it.
+        r.on('relocated', (location) => { if (engine && engine.isCurrent(viewer)) report(viewer, location); });
+        viewer.rendition = r;
+        return r;
+      }
+      async function displayAnchor(r, a) {
+        if (a && a.feedBlock != null) {
+          // v1.379.0 Feed mode (plan D4/D5): a place the FEED moved is a BLOCK position -
+          // { cfi: '', spineIndex, blockIndex } - because the server cannot write a CFI epub.js will
+          // honour (epub.js loads a chapter through srcdoc, i.e. the HTML parser, which inserts a <head> and
+          // re-nests lax markup, so an element path computed over the raw XHTML names the wrong node;
+          // measured in W1, tools/feed-proof/reader-resume.js). The reader is the one place that has
+          // epub.js's live DOM, so it resolves the block itself: open the chapter, take the blockIndex-th
+          // element of READER_BLOCK_SELECTOR (the chunker's own count), and display epub.js's CFI FOR THAT
+          // NODE. The reader's own locators keep their text-precise CFI and never enter this branch.
+          await r.display(a.spine);
+          const contents = r.getContents()[0];
+          const blocks = contents && contents.document ? contents.document.querySelectorAll(READER_BLOCK_SELECTOR) : [];
+          // Gate r1 (adversary W5): the chunker and the HTML parser can count blocks differently on
+          // lax markup (a block inside <p>, a stray <td>). A block past this DOM's count lands on the
+          // chapter's LAST block, never its start - the first place saved after display() stores
+          // the page shown, and the chapter start would move a real bookmark back a whole chapter.
+          const node = blocks.length ? blocks[Math.min(a.feedBlock, blocks.length - 1)] : null;
+          if (node && typeof contents.cfiFromNode === 'function') await r.display(contents.cfiFromNode(node));
+          return;
         }
-      } catch (_) { blockIndex = null; }
-      queueProgressPing(buildEpubLocator(location.start.cfi, location.start.index, blockIndex), percent);
+        try {
+          await r.display(a ? a.target : undefined);
+        } catch (_) {
+          // A refused CFI lands in its CHAPTER when the locator names one, never at the
+          // start of the book: the first place saved after display() overwrites the
+          // saved place, so a start fallback would move a real bookmark to page 1.
+          try {
+            await r.display(a && a.spine != null ? a.spine : undefined);
+          } catch (__) {
+            await r.display();
+          }
+        }
+      }
+      async function walk() {
+        const w = want;
+        if (!w || signal.aborted) return;
+        const r = ensure();
+        if (atGen !== w.gen) {
+          await displayAnchor(r, w.anchor);
+          atGen = w.gen; pos = 0; present = true;
+        }
+        while (pos !== w.idx) {
+          if (want !== w || signal.aborted) return; // superseded: the next queued walk carries on from here
+          const loc = r.currentLocation();
+          if (w.idx > pos) {
+            if (loc && loc.atEnd) { present = false; break; }
+            await r.next();
+            pos += 1;
+          } else {
+            if (loc && loc.atStart) { present = false; break; }
+            await r.prev();
+            pos -= 1;
+          }
+          present = true;
+        }
+        if (pos === w.idx) present = true;
+        el.classList.toggle('is-blank', !present);
+      }
+      viewer.show = (gen, idx, anchor) => {
+        want = { gen, idx, anchor };
+        chain = chain.then(walk).catch(() => {});
+        return chain;
+      };
+      viewer.present = () => present;
+      viewer.destroy = () => { want = null; try { if (viewer.rendition) viewer.rendition.destroy(); } catch (_) { /* gone */ } viewer.rendition = null; };
+      return viewer;
+    }
+
+    engine = window.FileTubePageTurn.createPageTurn({
+      host: pane,
+      inputRoot: pane.parentElement || pane,
+      source: { fixedAspect: null, createViewer: createEpubViewer },
+      shadeTheme: () => normalizeReaderTheme(readPref(THEME_KEY, 'paper')),
+      reducedMotion: readerReducedMotion,
+      fraction: () => lastPercent / 100,
+      onPlace: (viewer) => {
+        if (!viewer || !viewer.rendition) return;
+        report(viewer, viewer.rendition.currentLocation());
+        if (!signal.aborted) setStatus(root, ''); // the first page has painted
+      },
     });
 
     // Resume from the saved locator, else the beginning.
     const startCfi = detail.locator && detail.locator.kind === 'epub' && detail.locator.cfi ? detail.locator.cfi : undefined;
     const startSpine = detail.locator && detail.locator.kind === 'epub' && Number.isInteger(detail.locator.spineIndex) && detail.locator.spineIndex >= 0
       ? detail.locator.spineIndex : null;
-    // v1.379.0 Feed mode (plan D4/D5): a place the FEED moved is a BLOCK position -
-    // { cfi: '', spineIndex, blockIndex } - because the server cannot write a CFI
-    // epub.js will honour (epub.js loads a chapter through srcdoc, i.e. the HTML
-    // parser, which inserts a <head> and re-nests lax markup, so an element path
-    // computed over the raw XHTML names the wrong node; measured in W1,
-    // tools/feed-proof/reader-resume.js). The reader is the one place that has
-    // epub.js's live DOM, so it resolves the block itself: open the chapter, take
-    // the blockIndex-th element of READER_BLOCK_SELECTOR (the chunker's own count),
-    // and display epub.js's CFI FOR THAT NODE. The reader's own locators keep their
-    // text-precise CFI and never enter this branch (their cfi is non-empty).
     const feedBlock = startCfi === undefined && startSpine !== null
       && Number.isInteger(detail.locator.blockIndex) && detail.locator.blockIndex >= 0 ? detail.locator.blockIndex : null;
-    try {
-      if (feedBlock !== null) {
-        await rendition.display(startSpine);
-        const contents = rendition.getContents()[0];
-        const blocks = contents && contents.document ? contents.document.querySelectorAll(READER_BLOCK_SELECTOR) : [];
-        // Gate r1 (adversary W5): the chunker and the HTML parser can count blocks differently on
-        // lax markup (a block inside <p>, a stray <td>). A block past this DOM's count lands on the
-        // chapter's LAST block, never its start - the first relocated ping after display() stores
-        // the page shown, and the chapter start would move a real bookmark back a whole chapter.
-        const node = blocks.length ? blocks[Math.min(feedBlock, blocks.length - 1)] : null;
-        if (node && typeof contents.cfiFromNode === 'function') await rendition.display(contents.cfiFromNode(node));
-      } else {
-        await rendition.display(startCfi);
-      }
-    } catch (_) {
-      // A refused CFI lands in its CHAPTER when the locator names one, never at the
-      // start of the book: the first relocated ping after display() overwrites the
-      // saved place, so a start fallback would move a real bookmark to page 1.
-      try {
-        await rendition.display(startSpine === null ? undefined : startSpine);
-      } catch (__) {
-        await rendition.display();
-      }
-    }
-    // v1.37.3 (Dean: desktop pages sometimes EMPTY until a tap): epub.js can
-    // complete display() without painting when the container was measured
-    // mid-layout -- a tap forces the reflow it missed. Nudge one explicit
-    // re-measure a frame after display so the first paint never depends on
-    // user interaction.
-    requestAnimationFrame(() => {
-      const w = Math.floor(pane.clientWidth);
-      const h = Math.floor(pane.clientHeight);
-      if (w > 50 && h > 50) {
-        try { rendition.resize(w, h); } catch (_) { /* not ready */ }
-      }
-    });
-    setStatus(root, '');
+    engine.jump(feedBlock !== null ? { feedBlock, spine: startSpine } : { target: startCfi, spine: startSpine });
 
     const toc = [];
     try {
@@ -664,33 +823,210 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       }
     } catch (_) { /* no nav -- empty toc */ }
-    renderToc(root, toc, (entry) => { rendition.display(entry.href).catch(() => {}); });
+    renderToc(root, toc, (entry) => { engine.jump({ target: entry.href }); });
 
+    const here = () => ({ target: placeCfi || undefined });
+    let lastSize = `${pane.clientWidth}x${pane.clientHeight}`;
     return {
-      next: () => rendition.next().catch(() => {}),
-      prev: () => rendition.prev().catch(() => {}),
+      next: () => engine.next(),
+      prev: () => engine.prev(),
       // v1.39.0: jump the visible page to a spine index (epub.js display()
       // accepts a numeric spine position) -- used to follow prev/next chapter
-      // narration. Best-effort; a bad index just no-ops.
-      goToSpine: (idx) => rendition.display(idx).catch(() => {}),
-      setFontSize: (pct) => rendition.themes.fontSize(`${pct}%`),
-      setTheme: (name) => applyEpubTheme(name), // v1.60.1: override(), never select() - see the theme block above
-      // v1.37.2: called (debounced) on window resize -- re-measures the
-      // pane so pagination/spread track the new dimensions.
-      refit: () => {
-        const w = Math.floor(pane.clientWidth);
-        const h = Math.floor(pane.clientHeight);
-        if (w > 50 && h > 50) {
-          try { rendition.resize(w, h); } catch (_) { /* not ready yet */ }
-        }
+      // narration.
+      goToSpine: (idx) => engine.jump({ target: idx, spine: idx }),
+      // A new size re-paginates every view: the pool re-parks from the page the reader is on.
+      setFontSize: (pct) => {
+        for (const v of engine.viewers()) { if (v.rendition) v.rendition.themes.fontSize(`${pct}%`); }
+        engine.jump(here());
       },
-      destroy: () => { try { book.destroy(); } catch (_) { /* already torn down */ } },
+      // v1.60.1: override(), never select() - see the theme block above. A theme repaints, never re-paginates.
+      setTheme: (name) => { for (const v of engine.viewers()) { if (v.rendition) applyEpubTheme(v.rendition, name); } },
+      // v1.37.2: called (debounced) on window resize -- a new pane size rebuilds the page viewers at the new
+      // page size (and one or two pages, P3) and re-parks them on the reader's page.
+      refit: () => {
+        const size = `${pane.clientWidth}x${pane.clientHeight}`;
+        if (size === lastSize || pane.clientWidth <= 50 || pane.clientHeight <= 50) return;
+        lastSize = size;
+        engine.rebuild(here());
+      },
+      destroy: () => {
+        try { engine.destroy(); } catch (_) { /* torn down */ }
+        try { book.destroy(); } catch (_) { /* already torn down */ }
+      },
     };
   }
 
   // ---- PDF adapter -----------------------------------------------------------
+  //
+  // v1.402.0 P4: a PDF opens as turning pages (the same curl and two-page view as an EPUB); "Scroll pages" in
+  // the More menu brings back the scroll column below (openPdfScroll, unchanged), remembered per device.
+  const PDF_LAYOUT_KEY = 'filetube_reader_pdf_layout';
+  function openPdf(root, pane, detail, signal) {
+    return normalizePdfLayout(readPref(PDF_LAYOUT_KEY, 'pages')) === 'scroll'
+      ? openPdfScroll(root, pane, detail, signal)
+      : openPdfPaged(root, pane, detail, signal);
+  }
 
-  async function openPdf(root, pane, detail, signal) {
+  // One-shot cover backfill: page 1 snapshotted for the library card (no-clobber server-side; hasCover gates
+  // the attempt). The paged reader renders it on its own (the scroll column reuses its page-1 canvas).
+  function postPdfCover(detail, numPages, canvas) {
+    const snap = document.createElement('canvas');
+    const ratio = canvas.height / canvas.width;
+    snap.width = 480;
+    snap.height = Math.round(480 * ratio);
+    snap.getContext('2d').drawImage(canvas, 0, 0, snap.width, snap.height);
+    snap.toBlob((blob) => {
+      if (!blob || blob.size > 512 * 1024) return; // over the route cap: skip
+      fetch(`/api/books/${encodeURIComponent(detail.id)}/cover?pages=${numPages}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: blob,
+      }).catch(() => {});
+    }, 'image/jpeg', 0.8);
+  }
+
+  // Paged: each page viewer is a canvas; pointing it at a page draws that page from a small cache of pages
+  // rendered ahead (the base page +-4), so a turn never waits on pdf.js. Pages keep renderPage's device-pixel
+  // sizing (the canvas is the page's CSS size times devicePixelRatio).
+  async function openPdfPaged(root, pane, detail, signal) {
+    setStatus(root, 'Loading reader…');
+    const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+    await loadScriptOnce('/js/page-turn.js');
+    if (signal.aborted) return null;
+    setStatus(root, 'Opening book…');
+    const doc = await pdfjs.getDocument({ url: `/book/${encodeURIComponent(detail.id)}/file` }).promise;
+    if (signal.aborted) { try { doc.destroy(); } catch (_) { /* torn down */ } return null; }
+    const numPages = doc.numPages;
+    const first = (await doc.getPage(1)).getViewport({ scale: 1 });
+    const aspect = first.width / first.height;
+    const dpr = () => Math.min(3, window.devicePixelRatio || 1);
+
+    let engine = null;
+    const cache = new Map(); // `${W}x${H}:${page}` -> Promise<canvas>, least recently used first
+    const CACHE_MAX = 12;
+    function rendered(pageNum) {
+      const g = engine.layout();
+      const key = `${g.W}x${g.H}:${pageNum}`;
+      if (cache.has(key)) { const hit = cache.get(key); cache.delete(key); cache.set(key, hit); return hit; }
+      const job = doc.getPage(pageNum).then(async (page) => {
+        const vp = page.getViewport({ scale: 1 });
+        const scale = Math.min(g.W / vp.width, g.H / vp.height) * dpr();
+        const scaled = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(scaled.width);
+        canvas.height = Math.round(scaled.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaled }).promise;
+        return canvas;
+      });
+      job.catch(() => cache.delete(key)); // allow a retry on the next pass
+      cache.set(key, job);
+      while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value);
+      return job;
+    }
+
+    function createPdfViewer() {
+      const el = document.createElement('div');
+      el.className = 'reader-pdf-leaf';
+      const canvas = document.createElement('canvas');
+      el.appendChild(canvas);
+      const viewer = { el, page: null };
+      let present = false;
+      let ticket = 0;
+      let sized = '';
+      viewer.show = async (gen, idx, anchor) => {
+        const mine = ++ticket;
+        const pageNum = Number(anchor) + idx;
+        present = Number.isInteger(pageNum) && pageNum >= 1 && pageNum <= numPages;
+        el.classList.toggle('is-blank', !present);
+        if (!present) { viewer.page = null; return; }
+        if (viewer.page === pageNum) return;
+        let src = null;
+        try { src = await rendered(pageNum); } catch (_) { src = null; }
+        if (mine !== ticket || !src) return;
+        const g = engine.layout();
+        const want = `${Math.round(g.W * dpr())}x${Math.round(g.H * dpr())}`;
+        if (sized !== want) { canvas.width = Math.round(g.W * dpr()); canvas.height = Math.round(g.H * dpr()); sized = want; }
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Centre the page in the sheet (a page of another shape than page 1 is letterboxed, never stretched).
+        const x = Math.round((canvas.width - src.width) / 2);
+        const y = Math.round((canvas.height - src.height) / 2);
+        ctx.drawImage(src, x, y);
+        viewer.page = pageNum;
+      };
+      viewer.present = () => present;
+      viewer.destroy = () => { ticket += 1; };
+      return viewer;
+    }
+
+    let placePage = 1;
+    let opened = false;
+    engine = window.FileTubePageTurn.createPageTurn({
+      host: pane,
+      inputRoot: pane.parentElement || pane,
+      source: { fixedAspect: aspect, createViewer: createPdfViewer },
+      shadeTheme: () => normalizeReaderTheme(readPref(THEME_KEY, 'paper')),
+      reducedMotion: readerReducedMotion,
+      fraction: () => lastPercent / 100,
+      onPlace: (viewer) => {
+        if (!viewer || !viewer.page) return;
+        placePage = viewer.page;
+        const percent = (placePage / numPages) * 100;
+        updateProgressBar(root, percent);
+        lastPercent = percent;
+        if (engine) engine.refreshStacks();
+        if (opened) queueProgressPing(buildPdfLocator(placePage), percent);
+        opened = true;
+        if (!signal.aborted) setStatus(root, '');
+        for (let p = placePage - 3; p <= placePage + 4; p++) if (p >= 1 && p <= numPages) rendered(p).catch(() => {});
+      },
+    });
+
+    // Resume position.
+    const startPage = detail.locator && detail.locator.kind === 'pdf' && Number.isInteger(detail.locator.page)
+      ? Math.min(Math.max(1, detail.locator.page), numPages)
+      : 1;
+    placePage = startPage;
+    updateProgressBar(root, (startPage / numPages) * 100);
+    engine.jump(startPage);
+
+    if (detail.hasCover !== true) {
+      doc.getPage(1).then(async (page) => {
+        const vp = page.getViewport({ scale: 480 / page.getViewport({ scale: 1 }).width });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(vp.width);
+        canvas.height = Math.round(vp.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        if (!signal.aborted) postPdfCover(detail, numPages, canvas);
+      }).catch(() => {});
+    }
+
+    renderToc(root, [], () => {}); // PDFs: no TOC content wave 1
+
+    let lastSize = `${pane.clientWidth}x${pane.clientHeight}`;
+    return {
+      next: () => engine.next(),
+      prev: () => engine.prev(),
+      setFontSize: () => {}, // PDF pages are fixed-layout
+      setTheme: () => {},    // a scan keeps its own paper whatever the reading theme
+      page: () => placePage,
+      refit: () => {
+        const size = `${pane.clientWidth}x${pane.clientHeight}`;
+        if (size === lastSize || pane.clientWidth <= 50 || pane.clientHeight <= 50) return;
+        lastSize = size;
+        engine.rebuild(placePage);
+      },
+      destroy: () => {
+        try { engine.destroy(); } catch (_) { /* torn down */ }
+        cache.clear();
+        try { doc.destroy(); } catch (_) { /* torn down */ }
+      },
+    };
+  }
+
+  // Scroll pages (P4's choice): today's scroll column, as it was.
+  async function openPdfScroll(root, pane, detail, signal) {
     setStatus(root, 'Loading reader…');
     const pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
@@ -1078,12 +1414,13 @@ if (typeof module !== 'undefined' && module.exports) {
         trackSheet(ui.menu({
           label: 'More actions',
           anchor: moreBtn,
-          items: readerMoreMenuItems({ finished: bookFinished }),
+          items: readerMoreMenuItems({ finished: bookFinished, format: bookFormat, pdfLayout: readPref('filetube_reader_pdf_layout', 'pages') }),
           onSelect: (value) => {
             if (signal.aborted) return;
             if (value === 'finished') toggleFinished();
             else if (value === 'save') saveBook();
             else if (value === 'share') shareBook();
+            else if (value === 'pdf-layout') switchPdfLayout();
           },
           doc,
         }));
@@ -1101,7 +1438,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const tapNext = root.querySelector('#reader-tap-next');
     if (tapPrev) tapPrev.addEventListener('click', () => adapter && adapter.prev(), { signal });
     if (tapNext) tapNext.addEventListener('click', () => adapter && adapter.next(), { signal });
-    document.addEventListener('keydown', (event) => {
+    readerKeyHandler = (event) => {
       // v1.43.1 B3: never page-flip while the user is TYPING (header search,
       // any modal input) -- this handler previously had no guard at all: an
       // arrow key pressed mid-word in the search box silently flipped the
@@ -1128,7 +1465,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (anySheetOpen()) return;
       if (event.key === 'ArrowRight') { if (adapter) adapter.next(); }
       if (event.key === 'ArrowLeft') { if (adapter) adapter.prev(); }
-    }, { signal });
+    };
+    document.addEventListener('keydown', readerKeyHandler, { signal });
 
     // Flush the pending position on backgrounding — keepalive so the write
     // survives the page going away (the background-lifecycle lesson).
@@ -1136,6 +1474,40 @@ if (typeof module !== 'undefined' && module.exports) {
       if (document.visibilityState === 'hidden') sendProgress(true);
     }, { signal });
     window.addEventListener('pagehide', () => sendProgress(true), { signal });
+
+    // v1.402.0: each open of the book gets its own abort signal (chained to the view's), so switching a PDF
+    // between turning pages and the scroll column tears the old adapter's listeners down with it.
+    let bookDetail = null;
+    let openCtl = null;
+    function openBook(detail) {
+      if (openCtl) openCtl.abort();
+      openCtl = new AbortController();
+      const mine = openCtl;
+      signal.addEventListener('abort', () => mine.abort(), { once: true });
+      const open = detail.format === 'pdf' ? openPdf : openEpub;
+      return open(root, pane, detail, mine.signal).then((created) => {
+        if (mine.signal.aborted) { if (created) { try { created.destroy(); } catch (_) { /* torn down */ } } return null; }
+        adapter = created;
+        return created;
+      });
+    }
+    // P4: the More menu's "Scroll pages" / "Turn pages" - remembered per device, the book reopens on its page.
+    function switchPdfLayout() {
+      if (!bookDetail || bookFormat !== 'pdf') return;
+      const now = normalizePdfLayout(readPref('filetube_reader_pdf_layout', 'pages'));
+      writePref('filetube_reader_pdf_layout', now === 'scroll' ? 'pages' : 'scroll');
+      const page = lastLocator && lastLocator.kind === 'pdf' ? lastLocator.page
+        : (adapter && typeof adapter.page === 'function' ? adapter.page() : null);
+      if (adapter) { try { adapter.destroy(); } catch (_) { /* torn down */ } adapter = null; }
+      pane.classList.remove('pdf-scroll');
+      pane.replaceChildren();
+      pane.scrollTop = 0;
+      const detail = Object.assign({}, bookDetail, page ? { locator: buildPdfLocator(page), hasCover: true } : { hasCover: true });
+      openBook(detail).catch((err) => {
+        console.error('Reader: failed to reopen book:', err);
+        setStatus(root, 'Could not open this book', { error: true, body: 'It may have moved, or the server could not read it.' });
+      });
+    }
 
     // Load the book detail, then hand off to the format adapter.
     fetch(`/api/books/${encodeURIComponent(bookId)}`)
@@ -1163,10 +1535,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (moreBtn) moreBtn.disabled = false;
         // v1.39.0: chapter count for prev/next-chapter bounds.
         spineCount = Array.isArray(detail.spine) ? detail.spine.length : null;
-        const open = detail.format === 'pdf' ? openPdf : openEpub;
-        return open(root, pane, detail, signal);
+        bookDetail = detail;
+        return openBook(detail);
       })
-      .then((created) => { adapter = created; })
       .catch((err) => {
         console.error('Reader: failed to open book:', err);
         setStatus(root, 'Could not open this book', { error: true, body: 'It may have moved, or the server could not read it.' });
@@ -1191,6 +1562,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (controller) controller.abort();
     controller = null;
     sizeReaderSurface = null; // its closure references the torn-down chassis
+    readerKeyHandler = null;
     bookId = null;
     lastLocator = null;
     // v1.39.0: drop reader-scoped narration state. The player itself is NOT

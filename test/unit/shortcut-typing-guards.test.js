@@ -48,8 +48,11 @@ test('player.js: pointer clicks on player buttons blur (capture phase), keyboard
 });
 
 test('read.js: the arrow-key page-flip handler now refuses typing contexts', () => {
-  const m = /document\.addEventListener\('keydown', \(event\) => \{([\s\S]*?)\}, \{ signal \}\);/.exec(stripLineComments(READ_JS));
+  // v1.402.0: the handler is named (readerKeyHandler) so a chapter document's own keys reach it too; it is
+  // still the document's keydown listener (bound below), and the guard still runs before any flip.
+  const m = /readerKeyHandler = \(event\) => \{([\s\S]*?)\n {4}\};/.exec(stripLineComments(READ_JS));
   assert.ok(m, 'the reader keydown handler exists');
+  assert.ok(stripLineComments(READ_JS).includes("document.addEventListener('keydown', readerKeyHandler, { signal });"), 'and it is the document keydown listener');
   const body = m[1];
   assert.match(body, /\['INPUT', 'TEXTAREA', 'SELECT'\]\.includes\(tag\) \|\| \(el && el\.isContentEditable\)/,
     'typing guard present');
