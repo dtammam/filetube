@@ -3,10 +3,10 @@ plan: book-page-turn
 harness: v2 · full
 branch: feat/v1.402.0-book-page-turn
 anchor: spec
-status: Planned
-next: the builder's Step 0, then Step 1 (the epub.js viewer-pool spike) before any reader code
+status: Building
+next: the gate (adversary + qa + security-brief) on the build; then the release (Step 6)
 design: Rulings approved by Dean 2026-11-03 (AskUserQuestion, after three prototype rounds): P1-P8 below; the builder's Design must stay inside them
-gate: per .harness/scrutiny.toml (the version bump in package.json matches the deps rule: expect adversary + qa + security-brief)
+gate: pending (adversary + qa + security-brief: the release's package.json bump matches the deps rule, and P9 changes the chapter frame's security boundary)
 builder: smart
 ---
 
@@ -232,3 +232,64 @@ JSZip, `book.renderTo(slot, { flow: 'paginated', spread: 'none', allowScriptedCo
   inline `<script>`, `onerror=` handler and `javascript:` link ran in NONE of the three engines (the same
   payload in an unprotected control ran all three: `["open-inline","open-onerror","open-jsurl"]`).
 
+### Build evidence (builder, 2026-11-03)
+
+Commits: d80b817a (engine, pool, paged PDF, P9, CSS, probe), 4c5c7a17 (in-book links), then the evidence commit.
+
+**Full Node 22 suite** (`npm test`, Node v22.23.1, on 4c5c7a17): `# tests 13202`, `# pass 13189`, `# fail 0`, `# skipped 13`,
+`# duration_ms 551969.681187`, exit 0. After it, one line of page-turn.js changed back (page boxes placed with `translate3d`, see
+landing) and the probe got a settle wait; `node --test test/unit/page-turn.test.js test/unit/books-reader-ui.test.js`: `# pass 45`,
+`# fail 0`. `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json" (TOTAL 3142, unchanged).
+`node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)".
+
+**Mutants (each in place, restored byte-identical, the named test red):** the P8 `isCurrent` gate on relocated -> "reader P8: a
+parked pool view moving (epub.js relocated) never saves the place" red; CSP meta appended instead of first -> "P9
+hardenChapterDocument: the policy is the FIRST element" red; on* match made case-sensitive -> same test red; the landed rig's
+`ready = false` removed -> "a tap while the rig repaints waits for it" red; the pending tap dropped -> same test red; `isCurrent`
+always true -> "isCurrent names ONLY the viewer..." red; the queued release of a drag before its rig is ready removed -> "a
+sideways drag released before its rig has repainted still turns" red. 7 of 7 killed.
+
+**Acceptance, `node scripts/page-turn-probe.js <mode>`** (real server, generated EPUB of 4 chapters x 22 paragraphs and a 12-page
+PDF; Playwright 1.62, Chromium headless shell 1234 and WebKit 2248; 390x844 phone, 1100x760 for two pages):
+
+- **Trigger** (`trigger both`, every drag pressed in the page's TEXT, so in an EPUB it is heard through the chapter document): Chromium
+  7/7 and WebKit 7/7 - slow 8% stays, slow 25% stays, slow 32% turns, slow 45% turns, flick 12% turns, pull back from 32% stays,
+  pull back from 45% stays; page errors 0.
+- **Landing** (`landing chromium`, rAF held at the landing frame, then released; the twin rig swaps up): 8/8 at 0 differing pixels -
+  EPUB one-page forward / back (249168 px), EPUB two-page forward / back (460248 px), PDF one-page forward / back (165754 px), PDF
+  two-page forward / back (375666 px), max delta 0. (Built on two fixes the probe forced: the mirrored two-page back is its own
+  compositor layer, and page boxes stay `translate3d` layers; with a 2D translate the EPUB spread measured 3865 / 2346 px at delta 1.)
+- **Place (P8)** (`place both`): 5 forward and 2 back = place 1:3 in both engines; the last saved locator's blockIndex equals the first
+  block on the visible page (Chromium 11, "c1p10w0 c1p1", 4 blocks on the page; WebKit 18, "c1p17w0 c1p1", 3 blocks) - the block
+  Listen from here starts at. Hidden views: the unit test above (6 parked renditions fire relocated, the saved place is the visible one's).
+- **Reduce Motion (P5)** (`reduced both`, emulated): an arrow changes the page inside the key event itself (Chromium and WebKit); a 35%
+  drag never folds the leaf (the fold transforms are identical across every sample) and lands on release. A drag that starts while the
+  rig is still repainting the previous turn's neighbours lands once the rig is ready (a few frames).
+- **Frames** (`frames chromium`, 4x CPU throttle, 390x844, a 40-move drag, Chrome trace; main-thread work = the union of the work
+  events' intervals - input dispatch, script, style, layout, paint, layerize, commit, hit tests, microtasks, GC - per animation frame):
+  EPUB from the tap zone: 132 frames, interval median 16.7 / p95 16.8 / max 16.8 ms, 0 over 20 ms, 1.70 ms/frame, **3 Paint events**;
+  EPUB from the page text: 139 frames, 16.7 / 16.7 / 16.8 ms, 0 over 20 ms, 1.66 ms/frame, **3 Paint events**; PDF: 96 frames,
+  16.7 / 16.7 / 16.8 ms, 0 over 20 ms, 2.52 ms/frame, 0 Paint events. Main-thread work passes (<= 4 ms) everywhere; **the EPUB misses
+  "zero Paint events"**: one burst of 3 records (the document, the fold mask, the front page) on the first folded frame of the turn,
+  never again during the drag. Diagnosis, each by a discriminating run: not the press or recognition work (frames kept running from
+  before the press: still there), not the mouse pointer-events switch (moved to the press: still there), not the mask's resting pose
+  (a 45 degree, a 90 degree limit and a tilted pose: still there), not the leaf's back being transparent (0.002 opacity: still there);
+  it is chapter length - with one-page chapters the burst is 0. The approved prototype, traced the same way: **42** Paint events for
+  its book during a drag, 2 for its PDF.
+- **P9** (`csp both`, a chapter with an inline script, an onerror image, a javascript: link (clicked), an SVG script and an onclick
+  paragraph (clicked)): book code that ran `[]` in Chromium and WebKit; the frame's sandbox `allow-same-origin allow-scripts`, its
+  head's first element the Content-Security-Policy meta, 0 scripts, 0 inline handlers; a drag pressed on the hostile page's text turned it.
+- **PDF Scroll pages (P4)** (`pdfscroll both`): More > Scroll pages brings the 12-page column back and remembers `scroll`; Turn pages
+  returns to the turning pages on the page the column was on and remembers `pages`. Chromium: paged on page 3, the column settled on
+  page 2 (the kept scroll column scrolls before the canvases around the page have rendered: one page early, pre-existing, ROADMAP);
+  WebKit: page 4 -> column page 4 -> paged 33%.
+- **In-book links** (`link both`): a tap on a link to part three jumps the whole pool (1:0 -> 2:0), the page shows "Part three", and the
+  next turn shows part three's second page in both engines. (epub.js hands display() "../ch2.xhtml", which its spine never matched: in-
+  book links did nothing before this.)
+- **Smoke** (`smoke both`): EPUB 6 viewers / 6 frames, PDF 6 canvas viewers, a drag turns and an arrow turns back, both engines, 0 errors.
+
+**Hard part 6 (120 Hz, report only).** The turn is driven from requestAnimationFrame (the spring), so it runs at whatever rate WebKit
+gives the page. Public reports say WKWebView caps page rendering updates near 60 fps through the WebKit preference
+PreferPageRenderingUpdatesNear60FPSEnabled (on by default in WKWebView); `CADisableMinimumFrameDurationOnPhone` is reported NOT to lift it;
+the only known lever is a private WKPreferences feature toggle (App Store risk), and reports conflict on current OS versions. Unverified
+on Dean's iPhone; relayed to the iOS Root as a question, with a one-line on-device rAF-rate probe as the way to settle it.

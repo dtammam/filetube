@@ -201,7 +201,9 @@ function createPageTurn(opts) {
   const raf = (fn) => win.requestAnimationFrame(fn);
   const caf = (id) => win.cancelAnimationFrame(id);
   const div = (cls) => { const d = doc.createElement('div'); d.className = cls; return d; };
-  const place = (el, x) => { el.style.transform = `translate(${x}px,0)`; return el; };
+  // translate3d: every page box is its own layer, so a page raster is the same whichever wrapper shows it -
+  // the landed frame equals the resting frame pixel for pixel (a 2D translate measured a 1-level difference).
+  const place = (el, x) => { el.style.transform = `translate3d(${x}px,0,0)`; return el; };
 
   const desk = div('pt-desk');
   const book = div('pt-book');

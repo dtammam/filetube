@@ -343,7 +343,8 @@ async function reduced(env) {
     }
     const folded = folds.size > 1;
     await r.page.waitForTimeout(150); await r.page.mouse.up();
-    await r.page.waitForTimeout(50);
+    // a drag that began right after the key turn may wait for its rig's repaint before it lands
+    await settle(r.page, 300);
     const after2 = await place(r.page);
     const ok = out.changedSync && out.before !== out.after && !folded && after2 !== before2;
     if (!ok) fail++;
