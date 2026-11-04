@@ -622,7 +622,8 @@ test('reader P9 backstop: a tap on ANY link in a chapter never navigates the fra
   const iframe = r.doc.createElement('iframe');
   r.doc.body.appendChild(iframe);
   const cdoc = iframe.contentDocument;
-  cdoc.body.innerHTML = '<p><a id="h" href="c2.xhtml">in-book</a></p><svg xmlns="http://www.w3.org/2000/svg"><a id="s"><rect/></a></svg><div id="host"></div>';
+  cdoc.body.innerHTML = '<p><a id="h" href="c2.xhtml">in-book</a></p><svg xmlns="http://www.w3.org/2000/svg"><a id="s"><rect/></a></svg><div id="host"></div>'
+    + '<math><mrow id="m" href="blob:http://x/2"><mi>x</mi></mrow></math><details><summary id="sum">More</summary><p>n</p></details>';
   const shadow = cdoc.getElementById('host').attachShadow({ mode: 'open' });
   shadow.innerHTML = '<a id="sh" href="blob:http://x/1">shadow</a>';
   view.contentHook({ document: cdoc });
@@ -630,7 +631,11 @@ test('reader P9 backstop: a tap on ANY link in a chapter never navigates the fra
   assert.strictEqual(tap(cdoc.getElementById('s')), true, 'an SVG link: the frame never navigates');
   assert.strictEqual(tap(shadow.getElementById('sh')), true, 'a link inside a shadow root: never');
   assert.strictEqual(tap(cdoc.getElementById('h')), true, 'an in-book link: the browser never navigates either (epub.js routes it)');
-  assert.strictEqual(tap(cdoc.querySelector('p')), false, 'a tap on text is untouched (selection, the turn)');
+  assert.strictEqual(tap(cdoc.querySelector('#m mi')), true, 'a MathML href (WebKit follows them, gate r4): never');
+  assert.strictEqual(tap(cdoc.getElementById('sum')), false, "a <details> summary keeps its open / close");
+  const drag = new cdoc.defaultView.Event('dragstart', { bubbles: true, cancelable: true });
+  cdoc.getElementById('h').dispatchEvent(drag);
+  assert.strictEqual(drag.defaultPrevented, true, 'a link is never dragged out (a drop would navigate the frame)');
 });
 
 test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-root)', async () => {

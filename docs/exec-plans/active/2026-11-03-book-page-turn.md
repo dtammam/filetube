@@ -779,3 +779,132 @@ Mutants (restored byte-identical each): keep-children off, a book's template kep
 leg, any jump to the book's start, the backstop removed: 8 of 8 killed by name. Targeted units (page-turn, books-reader-ui,
 books-router-nav, pocket-kb-search, shortcut-typing-guards, books-tts-chunk): `# pass 124`, `# fail 0`. lint:ui OK; overlay census
 clean. Probes on this tree: smoke, link, place, trigger, taps, landing, reduced, pdfscroll, broken, csp: all PASS.
+
+Gate: APPROVED r4 @985faa5d — security-brief
+
+Static review only (no browser, no git), of read.js and this plan as the worktree holds them.
+
+r3 W1 (book-supplied template / declarative shadow root): FIXED. Every element whose lowered localName is template becomes a new,
+attribute-less, empty template (read.js:146-150), so no shadowrootmode survives and no content the guard skipped reaches the frame.
+r3 W2 (SVG animation of link targets): FIXED. animate / set / animateMotion / animateTransform / animateColor / discard are emptied
+the same way, matched by lowered localName (case-sensitive SVG names are handled). ping is removed (read.js:169).
+Backstop (read.js:822-833): a capture-phase click listener on the chapter document finds any a/area on composedPath and cancels
+the default action. In-book links still route through epub.js's handler -> the display() wrapper -> resolveBookLink (spine only).
+Your controls show it holds every shape on its own.
+
+The asked-about paths, checked:
+- Keyboard activation (Enter on a focused HTML or SVG link) runs the link's activation through a click event, so the backstop sees it.
+- auxclick / middle-click / target=_blank open a new browsing context, which the sandbox blocks (no allow-popups).
+- Forms: blocked by the sandbox (no allow-forms) and form-action 'none'. Meta refresh: neutralized.
+- Links created later: no book script can run (the policy is first in head), and nothing animates an href any more, so the only links
+  are the parsed ones, already filtered.
+- Non-chapter documents: link taps and Contents entries both go through resolveBookLink, which returns only spine entries
+  (read.js:806-811, 953-956), and epub.js's own display() of a non-spine href fails with "No Section Found" (verified at source in r1).
+  No view is ever pointed at an asset.
+- noscript / object / embed -> span (read.js:151-154): the new span carries none of the original attributes (data, type, src all
+  dropped), embed has no children, and the moved children are filtered by the attribute pass that runs after the swap. Fallback
+  content now renders, as it did in v1.401's frame. Nothing re-exposed.
+
+NOTE (defense in depth, not blocking): the backstop attaches in rendition.hooks.content, after the frame's content loads, so a tap in
+the first moments before it attaches is covered by the markup layer alone. Your backstop-only control shows the layers are
+independent, so one layer always holds.
+NOTE (suspicion, low): a native drag of a link dropped back onto the page is a navigation with no click event. No dragstart handling
+exists in page-turn.js / read.js. The link's URL has already been filtered to http(s), mailto or a relative path (a relative path
+resolves to the app's own pages, not a book file), so the blob: case cannot reach it this way. Optional: cancel dragstart on links.
+Still open from r1 (ROADMAP Planned): no default-src (beacons on open).
+
+No CRITICAL or WARNING remains on the P9 surface.
+
+Gate: CHANGES r4 @985faa5d — qa
+
+- r3 CRITICAL (an SVG <set>/<animate> retargets a link to a book's blob: page): FIXED. qa/blobnav.js (sandbox
+  /tmp/qa-v1402-r4), with a real mouse click: in WebKit and in Chromium the animation is gone (an empty template), the link
+  has no href, nothing ran, and every frame stays about:srcdoc.
+- r3 NOTE (a failed or aborted open never destroyed the book): FIXED (book.destroy() on that path). The damaged book still
+  shows its error (qa/broken.js, WebKit: "Could not open this book / The file may be damaged or not a valid EPUB.").
+- CRITICAL (NEW, verified): a MathML `href` navigates the chapter frame to the book's own blob: page in WebKit, and the
+  page's script runs with the reader's origin. Chapter: `<math><mrow id="sa" href="p.html"><mi>Tap</mi><mi>here</mi></mrow>
+  </math>`, where p.html is a manifest item declared image/png (blob type text/html from the name) holding a script.
+  epub.js's substitute writes `href="blob:http://<app>/<uuid>"` onto the mrow. Neither layer sees it: the markup filter
+  only checks href on a/area, and the click backstop only cancels a/area found through composedPath. One real click in
+  WebKit: pwned ["blob-nav"], the reader's cookie read, frame location blob:, text/html, 1 script. Chromium: no MathML
+  links, so nothing happens. Fix: apply the link-scheme rule to href / xlink:href on EVERY element (or drop href on
+  every non-a/area element). The backstop should cancel when any element on the composed path carries href or
+  xlink:href, not only a/area. Add the shape to `csp both` with the filter-disabled control.
+- Not reached (the CRITICAL above ended the round): Enter on a focused link (it fires click, which the backstop sees, from
+  reasoning, not run), link drag-and-drop, middle click / auxclick, <area> focus+Enter, a link inside <foreignObject>.
+  Long-press and selection-adjacent clicks are device checks.
+Checked, no finding: in-book links (`link both` PASS: Chromium 1:0 -> 2:0 "Part three", WebKit the same); the
+noscript/object/embed span swap (a fresh span, children kept, attributes dropped).
+Measured (Node 22.23.1): eslint 0 errors / 6 warnings (common.js, already there); lint:ui OK; overlay-containment clean (0
+violations); the 5 targeted unit files: 113 tests, 113 pass, 0 fail.
+
+Gate: CHANGES r4 @985faa5d — adversary
+
+Delta on a202ab11..985faa5d. Mutants ran in a /tmp `git archive 985faa5d` sandbox (worktree untouched); Node 22.23.1; Playwright
+Chromium + WebKit; one browser probe at a time. The 5 targeted unit files: 113/113 pass. `page-turn-probe.js csp both`: PASS (8 shapes).
+
+r3 findings:
+- WARNING (noscript/object blocks vanish): FIXED for blocks in the BODY. With blocks-e2e.js, the frame blocks are
+  `H|q0|n1|n2|fallback|q1|q2`, q2 = 6, server = 6, in Chromium AND WebKit (v1.401: identical). cfishift.js still opens a v1.401
+  place with q27 on the page.
+- NOTE (unbound guards): FIXED. Q17, the abort leg (R8) and fail-closed (R6) now die by name. The new guards also die by name: book
+  template / animations emptied, ping, backstop preventDefault, backstop composedPath, abort destroys the book, http-equiv meta.
+  One survivor: S7 (the backstop matches `a` only, not `area`). It is a NOTE, because the static filter still strips a non-http href
+  from `<area>`, and animations are emptied.
+
+NEW, introduced by the span swap (r4):
+- WARNING (P8: every place in a chapter moves, and blocks re-nest): `<span>` is not a neutral stand-in for these elements, because the
+  frame's HTML parser treats a span differently from a noscript in <head> or from an <object> (a scope boundary).
+  Measured in the real reader (renest.js), v1.401 (857a2c3f) against 985faa5d, the same result in Chromium AND WebKit:
+  - (A) A chapter with `<noscript><link .../></noscript>` in its <head>:
+    - v1.401 body children: `[h1,p,p]`.
+    - 985faa5d body children: `[span,link,meta,meta,meta,meta,meta,meta,meta,h1,p,p]`. The span closes <head>, and every later head
+      child (the book's link, epub.js's injected metas) moves into <body>.
+    - Every body CFI saved by v1.401 for that chapter now points 9 elements early, and the reader then saves the wrong place over
+      it (the r2 N-W1 class again, for the whole chapter).
+  - (B) `<p>t<object data="a.mp3" type="audio/mpeg"><p>fb</p></object>after</p>`:
+    - v1.401 body `[h1,p,p]`, frame blocks `B|tfbaft|fb|q1` (4 = the server's 4).
+    - 985faa5d body `[h1,p,p,p,p]`, blocks `B|t|fb||q1` (5 against the server's 4).
+    - The inner <p> closes the outer one once the object is a span, so the CFIs and blockIndex after it shift.
+  - jsdom shows the same re-nesting for an object holding li, dt, h3, a or a table inside p / li / dd / a / h2.
+  - Fix: keep each element's own NAME so the frame parses it exactly as v1.401 did.
+    - `<object>` / `<embed>`: keep the tag and strip the attributes that load something (data, src, type, codebase, classid,
+      archive). The policy's object-src 'none' blocks a load anyway.
+    - `<noscript>` in <body>: a span is equivalent there (v1.401's scripts-off parser treated it as an ordinary element).
+    - `<noscript>` in <head>: use an empty <template>, which is allowed in head. Its children (link/style/meta) do not count toward
+      the body's CFIs or the server's blocks.
+  - Add tests for the frame's body element-shape and block count against the v1.401 parse, for these two shapes.
+
+Not verified by me (stated plainly): I did not build browser cases against the navigation backstop (keyboard activation, auxclick,
+drag-and-drop, links inside foreignObject). By reading the code: the capture listener runs on every click that reaches the chapter
+document, keyboard activation of a link fires a click, and popups (middle and modifier clicks) are blocked by the sandbox. Contents
+entries and in-book links that name a non-chapter file resolve to null (resolveBookLink, spine only) and do not move the reader;
+Q16 binds that. The drag-and-drop link-drop navigation is a SUSPICION only (low; the page-turn engine owns drags).
+
+### Fix round r4 -> r5 (builder, 2026-11-04)
+
+Reviewed sha 985faa5d (Dean approved round 4). security-brief APPROVED r4; every r3 finding confirmed fixed by qa and the adversary.
+New r4 findings, answered in the commit that carries this section:
+
+- **qa CRITICAL (confirmed in WebKit): a MathML `<mrow href>` to the book's own page ran its code** - neither layer listed MathML.
+  The class is answered without a list of link kinds: (1) the **backstop** now cancels the default action of EVERY click in a chapter
+  (the one exception: a `<details>` summary's open / close when no link is on the path), and a dragged link can never start or drop
+  in a chapter; (2) the **markup** applies the scheme rule to `href` / `xlink:href` on EVERY element except the resource loaders
+  (`link`, SVG `image`, `use`, gradients, patterns, filters and the rest of that list keep epub.js's blob: URLs). Bound: the backstop
+  test (an SVG link, a shadow-root link, a MathML href, a summary kept, a drag refused) and "an href that navigates on ANY element
+  (MathML too) keeps only web / mail / relative; resource hrefs keep blob:". `csp both` with the MathML shape: 9 hostile chapters, book
+  code that ran `[]`, 0 frames navigated, Chromium and WebKit. Controls: the backstop ONLY (markup layers off) - `[]` and 0 again;
+  neither layer - Chromium 26 frames navigated, WebKit 46 navigated and the book's page ran (`["blob-page" x8]`).
+- **adversary WARNING: the r3 `<span>` swap re-nested chapters** (a `<noscript>` in `<head>` closed the head early; an `<object>` inside a
+  `<p>` stopped scoping its paragraphs). An `<object>` / `<embed>` now keeps its own tag with every load attribute removed (data, src,
+  type, codebase, classid, archive, code, object; the policy's `object-src 'none'` blocks a load anyway, and its fallback shows as in
+  v1.401); a `<noscript>` in `<body>` is a `<span>` keeping its children (the scripts-off parser's ordinary element), a `<noscript>` in
+  `<head>` an empty `<template>`. Bound: "the frame re-nests the chapter exactly as v1.401 did (a noscript in <head>, an object inside
+  a <p>)" - body elements in order, blocks and head counts against v1.401's own parse of the same chapter, three shapes.
+- **adversary NOTE S7 (the backstop matched only `a`)**: moot, every click is cancelled now.
+
+Mutants (restored byte-identical each): noscript in head as a span, object loads kept, object as a span (the r3 swap), the href rule
+on a / area only, the backstop on links only, drag allowed, the summary blocked: 7 of 7 killed by name. Targeted units (six files):
+`# pass 126`, `# fail 0`. lint:ui OK; overlay census clean. Probes on this tree: smoke, link (in-book links still jump), place,
+trigger, taps, landing (8/8 at 0 px), reduced, pdfscroll, broken, csp: all PASS.

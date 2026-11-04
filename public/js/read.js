@@ -128,11 +128,17 @@ const READER_CHAPTER_CSP_META = `<meta http-equiv="Content-Security-Policy" cont
 // becomes live content the guard never saw - gate r3 security-brief) and every SVG animation element (an
 // animated href points a link at a book's own blob: page AFTER the guard - gate r3 qa, it ran code in WebKit).
 const READER_CHAPTER_EMPTY = new Set(['script', 'iframe', 'frame', 'base', 'template', 'animate', 'set', 'animatemotion', 'animatetransform', 'animatecolor', 'discard']);
-// Swapped for a plain <span> that KEEPS its children: v1.401's scripts-off frame parsed these as ordinary
-// elements and showed their content, and the server's block count (lib/books/tts-chunk.js) still counts the
-// paragraphs inside them, so Listen from here and the Feed's places line up (gate r3 adversary). An <object> /
-// <embed> loads nothing under the policy's object-src 'none' anyway.
-const READER_CHAPTER_KEEP = new Set(['noscript', 'object', 'embed']);
+// Kept so the frame parses the chapter as v1.401's scripts-off frame did (saved places, and the server's block
+// count in lib/books/tts-chunk.js, line up - gate r3 / r4 adversary): an <object> / <embed> keeps its own tag
+// (an <object> scopes the paragraphs inside it) with every attribute that loads something removed (the policy's
+// object-src 'none' blocks a load anyway; its fallback content shows, as before); a <noscript> in <body> becomes
+// a <span> keeping its children (the scripts-off parser treated it as an ordinary element, which a <span> is),
+// and a <noscript> in <head> an empty <template> (a <span> there would close <head> early).
+const READER_OBJECT_LOAD_ATTRS = ['data', 'src', 'type', 'codebase', 'classid', 'archive', 'code', 'object'];
+// Elements whose href / xlink:href LOADS a resource (a book's own blob: stylesheet, image or pattern) rather than
+// navigating: the link rule leaves them alone; every other element's href is a navigation (an <a>, an <area>, a
+// MathML element - WebKit follows MathML hrefs, gate r4 qa) and keeps only http(s), mailto or a relative path.
+const READER_RESOURCE_HREF = new Set(['link', 'image', 'use', 'feimage', 'textpath', 'lineargradient', 'radialgradient', 'pattern', 'filter', 'mpath', 'cursor', 'tref', 'altglyph', 'glyphref', 'color-profile', 'font-face-uri']);
 const READER_URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', 'data', 'srcdoc'];
 
 // output: epub.js's serialized chapter. DomParser: the DOMParser constructor (window's in the reader, jsdom's
@@ -148,24 +154,27 @@ function hardenChapterMarkup(output, DomParser) {
     const tag = String(el.localName).toLowerCase(); // SVG names are case-sensitive in selectors: compare lowered
     if (READER_CHAPTER_EMPTY.has(tag) || (tag === 'meta' && el.hasAttribute('http-equiv'))) {
       el.replaceWith(doc.createElement('template'));
-    } else if (READER_CHAPTER_KEEP.has(tag)) {
+    } else if (tag === 'noscript') {
+      if (el.closest('head')) { el.replaceWith(doc.createElement('template')); continue; }
       const span = doc.createElement('span');
       while (el.firstChild) span.appendChild(el.firstChild);
       el.replaceWith(span);
+    } else if (tag === 'object' || tag === 'embed') {
+      for (const name of READER_OBJECT_LOAD_ATTRS) el.removeAttribute(name);
     }
   }
   for (const el of Array.from(doc.querySelectorAll('*'))) {
-    const link = el.localName === 'a' || el.localName === 'area';
+    const navigates = !READER_RESOURCE_HREF.has(String(el.localName).toLowerCase());
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
       // the value without whitespace or control characters, however it is padded
       const value = Array.from(String(attr.value)).filter((ch) => ch.charCodeAt(0) > 32).join('').toLowerCase();
       const scheme = /^([a-z][a-z0-9+.-]*):/.exec(value);
       const codeUrl = READER_URL_ATTRS.includes(name) && /^(javascript|vbscript|data:text\/html)/.test(value);
-      // A link (HTML or SVG <a>, <area>) keeps only http(s), mailto and a relative chapter path: epub.js swaps a
-      // book's own files for app-origin blob: URLs, and a link that navigates the frame to one would load an
-      // unguarded same-origin document with scripts on (gate r2 security-brief).
-      const linkOut = link && (name === 'href' || name === 'xlink:href') && scheme && !['http', 'https', 'mailto'].includes(scheme[1]);
+      // An href that navigates (any element but the resource loaders above) keeps only http(s), mailto and a
+      // relative chapter path: epub.js swaps a book's own files for app-origin blob: URLs, and a navigation to
+      // one loads an unguarded same-origin document with scripts on (gate r2 security-brief, r4 qa MathML).
+      const linkOut = navigates && (name === 'href' || name === 'xlink:href') && scheme && !['http', 'https', 'mailto'].includes(scheme[1]);
       if (name.startsWith('on') || name === 'ping' || codeUrl || linkOut) el.removeAttribute(attr.name);
     }
   }
@@ -825,12 +834,20 @@ if (typeof module !== 'undefined' && module.exports) {
             // - a same-origin document that would run with scripts on). In-book links still work: epub.js's own
             // handler on the <a> runs and routes them through display(), which the pool turns into a jump; web
             // links open nowhere, as before (the sandbox blocks popups).
+            // EVERY click's default action is cancelled - not only an <a> / <area>'s: WebKit also follows a
+            // MathML href (gate r4 qa: it ran a book's page), so no list of link kinds is the net. The one
+            // default kept is a <details> summary's open / close when no link is on the path. Selection, the
+            // turn and epub.js's own link handler are separate listeners and still run.
             const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
-            const link = path.find((n) => n && n.nodeType === 1 && /^(a|area)$/i.test(n.localName));
-            if (!link) return;
+            const elements = path.filter((n) => n && n.nodeType === 1);
+            const linked = elements.find((n) => n.hasAttribute('href') || n.hasAttribute('xlink:href'));
+            const summary = elements.find((n) => String(n.localName).toLowerCase() === 'summary');
+            if (summary && !linked) return;
             event.preventDefault();
-            if (link.hasAttribute('href') && viewer.markLinkTap) viewer.markLinkTap();
+            if (linked && viewer.markLinkTap) viewer.markLinkTap();
           }, { capture: true, signal });
+          // A dragged link dropped on the page would navigate the frame too: neither starts in a chapter.
+          for (const t of ['dragstart', 'drop']) cdoc.addEventListener(t, (event) => event.preventDefault(), { capture: true, signal });
           cdoc.addEventListener('keydown', (event) => { if (readerKeyHandler) readerKeyHandler(event); }, { signal });
         });
         // epub.js's own relocated stays the source of the place, but only for the CURRENT viewer (P8): a

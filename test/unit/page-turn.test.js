@@ -372,7 +372,10 @@ test('P9 hardenChapterMarkup: after the frame\'s HTML parse the policy is the FI
     assert.ok(out.startsWith('<meta http-equiv="Content-Security-Policy"'), `${name}: the policy is the first bytes`);
     assert.ok(policyFirst(frame), `${name}: the policy is the first element of the frame's <head>`);
     assert.strictEqual(frame.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').length, 1, `${name}: exactly one policy`);
-    assert.strictEqual(frame.querySelectorAll('script, iframe, frame, object, embed, base, noscript').length, 0, `${name}: no script, frame, object, embed, base`);
+    assert.strictEqual(frame.querySelectorAll('script, iframe, frame, base, noscript').length, 0, `${name}: no script, frame, base, noscript`);
+    for (const el of frame.querySelectorAll('object, embed')) {
+      assert.deepStrictEqual(['data', 'src', 'type', 'classid', 'codebase'].filter((a) => el.hasAttribute(a)), [], `${name}: an object / embed loads nothing`);
+    }
     for (const el of frame.querySelectorAll('a, area')) {
       for (const attrName of ['href', 'xlink:href']) {
         const v = (el.getAttribute(attrName) || '').toLowerCase();
@@ -404,8 +407,7 @@ test('P9 hardenChapterMarkup: neutralized elements keep every sibling count, so 
   // emptied: script, frames, base (their HTML content is text); kept as a <span> WITH its children: noscript,
   // object, embed (v1.401's scripts-off frame parsed them as ordinary elements)
   const EMPTIED = /^(script|iframe|frame|base|template)$/;
-  const KEPT = /^(noscript|object|embed)$/;
-  const shape = (el) => Array.from(el.children).map((c) => (EMPTIED.test(c.localName) ? 'x' : `${KEPT.test(c.localName) ? 'span' : c.localName}:${c.children.length}`));
+  const shape = (el) => Array.from(el.children).map((c) => (EMPTIED.test(c.localName) ? 'x' : `${c.localName === 'noscript' ? 'span' : c.localName}:${c.children.length}`));
   assert.strictEqual(frame.body.children.length, before.body.children.length, 'the body keeps its element count');
   assert.deepStrictEqual(shape(frame.body), shape(before.body), 'every kept element keeps its index and child count');
   const div = (d) => d.body.querySelector('div');
@@ -426,7 +428,39 @@ test('P9 hardenChapterMarkup: a chapter\'s blocks in the frame are the server ch
   const serverBlocks = chunk.chunkChapterDetailed(xml);
   assert.deepStrictEqual(frameBlocks, ['H', 'q0', 'n1', 'n2', 'fallback', 'q1', 'q2', 'q3']);
   assert.strictEqual(frameBlocks.length, serverBlocks.length, `the frame counts ${frameBlocks.length} blocks, the server ${serverBlocks.length}`);
-  assert.strictEqual(frame.querySelectorAll('noscript, object, embed, set').length, 0, 'none of the originals survive');
+  assert.strictEqual(frame.querySelectorAll('noscript, set').length, 0, 'no noscript, no animation');
+  assert.strictEqual(frame.querySelector('object').hasAttribute('data'), false, 'the object stays (its fallback shows) but loads nothing');
+});
+
+test('P9 hardenChapterMarkup: the frame re-nests the chapter exactly as v1.401 did (a noscript in <head>, an object inside a <p>) - gate r4', () => {
+  const xmlWin = new JSDOM('', { contentType: 'text/html' }).window;
+  const v1401 = (xml) => new JSDOM(new xmlWin.XMLSerializer().serializeToString(new xmlWin.DOMParser().parseFromString(xml, 'application/xhtml+xml').documentElement)).window.document;
+  const tags = (d) => Array.from(d.body.children).map((c) => c.localName);
+  const blocks = (d) => Array.from(d.querySelectorAll(read.READER_BLOCK_SELECTOR)).map((b) => b.textContent);
+  const shapes = [
+    `<html xmlns="${XHTML}"><head><title>t</title><noscript><link rel="stylesheet" href="a.css"/></noscript><meta name="a" content="1"/><meta name="b" content="2"/></head><body><h1>B</h1><p>q0</p><p>q1</p></body></html>`,
+    `<html xmlns="${XHTML}"><head><title>t</title></head><body><h1>B</h1><p>t<object data="a.mp3" type="audio/mpeg"><p>fb</p></object>after</p><p>q1</p></body></html>`,
+    `<html xmlns="${XHTML}"><head><title>t</title></head><body><ul><li>a<object data="x"><li>in</li></object></li></ul><p>t<noscript><p>n</p></noscript>u</p></body></html>`,
+  ];
+  for (const xml of shapes) {
+    const before = v1401(xml);
+    const { frame } = frameOf(xml);
+    assert.deepStrictEqual(tags(frame), tags(before), 'the body keeps v1.401\'s elements in order');
+    assert.deepStrictEqual(blocks(frame), blocks(before), 'and its blocks (Listen, the Feed and saved places line up)');
+    assert.strictEqual(frame.head.children.length, before.head.children.length + 1, 'the head keeps its children (plus the policy)');
+  }
+});
+
+test('P9 hardenChapterMarkup: an href that navigates on ANY element (MathML too) keeps only web / mail / relative; resource hrefs keep blob: (gate r4)', () => {
+  const { frame } = frameOf(`<html xmlns="${XHTML}" xmlns:xlink="http://www.w3.org/1999/xlink"><head><link rel="stylesheet" href="blob:http://x/css"/></head><body>`
+    + '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow id="m" href="blob:http://x/p"><mi>x</mi></mrow><mi id="k" href="c2.xhtml">k</mi></math>'
+    + '<svg xmlns="http://www.w3.org/2000/svg"><image id="im" href="blob:http://x/i"/><use id="u" xlink:href="blob:http://x/s#a"/></svg><span id="sp" href="data:text/plain,x">s</span></body></html>');
+  assert.strictEqual(frame.getElementById('m').getAttribute('href'), null, 'a MathML link to a blob: page goes');
+  assert.strictEqual(frame.getElementById('k').getAttribute('href'), 'c2.xhtml', 'a relative one stays');
+  assert.strictEqual(frame.getElementById('sp').getAttribute('href'), null, 'any other element with a non-web href goes');
+  assert.strictEqual(frame.querySelector('link').getAttribute('href'), 'blob:http://x/css', "a stylesheet keeps epub.js's blob: URL");
+  assert.strictEqual(frame.getElementById('im').getAttribute('href'), 'blob:http://x/i', 'an SVG image keeps it');
+  assert.strictEqual(frame.getElementById('u').getAttribute('xlink:href'), 'blob:http://x/s#a', 'an SVG use keeps it');
 });
 
 test('P9 hardenChapterMarkup: a book\'s own <template> (shadowrootmode) and SVG animations are emptied; ping goes (gate r3)', () => {

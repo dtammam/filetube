@@ -495,6 +495,8 @@ async function csp(env) {
     // gate r3 (qa CRITICAL): an SVG <set> points a link at the book's own HTML file (listed as a PNG) after the guard
     ['an animated link to the book\'s own page', `<html xmlns="${X}"><head><title>t</title></head><body>${filler}<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><a id="an"><set attributeName="href" to="p.html"/><rect width="80" height="40"/></a></svg></body></html>`],
     // gate r3 (security-brief): a declarative shadow root whose link the guard cannot see
+    // gate r4 (qa CRITICAL): WebKit follows a MathML href - to the book's own page, disguised as a PNG
+    ['a MathML link to the book\'s own page', `<html xmlns="${X}"><head><title>t</title></head><body>${filler}<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow id="mr" href="p.html"><mi>Tap</mi><mi>here</mi></mrow></math></body></html>`],
     ['a shadow-root link to the book\'s own page', `<html xmlns="${X}"><head><title>t</title></head><body>${filler}<div id="host"><template shadowrootmode="open"><a id="sl" href="p.html">shadow</a></template></div></body></html>`],
   ];
   const evilSvg = `<svg xmlns="http://www.w3.org/2000/svg"><script>${PWN('blob-svg')}</script><rect width="10" height="10"/></svg>`;
@@ -515,8 +517,10 @@ async function csp(env) {
           if (!d) { out.push({ cross: true }); continue; }
           const first = d.head && d.head.firstElementChild;
           const p = d.querySelector('p[onclick], p'); if (p) p.click();
-          const links = Array.from(d.querySelectorAll('a, area'));
-          for (const h of d.querySelectorAll('*')) if (h.shadowRoot) links.push(...h.shadowRoot.querySelectorAll('a, area'));
+          const links = Array.from(d.querySelectorAll('a, area, [href]'));
+          for (const h of d.querySelectorAll('*')) if (h.shadowRoot) links.push(...h.shadowRoot.querySelectorAll('a, area, [href]'));
+          // a MathML link is followed from a click on its content (WebKit): click the children too
+          for (const l of links.slice()) for (const c of l.children) links.push(c);
           for (const l of links) { try { l.dispatchEvent(new d.defaultView.MouseEvent('click', { bubbles: true, cancelable: true, composed: true })); } catch (_) { /* fine */ } }
           out.push({ url: d.location.href.slice(0, 12), policyFirst: !!(first && first.getAttribute('http-equiv') === 'Content-Security-Policy'), scripts: d.querySelectorAll('script').length, frames: d.querySelectorAll('iframe').length });
         }
