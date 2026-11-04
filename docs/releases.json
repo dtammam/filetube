@@ -3796,5 +3796,11 @@
     "date": "2026-11-01",
     "title": "The mini player shows the thumbnail every time",
     "intent": "On the iPhone app, pulling the video down into the mini player showed its thumbnail the first time but a black box from the second time on. The thumbnail now shows every time you minimize the player, by swipe or by the button, and the sound is never interrupted."
+  },
+  {
+    "version": "1.402.0",
+    "date": "2026-11-03",
+    "title": "Books turn like paper",
+    "intent": "Turning a page in a book now looks like a real page folding over: drag it with your finger or the mouse and the corner follows you, let go past about a third of the way and it turns, let go sooner and it settles back. Turn your phone or window sideways for two open pages. The side taps and the arrow keys turn pages the same way, quick taps never get lost, and links inside a book now take you where they point. PDFs turn the same way too, and Scroll pages in the menu brings back the old scrolling view. With Reduce Motion on, pages change at once. Tick boxes printed inside a book no longer tick."
   }
 ]
