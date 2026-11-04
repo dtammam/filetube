@@ -3,10 +3,10 @@ plan: book-page-turn
 harness: v2 · full
 branch: feat/v1.402.0-book-page-turn
 anchor: spec
-status: Building
-next: the gate (adversary + qa + security-brief) on the build; then the release (Step 6)
+status: Shipped v1.402.0
+next: Dean's device pass, DEVICE-CHECKS "Page turn (v1.402.0)" (a)-(k); follow-ups in ROADMAP Planned > Features
 design: Rulings approved by Dean 2026-11-03 (AskUserQuestion, after three prototype rounds): P1-P8 below; the builder's Design must stay inside them
-gate: pending (adversary + qa + security-brief: the release's package.json bump matches the deps rule, and P9 changes the chapter frame's security boundary)
+gate: APPROVED r5 @6301f263 (adversary, qa, security-brief; Dean approved rounds 3, 4 and 5)
 builder: smart
 ---
 
@@ -908,3 +908,135 @@ Mutants (restored byte-identical each): noscript in head as a span, object loads
 on a / area only, the backstop on links only, drag allowed, the summary blocked: 7 of 7 killed by name. Targeted units (six files):
 `# pass 126`, `# fail 0`. lint:ui OK; overlay census clean. Probes on this tree: smoke, link (in-book links still jump), place,
 trigger, taps, landing (8/8 at 0 px), reduced, pdfscroll, broken, csp: all PASS.
+
+Gate: APPROVED r5 @6301f263 — security-brief
+
+Owned first: my r4 APPROVED missed the MathML href that qa confirmed in WebKit. I checked the link kinds I knew, not whether a list
+was the right net. This round's answer removes the list, which is the right shape. Static review only (no browser, no git), of read.js
+and this plan as the worktree holds them.
+
+r4 qa CRITICAL (MathML href): FIXED structurally, in two independent layers.
+- Backstop (read.js:831-850): every click's default action in a chapter is cancelled. The only exception is a summary toggle when no
+  element on the path carries href or xlink:href. dragstart and drop are refused. Because it no longer depends on which element
+  navigates, any element kind that follows an href on click (MathML, SVG, HTML, inside a use or shadow tree, where events retarget to
+  a host that is still on the path) is cancelled.
+- Markup (read.js:166-178): the scheme rule now applies to href / xlink:href on every element except the resource loaders. epub.js
+  rewrites the book's file references to blob: before the guard runs, so the guard sees and removes them on any navigating element.
+  A relative value that remains resolves to the app's own pages, not to a book file.
+- Your controls show each layer holds alone, and that the probe sees the attack with both off.
+
+The asked-about paths, checked:
+- The resource-loader allowlist (read.js:141): each listed element's href fetches a resource into the current document (stylesheet,
+  image, use reference, paint server, filter, path, font, colour profile, glyph). None of them navigates the frame.
+  - <link>: no rel value navigates the browsing context. rel=import is gone from both engines, and prefetch/prerender/preload fetch
+    without replacing this document.
+  - SVG <use>: content cloned from a referenced file runs no script (by spec, and the frame's script-src 'none' governs it anyway).
+    A link inside cloned content is covered by the every-click backstop.
+  - SVG <image> inside an <a>: the <a> is not on the allowlist, so its href is filtered, and the click is cancelled.
+- Navigation with no click: meta refresh and http-equiv are neutralized, animations are emptied, forms are blocked by the sandbox
+  (no allow-forms) and form-action 'none', popups are blocked (no allow-popups), and drag/drop is refused. Keyboard activation (Enter
+  on a focused element) runs through a click event, so the backstop sees it. Assistive-technology activation (VoiceOver double-tap)
+  is also delivered as a click: reasoned, not device-verified.
+- object / embed (read.js:162-163): with data, src, type, codebase, classid, archive, code and object removed there is nothing to
+  load. A param only configures a plugin's load that never starts, a nested object is stripped by the same pass (it walks every
+  element), a classid without codebase names an ActiveX control neither engine has, and object-src 'none' blocks any load besides.
+  Fallback content renders, as in v1.401.
+- noscript (read.js:157-161): an empty template in head, and in body a span whose children go through the attribute pass. Nothing new
+  is exposed.
+
+NOTE: the backstop still attaches in rendition.hooks.content, after the chapter loads, so a tap in the first moments relies on the
+markup layer alone. That layer now covers every navigating element, and the layers are independent.
+NOTE: still open from r1 (ROADMAP Planned): no default-src, so a book can make remote image/CSS requests on open.
+
+No CRITICAL or WARNING remains on the P9 surface. Residual risk: an engine-specific navigation that is triggered neither by a click
+nor by any of the attributes the guard filters. I know of none, and both layers would need to fail together.
+
+Gate: APPROVED r5 @6301f263 — qa
+
+- r4 CRITICAL (a MathML mrow href pointing at a book's own blob: page): FIXED. qa/blobnav.js (sandbox /tmp/qa-v1402-r5),
+  real mouse click: WebKit and Chromium both ran nothing, the mrow has no href, every frame stays about:srcdoc.
+  `page-turn-probe.js csp both`: PASS in both engines, "csp shapes" 9 hostile chapters including the MathML,
+  animated-link and shadow-root links.
+- The paths not reached in r4 (Enter on a focused link, link drag-and-drop, middle-click / auxclick, focus+Enter on
+  <area>, a link inside <foreignObject>): NOT run in a browser by this seat this round. From the code: two independent
+  layers each cover them. The markup rule strips a non-http(s)/mailto href on every navigating element. Every chapter
+  click's default is cancelled: Enter on a link reaches it as a click, and <area> and <foreignObject> links are ordinary
+  clicks. dragstart and drop are cancelled. A middle click needs a new browsing context, which the sandbox (no
+  allow-popups) refuses. Disclosed as reasoned, not verified; a device pass on a hostile book is the backstop.
+- Regressions from the blanket click cancel: none found. `link both` PASS (Chromium 1:0 -> 2:0 "Part three", WebKit the
+  same); `trigger both` 7/7 in each engine (every drag pressed in the page text); Contents (qa/toc.js, WebKit): place 1:4
+  -> "Chap 2", saved {spineIndex:2, blockIndex:0}; the tap zones live in the app document, outside the listener.
+- NOTE: the cancel also stops a book's own <label>/<input type=checkbox> defaults (the CSS-only "tap to reveal" pattern
+  some EPUBs use) and the dragging of selected text out of a page. Forms were already blocked by the sandbox. Rare; say so
+  in the release notes or carve out label/input like <summary> later.
+- Selection and long-press are device checks (DEVICE-CHECKS (e)); the headless browser cannot show them.
+Measured (Node 22.23.1): eslint 0 errors / 6 warnings (common.js, already there); lint:ui OK; overlay-containment clean (0
+violations); the 5 targeted unit files: 115 tests, 115 pass, 0 fail.
+
+Gate: APPROVED r5 @6301f263 — adversary
+
+Delta on 985faa5d..6301f263. Mutants ran in a /tmp `git archive 6301f263` sandbox (worktree untouched); Node 22.23.1; Playwright
+Chromium + WebKit; one browser probe at a time. The 5 targeted unit files: 115/115 pass. `page-turn-probe.js csp both`: PASS.
+`link both`: PASS (1:0 -> 2:0 "Part three", and the next turn is in part three, both engines).
+
+r4 WARNING (the span swap re-nested chapters): FIXED.
+- renest.js, both engines, matching v1.401 (857a2c3f): (A) a noscript in <head> gives body `[h1,p,p]`; (B) a <p> holding an
+  <object> with a <p> fallback gives body `[h1,p,p]`, blocks `B|tfbaft|fb|q1` = the server's 4.
+- blocks-e2e.js: `H|q0|n1|n2|fallback|q1|q2`, q2 = 6 = the server's, both engines.
+- cfishift.js: a v1.401 place opens on q27 exactly and saves it unchanged (`/4/64/1:0`, block 28).
+- Wider parse-differential sweep (shapes-e2e.js), 20 chapters, the frame's tag-blind element tree and block list on the branch against
+  v1.401, per engine:
+  - shapes: noscript in head; object inside p / li; embed in p; noscript in body and inside p; script inside table, tr, colgroup and
+    select; iframe in p; script and set inside SVG; script inside MathML; script inside foreignObject; http-equiv meta and base in
+    body; script in head; a book's own template; script in p, pre and dl.
+  - Result: IDENTICAL trees and block counts in Chromium AND WebKit. The only difference is the removed script's own text ("axb" ->
+    "ab"), which no saved place can point into.
+
+NEW (from the blanket click cancel):
+- WARNING, safe to ship disclosed (my argument below): the chapter's form controls stop working. controls.js (a chapter with a
+  checkbox, native audio controls and a details/summary, each clicked in the middle of the page):
+  - v1.401: the checkbox checks in Chromium AND WebKit.
+  - 6301f263: the checkbox stays unchecked in both engines (cancelling a click's default action undoes the toggle). The same class
+    covers radio buttons and a label's activation.
+  - Native audio controls still play, and details/summary still opens, on the branch in both engines.
+  - Why it is safe to ship disclosed: no saved data and no security is involved. With scripts blocked, a checkbox in a book
+    (a checklist, an unscripted quiz) is decoration, so the only loss is ticking it.
+  - Follow-up (ROADMAP): exempt input / label / select / textarea / option on the path when no href is on it (as summary is), plus a
+    test; the sandbox (no allow-forms) and form-action 'none' still block any submit.
+- NOTE: two backstop parts are unbound (behaviour right today; regression risk only).
+  - S6: composedPath replaced with `[event.target]` survives. A tap on a link's CHILD (`<a href><em>..</em></a>`) would then skip
+    markLinkTap, and the in-book jump would move one view, not the pool (the r1 link class). The test clicks the link element itself.
+  - T7: the summary exemption also skipping a summary inside a link survives.
+  - Every other r5 guard dies by name: object load attributes, object kept as object, head noscript as template, body noscript as
+    span, the navigation rule on every element (MathML), summary, drag/drop, cancel-all. So do all earlier ones (fail-closed, abort
+    race, Q17).
+- Not verified by me: browser cases against the backstop for keyboard activation, auxclick and drag-and-drop (I read the code:
+  keyboard activation fires a click; dragstart and drop are now cancelled in the chapter; popups are sandbox-blocked).
+
+### Gate closed and release (builder, 2026-11-04)
+
+**Gate: APPROVED r5 @6301f263 — adversary, qa, security-brief** (each seat's r5 line above). Rounds: r1 @439b7150, r2 @106f4b2a,
+r3 @a202ab11, r4 @985faa5d, r5 @6301f263; Dean approved rounds 3, 4 and 5 (AskUserQuestion) and ruled the Paint acceptance line
+"Ship, disclosed". Shipped disclosed as ROADMAP follow-ups (Planned > Features, "Page turn (v1.402.0) follow-ups"): a tick box printed
+in a book no longer toggles (r5 adversary WARNING, judged by the seat safe to ship disclosed; no data or security involved); the
+unbound backstop guards S6 / T7 (r5 NOTEs); the no-click navigation paths (keyboard, auxclick, drag) were reasoned from the code by
+qa and the adversary, not run in a browser (the device pass on a hostile book is the remaining check); the EPUB first-frame paint.
+
+Close-out binding (bookkeeping only after approval; no seat re-check): `git diff --name-only 6301f263..HEAD` on the release commit -
+ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS.md, docs/exec-plans/active/2026-11-03-book-page-turn.md (moved to completed/ by
+plan-complete), docs/releases.json, package-lock.json, package.json; `git diff 6301f263..HEAD -- package.json package-lock.json`: the
+"version" lines only (1.401.1 -> 1.402.0). Instrument output on the staged release tree (verbatim):
+`git diff --cached --name-only 6301f263` -> `ROADMAP.md`, `docs/DEVICE-CHECKS.md`, `docs/LESSONS.md`,
+`docs/exec-plans/completed/2026-11-03-book-page-turn.md`, `docs/releases.json`, `package-lock.json`, `package.json`;
+`git diff --cached 6301f263 -- package.json package-lock.json` changed lines -> `-  "version": "1.401.1",` / `+  "version": "1.402.0",`
+(package.json), `-      "version": "1.401.1",` / `+      "version": "1.402.0",` and `-  "version": "1.401.1",` / `+  "version": "1.402.0",`
+(package-lock.json). No code, no test.
+
+**Device checks Dean owes:** docs/DEVICE-CHECKS.md "Page turn (v1.402.0)" (a)-(k).
+
+**For the iOS Root (hard part 6, report only):** the turn runs on requestAnimationFrame, so its rate is whatever WKWebView gives the
+page; public reports say WKWebView caps page rendering near 60 fps (the WebKit preference PreferPageRenderingUpdatesNear60FPSEnabled,
+on by default in WKWebView), `CADisableMinimumFrameDurationOnPhone` does not lift it, and the only known lever is a private
+WKPreferences feature toggle (App Store risk; reports conflict on current OS versions). Unverified on Dean's iPhone; suggested first
+step: an on-device rAF-rate readout in the app.
+

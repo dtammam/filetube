@@ -456,7 +456,11 @@
   book until a turn); (6) the edge tap zones (22% each side) sit over the start and end of text lines, so a link there cannot
   be tapped (pre-existing); (7) two font-size steps move the place back a few blocks (pre-existing; measured on main too);
   (8) 120 Hz in the iOS app: relayed to the iOS Root (WKWebView caps page rendering near 60 fps; only a private toggle is
-  known).
+  known). (9) a tick box, radio or label printed in a book no longer toggles (the P9 click backstop cancels every
+  click's default; exempt input / label / select / option when no link is under the tap, as `<summary>` is - gate r5 adversary);
+  (10) two backstop guards are unbound (gate r5 adversary S6, T7): a tap on a link's CHILD element (`composedPath`, not the target)
+  marks the link tap, and a `<summary>` inside a link is not exempted - add the two tests; (11) the backstop attaches when a chapter's
+  content loads, so a tap in its first moments relies on the markup filter alone (which covers every navigating href).
 
 - **Multi-select (v1.400.0) follow-ups, unasked** _(2026-11-01, the gate's non-blocking notes)_: (1) desktop: the selection bar
   spans the sidebar's bottom (qa S5; the toast host's own posture) - clear the sidebar; (2) `sameIdSet` is bound through the
@@ -934,6 +938,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.402.0 - Books turn like paper: drag a page and it curls over, one page or two, EPUB and PDF (2026-11-03)
+
+- Dean (2026-11-03): the reader was "very functional utilitarian"; a locally hosted Kindle alternative "should feel like it". The
+  approved prototype (docs/references/page-turn-prototype.html, three rounds with Dean) is ported as public/js/page-turn.js: the fold
+  is the perpendicular bisector of the dragged corner and where it went, two double-buffered rigs per direction built and painted
+  before a turn (a frame changes only transform / opacity), a critically damped settle, the 30% trigger with flick and pull-back,
+  catch-in-flight, Reduce Motion = an instant turn. An EPUB is a pool of single-page epub.js renditions (6 one-page, 8 two-page; the
+  spike: 8 renditions of War and Peace coexist, a chapter-crossing re-point 54 ms median); a PDF is canvas viewers drawn from a
+  render-ahead cache, with More > Scroll pages for the old column. One two-page rule for both (wider than tall by 1.15 and >= 640 px).
+  The place is the visible page's (a parked view never saves it); quick taps queue and none is lost; in-book links move the whole
+  pool (they went nowhere before: epub.js handed over "../ch2.xhtml").
+- P9 (Dean's ruling at the spike's stop rule): WebKit runs no listener the reader adds to a sandboxed no-scripts chapter, so the
+  chapter frame now runs with scripts ON under a script-blocking policy that is the first bytes of every chapter's markup, the chapter
+  cleaned on an HTML re-parse (neutralized in place, so the frame parses it as v1.401 did), and a backstop that cancels every click's
+  and drag's default in a chapter. The gate ran five rounds (Dean approved 3-5) and found real paths each time - a chapter shaped to
+  move the policy into <body>, epub.js's own serialize hook undoing an earlier guard, links to the book's own blob: files (an <area>,
+  an animated SVG href, a MathML href - two ran code in WebKit) - each fixed and proven with hostile chapters in WebKit and Chromium,
+  the last as a class (no list of link kinds).
+- Measured (scripts/page-turn-probe.js): the seven release cases in Chromium and WebKit; landing frames pixel-identical (8/8); about
+  1.7 ms main-thread work per frame under a 4x CPU throttle with no frame over 20 ms. Disclosed (Dean: ship): an EPUB turn records
+  paint once on its first folded frame (3 events; the prototype measured 42); a tick box printed in a book no longer ticks. Follow-ups:
+  ROADMAP Planned > Features. Gate and evidence: docs/exec-plans/completed/2026-11-03-book-page-turn.md; device checks:
+  docs/DEVICE-CHECKS.md "Page turn (v1.402.0)".
 
 ### v1.401.1 - On the iPhone app, the mini player shows the thumbnail every time, not black from the second time (2026-11-01)
 
