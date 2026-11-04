@@ -7849,6 +7849,70 @@ body[data-view="home"] .modern-select { display: inline-flex; }
     }
     .reader-status .ui-state { background: var(--surface-1); border-radius: var(--r-md); }
 
+    /* ---- v1.402.0: the book (plan 2026-11-03-book-page-turn; page-turn.js builds it). A turn moves these
+       layers by transform / opacity / visibility only; nothing here repaints mid-turn. The page box sizes
+       come from page-turn.js as DATA (--pt-pw/--pt-ph/--pt-bw/--pt-mb, the book's --pt-bx/--pt-by). */
+    .reader-content.theme-paper { --pt-paper: var(--reader-paper-bg); --pt-edge-a: var(--reader-paper-edge-a); --pt-edge-b: var(--reader-paper-edge-b); --pt-spine: var(--reader-paper-spine); --pt-spine-soft: var(--reader-paper-spine-soft); --pt-desk: var(--reader-desk); --pt-desk-deep: var(--reader-desk-deep); }
+    .reader-content.theme-sepia { --pt-paper: var(--reader-sepia-bg); --pt-edge-a: var(--reader-sepia-edge-a); --pt-edge-b: var(--reader-sepia-edge-b); --pt-spine: var(--reader-sepia-spine); --pt-spine-soft: var(--reader-sepia-spine-soft); --pt-desk: var(--reader-desk); --pt-desk-deep: var(--reader-desk-deep); }
+    .reader-content.theme-night { --pt-paper: var(--reader-night-bg); --pt-edge-a: var(--reader-night-edge-a); --pt-edge-b: var(--reader-night-edge-b); --pt-spine: var(--reader-night-spine); --pt-spine-soft: var(--reader-night-spine-soft); --pt-desk: var(--reader-desk-night); --pt-desk-deep: var(--reader-desk-night-deep); }
+    /* P6: a sideways drag turns the page, so the browser's own sideways pan never starts; vertical pan and the
+       reader's pinch-zoom carve-out stay. The scroll column keeps the browser default. */
+    #reader-pane { position: relative; touch-action: pan-y pinch-zoom; }
+    #reader-pane.pdf-scroll { touch-action: auto; }
+    /* A mouse drag that started in a page's text: its moves reach the reader, not the text under the cursor. */
+    #reader-pane.is-dragging iframe { pointer-events: none; }
+    /* the page-box variables page-turn.js writes per layout (these are the empty defaults before it does) */
+    .pt-desk { --pt-pw: 0px; --pt-ph: 0px; --pt-bw: 0px; --pt-mb: 0px; --pt-bx: 0px; --pt-by: 0px; --pt-through: 0.12; }
+    .pt-desk { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 45%, var(--pt-desk) 55%, var(--pt-desk-deep) 100%); }
+    .pt-book { position: absolute; left: var(--pt-bx); top: var(--pt-by); width: var(--pt-bw); height: var(--pt-ph); isolation: isolate; }
+    .pt-page, .pt-leafback, .pt-stack, .pt-slot { position: absolute; left: 0; top: 0; width: var(--pt-pw); height: var(--pt-ph); }
+    .pt-page { background: var(--pt-paper); overflow: hidden; }
+    .pt-page.is-blank > * { visibility: hidden; }
+    .pt-page--left::after, .pt-page--right::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+    .pt-page--left::after { background: linear-gradient(to left, var(--pt-spine) 0, var(--pt-spine-soft) 2.5%, var(--reader-shade-0) 11%); }
+    .pt-page--right::after { background: linear-gradient(to right, var(--pt-spine) 0, var(--pt-spine-soft) 2.5%, var(--reader-shade-0) 11%); }
+    .reader-epub-page { background: var(--pt-paper); } /* an epub.js rendition's page: the theme's paper under its frame */
+    .reader-pdf-leaf { background: var(--reader-scan-paper); }
+    .reader-pdf-leaf canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .pt-leafback { transform-origin: 0 0; background: var(--pt-paper); overflow: hidden; }
+    .pt-leafback--scan { background: var(--reader-scan-back); }
+    /* The two-page back is the next page, mirrored here and mirrored back by the fold. On its OWN layer
+       (will-change), the mirror is a compositor transform, so once the leaf lies flat its text rasterizes
+       exactly like the same page unmirrored: the landed frame equals the resting frame, pixel for pixel. */
+    .pt-leafback--mirror > .pt-page { transform: scaleX(-1); will-change: transform; }
+    .pt-leafback--through > .pt-page { opacity: var(--pt-through); background: transparent; }
+    .pt-rig { position: absolute; left: 0; top: 0; width: var(--pt-bw); height: var(--pt-ph); pointer-events: none; }
+    .pt-rig.is-top { z-index: var(--reader-z-top); pointer-events: auto; }
+    .pt-rig--clip { overflow: hidden; }
+    .pt-slot { overflow: hidden; }
+    .pt-mask { position: absolute; left: 0; top: 0; width: var(--pt-mb); height: var(--pt-mb); overflow: hidden; transform-origin: 0 0; will-change: transform; }
+    .pt-inner { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+    /* the leaf's back: painted ahead and faded in (never hidden), and never a hit target - a press goes to
+       the page under it (and a turn in flight is caught there) */
+    .pt-inner--back { will-change: transform, opacity; pointer-events: none; opacity: 0; }
+    .pt-lift { position: absolute; left: 0; top: 0; width: var(--pt-pw); height: var(--pt-ph); box-shadow: var(--reader-lift-shadow); opacity: 0; will-change: opacity; }
+    .pt-under-shade, .pt-back-shade { position: absolute; left: 0; top: 0; width: var(--pt-mb); height: var(--reader-shade-band); transform-origin: 0 0; will-change: transform, opacity; pointer-events: none; }
+    .pt-under-shade { background: linear-gradient(to bottom, var(--reader-shade-0) 0%, var(--reader-shade-07) 45%, var(--reader-shade-20) 82%, var(--reader-shade-34) 100%); opacity: 0; }
+    .pt-back-shade { background: linear-gradient(to bottom, var(--reader-shade-26) 0%, var(--reader-shade-12) 4%, var(--reader-shade-05) 14%, var(--reader-shade-02) 40%, var(--reader-shade-05) 100%); }
+    .pt-stacks { position: absolute; inset: 0; pointer-events: none; }
+    .pt-stack { background: var(--pt-paper); }
+    .pt-stack--right[data-layers="0"] { box-shadow: var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="1"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="2"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="3"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-edge-3) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="4"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-edge-3) var(--pt-edge-a), var(--reader-edge-4) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="5"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-edge-3) var(--pt-edge-a), var(--reader-edge-4) var(--pt-edge-b), var(--reader-edge-5) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="6"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-edge-3) var(--pt-edge-a), var(--reader-edge-4) var(--pt-edge-b), var(--reader-edge-5) var(--pt-edge-a), var(--reader-edge-6) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--right[data-layers="7"] { box-shadow: var(--reader-edge-1) var(--pt-edge-a), var(--reader-edge-2) var(--pt-edge-b), var(--reader-edge-3) var(--pt-edge-a), var(--reader-edge-4) var(--pt-edge-b), var(--reader-edge-5) var(--pt-edge-a), var(--reader-edge-6) var(--pt-edge-b), var(--reader-edge-7) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="0"] { box-shadow: var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="1"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="2"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="3"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-edge-l3) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="4"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-edge-l3) var(--pt-edge-a), var(--reader-edge-l4) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="5"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-edge-l3) var(--pt-edge-a), var(--reader-edge-l4) var(--pt-edge-b), var(--reader-edge-l5) var(--pt-edge-a), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="6"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-edge-l3) var(--pt-edge-a), var(--reader-edge-l4) var(--pt-edge-b), var(--reader-edge-l5) var(--pt-edge-a), var(--reader-edge-l6) var(--pt-edge-b), var(--reader-stack-drop); }
+    .pt-stack--left[data-layers="7"] { box-shadow: var(--reader-edge-l1) var(--pt-edge-a), var(--reader-edge-l2) var(--pt-edge-b), var(--reader-edge-l3) var(--pt-edge-a), var(--reader-edge-l4) var(--pt-edge-b), var(--reader-edge-l5) var(--pt-edge-a), var(--reader-edge-l6) var(--pt-edge-b), var(--reader-edge-l7) var(--pt-edge-a), var(--reader-stack-drop); }
+
 /* ---- v1.39.0: in-reader now-playing bar (book narration) -------------------
    The shared player mounts FULL into #player-slot here (not docked), so its
    control bar renders as the transport; reader-owned prev/next CHAPTER buttons

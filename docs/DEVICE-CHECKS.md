@@ -5,6 +5,23 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Page turn (v1.402.0)
+
+On the iPhone (Safari, the home-screen app and the iOS app) and on a desktop browser, an EPUB and a PDF from your library. A failure
+here is a re-root-cause, never a re-patch.
+
+- [ ] v1.402.0 - (a) Portrait: drag a page from its right half past about a third of the way and let go: it turns, smooth, no hitch at the start or the end. Drag only a little and let go: it falls back.
+- [ ] v1.402.0 - (b) Sideways: two open pages; drag forward and back from either page; the fold goes over the spine.
+- [ ] v1.402.0 - (c) A quick short flick turns the page.
+- [ ] v1.402.0 - (d) Drag past the middle, then pull back toward where you started and let go: it falls back.
+- [ ] v1.402.0 - (e) A long press still selects text (and the text menu appears); a tap on a link inside the book (a footnote, the book's own contents page) goes there, and the next turn continues from there. (Known: a tick box printed in a book no longer ticks.)
+- [ ] v1.402.0 - (f) The side tap zones and the arrow keys curl the page; ten quick taps turn ten pages.
+- [ ] v1.402.0 - (g) A turn across a chapter boundary looks like any other turn (no blank page, no flash).
+- [ ] v1.402.0 - (h) A PDF turns the same way; More > Scroll pages brings back the scrolling column (on the same page or one before it), and More > Turn pages brings the turning pages back; the choice is remembered.
+- [ ] v1.402.0 - (i) With Reduce Motion on (Settings > Accessibility > Motion), a drag past the mark, a tap or an arrow changes the page at once, with no curl.
+- [ ] v1.402.0 - (j) Close the book and open it again: it lands on the same page, and the first page shows without a tap (desktop too). Contents, Aa (theme and size) and Listen from here still land on the page you are on; a book you were reading before this update opens on the same page as before.
+- [ ] v1.402.0 - (k) A big book stays smooth after 50 turns; say if the phone gets warm or the reader reloads.
+
 ## Mini player thumbnail (v1.401.1)
 
 On the iPhone app v0.16.0 (or later), a video playing on the watch page. A failure here is a re-root-cause, not a patch.

@@ -679,6 +679,56 @@
   --reader-night-bg: #101014;
   --reader-night-fg: #c8c8d0;
 
+  /* v1.402.0 page turn (plan 2026-11-03-book-page-turn): the book's look around the turning page, from the
+     approved prototype (docs/references/page-turn-prototype.html). Matte by ruling: shade only, no gloss.
+     The desk is what shows around a page that does not fill the reader; the page-edge colours stack under
+     the book's edges; the spine shades darken the inner edge; the crease and lift layers are only moved,
+     scaled and faded during a turn (never repainted). */
+  --reader-desk: #c4cad1;
+  --reader-desk-deep: #aeb5be;
+  --reader-desk-night: #16191d;
+  --reader-desk-night-deep: #0d0f12;
+  --reader-paper-edge-a: #eeebe3;
+  --reader-paper-edge-b: #d6d1c5;
+  --reader-sepia-edge-a: #e5d6b6;
+  --reader-sepia-edge-b: #cbb791;
+  --reader-night-edge-a: #2b2c30;
+  --reader-night-edge-b: #141518;
+  --reader-paper-spine: rgba(0, 0, 0, 0.15);
+  --reader-paper-spine-soft: rgba(0, 0, 0, 0.0525);
+  --reader-sepia-spine: rgba(0, 0, 0, 0.17);
+  --reader-sepia-spine-soft: rgba(0, 0, 0, 0.0595);
+  --reader-night-spine: rgba(0, 0, 0, 0.45);
+  --reader-night-spine-soft: rgba(0, 0, 0, 0.1575);
+  --reader-scan-paper: #fbf9f2;
+  --reader-scan-back: #f6f3ea;
+  --reader-shade-0: rgba(0, 0, 0, 0);
+  --reader-shade-02: rgba(0, 0, 0, 0.02);
+  --reader-shade-05: rgba(0, 0, 0, 0.05);
+  --reader-shade-07: rgba(0, 0, 0, 0.07);
+  --reader-shade-12: rgba(0, 0, 0, 0.12);
+  --reader-shade-20: rgba(0, 0, 0, 0.2);
+  --reader-shade-26: rgba(0, 0, 0, 0.26);
+  --reader-shade-34: rgba(0, 0, 0, 0.34);
+  --reader-lift-shadow: 0 0 24px 3px rgba(0, 0, 0, 0.5);
+  --reader-stack-drop: 0 18px 34px -10px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.14);
+  --reader-shade-band: 100px;
+  --reader-z-top: 2; /* the rig a turn uses sits above its twin, inside the isolated book */
+  --reader-edge-1: 1.1px 0.55px 0 0;
+  --reader-edge-2: 2.2px 1.1px 0 0;
+  --reader-edge-3: 3.3px 1.65px 0 0;
+  --reader-edge-4: 4.4px 2.2px 0 0;
+  --reader-edge-5: 5.5px 2.75px 0 0;
+  --reader-edge-6: 6.6px 3.3px 0 0;
+  --reader-edge-7: 7.7px 3.85px 0 0;
+  --reader-edge-l1: -1.1px 0.55px 0 0;
+  --reader-edge-l2: -2.2px 1.1px 0 0;
+  --reader-edge-l3: -3.3px 1.65px 0 0;
+  --reader-edge-l4: -4.4px 2.2px 0 0;
+  --reader-edge-l5: -5.5px 2.75px 0 0;
+  --reader-edge-l6: -6.6px 3.3px 0 0;
+  --reader-edge-l7: -7.7px 3.85px 0 0;
+
   /* Structural layout pair (tranche F.5, Dean's ruling 4 - a NARROW
      amendment to "layout geometry stays literal": only these two, and
      only because each has proven coupled sites that must stay in sync.

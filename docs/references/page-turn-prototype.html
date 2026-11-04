@@ -1,0 +1,868 @@
+<title>Page Turn Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a reading desk that fills the screen between a slim top bar and a page-position footer; the book sits centered on it. */
+:root {
+  --desk: #c4cad1; --desk-deep: #aeb5be;
+  --chrome: #f4f5f7; --raised: #ffffff; --seg: #e2e5e9;
+  --ink-ui: #1d2127; --muted: #5b6570; --line: #d3d8de;
+  --accent: #2c6b70;
+  --font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-book: "Literata", Georgia, "Times New Roman", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk: #16191d; --desk-deep: #0d0f12;
+    --chrome: #1b1e23; --raised: #2a2f36; --seg: #23272d;
+    --ink-ui: #e6e8eb; --muted: #98a2ad; --line: #2b3037;
+    --accent: #77b8bc; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --desk: #16191d; --desk-deep: #0d0f12;
+  --chrome: #1b1e23; --raised: #2a2f36; --seg: #23272d;
+  --ink-ui: #e6e8eb; --muted: #98a2ad; --line: #2b3037;
+  --accent: #77b8bc; color-scheme: dark;
+}
+html { height: 100%; box-sizing: border-box; }
+*, *::before, *::after { box-sizing: inherit; }
+body {
+  height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--desk); color: var(--ink-ui); font-family: var(--font-ui);
+}
+button { font: inherit; color: inherit; touch-action: manipulation; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.bar {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  padding-block: 8px; padding-left: 16px; padding-right: 16px;
+  background: var(--chrome); border-color: var(--line); border-style: solid; border-width: 0;
+}
+.bar.top { border-bottom-width: 1px; }
+.bar.bottom { border-top-width: 1px; }
+.brand { display: flex; flex-direction: column; min-width: 0; margin-right: auto; line-height: 1.15; }
+.brand strong { font-weight: 600; font-size: 15px; letter-spacing: .01em; }
+.brand span { font-size: 12px; color: var(--muted); }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--seg); }
+.seg button {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  font-size: 13px; font-weight: 500; padding: 6px 11px; border-radius: 7px;
+}
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink-ui); box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.btn {
+  border: 1px solid var(--line); background: var(--raised); cursor: pointer;
+  font-size: 13px; font-weight: 600; padding: 7px 13px; border-radius: 8px;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--chrome); }
+
+#stage { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  background: radial-gradient(120% 90% at 50% 45%, var(--desk) 55%, var(--desk-deep) 100%); }
+#desk { position: absolute; inset: 0; }
+#book { position: absolute; }
+
+/* Pages */
+.page, .leafback, .stack, .slot { position: absolute; left: 0; top: 0; width: var(--pw); height: var(--ph); }
+.page { background: var(--paper); color: var(--ink); overflow: hidden; font-family: var(--font-book); }
+.page.left::after, .page.right::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
+.page.left::after { background: linear-gradient(to left, rgba(0,0,0,var(--spine)) 0, rgba(0,0,0,calc(var(--spine) * .35)) 2.5%, rgba(0,0,0,0) 11%); }
+.page.right::after { background: linear-gradient(to right, rgba(0,0,0,var(--spine)) 0, rgba(0,0,0,calc(var(--spine) * .35)) 2.5%, rgba(0,0,0,0) 11%); }
+.page.blank > * { visibility: hidden; }
+.page.pdf { background: #fbf9f2; }
+.page.pdf canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.phead, .pfoot { position: absolute; left: var(--padx); right: var(--padx); text-align: center; color: var(--soft); white-space: nowrap; overflow: hidden; }
+.phead { top: calc(var(--padt) * .36); font: 500 calc(var(--fs) * .6)/1 var(--font-ui); letter-spacing: .16em; text-transform: uppercase; }
+.pfoot { bottom: calc(var(--padb) * .34); font: calc(var(--fs) * .74)/1 var(--font-book); font-variant-numeric: oldstyle-nums; }
+.pbody { position: absolute; left: var(--padx); top: var(--padt); width: var(--iw); height: var(--ih); overflow: hidden; }
+.probe { visibility: hidden; }
+.flow {
+  position: relative; width: var(--iw); height: var(--ih);
+  column-width: var(--iw); column-gap: var(--gap); column-fill: auto;
+  font-size: var(--fs); line-height: 1.56; text-align: justify; hyphens: auto; -webkit-hyphens: auto;
+  font-variant-numeric: oldstyle-nums;
+}
+.flow p { margin: 0; text-indent: 1.35em; orphans: 2; widows: 2; }
+.flow p.first { text-indent: 0; }
+.flow p.first::first-letter { float: left; font-size: 3.2em; line-height: .86; padding: .05em .07em 0 0; font-weight: 500; }
+.flow .titleblock { text-align: center; margin: 1.6em 0 2.4em; }
+.flow h1 { font-weight: 400; font-size: 1.85em; line-height: 1.15; margin: 0 0 .35em; letter-spacing: .01em; text-wrap: balance; }
+.flow .titleblock p { text-indent: 0; font-style: italic; color: var(--soft); text-align: center; }
+.flow h2 { text-align: center; font-weight: 400; margin: .4em 0 1.4em; break-after: avoid; }
+.flow h2.brk { break-before: column; margin-top: 2.6em; }
+.flow h2 small { display: block; font: 500 .62em/1 var(--font-ui); letter-spacing: .22em; text-transform: uppercase; color: var(--soft); margin-bottom: .7em; }
+.flow h2 span { font-size: 1.5em; }
+
+.leafback { transform-origin: 0 0; background: var(--paper); overflow: hidden; }
+.leafback > .page { transform: none; }
+.leafback.mirror > .page { transform: scaleX(-1); }
+.leafback.through > .page { opacity: var(--through); background: transparent; }
+
+.stack { pointer-events: none; }
+
+/* Turn rigs: every layer is painted once; a frame of the turn only moves them. */
+.rig { position: absolute; left: 0; top: 0; width: var(--bw); height: var(--ph); pointer-events: none; }
+.rig.clip { overflow: hidden; }
+.slot { overflow: hidden; }
+.mask { position: absolute; left: 0; top: 0; width: var(--mb); height: var(--mb); overflow: hidden; transform-origin: 0 0; will-change: transform; }
+.inner { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+.lift-shadow { position: absolute; left: 0; top: 0; width: var(--pw); height: var(--ph); box-shadow: 0 0 24px 3px rgba(0,0,0,.5); opacity: 0; will-change: opacity; }
+.under-shade, .back-shade { position: absolute; left: 0; top: 0; width: var(--mb); height: 100px; transform-origin: 0 0; will-change: transform, opacity; }
+.under-shade { background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,.07) 45%, rgba(0,0,0,.2) 82%, rgba(0,0,0,.34) 100%); opacity: 0; }
+.back-shade { background: linear-gradient(to bottom, rgba(0,0,0,.26) 0%, rgba(0,0,0,.12) 4%, rgba(0,0,0,.05) 14%, rgba(0,0,0,.02) 40%, rgba(0,0,0,.05) 100%); }
+.stacks { position: absolute; inset: 0; }
+.stack { background: var(--paper); }
+
+.bar.bottom { gap: 14px; }
+.nav {
+  flex: none; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--raised); display: grid; place-items: center; cursor: pointer;
+}
+.nav:disabled { opacity: .35; cursor: default; }
+.nav svg { width: 18px; height: 18px; }
+.where { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.where-text { font-size: 13px; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.track { height: 3px; border-radius: 2px; background: var(--seg); overflow: hidden; }
+.track i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+
+/* Tune sheet */
+#scrim { position: fixed; inset: 0; background: rgba(10,12,15,.28); z-index: 20; }
+#tune {
+  position: fixed; z-index: 21; right: 0; top: 0; bottom: 0; width: min(380px, 100%);
+  background: var(--chrome); border-left: 1px solid var(--line); overflow: auto;
+  padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(20px + env(safe-area-inset-bottom, 0px));
+  padding-left: 20px; padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 18px; box-shadow: -12px 0 40px rgba(0,0,0,.18);
+}
+@media (max-width: 560px) {
+  #tune { top: auto; left: 0; width: auto; max-height: 80%; border-left: 0; border-top: 1px solid var(--line);
+    border-radius: 16px 16px 0 0; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-block: 14px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  .brand span { display: none; }
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sheet-head strong { font-size: 17px; font-weight: 600; }
+.row { display: flex; flex-direction: column; gap: 8px; }
+.row-label { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.row-label output { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row .seg { align-self: flex-start; }
+.row-hint { font-size: 12px; color: var(--muted); line-height: 1.4; margin: 0; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.sheet-foot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 0; }
+#copied { font-size: 12px; color: var(--accent); font-weight: 600; }
+#settings-text { display: block; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--seg); padding: 8px 10px; border-radius: 8px; overflow-x: auto; white-space: pre; -webkit-user-select: all; user-select: all; }
+</style>
+
+<header class="bar top">
+  <div class="brand"><strong>Page Turn Lab</strong><span>FileTube reader prototype</span></div>
+  <div class="seg" id="seg-content" role="group" aria-label="Document type"></div>
+  <button class="btn" id="tune-open" type="button">Tune</button>
+</header>
+<main id="stage" aria-label="Book. Drag a page or tap a side to turn.">
+  <div id="desk"><div id="book"></div></div>
+</main>
+<footer class="bar bottom">
+  <button class="nav" id="prev" type="button" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <div class="where"><div class="where-text" id="where">Loading the book</div><div class="track"><i id="fill"></i></div></div>
+  <button class="nav" id="next" type="button" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+</footer>
+<div id="scrim" hidden></div>
+<aside id="tune" hidden aria-label="Tune the page turn">
+  <div class="sheet-head"><strong>Tune the turn</strong><button class="btn" id="tune-close" type="button">Done</button></div>
+  <div id="tune-rows" style="display:flex;flex-direction:column;gap:18px"></div>
+  <div class="sheet-foot">
+    <button class="btn primary" id="copy" type="button">Copy my settings</button>
+    <button class="btn" id="reset" type="button">Reset</button>
+    <span id="copied" aria-live="polite"></span>
+  </div>
+  <code id="settings-text" hidden></code>
+  <p class="note">Settings stay in this browser. Send Claude the copied line and the plan starts from your numbers. The book here is plain HTML and the PDF is drawn on a canvas, the same way epub.js and pdf.js hand pages to the real reader.</p>
+</aside>
+
+<script>
+(() => {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const stage = $('#stage'), desk = $('#desk'), book = $('#book');
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('ptl.' + k); return v == null ? d : JSON.parse(v); } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem('ptl.' + k, JSON.stringify(v)); } catch (_) { /* private window */ } },
+};
+const DEFAULTS = { content: 'book', layout: 'auto', paper: 'book', theme: 'paper', commit: 30, shadow: 60, through: 12, speed: 100 };
+const S = Object.assign({}, DEFAULTS, store.get('settings', {}));
+const pos = Object.assign({ book: 0, pdf: 0 }, store.get('pos', {}));
+let turnedOnce = store.get('turned', false);
+
+// lift: how far the corner rises off the line of the drag; blur: the lifted sheet's shadow; dur: settle time.
+const PAPER = { thin: { lift: 1.4, blur: 12, dur: 0.82 }, book: { lift: 1, blur: 18, dur: 1 }, card: { lift: 0.42, blur: 26, dur: 1.28 } };
+const THEMES = {
+  paper: { paper: '#fbfaf6', ink: '#1f1e1b', soft: '#77726a', edgeA: '#eeebe3', edgeB: '#d6d1c5', spine: 0.15, grain: 0.07, hl: 0.34, mul: 1 },
+  sepia: { paper: '#f3e8d0', ink: '#3b2f20', soft: '#86735a', edgeA: '#e5d6b6', edgeB: '#cbb791', spine: 0.17, grain: 0.09, hl: 0.28, mul: 1.05 },
+  night: { paper: '#1f2023', ink: '#cdc8bd', soft: '#8a857b', edgeA: '#2b2c30', edgeB: '#141518', spine: 0.45, grain: 0.05, hl: 0.06, mul: 1.9 },
+};
+
+// ---------- Book text (Pride and Prejudice, 1813, public domain)
+const BOOK_TITLE = 'Pride and Prejudice';
+const CHAPTERS = [
+  { name: 'Chapter I', paras: [
+    'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.',
+    'However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.',
+    '“My dear Mr. Bennet,” said his lady to him one day, “have you heard that Netherfield Park is let at last?”',
+    'Mr. Bennet replied that he had not.',
+    '“But it is,” returned she; “for Mrs. Long has just been here, and she told me all about it.”',
+    'Mr. Bennet made no answer.',
+    '“Do you not want to know who has taken it?” cried his wife impatiently.',
+    '“_You_ want to tell me, and I have no objection to hearing it.”',
+    'This was invitation enough.',
+    '“Why, my dear, you must know, Mrs. Long says that Netherfield is taken by a young man of large fortune from the north of England; that he came down on Monday in a chaise and four to see the place, and was so much delighted with it, that he agreed with Mr. Morris immediately; that he is to take possession before Michaelmas, and some of his servants are to be in the house by the end of next week.”',
+    '“What is his name?”',
+    '“Bingley.”',
+    '“Is he married or single?”',
+    '“Oh! Single, my dear, to be sure! A single man of large fortune; four or five thousand a year. What a fine thing for our girls!”',
+    '“How so? How can it affect them?”',
+    '“My dear Mr. Bennet,” replied his wife, “how can you be so tiresome! You must know that I am thinking of his marrying one of them.”',
+    '“Is that his design in settling here?”',
+    '“Design! Nonsense, how can you talk so! But it is very likely that he _may_ fall in love with one of them, and therefore you must visit him as soon as he comes.”',
+    '“I see no occasion for that. You and the girls may go, or you may send them by themselves, which perhaps will be still better, for as you are as handsome as any of them, Mr. Bingley may like you the best of the party.”',
+    '“My dear, you flatter me. I certainly _have_ had my share of beauty, but I do not pretend to be anything extraordinary now. When a woman has five grown-up daughters, she ought to give over thinking of her own beauty.”',
+    '“In such cases, a woman has not often much beauty to think of.”',
+    '“But, my dear, you must indeed go and see Mr. Bingley when he comes into the neighbourhood.”',
+    '“It is more than I engage for, I assure you.”',
+    '“But consider your daughters. Only think what an establishment it would be for one of them. Sir William and Lady Lucas are determined to go, merely on that account, for in general, you know, they visit no newcomers. Indeed you must go, for it will be impossible for _us_ to visit him if you do not.”',
+    '“You are over-scrupulous, surely. I dare say Mr. Bingley will be very glad to see you; and I will send a few lines by you to assure him of my hearty consent to his marrying whichever he chooses of the girls; though I must throw in a good word for my little Lizzy.”',
+    '“I desire you will do no such thing. Lizzy is not a bit better than the others; and I am sure she is not half so handsome as Jane, nor half so good-humoured as Lydia. But you are always giving _her_ the preference.”',
+    '“They have none of them much to recommend them,” replied he; “they are all silly and ignorant like other girls; but Lizzy has something more of quickness than her sisters.”',
+    '“Mr. Bennet, how _can_ you abuse your own children in such a way? You take delight in vexing me. You have no compassion for my poor nerves.”',
+    '“You mistake me, my dear. I have a high respect for your nerves. They are my old friends. I have heard you mention them with consideration these last twenty years at least.”',
+    '“Ah, you do not know what I suffer.”',
+    '“But I hope you will get over it, and live to see many young men of four thousand a year come into the neighbourhood.”',
+    '“It will be no use to us, if twenty such should come, since you will not visit them.”',
+    '“Depend upon it, my dear, that when there are twenty, I will visit them all.”',
+    'Mr. Bennet was so odd a mixture of quick parts, sarcastic humour, reserve, and caprice, that the experience of three-and-twenty years had been insufficient to make his wife understand his character. _Her_ mind was less difficult to develop. She was a woman of mean understanding, little information, and uncertain temper. When she was discontented, she fancied herself nervous. The business of her life was to get her daughters married; its solace was visiting and news.',
+  ] },
+  { name: 'Chapter II', paras: [
+    'Mr. Bennet was among the earliest of those who waited on Mr. Bingley. He had always intended to visit him, though to the last always assuring his wife that he should not go; and till the evening after the visit was paid she had no knowledge of it. It was then disclosed in the following manner. Observing his second daughter employed in trimming a hat, he suddenly addressed her with:',
+    '“I hope Mr. Bingley will like it, Lizzy.”',
+    '“We are not in a way to know _what_ Mr. Bingley likes,” said her mother resentfully, “since we are not to visit.”',
+    '“But you forget, mamma,” said Elizabeth, “that we shall meet him at the assemblies, and that Mrs. Long promised to introduce him.”',
+    '“I do not believe Mrs. Long will do any such thing. She has two nieces of her own. She is a selfish, hypocritical woman, and I have no opinion of her.”',
+    '“No more have I,” said Mr. Bennet; “and I am glad to find that you do not depend on her serving you.”',
+    'Mrs. Bennet deigned not to make any reply, but, unable to contain herself, began scolding one of her daughters.',
+    '“Don’t keep coughing so, Kitty, for Heaven’s sake! Have a little compassion on my nerves. You tear them to pieces.”',
+    '“Kitty has no discretion in her coughs,” said her father; “she times them ill.”',
+    '“I do not cough for my own amusement,” replied Kitty fretfully. “When is your next ball to be, Lizzy?”',
+    '“To-morrow fortnight.”',
+    '“Aye, so it is,” cried her mother, “and Mrs. Long does not come back till the day before; so it will be impossible for her to introduce him, for she will not know him herself.”',
+  ] },
+];
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const fmt = (s) => esc(s).replace(/_([^_]+)_/g, '<em>$1</em>');
+const FLOW_HTML = '<div class="titleblock"><h1>Pride and Prejudice</h1><p>Jane Austen</p></div>' +
+  CHAPTERS.map((c, ci) => `<h2 class="ch${ci ? ' brk' : ''}"><small>Chapter</small><span>${ci ? 'II' : 'I'}</span></h2>` +
+    c.paras.map((p, pi) => `<p${pi === 0 ? ' class="first"' : ''}>${fmt(p)}</p>`).join('')).join('');
+
+// ---------- PDF pages (The Elements of Style, 1918, public domain), drawn the way pdf.js hands back a canvas
+const PDF_W = 612, PDF_H = 792, PDF_SCALE = 2;
+const RULES_HEAD = 'ELEMENTARY RULES OF USAGE', COMP_HEAD = 'PRINCIPLES OF COMPOSITION';
+const PDF = [
+  { title: true },
+  { toc: [
+    ['I.', 'Introductory', 3, 0], ['II.', 'Elementary Rules of Usage', 4, 0],
+    ['1.', 'Form the possessive singular of nouns by adding ’s', 4, 1],
+    ['2.', 'In a series of three or more terms, use a comma after each', 5, 1],
+    ['3.', 'Enclose parenthetic expressions between commas', 6, 1],
+    ['4.', 'Place a comma before a conjunction introducing a clause', 7, 1],
+    ['5.', 'Do not join independent clauses by a comma', 7, 1],
+    ['III.', 'Elementary Principles of Composition', 8, 0],
+    ['10.', 'Use the active voice', 8, 1], ['11.', 'Put statements in positive form', 9, 1],
+    ['12.', 'Use definite, specific, concrete language', 9, 1], ['13.', 'Omit needless words', 10, 1],
+  ] },
+  { head: 'INTRODUCTORY', blocks: [['h', 'I'], ['h', 'INTRODUCTORY'],
+    ['p', 'This book is intended for use in English courses in which the practice of composition is combined with the study of literature. It aims to give in brief space the principal requirements of plain English style. It aims to lighten the task of instructor and student by concentrating attention on a few essentials, the rules of usage and principles of composition most commonly violated.'],
+    ['p', 'The numbers of the sections may be used as references in correcting manuscript.'],
+    ['p', 'The book covers only a small portion of the field of English style, but the experience of its writer has been that once past the essentials, students profit most by individual instruction based on the problems of their own work, and that each instructor has his own body of theory, which he prefers to that offered by any textbook.']] },
+  { head: RULES_HEAD, blocks: [['h', 'II'], ['h', 'ELEMENTARY RULES OF USAGE'],
+    ['rule', '1.', 'Form the possessive singular of nouns by adding ’s.'],
+    ['p', 'Follow this rule whatever the final consonant. Thus write,'],
+    ['ex', 'Charles’s friend'], ['ex', 'Burns’s poems'], ['ex', 'the witch’s malice'],
+    ['p', 'This is the usage of the United States Government Printing Office and of the Oxford University Press.'],
+    ['p', 'Exceptions are the possessives of ancient proper names in -es and -is, the possessive Jesus’, and such forms as for conscience’ sake, for righteousness’ sake.']] },
+  { head: RULES_HEAD, blocks: [
+    ['rule', '2.', 'In a series of three or more terms with a single conjunction, use a comma after each term except the last.'],
+    ['p', 'Thus write,'],
+    ['ex', 'red, white, and blue'], ['ex', 'gold, silver, or copper'], ['ex', 'He opened the letter, read it, and made a note of its contents.'],
+    ['p', 'This is also the usage of the Government Printing Office and of the Oxford University Press.'],
+    ['p', 'In the names of business firms the last comma is omitted, as Brown, Shipley and Company.']] },
+  { head: RULES_HEAD, blocks: [
+    ['rule', '3.', 'Enclose parenthetic expressions between commas.'],
+    ['ex', 'The best way to see a country, unless you are pressed for time, is to travel on foot.'],
+    ['p', 'This rule is difficult to apply; it is frequently hard to decide whether a single word, such as however, or a brief phrase, is or is not parenthetic. If the interruption to the flow of the sentence is but slight, the writer may safely omit the commas. But whether the interruption be slight or considerable, he must never omit one comma and leave the other.']] },
+  { head: RULES_HEAD, blocks: [
+    ['rule', '4.', 'Place a comma before a conjunction introducing a co-ordinate clause.'],
+    ['ex', 'The early records of the city have disappeared, and the story of its first years can no longer be reconstructed.'],
+    ['ex', 'The situation is perilous, but there is still one chance of escape.'],
+    ['rule', '5.', 'Do not join independent clauses by a comma.'],
+    ['p', 'If two or more clauses, grammatically complete and not joined by a conjunction, are to form a single compound sentence, the proper mark of punctuation is a semicolon.'],
+    ['ex', 'Stevenson’s romances are entertaining; they are full of exciting adventures.'],
+    ['ex', 'It is nearly half past five; we cannot reach town before dark.']] },
+  { head: COMP_HEAD, blocks: [['h', 'III'], ['h', 'ELEMENTARY PRINCIPLES OF COMPOSITION'],
+    ['rule', '10.', 'Use the active voice.'],
+    ['p', 'The active voice is usually more direct and vigorous than the passive:'],
+    ['ex', 'I shall always remember my first visit to Boston.'],
+    ['p', 'This is much better than'],
+    ['ex', 'My first visit to Boston will always be remembered by me.'],
+    ['p', 'This rule does not, of course, mean that the writer should entirely discard the passive voice, which is frequently convenient and sometimes necessary.'],
+    ['pair', 'There were a great number of dead leaves lying on the ground.', 'Dead leaves covered the ground.']] },
+  { head: COMP_HEAD, blocks: [
+    ['rule', '11.', 'Put statements in positive form.'],
+    ['p', 'Make definite assertions. Avoid tame, colorless, hesitating, non-committal language. Use the word not as a means of denial or in antithesis, never as a means of evasion.'],
+    ['pair', 'He was not very often on time.', 'He usually came late.'],
+    ['rule', '12.', 'Use definite, specific, concrete language.'],
+    ['p', 'Prefer the specific to the general, the definite to the vague, the concrete to the abstract.'],
+    ['pair', 'A period of unfavorable weather set in.', 'It rained every day for a week.']] },
+  { head: COMP_HEAD, blocks: [
+    ['rule', '13.', 'Omit needless words.'],
+    ['p', 'Vigorous writing is concise. A sentence should contain no unnecessary words, a paragraph no unnecessary sentences, for the same reason that a drawing should have no unnecessary lines and a machine no unnecessary parts. This requires not that the writer make all his sentences short, or that he avoid all detail and treat his subjects only in outline, but that he make every word tell.'],
+    ['pair', 'the question as to whether', 'whether'], ['pair', 'there is no doubt but that', 'no doubt'],
+    ['pair', 'used for fuel purposes', 'used for fuel'], ['pair', 'in a hasty manner', 'hastily'],
+    ['pair', 'this is a subject which', 'this subject'], ['pair', 'His story is a strange one.', 'His story is strange.']] },
+];
+const SERIF = '"Times New Roman", Times, "Liberation Serif", serif';
+const pdfCache = new Map();
+function pdfSource(i) {
+  if (pdfCache.has(i)) { const c = pdfCache.get(i); pdfCache.delete(i); pdfCache.set(i, c); return c; }
+  const c = document.createElement('canvas');
+  c.width = PDF_W * PDF_SCALE; c.height = PDF_H * PDF_SCALE;
+  const x = c.getContext('2d'); x.scale(PDF_SCALE, PDF_SCALE); drawPdfPage(x, i);
+  pdfCache.set(i, c);
+  if (pdfCache.size > 8) pdfCache.delete(pdfCache.keys().next().value);
+  return c;
+}
+function wrapLines(x, text, maxW, indent) {
+  const words = text.split(/\s+/), lines = [], sp = x.measureText(' ').width;
+  let line = [], w = 0;
+  for (const word of words) {
+    const ww = x.measureText(word).width, avail = maxW - (lines.length === 0 ? indent : 0);
+    if (line.length && w + sp + ww > avail) { lines.push(line); line = [word]; w = ww; } else { w += (line.length ? sp : 0) + ww; line.push(word); }
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
+function drawPara(x, text, x0, y, maxW, lead, indent, justify) {
+  const lines = wrapLines(x, text, maxW, indent);
+  lines.forEach((ln, li) => {
+    const lx = x0 + (li === 0 ? indent : 0), avail = maxW - (li === 0 ? indent : 0), yy = y + li * lead;
+    if (!justify || li === lines.length - 1 || ln.length === 1) { x.fillText(ln.join(' '), lx, yy); return; }
+    const total = ln.reduce((s, w) => s + x.measureText(w).width, 0), gap = (avail - total) / (ln.length - 1);
+    let cx = lx;
+    for (const w of ln) { x.fillText(w, cx, yy); cx += x.measureText(w).width + gap; }
+  });
+  return y + lines.length * lead;
+}
+function centered(x, text, y, font) { x.font = font; x.textAlign = 'center'; x.fillText(text, PDF_W / 2, y); x.textAlign = 'left'; }
+function drawPdfPage(x, i) {
+  const pg = PDF[i];
+  x.fillStyle = '#fbf9f2'; x.fillRect(0, 0, PDF_W, PDF_H);
+  const inner = i % 2 === 0 ? PDF_W : 0; // a scan keeps the binding's shadow on the inside edge
+  const g = x.createLinearGradient(inner, 0, inner ? inner - 46 : 46, 0);
+  g.addColorStop(0, 'rgba(70,58,38,0.13)'); g.addColorStop(1, 'rgba(70,58,38,0)');
+  x.fillStyle = g; x.fillRect(0, 0, PDF_W, PDF_H);
+  let seed = (i + 1) * 9301;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let k = 0; k < 260; k++) { x.fillStyle = `rgba(60,50,35,${0.04 + rnd() * 0.1})`; x.beginPath(); x.arc(rnd() * PDF_W, rnd() * PDF_H, 0.2 + rnd() * 0.7, 0, 7); x.fill(); }
+  x.fillStyle = '#24211d'; x.textBaseline = 'alphabetic';
+  if (pg.title) {
+    centered(x, 'THE', 214, `26px ${SERIF}`);
+    centered(x, 'ELEMENTS OF STYLE', 254, `32px ${SERIF}`);
+    centered(x, 'BY', 330, `11px ${SERIF}`);
+    centered(x, 'WILLIAM STRUNK, JR.', 356, `17px ${SERIF}`);
+    centered(x, 'PROFESSOR OF ENGLISH', 404, `11px ${SERIF}`);
+    centered(x, 'IN', 421, `11px ${SERIF}`);
+    centered(x, 'CORNELL UNIVERSITY', 438, `11px ${SERIF}`);
+    x.fillRect(PDF_W / 2 - 30, 520, 60, 0.8);
+    centered(x, 'ITHACA, N.Y.', 640, `12px ${SERIF}`);
+    centered(x, '1918', 660, `12px ${SERIF}`);
+    return;
+  }
+  const num = String(i + 1), left = i % 2 === 0;
+  x.font = `11px ${SERIF}`;
+  x.textAlign = left ? 'left' : 'right'; x.fillText(num, left ? 72 : PDF_W - 72, 52); x.textAlign = 'left';
+  if (pg.head) centered(x, pg.head, 52, `9.5px ${SERIF}`);
+  if (pg.toc) {
+    centered(x, 'CONTENTS', 118, `15px ${SERIF}`);
+    let y = 166;
+    for (const [n, label, page, sub] of pg.toc) {
+      const x0 = 84 + sub * 26, xr = PDF_W - 84;
+      x.font = `${sub ? 12 : 13}px ${SERIF}`;
+      const t = `${n}  ${label}`;
+      x.fillText(t, x0, y);
+      x.textAlign = 'right'; x.fillText(String(page), xr, y); x.textAlign = 'left';
+      const start = x0 + x.measureText(t).width + 6, end = xr - x.measureText(String(page)).width - 6;
+      x.fillStyle = 'rgba(36,33,29,.55)';
+      for (let dx = start; dx < end; dx += 5) x.fillRect(dx, y - 2, 1, 1);
+      x.fillStyle = '#24211d';
+      y += sub ? 25 : 34;
+    }
+    return;
+  }
+  let y = 104;
+  const X0 = 76, MW = PDF_W - 152;
+  for (const b of pg.blocks) {
+    if (b[0] === 'h') { centered(x, b[1], y + 10, `${b[1].length < 5 ? 17 : 14}px ${SERIF}`); y += b[1].length < 5 ? 30 : 40; }
+    else if (b[0] === 'rule') {
+      y += 6; x.font = `bold 13.5px ${SERIF}`; x.fillText(b[1], X0, y);
+      y = drawPara(x, b[2], X0 + 26, y, MW - 26, 19, 0, false) + 8;
+    } else if (b[0] === 'p') { x.font = `13.5px ${SERIF}`; y = drawPara(x, b[1], X0, y, MW, 19.5, 20, true) + 6; }
+    else if (b[0] === 'ex') { x.font = `italic 13.5px ${SERIF}`; y = drawPara(x, b[1], X0 + 34, y, MW - 34, 19, 0, false) + 3; }
+    else if (b[0] === 'pair') {
+      const col = (MW - 20) / 2;
+      x.font = `italic 12.5px ${SERIF}`; const y1 = drawPara(x, b[1], X0, y, col, 18, 0, false);
+      x.font = `12.5px ${SERIF}`; const y2 = drawPara(x, b[2], X0 + col + 20, y, col, 18, 0, false);
+      x.fillStyle = 'rgba(36,33,29,.35)'; x.fillRect(X0, Math.max(y1, y2) - 8, MW, 0.6); x.fillStyle = '#24211d';
+      y = Math.max(y1, y2) + 6;
+    }
+  }
+}
+
+// ---------- Layout and pagination
+let G = { count: 1, chStarts: [0] };
+const lastCount = { book: 0, pdf: 0 };
+function layout() {
+  const sw = desk.clientWidth, sh = desk.clientHeight;
+  const phone = sw < 600 || sh < 460;
+  const spread = S.layout === 'two' || (S.layout === 'auto' && sw > sh * 1.15 && sw >= 640);
+  const pdf = S.content === 'pdf';
+  const m = phone ? (spread ? 10 : 0) : 30;
+  const aw = sw - 2 * m, ah = sh - 2 * m;
+  let W, H;
+  if (pdf) { const a = PDF_W / PDF_H; H = Math.min(ah, (spread ? aw / 2 : aw) / a); W = H * a; }
+  else if (spread) { H = ah; W = Math.min(aw / 2, H * 0.78); }
+  else if (phone) { W = aw; H = ah; }
+  else { H = ah; W = Math.min(aw, H * 0.7); }
+  W = Math.floor(W); H = Math.floor(H);
+  const bookW = spread ? 2 * W : W;
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
+  G = Object.assign(G, { sw, sh, W, H, spread, bookW, dpr, B: Math.ceil(3 * Math.max(bookW, H)), bookX: Math.round((sw - bookW) / 2), bookY: Math.round((sh - H) / 2) });
+  Object.assign(book.style, { left: G.bookX + 'px', top: G.bookY + 'px', width: bookW + 'px', height: H + 'px' });
+  const padx = Math.round(clamp(W * 0.085, 18, 54)), padt = Math.round(clamp(H * 0.075, 34, 60));
+  const fs = clamp(W / 23.5, 14.5, 19);
+  Object.assign(G, { padx, padt, padb: padt, fs, iw: W - 2 * padx, ih: H - 2 * padt, gap: 2 * padx });
+  const vars = { '--pw': W, '--ph': H, '--bw': bookW, '--mb': G.B, '--padx': padx, '--padt': padt, '--padb': padt, '--iw': G.iw, '--ih': G.ih, '--gap': G.gap, '--fs': fs };
+  for (const k in vars) desk.style.setProperty(k, vars[k] + 'px');
+  paginate();
+}
+function paginate() {
+  const key = S.content;
+  if (key === 'pdf') { G.count = PDF.length; G.chStarts = []; }
+  else {
+    const probe = document.createElement('div');
+    probe.className = 'pbody probe';
+    probe.innerHTML = `<div class="flow">${FLOW_HTML}</div>`;
+    book.appendChild(probe);
+    const flow = probe.firstChild, left = flow.getBoundingClientRect().left, stride = G.iw + G.gap;
+    const rects = flow.lastElementChild.getClientRects(), r = rects[rects.length - 1];
+    G.count = Math.max(1, Math.floor((r.left - left + 2) / stride) + 1);
+    G.chStarts = [...flow.querySelectorAll('h2.ch')].map((h) => Math.floor((h.getBoundingClientRect().left - left + 2) / stride));
+    probe.remove();
+  }
+  if (lastCount[key] && lastCount[key] !== G.count && key === 'book') pos.book = Math.round(pos.book / Math.max(1, lastCount[key] - 1) * (G.count - 1));
+  lastCount[key] = G.count;
+}
+const idx = () => clamp(pos[S.content] | 0, 0, G.count - 1);
+const base = () => (G.spread ? idx() - (idx() % 2) : idx());
+const chapterOf = (i) => { let c = 0; G.chStarts.forEach((s, k) => { if (i >= s) c = k; }); return c; };
+function targetFor(dir) {
+  const t = base() + dir * (G.spread ? 2 : 1);
+  return t < 0 || t >= G.count ? null : t;
+}
+
+// ---------- 2D affine helpers, in CSS matrix(a,b,c,d,e,f) order
+const mul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+const inv = (m) => {
+  const det = m[0] * m[3] - m[1] * m[2], a = m[3] / det, b = -m[1] / det, c = -m[2] / det, d = m[0] / det;
+  return [a, b, c, d, -(a * m[4] + c * m[5]), -(b * m[4] + d * m[5])];
+};
+const tr = (x, y) => [1, 0, 0, 1, x, y];
+const css = (m) => `matrix(${m[0].toFixed(5)},${m[1].toFixed(5)},${m[2].toFixed(5)},${m[3].toFixed(5)},${m[4].toFixed(2)},${m[5].toFixed(2)})`;
+
+// ---------- Page viewers: built once per layout, then pointed at a page by a transform (no relayout, no repaint of the text)
+const div = (cls) => { const d = document.createElement('div'); d.className = cls; return d; };
+const place = (el, x) => { el.style.transform = `translate3d(${x}px,0,0)`; return el; };
+function createPage(side) {
+  const el = div('page ' + side);
+  let at = null;
+  if (S.content === 'pdf') {
+    el.classList.add('pdf');
+    const c = document.createElement('canvas');
+    c.width = Math.round(G.W * G.dpr); c.height = Math.round(G.H * G.dpr);
+    el.appendChild(c);
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
+    return { el, set(i) {
+      if (i === at) return;
+      at = i;
+      const out = i < 0 || i >= G.count;
+      el.classList.toggle('blank', out);
+      x.clearRect(0, 0, c.width, c.height);
+      if (!out) x.drawImage(pdfSource(i), 0, 0, c.width, c.height);
+    } };
+  }
+  el.innerHTML = `<div class="phead"></div><div class="pbody"><div class="flow">${FLOW_HTML}</div></div><div class="pfoot"></div>`;
+  const head = el.firstChild, flow = el.children[1].firstChild, foot = el.lastChild;
+  return { el, set(i) {
+    if (i === at) return;
+    at = i;
+    const out = i < 0 || i >= G.count;
+    el.classList.toggle('blank', out);
+    if (out) return;
+    const opens = i === 0 || G.chStarts.includes(i);
+    head.textContent = opens ? '' : side === 'left' ? BOOK_TITLE : CHAPTERS[chapterOf(i)].name;
+    foot.textContent = String(i + 1);
+    flow.style.transform = `translate3d(${-i * (G.iw + G.gap)}px,0,0)`;
+  } };
+}
+
+// A rig is everything one direction of turn needs, already built and painted:
+//   the page beside the spine (spread only), the page underneath, and the leaf with its back.
+// The leaf and its back sit in one rotated mask whose edge is the fold line, so a frame of the
+// turn changes transforms and opacities only and the browser never repaints a page mid-turn.
+function createRig(dir) {
+  const W = G.W, spread = G.spread;
+  const r = spread
+    ? (dir > 0 ? { s: 1, spineX: W, slotX: W, otherX: 0, sides: ['left', 'right', 'right', 'left'] }
+      : { s: -1, spineX: W, slotX: 0, otherX: W, sides: ['right', 'left', 'left', 'right'] })
+    : { s: 1, spineX: 0, slotX: 0, sides: [null, 'single', 'single', 'single'] };
+  r.dir = dir; r.startTurned = !spread && dir < 0; r.cy = G.H;
+  r.root = div(spread ? 'rig' : 'rig clip');
+  const [os, us, fs, bs] = r.sides;
+  if (spread) { r.other = createPage(os); r.root.appendChild(place(r.other.el, r.otherX)); }
+  r.under = createPage(us); r.front = createPage(fs); r.back = createPage(bs);
+  const slot = place(div('slot'), r.slotX);
+  r.underShade = div('under-shade');
+  slot.append(r.under.el, r.underShade);
+  r.mask = div('mask');
+  r.innerFront = div('inner');
+  r.innerFront.appendChild(place(r.front.el, r.slotX));
+  r.innerBack = div('inner');
+  r.lift = div('lift-shadow');
+  const leaf = div('leafback ' + (spread ? 'mirror' : 'through'));
+  if (S.content === 'pdf') leaf.style.background = '#f6f3ea'; // a scan's back is its own paper, whatever the reader theme
+  r.backShade = div('back-shade');
+  leaf.append(r.back.el, r.backShade);
+  r.innerBack.append(r.lift, leaf);
+  r.mask.append(r.innerFront, r.innerBack);
+  r.root.append(slot, r.mask);
+  r.point = (b) => {
+    if (spread && dir > 0) { r.other.set(b); r.front.set(b + 1); r.back.set(b + 2); r.under.set(b + 3); }
+    else if (spread) { r.front.set(b); r.back.set(b - 1); r.under.set(b - 2); r.other.set(b + 1); }
+    else if (dir > 0) { r.front.set(b); r.back.set(b); r.under.set(b + 1); }
+    else { r.front.set(b - 1); r.back.set(b - 1); r.under.set(b); }
+    r.dirty = false;
+  };
+  return r;
+}
+
+// Geometry in the leaf's own frame: spine at u = 0, free edge at u = W. The dragged corner C
+// goes to P; the fold is the perpendicular bisector of C-P, and the part of the leaf past it is
+// mirrored across that line to become the sheet's back.
+function renderRig(r, p, dy) {
+  const W = G.W, H = G.H, B = G.B;
+  const a = clamp(r.startTurned ? 1 - p : p, 0, 1);
+  const cy = r.cy, sign = cy === 0 ? 1 : -1;
+  let px = W - 2 * W * a;
+  let py = cy + dy + sign * H * 0.075 * PAPER[S.paper].lift * Math.sin(Math.PI * a);
+  const diag = Math.hypot(W, H), oy = H - cy;
+  let d = Math.hypot(px, py - oy);
+  if (d > diag) { px = px * diag / d; py = oy + (py - oy) * diag / d; }
+  d = Math.hypot(px, py - cy);
+  if (d > W) { px = px * W / d; py = cy + (py - cy) * W / d; }
+  const vx = W - px, vy = cy - py, dist = Math.hypot(vx, vy);
+  if (dist < 0.5) {
+    const m = tr(-B / 3, -B / 3);
+    r.mask.style.transform = css(m);
+    r.innerFront.style.transform = css(inv(m));
+    r.innerBack.style.visibility = 'hidden';
+    r.underShade.style.opacity = '0';
+    return;
+  }
+  r.innerBack.style.visibility = 'visible';
+  const n = [vx / dist, vy / dist], M = [(W + px) / 2, (cy + py) / 2];
+  const Mw = [r.spineX + r.s * M[0], M[1]], nw = [r.s * n[0], n[1]];
+  const k = Mw[0] * nw[0] + Mw[1] * nw[1];
+  const R = [1 - 2 * nw[0] * nw[0], -2 * nw[0] * nw[1], -2 * nw[0] * nw[1], 1 - 2 * nw[1] * nw[1], 2 * k * nw[0], 2 * k * nw[1]];
+  // The mask's local y axis points away from the fold into the side the reader still sees.
+  const mv = [-nw[0], -nw[1]], dv = [mv[1], -mv[0]];
+  const Mk = [dv[0], dv[1], mv[0], mv[1], Mw[0] - B / 2 * dv[0], Mw[1] - B / 2 * dv[1]];
+  const iM = inv(Mk), RT = mul(R, tr(r.slotX, 0));
+  r.mask.style.transform = css(Mk);
+  r.innerFront.style.transform = css(iM);
+  r.innerBack.style.transform = css(mul(iM, RT));
+  const h = Math.max(dist / 2, 1);
+  r.backShade.style.transform = css(mul(inv(RT), mul(Mk, [1, 0, 0, h / 100, 0, 0])));
+  const w = Math.min(dist * 0.3, W * 0.28) + 4;
+  r.underShade.style.transform = css(mul(tr(-r.slotX, 0), mul(Mk, [1, 0, 0, w / 100, 0, -w])));
+  const th = THEMES[S.theme], kk = (S.shadow / 60) * th.mul;
+  const ends = Math.min(1, dist / (W * 0.08)) * Math.min(1, (1 - a) * 5); // nothing left over at rest or once flat
+  r.underShade.style.opacity = clamp(kk * 0.8 * ends, 0, 1).toFixed(3);
+  r.backShade.style.opacity = clamp(kk * 0.85 * Math.min(1, (1 - a) * 5), 0, 1).toFixed(3);
+  r.lift.style.opacity = clamp(kk * 0.6 * Math.sin(Math.PI * a), 0, 1).toFixed(3);
+}
+
+// ---------- Rigs and the turn
+let rigs = null, T = null, stacks = null;
+function show(r) { rigs.f.root.style.zIndex = r === rigs.f ? '2' : '1'; rigs.b.root.style.zIndex = r === rigs.b ? '2' : '1'; }
+function buildRigs() {
+  book.replaceChildren();
+  stacks = div('stacks');
+  rigs = { f: createRig(1), b: createRig(-1) };
+  book.append(stacks, rigs.b.root, rigs.f.root);
+  for (const r of [rigs.f, rigs.b]) { r.point(base()); renderRig(r, 0, 0); }
+  show(rigs.f);
+  updateStacks(); updateFooter();
+}
+function stack(side, layers, x) {
+  const el = place(div('stack'), x), out = [];
+  for (let k = 1; k <= layers; k++) out.push(`${side * k * 1.1}px ${k * 0.55}px 0 0 var(${k % 2 ? '--edge-a' : '--edge-b'})`);
+  out.push('0 18px 34px -10px rgba(0,0,0,.42)', '0 2px 6px rgba(0,0,0,.14)');
+  el.style.boxShadow = out.join(',');
+  return el;
+}
+function updateStacks() {
+  const p = G.count > 1 ? idx() / (G.count - 1) : 0, N = 7;
+  stacks.replaceChildren(...(G.spread
+    ? [stack(-1, Math.round(p * N), 0), stack(1, Math.round((1 - p) * N), G.W)]
+    : [stack(1, Math.round((1 - p) * N), 0)]));
+}
+function beginTurn(dir, cy) {
+  if (T) return false;
+  const target = targetFor(dir);
+  if (target === null) return false;
+  const r = dir > 0 ? rigs.f : rigs.b;
+  if (r.dirty) r.point(base());
+  r.cy = cy;
+  show(r);
+  T = { rig: r, dir, target, p: 0, dy: 0, raf: 0, animTo: 0 };
+  renderRig(r, 0, 0);
+  return true;
+}
+function markTurned() { if (!turnedOnce) { turnedOnce = true; store.set('turned', true); } }
+// The landed rig already shows the new place. Point the other rig there too (it renders the same
+// picture behind), give it two frames to paint, then swap so the next turn either way is ready.
+function land() {
+  const r = T.rig;
+  pos[S.content] = T.target; store.set('pos', pos); markTurned();
+  T = null;
+  const o = r === rigs.f ? rigs.b : rigs.f;
+  o.point(base()); o.cy = G.H; renderRig(o, 0, 0);
+  r.dirty = true;
+  updateStacks(); updateFooter();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (T || !r.dirty) return;
+    show(o);
+    r.point(base()); r.cy = G.H; renderRig(r, 0, 0);
+  }));
+}
+function done(to) { if (to === 1) land(); else T = null; }
+// A critically damped spring carries the finger's own speed into the settle, so letting go never jerks.
+function settle(to, v0) {
+  const t = T;
+  t.animTo = to;
+  let x = t.p, v = v0, dy = t.dy, last = performance.now();
+  const w = 17 * (S.speed / 100) / PAPER[S.paper].dur;
+  const step = (now) => {
+    if (T !== t) return;
+    const dt = clamp((now - last) / 1000, 0, 0.05), h = dt / 4;
+    last = now;
+    for (let i = 0; i < 4; i++) { v += (-w * w * (x - to) - 2 * w * v) * h; x += v * h; }
+    if (x > 1) { x = 1; v = Math.min(v, 0); }
+    if (x < 0) { x = 0; v = Math.max(v, 0); }
+    dy *= Math.exp(-w * 1.3 * dt);
+    if (Math.abs(x - to) < 0.002 && Math.abs(v) < 0.08) { t.raf = 0; t.p = to; t.dy = 0; renderRig(t.rig, to, 0); done(to); return; }
+    t.p = x; t.dy = dy;
+    renderRig(t.rig, x, dy);
+    t.raf = requestAnimationFrame(step);
+  };
+  t.raf = requestAnimationFrame(step);
+}
+function finishNow() {
+  if (!T || !T.raf) return;
+  cancelAnimationFrame(T.raf);
+  T.raf = 0;
+  const to = T.animTo;
+  T.p = to; T.dy = 0;
+  renderRig(T.rig, to, 0);
+  done(to);
+}
+function turnAuto(dir) {
+  finishNow();
+  if (T || !beginTurn(dir, G.H)) return;
+  settle(1, 2.4 * (S.speed / 100));
+}
+
+// ---------- Input: every pointer move renders straight away (transforms only), no frame of delay
+let drag = null;
+const zoneDir = (bx) => (bx < G.bookW * 0.34 ? -1 : bx > G.bookW * 0.66 ? 1 : 0);
+stage.addEventListener('pointerdown', (e) => {
+  if ((e.pointerType === 'mouse' && e.button !== 0) || drag || !rigs) return;
+  const r = desk.getBoundingClientRect();
+  const d = { id: e.pointerId, x0: e.clientX, y0: e.clientY, bx: e.clientX - r.left - G.bookX, by: e.clientY - r.top - G.bookY, started: false, samples: [] };
+  if (T && T.raf) {
+    // Catch a page in flight: it stops under the finger and follows it from there.
+    cancelAnimationFrame(T.raf); T.raf = 0;
+    Object.assign(d, { started: true, caught: true, dir: T.dir, p0: T.p, dy0: T.dy, animTo: T.animTo });
+  } else if (T) return;
+  drag = d;
+  try { stage.setPointerCapture(e.pointerId); } catch (_) { /* fine without capture */ }
+});
+stage.addEventListener('pointermove', (e) => {
+  const d = drag;
+  if (!d || e.pointerId !== d.id) return;
+  const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+  if (!d.started) {
+    if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(dy) * 0.8) { if (Math.hypot(dx, dy) > 14) d.noTap = true; return; }
+    d.started = true; d.dir = dx < 0 ? 1 : -1; d.p0 = 0; d.dy0 = 0;
+    if (!beginTurn(d.dir, d.by < G.H * 0.42 ? 0 : G.H)) { d.dead = true; return; }
+  }
+  if (d.dead || !T) return;
+  if (d.caught && Math.hypot(dx, dy) > 6) d.moved = true;
+  T.p = clamp(d.p0 - d.dir * dx / (2 * G.W), 0, 1);
+  T.dy = d.dy0 + dy;
+  d.samples.push([e.timeStamp, T.p]);
+  if (d.samples.length > 8) d.samples.shift();
+  renderRig(T.rig, T.p, T.dy);
+}, { passive: true });
+function endDrag(e) {
+  const d = drag;
+  if (!d || e.pointerId !== d.id) return;
+  drag = null;
+  if (!d.started) { if (!d.noTap && e.type === 'pointerup' && zoneDir(d.bx)) turnAuto(zoneDir(d.bx)); return; }
+  if (d.dead || !T) return;
+  if (d.caught && !d.moved) {
+    // A tap on a page in flight: land that turn, then take the tap as the next one.
+    T.p = d.animTo; T.dy = 0; renderRig(T.rig, d.animTo, 0); done(d.animTo);
+    if (e.type === 'pointerup' && zoneDir(d.bx)) turnAuto(zoneDir(d.bx));
+    return;
+  }
+  let v = 0;
+  const now = d.samples[d.samples.length - 1], old = d.samples.find((s) => now && now[0] - s[0] < 70); // the last moment of the drag says what the finger meant
+  if (now && old && now[0] > old[0] && e.timeStamp - now[0] < 80) v = clamp((now[1] - old[1]) / ((now[0] - old[0]) / 1000), -12, 12); // a finger at rest has no speed
+  // Turn once the finger has crossed S.commit % of the page width; a flick turns sooner, a pull back cancels.
+  const travel = T.p * 2, flick = v * 2; // page widths moved, page widths per second
+  const commit = (flick > 1.2 && travel > 0.04) || (flick > -0.4 && travel >= S.commit / 100);
+  settle(e.type === 'pointerup' && commit ? 1 : 0, v);
+}
+stage.addEventListener('pointerup', endDrag);
+stage.addEventListener('pointercancel', endDrag);
+$('#prev').addEventListener('click', () => turnAuto(-1));
+$('#next').addEventListener('click', () => turnAuto(1));
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('#tune')) return;
+  if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); turnAuto(1); }
+  if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); turnAuto(-1); }
+});
+
+function updateFooter() {
+  const n = G.count, i = idx(), L = base();
+  const span = G.spread ? `pages ${L + 1}–${Math.min(L + 2, n)} of ${n}` : `page ${i + 1} of ${n}`;
+  let text = S.content === 'pdf' ? 'The Elements of Style · ' + span : `${CHAPTERS[chapterOf(i)].name} · ${span}`;
+  if (!turnedOnce) text = 'Drag a page by its edge, or tap either side';
+  $('#where').textContent = text;
+  $('#fill').style.width = ((G.spread ? Math.min(L + 2, n) : i + 1) / n * 100) + '%';
+  $('#prev').disabled = targetFor(-1) === null;
+  $('#next').disabled = targetFor(1) === null;
+}
+
+// ---------- Settings
+function applyTheme() {
+  const th = THEMES[S.theme];
+  const v = { '--paper': th.paper, '--ink': th.ink, '--soft': th.soft, '--edge-a': th.edgeA, '--edge-b': th.edgeB, '--spine': th.spine, '--through': S.through / 100 };
+  for (const k in v) desk.style.setProperty(k, v[k]);
+}
+const SEGS = [
+  ['paper', 'Paper', [['thin', 'Thin'], ['book', 'Book'], ['card', 'Card']], 'Thin lifts high and settles fast. Card stays flatter and lands slower.'],
+  ['theme', 'Page color', [['paper', 'Paper'], ['sepia', 'Sepia'], ['night', 'Night']]],
+  ['layout', 'Pages', [['auto', 'Auto'], ['one', 'One'], ['two', 'Two']], 'Auto opens two pages when the screen is wider than tall.'],
+];
+const SLIDERS = [
+  ['commit', 'Turn after', 10, 60, 'How far across the page a drag must go before letting go turns it. A quick flick turns it sooner.'],
+  ['shadow', 'Shadow', 0, 100, 'Depth of the crease and the shade on the page beneath.'],
+  ['through', 'Show-through', 0, 30, 'How much of the text shows through the back of a single page.'],
+  ['speed', 'Settle speed', 50, 200, 'How fast a page finishes once you let go.'],
+];
+function segButtons(host, key, opts) {
+  host.replaceChildren(...opts.map(([val, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label; b.dataset.key = key; b.dataset.val = val;
+    b.addEventListener('click', () => setSetting(key, val));
+    return b;
+  }));
+}
+function buildTune() {
+  segButtons($('#seg-content'), 'content', [['book', 'Book'], ['pdf', 'PDF']]);
+  const rows = $('#tune-rows');
+  for (const [key, label, opts, hint] of SEGS) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<div class="row-label"><span>${label}</span></div><div class="seg" role="group" aria-label="${label}"></div>${hint ? `<p class="row-hint">${hint}</p>` : ''}`;
+    segButtons(row.querySelector('.seg'), key, opts);
+    rows.appendChild(row);
+  }
+  for (const [key, label, min, max, hint] of SLIDERS) {
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = `<label class="row-label" for="r-${key}"><span>${label}</span><output id="o-${key}"></output></label><input type="range" id="r-${key}" min="${min}" max="${max}" step="1"><p class="row-hint">${hint}</p>`;
+    row.querySelector('input').addEventListener('input', (e) => setSetting(key, +e.target.value));
+    rows.appendChild(row);
+  }
+}
+function syncUI() {
+  document.querySelectorAll('[data-key]').forEach((b) => b.setAttribute('aria-pressed', String(S[b.dataset.key] === b.dataset.val)));
+  for (const [key] of SLIDERS) { $('#r-' + key).value = S[key]; $('#o-' + key).textContent = S[key] + '%'; }
+}
+function rebuild() {
+  if (T && T.raf) cancelAnimationFrame(T.raf);
+  T = null; drag = null;
+  layout(); buildRigs();
+}
+function setSetting(key, val) {
+  S[key] = val; store.set('settings', S); syncUI();
+  if (key === 'content' || key === 'layout') rebuild();
+  else if (key === 'theme' || key === 'through') applyTheme();
+}
+const tune = $('#tune'), scrim = $('#scrim');
+const openTune = (open) => { tune.hidden = !open; scrim.hidden = !open; if (open) $('#tune-close').focus(); };
+$('#tune-open').addEventListener('click', () => openTune(true));
+$('#tune-close').addEventListener('click', () => openTune(false));
+scrim.addEventListener('click', () => openTune(false));
+$('#reset').addEventListener('click', () => { Object.assign(S, DEFAULTS); store.set('settings', S); syncUI(); applyTheme(); rebuild(); });
+$('#copy').addEventListener('click', () => {
+  const text = JSON.stringify({ paper: S.paper, commit: S.commit, shadow: S.shadow, through: S.through, speed: S.speed, theme: S.theme });
+  const shown = $('#settings-text');
+  shown.textContent = text; shown.hidden = false;
+  const say = (msg) => { $('#copied').textContent = msg; setTimeout(() => { $('#copied').textContent = ''; }, 2400); };
+  try {
+    navigator.clipboard.writeText(text).then(() => say('Copied'), () => say('Select the line below to copy it'));
+  } catch (_) { say('Select the line below to copy it'); }
+});
+
+let resizeTimer = 0, lastSize = '';
+new ResizeObserver(() => {
+  const size = desk.clientWidth + 'x' + desk.clientHeight;
+  if (size === lastSize) return;
+  lastSize = size;
+  clearTimeout(resizeTimer); resizeTimer = setTimeout(rebuild, 120);
+}).observe(desk);
+
+applyTheme(); buildTune(); syncUI();
+lastSize = desk.clientWidth + 'x' + desk.clientHeight;
+// Build once, after the book font arrives, so the first turn never lands on a rebuild.
+const fontsIn = document.fonts && document.fonts.status !== 'loaded' ? document.fonts.ready : null;
+if (!fontsIn) rebuild();
+else {
+  let built = false;
+  const boot = () => { if (!built) { built = true; rebuild(); } };
+  fontsIn.then(() => { if (built && !T && !drag) rebuild(); else boot(); });
+  setTimeout(boot, 1200);
+}
+})();
+</script>
