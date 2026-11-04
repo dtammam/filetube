@@ -108,18 +108,31 @@ function readerFontStepper(size, format) {
 //     putting content, a body or a CDATA before <head> - the HTML parser then moved a head-placed meta into
 //     <body>, where browsers ignore it);
 //   - the chapter is re-parsed as HTML (what the frame will build, names case-insensitive: gate r1 W1, an
-//     uppercase <SCRIPT> or HTTP-EQUIV survived an XML-DOM strip); every script, nested frame, object,
-//     embed, <base>, noscript and http-equiv meta (a refresh navigates the frame) is NEUTRALIZED in place (an
-//     empty <template>, so saved places keep their sibling counts), every inline on* handler and code URL is
-//     removed, a link keeps only http(s), mailto or a relative chapter path (a book's own blob: files are
-//     same-origin documents), and the chapter is serialized again; a guard that throws renders a blank page.
+//     uppercase <SCRIPT> or HTTP-EQUIV survived an XML-DOM strip); scripts, nested frames, <base>,
+//     http-equiv metas (a refresh navigates the frame), a book's own <template> and SVG animations become an
+//     empty <template>, and noscript / object / embed a <span> that keeps its children (both in place, so
+//     saved places keep their sibling counts and the server's block count still matches); every on* handler,
+//     ping and code URL is removed; a link keeps only http(s), mailto or a relative chapter path (a book's own
+//     blob: files are same-origin documents); the chapter is serialized again; a guard that throws renders a
+//     blank page;
+//   - and independently of the markup, a capture-phase click listener in every chapter cancels the browser's
+//     own navigation for any link (the backstop: measured alone, it holds every hostile shape in the probe).
 // The serialized chapter has no doctype either way (epub.js serializes the root element), so the page's
 // layout mode is unchanged. Measured: the gate's hostile chapters run nothing in WebKit and Chromium
 // (scripts/page-turn-probe.js csp). The policy names only what runs code or embeds another document; a
 // book's own images, fonts and styles load exactly as before.
 const READER_CHAPTER_CSP = "script-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'";
 const READER_CHAPTER_CSP_META = `<meta http-equiv="Content-Security-Policy" content="${READER_CHAPTER_CSP}">`;
-const READER_CHAPTER_DROP = 'script, iframe, frame, object, embed, base, meta[http-equiv], noscript';
+// Neutralized to an EMPTY <template> (their HTML content is text, never elements, or they carry code / a
+// navigation): scripts, nested frames, <base>, http-equiv metas, a book's own <template> (a shadowrootmode one
+// becomes live content the guard never saw - gate r3 security-brief) and every SVG animation element (an
+// animated href points a link at a book's own blob: page AFTER the guard - gate r3 qa, it ran code in WebKit).
+const READER_CHAPTER_EMPTY = new Set(['script', 'iframe', 'frame', 'base', 'template', 'animate', 'set', 'animatemotion', 'animatetransform', 'animatecolor', 'discard']);
+// Swapped for a plain <span> that KEEPS its children: v1.401's scripts-off frame parsed these as ordinary
+// elements and showed their content, and the server's block count (lib/books/tts-chunk.js) still counts the
+// paragraphs inside them, so Listen from here and the Feed's places line up (gate r3 adversary). An <object> /
+// <embed> loads nothing under the policy's object-src 'none' anyway.
+const READER_CHAPTER_KEEP = new Set(['noscript', 'object', 'embed']);
 const READER_URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', 'data', 'srcdoc'];
 
 // output: epub.js's serialized chapter. DomParser: the DOMParser constructor (window's in the reader, jsdom's
@@ -130,8 +143,16 @@ function hardenChapterMarkup(output, DomParser) {
   // elements, so removing one would move every place saved by v1.401 (whose frame kept these elements) and the
   // reader would then save the wrong place over it. An empty <template> is inert, renders nothing, is valid in
   // <head> and <body> alike (the HTML parser never moves it), and keeps every sibling count.
-  for (const el of Array.from(doc.querySelectorAll(READER_CHAPTER_DROP))) {
-    el.replaceWith(doc.createElement('template'));
+  for (const el of Array.from(doc.querySelectorAll('*'))) {
+    if (!el.parentNode) continue;
+    const tag = String(el.localName).toLowerCase(); // SVG names are case-sensitive in selectors: compare lowered
+    if (READER_CHAPTER_EMPTY.has(tag) || (tag === 'meta' && el.hasAttribute('http-equiv'))) {
+      el.replaceWith(doc.createElement('template'));
+    } else if (READER_CHAPTER_KEEP.has(tag)) {
+      const span = doc.createElement('span');
+      while (el.firstChild) span.appendChild(el.firstChild);
+      el.replaceWith(span);
+    }
   }
   for (const el of Array.from(doc.querySelectorAll('*'))) {
     const link = el.localName === 'a' || el.localName === 'area';
@@ -145,7 +166,7 @@ function hardenChapterMarkup(output, DomParser) {
       // book's own files for app-origin blob: URLs, and a link that navigates the frame to one would load an
       // unguarded same-origin document with scripts on (gate r2 security-brief).
       const linkOut = link && (name === 'href' || name === 'xlink:href') && scheme && !['http', 'https', 'mailto'].includes(scheme[1]);
-      if (name.startsWith('on') || codeUrl || linkOut) el.removeAttribute(attr.name);
+      if (name.startsWith('on') || name === 'ping' || codeUrl || linkOut) el.removeAttribute(attr.name);
     }
   }
   return READER_CHAPTER_CSP_META + doc.documentElement.outerHTML;
@@ -639,7 +660,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const aborted = new Promise((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', resolve, { once: true }); });
     try { await Promise.race([book.ready, openFail, aborted]); } catch (_) { failed = true; }
     if (failed) setStatus(root, 'Could not open this book', { error: true, body: 'The file may be damaged or not a valid EPUB.' });
-    if (failed || signal.aborted) return null;
+    if (failed || signal.aborted) { try { book.destroy(); } catch (_) { /* never opened */ } return null; }
     const hardened = new Map();
     book.spine.hooks.serialize.register((output, section) => {
       if (!section) return;
@@ -799,8 +820,16 @@ if (typeof module !== 'undefined' && module.exports) {
           if (!frame || !engine) return;
           engine.attachDocument(cdoc, frame);
           cdoc.addEventListener('click', (event) => {
-            const a = event.target && event.target.closest ? event.target.closest('a[href]') : null;
-            if (a && viewer.markLinkTap) viewer.markLinkTap();
+            // The navigation backstop (P9, gate r3): a link in a chapter never navigates the frame itself, however
+            // its target got there (animated, inside a shadow root, written by epub.js as a book file's blob: URL
+            // - a same-origin document that would run with scripts on). In-book links still work: epub.js's own
+            // handler on the <a> runs and routes them through display(), which the pool turns into a jump; web
+            // links open nowhere, as before (the sandbox blocks popups).
+            const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+            const link = path.find((n) => n && n.nodeType === 1 && /^(a|area)$/i.test(n.localName));
+            if (!link) return;
+            event.preventDefault();
+            if (link.hasAttribute('href') && viewer.markLinkTap) viewer.markLinkTap();
           }, { capture: true, signal });
           cdoc.addEventListener('keydown', (event) => { if (readerKeyHandler) readerKeyHandler(event); }, { signal });
         });

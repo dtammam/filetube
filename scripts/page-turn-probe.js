@@ -492,9 +492,14 @@ async function csp(env) {
     // gate r2 (security-brief): links to the book's OWN script-bearing SVG (epub.js swaps it for a same-origin
     // blob: URL) from an <area> and an SVG <a>; the probe clicks every link in the frame
     ['links to the book\'s own scripted SVG', `<html xmlns="${X}" xmlns:xlink="http://www.w3.org/1999/xlink"><head><title>t</title></head><body>${filler}<img usemap="#m" src="evil.svg" width="60" height="60" alt=""/><map name="m"><area id="ar" href="evil.svg" shape="rect" coords="0,0,60,60"/></map><svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><a id="sa" xlink:href="evil.svg"><rect width="60" height="60"/></a></svg><a id="ha" href="evil.svg">h</a></body></html>`],
+    // gate r3 (qa CRITICAL): an SVG <set> points a link at the book's own HTML file (listed as a PNG) after the guard
+    ['an animated link to the book\'s own page', `<html xmlns="${X}"><head><title>t</title></head><body>${filler}<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><a id="an"><set attributeName="href" to="p.html"/><rect width="80" height="40"/></a></svg></body></html>`],
+    // gate r3 (security-brief): a declarative shadow root whose link the guard cannot see
+    ['a shadow-root link to the book\'s own page', `<html xmlns="${X}"><head><title>t</title></head><body>${filler}<div id="host"><template shadowrootmode="open"><a id="sl" href="p.html">shadow</a></template></div></body></html>`],
   ];
   const evilSvg = `<svg xmlns="http://www.w3.org/2000/svg"><script>${PWN('blob-svg')}</script><rect width="10" height="10"/></svg>`;
-  fsx.writeFileSync(path.join(booksDir, 'shapes.epub'), buildRawEpub('Shapes', shapes.map((x) => x[1]), [{ href: 'evil.svg', type: 'image/svg+xml', data: evilSvg }]));
+  const evilPage = `<html><body><script>${PWN('blob-page')}</script>page</body></html>`;
+  fsx.writeFileSync(path.join(booksDir, 'shapes.epub'), buildRawEpub('Shapes', shapes.map((x) => x[1]), [{ href: 'evil.svg', type: 'image/svg+xml', data: evilSvg }, { href: 'p.html', type: 'image/png', data: evilPage }]));
   await scanBooks();
   const shapesId = Object.values(booksDb.read().items).find((i) => i.title === 'Shapes').id;
   for (const engine of ENGINES) {
@@ -510,7 +515,9 @@ async function csp(env) {
           if (!d) { out.push({ cross: true }); continue; }
           const first = d.head && d.head.firstElementChild;
           const p = d.querySelector('p[onclick], p'); if (p) p.click();
-          for (const l of d.querySelectorAll('a, area')) { try { l.dispatchEvent(new d.defaultView.MouseEvent('click', { bubbles: true, cancelable: true })); } catch (_) { /* fine */ } }
+          const links = Array.from(d.querySelectorAll('a, area'));
+          for (const h of d.querySelectorAll('*')) if (h.shadowRoot) links.push(...h.shadowRoot.querySelectorAll('a, area'));
+          for (const l of links) { try { l.dispatchEvent(new d.defaultView.MouseEvent('click', { bubbles: true, cancelable: true, composed: true })); } catch (_) { /* fine */ } }
           out.push({ url: d.location.href.slice(0, 12), policyFirst: !!(first && first.getAttribute('http-equiv') === 'Content-Security-Policy'), scripts: d.querySelectorAll('script').length, frames: d.querySelectorAll('iframe').length });
         }
         return out;

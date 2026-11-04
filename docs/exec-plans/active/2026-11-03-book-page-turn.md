@@ -639,3 +639,143 @@ Mutants (restored byte-identical each): remove instead of neutralize, links unfi
 without the chapter: 5 of 5 killed by name. Targeted units: page-turn + books-reader-ui `# pass 54`, `# fail 0`.
 Probe set on this tree: smoke, trigger (7/7 x2), landing (8/8 at 0 px), place, reduced, taps (10/10/10 x2 engines), pdfscroll, link,
 csp, broken: all PASS; frames: EPUB 1.68 / 1.73 ms/frame, 0 over 20 ms, 3 Paint events (accepted above), PDF unchanged.
+
+Gate: CHANGES r3 @a202ab11 — security-brief
+
+Static review only (no browser, no git), of read.js and this plan as the worktree holds them.
+
+r2 WARNING (links to the book's own blob: files): FIXED as prescribed for links the guard can SEE (read.js:136-149). The builder's
+probe with the filter disabled confirmed the path was real.
+r2 NOTE (fails open): FIXED. The call is wrapped and a throw renders a policy-only blank page (read.js:653).
+Template neutralization itself: SAFE. read.js:134 builds a NEW template with doc.createElement, with no attributes and no content,
+so the replacement carries nothing.
+
+WARNING (blocking; traced statically, NOT browser-verified): the guard does not reach a BOOK-supplied <template>'s content.
+querySelectorAll does not enter template.content, so links and attributes inside a book's own template are never filtered. Content
+there is normally inert, but a template carrying a shadowrootmode attribute becomes a live declarative shadow root when the frame's
+HTML parser builds the page. DOMParser.parseFromString does not attach declarative shadow roots, so the guard sees an inert
+template, while Chromium and WebKit's document parser do attach them. Script stays blocked by the first-in-head policy, but the r2 link
+filter is bypassed for anything inside, which re-opens the r2 class through one more wrapper. Prescription: neutralize every
+book-supplied template exactly like the drop list (an empty, attribute-less template in place), or walk template.content
+recursively with the same rules AND remove shadowrootmode / shadowrootclonable / shadowrootdelegatesfocus. Add a probe shape for
+it in `csp both`, and run the filter-disabled control to show the probe sees it.
+
+WARNING (blocking until probed; suspicion): SVG animation elements (animate / set) can change an attribute after load. The guard
+checks the static href / xlink:href on a/area, but not an animation that targets those attributes. Whether either engine lets an
+animation retarget an SVG link's href to a blob: URL is unverified here. Prescription: neutralize SVG animate / set /
+animateMotion / animateTransform whose attributeName is href or xlink:href (or every animation element whose parent is a link), and
+add a probe shape.
+
+NOTE: <a ping> sends a background request to any URL on a link tap (a beacon, cross-origin, no document load). It is in the same class
+as the existing no-default-src NOTE (ROADMAP). Optionally drop the ping attribute.
+NOTE: <use> referencing a blob: SVG renders it as a shadow tree with no script execution (by spec), and no navigation follows. <form>
+is blocked by the sandbox (no allow-forms) and form-action 'none'. meta[http-equiv] is neutralized. Nothing further for these.
+
+Gate pacing: this is round 3; per Dean's norm the coordinator asks Dean before a round 4.
+
+Gate: CHANGES r3 @a202ab11 — qa
+
+- r2 WARNING (a damaged EPUB hung on "Opening book…"): FIXED. qa/broken.js (sandbox /tmp/qa-v1402-r3, the probe book
+  overwritten with junk after the scan), after 12 s: Chromium AND WebKit "Could not open this book / The file may be damaged
+  or not a valid EPUB." The race was checked from the code: an abort before ready makes the abort promise resolve at once
+  and the open returns null; a nav away mid-open aborts the same way and sets no status. The error is drawn once (L641; the
+  later openFailed subscription at L661 is reached only after a successful open).
+- CRITICAL (NEW, verified; the security-brief r3 suspicion about SVG animation, confirmed in a browser):
+  an SVG animation retargets a link to the book's own blob: HTML file after the link filter has run, and one tap runs book
+  code same-origin in WebKit. qa/blobnav.js: the chapter has `<svg><a id="sa"><set attributeName="href" to="p.html"/>
+  <rect/><text>Tap</text></a></svg>`, and the manifest has `p.html` (media-type image/png; epub.js picks the blob type from
+  the file NAME, so it is text/html) holding `<script>top.__pwned=..;top.__cookie=top.document.cookie</script>`. epub.js's
+  substitute rewrites `to="p.html"` to `blob:http://<app>/<uuid>` (seen in the frame: animVal is the blob: URL). One real
+  mouse click on the link: WebKit pwned ["blob-nav"] and read the reader's cookie; the frame location is blob:, text/html,
+  with 1 script. Chromium navigated the frame to the same blob: document too, and only its policy inheritance stopped the
+  script. Fix: neutralize SVG animate / set (and animateMotion / animateTransform) whose attributeName is href or
+  xlink:href (case-insensitive, trimmed), or every animation element inside a link, the same way as the drop list. Better
+  still, also drop any attribute value that names a blob: URL outside src-type attributes (epub.js substitutes in the
+  markup TEXT, so it reaches every attribute). Then add this chapter to `csp both` with a filter-disabled control.
+- The security-brief's template / shadowrootmode WARNING is the same class (a link the guard cannot see); I did not probe it.
+- NOTE: the open returns null on abort or failure without book.destroy() (the open book and its archive stay referenced
+  until GC; this pattern was already there for the waitForPaneSize abort).
+Checked, no finding: neutralizing with an empty <template> (attribute-less, created fresh, keeps sibling counts); the
+static link-scheme filter (in-book links still work: `link both` PASS, Chromium 1:0 -> 2:0 "Part three", WebKit the same);
+failing closed; the r1 P9 payloads re-run on a202ab11 (body-first srcdoc, body-first SCRIPT, uppercase refresh: ran
+nothing, Chromium).
+Measured (Node 22.23.1): eslint 0 errors / 6 warnings (common.js, already there); lint:ui OK; overlay-containment clean (0
+violations); the 5 targeted unit files: 107 tests, 107 pass, 0 fail.
+
+Gate: CHANGES r3 @a202ab11 — adversary
+
+Delta on 106f4b2a..a202ab11. Mutants ran in a /tmp `git archive a202ab11` sandbox (worktree untouched); Node 22.23.1; Playwright
+Chromium + WebKit; one browser probe at a time. The 5 targeted unit files: 107/107 pass. `page-turn-probe.js csp both`: PASS (6 shapes).
+`broken both`: PASS ("Could not open this book" after 8 s in both engines).
+
+r2 findings:
+- N-W1 (a v1.401 place moves): FIXED for the CFI. With cfishift.js, the v1.401 locator `/4/64/1:0` (q27, saved by the base tree
+  857a2c3f) opens on the branch with q27 on the visible page (the page shows q21..q28). The frame keeps q27 at body child 31, with
+  the three neutralized elements as `<template>` at the same positions. The re-save is that page's start (`/4/52/1:82`). That is
+  epub.js's normal page-start save under this reader's page size (the branch page holds 8 paragraphs, the v1.401 page 6), not the
+  shift: the branch's own saved place round-trips exactly (`/4/68` -> `/4/68`). In jsdom, the element count at every level matches
+  the v1.401 frame for script in SVG and MathML, object fostered out of a table, script in a tr, iframe and script in select, embed
+  in p, base/meta in body, foreignObject iframe, and a book's own template. It differs only INSIDE a neutralized element; see the
+  new WARNING. The R1 mutant (remove instead of neutralize) dies by name.
+- NOTE Q17/Q18: Q18 is now bound (dies on "reader P8: a re-anchor epub.js refuses ..."). Q17 still SURVIVES: "any jump falls back to
+  the book's start" passes the suite, because the new test always has a usable spine and so never reaches the start fallback. The
+  fix-round claim "Q17 bound" does not hold. Bind it with a refused CFI and no spine (or a refused spine) on a non-resume jump.
+- Q2 and Q15: still unbound (NOTE, as in r2).
+
+NEW:
+- WARNING (P8 / the Listen-from-here and Feed bridge; fixed in neither r2 nor r3): blocks inside a neutralized `<noscript>` or an
+  `<object>` fallback vanish from the frame, so the frame's blockIndex no longer matches the server chunker's
+  (lib/books/tts-chunk.js counts them, as v1.401's no-scripts frame did).
+  - Real reader, chapter `<h1>H</h1><p>q0</p><noscript><p>n1</p><p>n2</p></noscript><object data="clip.mp4"
+    type="video/mp4"><p>fallback</p></object><p>q1</p><p>q2</p>`:
+  - v1.401 (857a2c3f), Chromium AND WebKit: frame blocks `H|q0|n1|n2|fallback|q1|q2`, q2 = 6, server = 6.
+  - a202ab11, both engines: frame blocks `H|q0|q1|q2`, q2 = 3, server = 6.
+  - Effect: after such an element, Listen from here starts narration 3 blocks EARLIER than the visible page, and a Feed-moved place
+    (feedBlock) opens 3 blocks LATER. The text v1.401 showed (the noscript text in a no-scripts frame, an object's fallback) is gone.
+  - Fix: neutralize the element, not its children. Replace noscript/object/embed with an inert container that KEEPS the children
+    (e.g. a `<span>` carrying the original children), and keep `<template>` only for elements with no element children
+    (script, base, meta, iframe/frame, whose HTML content is text). Add a test that READER_BLOCK_SELECTOR counts match
+    chunkChapter for these shapes.
+- NOTE: unbound new guards. The fail-closed catch (R6, replaced with `out = raw`) and the abort leg of the open race (R8) both survive
+  the suite. R7/R9 (openFailed race and its error state) and R2-R5 (each part of the link filter) die by name.
+- NOTE (checked, no finding): `<math><mrow href="/robots.txt">` is kept by the link filter, but a click does not navigate the chapter
+  frame in either engine (Chromium 1234, WebKit 2248).
+- Agreed, not reproduced by me: qa's r3 CRITICAL (an SVG `<set attributeName="href">` retargets a link to the book's own blob: file
+  after the filter; one tap ran book code in WebKit) and security-brief's book-template / shadowrootmode WARNING. Both are the same
+  class: link values the static filter cannot see. qa's "drop any blob: value outside src-type attributes" is the more general
+  close. The probe should keep a filter-disabled control for each shape.
+
+### Fix round r3 -> r4 (builder, 2026-11-04)
+
+Reviewed sha a202ab11 (Dean approved round 3). Every r2 finding confirmed fixed (qa: the damaged book; adversary: the bookmark shift;
+security-brief: blob: links and fail-closed). New r3 findings, answered in the commit that carries this section:
+
+- **qa CRITICAL (confirmed in WebKit) + security-brief W2: an SVG `<set attributeName="href">` points a link at the book's own HTML
+  file (a same-origin blob: page) after the markup filter; one tap ran book code. security-brief W1: a book's own `<template
+  shadowrootmode>` becomes live content the filter never saw.** Answered structurally, in two independent layers:
+  1. **The navigation backstop:** a capture-phase click listener in every chapter cancels the browser's own navigation for any link
+     (`<a>` / `<area>`, any namespace, found through `composedPath`, so shadow roots too). In-book links still work (epub.js's own
+     handler routes them through display(), the pool jump). Bound: "reader P9 backstop: a tap on ANY link in a chapter never
+     navigates the frame (an SVG link, a link inside a shadow root)" (drives the real chapter hook on a real frame; red with the
+     backstop removed).
+  2. **The markup:** a book's own `<template>` and every SVG animation element (animate, set, animateMotion, animateTransform,
+     animateColor, discard) become an empty `<template>`; `ping` goes. Bound: "a book's own <template> (shadowrootmode) and SVG
+     animations are emptied; ping goes".
+  `csp both` with two new shapes ("an animated link to the book's own page", "a shadow-root link to the book's own page"): 8 hostile
+  chapters, 48 frame reads per engine, book code that ran `[]`, 0 frames navigated, Chromium and WebKit. **Controls:** backstop ONLY
+  (template / animation neutralization and the link filter disabled): still 0 and 0 in both engines - the backstop holds every
+  shape alone. Neither layer: Chromium 30 frames navigated away; WebKit 30 navigated and the book page's script ran
+  (`["blob-page" x8]`) - the probe sees the attack.
+- **adversary WARNING: paragraphs inside a neutralized `<noscript>` / `<object>` vanished** (the server chunker still counts them, so
+  Listen from here and Feed places were off by those blocks; v1.401's scripts-off frame showed them). noscript / object / embed now
+  become a `<span>` that KEEPS its children (an object loads nothing under `object-src 'none'`). Bound: "a chapter's blocks in the
+  frame are the server chunker's blocks" (frame `H|q0|n1|n2|fallback|q1|q2|q3` = `chunkChapterDetailed`).
+- **adversary NOTEs:** Q17 bound ("a refused re-anchor with no chapter to fall back to never shows the book's start"); the open's abort
+  leg bound ("leaving while the book is still opening ends the open and frees the book"); fail-closed bound ("the guard fails CLOSED").
+- **qa NOTE:** a failed or aborted open destroys the book.
+- **security-brief NOTE `<a ping>`:** removed (above).
+
+Mutants (restored byte-identical each): keep-children off, a book's template kept, animations kept, ping kept, fails open, no abort
+leg, any jump to the book's start, the backstop removed: 8 of 8 killed by name. Targeted units (page-turn, books-reader-ui,
+books-router-nav, pocket-kb-search, shortcut-typing-guards, books-tts-chunk): `# pass 124`, `# fail 0`. lint:ui OK; overlay census
+clean. Probes on this tree: smoke, link, place, trigger, taps, landing, reduced, pdfscroll, broken, csp: all PASS.

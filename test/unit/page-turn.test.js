@@ -401,8 +401,11 @@ test('P9 hardenChapterMarkup: neutralized elements keep every sibling count, so 
   const { frame } = frameOf(xml);
   // a neutralized element's own children are gone (a place saved INSIDE a <noscript> cannot land; disclosed);
   // every kept element keeps its position and its own child count
-  const NEUTRAL = /^(script|iframe|frame|object|embed|base|noscript|template)$/;
-  const shape = (el) => Array.from(el.children).map((c) => (NEUTRAL.test(c.localName) ? 'x' : `${c.localName}:${c.children.length}`));
+  // emptied: script, frames, base (their HTML content is text); kept as a <span> WITH its children: noscript,
+  // object, embed (v1.401's scripts-off frame parsed them as ordinary elements)
+  const EMPTIED = /^(script|iframe|frame|base|template)$/;
+  const KEPT = /^(noscript|object|embed)$/;
+  const shape = (el) => Array.from(el.children).map((c) => (EMPTIED.test(c.localName) ? 'x' : `${KEPT.test(c.localName) ? 'span' : c.localName}:${c.children.length}`));
   assert.strictEqual(frame.body.children.length, before.body.children.length, 'the body keeps its element count');
   assert.deepStrictEqual(shape(frame.body), shape(before.body), 'every kept element keeps its index and child count');
   const div = (d) => d.body.querySelector('div');
@@ -411,6 +414,28 @@ test('P9 hardenChapterMarkup: neutralized elements keep every sibling count, so 
   const qBefore = Array.from(before.body.children).findIndex((c) => c.textContent === 'q2');
   const qAfter = Array.from(frame.body.children).findIndex((c) => c.textContent === 'q2');
   assert.strictEqual(qAfter, qBefore, 'a paragraph after the neutralized elements keeps its index (its CFI step)');
+});
+
+test('P9 hardenChapterMarkup: a chapter\'s blocks in the frame are the server chunker\'s blocks (noscript / object content kept: Listen and the Feed line up, gate r3)', () => {
+  const chunk = require('../../lib/books/tts-chunk.js');
+  const body = '<h1>H</h1><p>q0</p><noscript><p>n1</p><p>n2</p></noscript><object data="clip.mp4" type="video/mp4"><p>fallback</p></object>'
+    + '<p>q1</p><script>x</script><p>q2</p><svg xmlns="http://www.w3.org/2000/svg"><set attributeName="href" to="x"/></svg><p>q3</p>';
+  const xml = `<?xml version="1.0"?><html xmlns="${XHTML}"><head><title>t</title></head><body>${body}</body></html>`;
+  const { frame } = frameOf(xml);
+  const frameBlocks = Array.from(frame.querySelectorAll(read.READER_BLOCK_SELECTOR)).map((b) => b.textContent);
+  const serverBlocks = chunk.chunkChapterDetailed(xml);
+  assert.deepStrictEqual(frameBlocks, ['H', 'q0', 'n1', 'n2', 'fallback', 'q1', 'q2', 'q3']);
+  assert.strictEqual(frameBlocks.length, serverBlocks.length, `the frame counts ${frameBlocks.length} blocks, the server ${serverBlocks.length}`);
+  assert.strictEqual(frame.querySelectorAll('noscript, object, embed, set').length, 0, 'none of the originals survive');
+});
+
+test('P9 hardenChapterMarkup: a book\'s own <template> (shadowrootmode) and SVG animations are emptied; ping goes (gate r3)', () => {
+  const { out, frame } = frameOf(`<html xmlns="${XHTML}"><head/><body><div><template shadowrootmode="open"><a href="blob:http://x/1">s</a></template></div>`
+    + '<svg xmlns="http://www.w3.org/2000/svg"><a><set attributeName="href" to="blob:http://x/2"/><animate attributeName="href" values="blob:http://x/3"/><animateMotion dur="1s"/><animateTransform attributeName="transform"/><rect/></a></svg>'
+    + '<a id="p" href="https://example.com/" ping="https://tracker.example/">w</a></body></html>');
+  assert.doesNotMatch(out, /blob:http:\/\/x|shadowrootmode|<set|<animate/i, 'no hidden link target survives anywhere in the markup');
+  assert.strictEqual(frame.getElementById('p').hasAttribute('ping'), false);
+  assert.strictEqual(frame.getElementById('p').getAttribute('href'), 'https://example.com/');
 });
 
 test('P9 hardenChapterMarkup: links keep http(s), mailto and relative chapter paths; blob:, data: and other schemes go (HTML <a>, <area>, SVG <a>)', () => {

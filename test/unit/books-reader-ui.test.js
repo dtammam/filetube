@@ -223,7 +223,7 @@ test('books: Scan is busy (spinner, no double request) until the refresh', async
 // ------------------------------------------------------------------ Reader
 const READER_TOKENS = ['--reader-paper-fg', '--reader-paper-bg', '--reader-sepia-fg', '--reader-sepia-bg', '--reader-night-fg', '--reader-night-bg'];
 
-function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, broken = false }) {
+function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, broken = false, noIndex = false }) {
   const dom = new JSDOM(`<!DOCTYPE html><head></head><body>${viewRootOf('read.html')}</body>`,
     { url: 'http://localhost/read.html?b=b1', pretendToBeVisual: true });
   setGlobals(dom);
@@ -254,12 +254,12 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, brok
       cfi: `epubcfi(/6/${2 * n}!/4/2)`,
       fire: (ev, arg) => (handlers[ev] || []).forEach((fn) => fn(arg)),
       themes: { override: (k, v) => flips.overrides.push([k, v]), fontSize: (v) => flips.fontSize.push(v) },
-      hooks: { content: { register: () => {} } },
+      hooks: { content: { register: (fn) => { r.contentHook = fn; } } },
       on: (ev, fn) => { (handlers[ev] = handlers[ev] || []).push(fn); },
       display: async (x) => { flips.displayed.push(x); if (typeof x === 'string' && x.startsWith('refuse')) throw new Error('No Section Found'); },
       next: async () => { flips.next++; },
       prev: async () => { flips.prev++; },
-      currentLocation: () => ({ start: { cfi: r.cfi, index: 0, displayed: { page: 1, total: 9 } } }),
+      currentLocation: () => ({ start: { cfi: r.cfi, index: noIndex ? undefined : 0, displayed: { page: 1, total: 9 } } }),
       resize: () => {},
       getContents: () => [],
       destroy: () => {},
@@ -272,7 +272,7 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, brok
   // guard registered before it is undone here as it is in the browser.
   const epubOwnHook = (t, e) => { e.output = t.replace(/OEBPS\//g, 'blob:x/'); };
   win.ePub = () => ({
-    on: (ev, fn) => { if (ev === 'openFailed') { flips.openFailed = fn; if (broken) setTimeout(fn, 0); } },
+    on: (ev, fn) => { if (ev === 'openFailed') { flips.openFailed = fn; if (broken === true) setTimeout(fn, 0); } },
     renderTo: (el, opts) => makeRendition(el, opts),
     spine: {
       spineItems: [{ href: 'c1.xhtml' }, { href: 'c2.xhtml' }],
@@ -284,7 +284,7 @@ function mountReader({ detail, detailStatus = 200, toc = [], likeOk = true, brok
     ready: broken ? new Promise(() => {}) : Promise.resolve().then(() => { flips.serializeHooks.push(epubOwnHook); flips.order.push('epub-hook'); }),
     locations: { length: () => 0, generate: async () => {}, save: () => '', load: () => {} },
     loaded: { navigation: Promise.resolve({ toc }) },
-    destroy: () => {},
+    destroy: () => { flips.bookDestroyed = (flips.bookDestroyed || 0) + 1; },
   });
   const calls = [];
   const shares = [];
@@ -566,6 +566,71 @@ test('reader P8: a re-anchor epub.js refuses (font change) falls back to the pla
   assert.ok(after.includes('refuse-this-cfi'), 'the pool re-anchors on the place');
   assert.ok(after.includes(3), "a refused CFI falls back to the place's chapter");
   assert.ok(!after.includes(undefined), "never display() with no target (the book's start)");
+});
+
+test('reader: leaving while the book is still opening (book.ready pending) ends the open and frees the book', async () => {
+  const r = mountReader({ detail: EPUB, broken: 'hang' }); // book.ready never settles, no openFailed either
+  r.releaseDetail();
+  await flush(20);
+  assert.strictEqual(r.flips.renditions, 0);
+  r.view.destroy();
+  active.view = null;
+  await flush(10);
+  assert.strictEqual(r.flips.bookDestroyed, 1, 'the open saw the abort and destroyed the book');
+});
+
+test('reader P8: a refused re-anchor with no chapter to fall back to never shows the book\'s start (only the open may)', async () => {
+  const r = mountReader({ detail: EPUB, noIndex: true });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const visibleEl = r.doc.querySelector('.pt-rig.is-top > .pt-mask > .pt-inner > .reader-epub-page');
+  const visible = r.flips.pool.find((x) => x.el === visibleEl);
+  visible.fire('relocated', { start: { cfi: 'refuse-no-chapter', displayed: { page: 1, total: 9 } } });
+  const before = r.flips.displayed.length;
+  r.doc.getElementById('reader-settings-btn').click();
+  r.doc.querySelector('#reader-font-larger').click();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const after = r.flips.displayed.slice(before);
+  assert.ok(after.includes('refuse-no-chapter'), 'the pool tried the place');
+  assert.ok(!after.includes(undefined), "and never fell back to display() with no target (the book's start)");
+});
+
+test('reader P9: the guard fails CLOSED - if it throws, the chapter renders as a blank page under the policy', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const realParser = r.win.DOMParser;
+  r.win.DOMParser = function Broken() { throw new Error('parser down'); };
+  try {
+    const section = { href: 'c9.xhtml', output: '<html><body><script>top.p=1</script></body></html>' };
+    for (const h of r.flips.serializeHooks) h(section.output, section);
+    assert.ok(section.output.startsWith('<meta http-equiv="Content-Security-Policy"'));
+    assert.doesNotMatch(section.output, /<script|top\.p/i, "the book's markup never renders unguarded");
+  } finally { r.win.DOMParser = realParser; }
+});
+
+test('reader P9 backstop: a tap on ANY link in a chapter never navigates the frame (an SVG link, a link inside a shadow root) - gate r3', async () => {
+  const r = mountReader({ detail: EPUB });
+  r.releaseDetail();
+  await flush(20);
+  for (let i = 0; i < 10; i++) await frame();
+  const view = r.flips.pool[0];
+  assert.strictEqual(typeof view.contentHook, 'function', 'precondition: the reader registered its chapter hook');
+  const iframe = r.doc.createElement('iframe');
+  r.doc.body.appendChild(iframe);
+  const cdoc = iframe.contentDocument;
+  cdoc.body.innerHTML = '<p><a id="h" href="c2.xhtml">in-book</a></p><svg xmlns="http://www.w3.org/2000/svg"><a id="s"><rect/></a></svg><div id="host"></div>';
+  const shadow = cdoc.getElementById('host').attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<a id="sh" href="blob:http://x/1">shadow</a>';
+  view.contentHook({ document: cdoc });
+  const tap = (el) => { const e = new cdoc.defaultView.MouseEvent('click', { bubbles: true, cancelable: true, composed: true }); el.dispatchEvent(e); return e.defaultPrevented; };
+  assert.strictEqual(tap(cdoc.getElementById('s')), true, 'an SVG link: the frame never navigates');
+  assert.strictEqual(tap(shadow.getElementById('sh')), true, 'a link inside a shadow root: never');
+  assert.strictEqual(tap(cdoc.getElementById('h')), true, 'an in-book link: the browser never navigates either (epub.js routes it)');
+  assert.strictEqual(tap(cdoc.querySelector('p')), false, 'a tap on text is untouched (selection, the turn)');
 });
 
 test('reader: destroy() closes an open sheet (it lives on <body>, outside #view-root)', async () => {
