@@ -358,15 +358,8 @@ header {
   z-index: var(--z-header);
 }
 
-/* v1.44.3: immersive reader. The /read view is a full-page reading surface, so
-   the shell header (logo + search — wasted space while reading; the reader has
-   its own topbar with Back/Contents/Aa) is hidden and its top clearance is
-   reclaimed. `reader-immersive` is set on <html> by read.html's FOUC script
-   pre-paint (direct load) and toggled by read.js init()/destroy() across in-app
-   navigation. The reader sizes its own height by MEASURING the reclaimed offset
-   (read.js sizeReader), so no reader-chassis height override is needed here. */
-html.reader-immersive header { display: none; }
-html.reader-immersive .app-container { padding-top: 0; }
+/* v1.44.3 immersive reader (phone only since v1.402.1): the rules live further down, after the
+   main mobile block. Specificity (0,1,2) beats the base header / .app-container rules in any order. */
 
 .header-left {
   display: flex;
@@ -3961,6 +3954,25 @@ select {
   /* Audio's cover-art layer fills the wrapper (absolute inset), which now
      tracks the capped element height -- nothing extra needed for audio. */
 }
+
+/* v1.44.3: immersive reader. The /read view is a full-page reading surface, so
+   the shell header (logo + search — wasted space while reading; the reader has
+   its own topbar with Back/Contents/Aa) is hidden and its top clearance is
+   reclaimed. `reader-immersive` is set on <html> by read.html's FOUC script
+   pre-paint (direct load) and toggled by read.js init()/destroy() across in-app
+   navigation. The reader sizes its own height by MEASURING the reclaimed offset
+   (read.js sizeReader), so no reader-chassis height override is needed here.
+   v1.402.1: PHONE ONLY (max-width 768px, or html.is-phone at any width, e.g. a
+   phone held sideways). On a computer the persistent sidebar stays on screen, so
+   hiding the header left an empty 56px strip where the logo was and dropped the
+   search; the desktop reader now keeps the shell header (Dean's R1, 2026-11-05).
+   The class stays the signal; only where these two rules apply changed. */
+@media (max-width: 768px) {
+  html.reader-immersive header { display: none; }
+  html.reader-immersive .app-container { padding-top: 0; }
+}
+html.is-phone.reader-immersive header { display: none; }
+html.is-phone.reader-immersive .app-container { padding-top: 0; }
 
 /* v1.389.0: the hamburger is the only way to the side menu on a sideways phone (the portrait
    bottom nav and its Playlists sheet are not there). The 768px block hides the hamburger for

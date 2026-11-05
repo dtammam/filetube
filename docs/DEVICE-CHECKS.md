@@ -5,6 +5,12 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Reader top bar on a computer (v1.402.1)
+
+- [ ] v1.402.1 - (a) On a computer, open a book: the FileTube logo and search stay at the top, and the book fits the window.
+- [ ] v1.402.1 - (b) Back to Books: unchanged.
+- [ ] v1.402.1 - (c) On the iPhone, open a book: still full-screen reading as before.
+
 ## Page turn (v1.402.0)
 
 On the iPhone (Safari, the home-screen app and the iOS app) and on a desktop browser, an EPUB and a PDF from your library. A failure
