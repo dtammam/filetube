@@ -12,7 +12,8 @@
 //
 // The swipe tests are the D8.3 destructive-safety floor: a danger action (the
 // notification Delete) must never run from a drag, a fast swipe, a full swipe,
-// the click that ends a drag, a swipe-then-tap on the content, or a double tap.
+// the click that ends a drag, a swipe-then-tap on the content, or a double tap. The one
+// exception is opt-in (v1.403.0, Modern home's Move to Trash, `dangerFullSwipe: true`).
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -43,7 +44,7 @@ function setup(t) {
     const e = new w.PointerEvent(type, {
       bubbles: true, cancelable: true, composed: true,
       pointerId: o.pointerId ?? 1, pointerType: o.pointerType ?? 'touch',
-      isPrimary: o.isPrimary ?? true, button: o.button ?? 0,
+      isPrimary: o.isPrimary ?? true, button: o.button ?? 0, buttons: o.buttons ?? 0,
       clientX: o.x ?? 100, clientY: o.y ?? 100,
     });
     const notPrevented = el.dispatchEvent(e);
@@ -677,4 +678,375 @@ test('swipeRow: a pointerdown outside an open row closes it', (t) => {
   assert.equal(c.isOpen(), true);
   s.pe('pointerdown', s.$('after'));
   assert.equal(c.isOpen(), false);
+});
+
+// ---- v1.403.0: the opt-in danger full swipe ---------------------------------------
+// Each test below builds the input ONLY its guard refuses (LESSONS 2); the mutants are in the plan's Evidence.
+function mkDanger(s, log, extra = {}) {
+  return I.swipeRow(s.$('row'), { actions: mkActions(log), fullSwipe: 'delete', dangerFullSwipe: true, measure: MEASURE, win: WIN, ...extra });
+}
+
+test('swipeRow v1.403: the opt-in is exactly true; anything else still throws, DOM untouched', (t) => {
+  const s = setup(t);
+  const before = s.$('list').innerHTML;
+  for (const v of [undefined, false, 1, 'true', {}]) {
+    assert.throws(() => mkRow(s, [], { fullSwipe: 'delete', dangerFullSwipe: v }), /danger action can never be the full-swipe/, String(v));
+  }
+  assert.equal(s.$('list').innerHTML, before);
+});
+
+test('swipeRow v1.403: notifications\' shape (no opt-in) still throws, and its full swipe still runs the neutral action', (t) => {
+  const s = setup(t);
+  const log = [];
+  assert.throws(() => mkRow(s, log, { fullSwipe: 'delete' }), /danger/);
+  mkRow(s, log);
+  drag(s, [390, 380, 100]);
+  assert.deepEqual(log, [['dismiss', 'full-swipe']]);
+});
+
+test('swipeRow v1.403: with the opt-in a full swipe fires once, and only on release', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 100], { hold: true });
+  assert.deepEqual(log, [], 'nothing runs while the finger is down');
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, [['delete', 'full-swipe']]);
+  assert.equal(c.isOpen(), false);
+  // the same gesture's trailing events fire nothing more
+  s.pe('pointermove', s.$('title'), { x: 50, y: 100, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 50, y: 100, pointerId: 7 });
+  assert.equal(log.length, 1, 'a second firing needs a new gesture');
+  s.tick(1000);
+  drag(s, [390, 380, 100]);
+  assert.equal(log.length, 2, 'a new gesture fires again (the CONTROL for the line above)');
+});
+
+test('swipeRow v1.403: a drag short of max(threshold, actions) opens, never fires - both terms bind', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 151]);   // 239px of 400: short of 0.6
+  assert.deepEqual(log, []);
+  assert.equal(c.isOpen(), true);
+  c.close();
+  s.tick(1000);
+  // Actions WIDER than the threshold: 300px of actions on a 400px row. 250px passes 0.6 but not the actions.
+  c.destroy();
+  const log2 = [];
+  const c2 = mkDanger(s, log2, { measure: { rowWidth: () => 400, actionsWidth: () => 300 } });
+  drag(s, [390, 380, 140]);
+  assert.deepEqual(log2, [], 'past the threshold, short of the actions: no fire');
+  assert.equal(c2.isOpen(), true);
+  c2.close();
+  s.tick(1000);
+  drag(s, [390, 380, 60]);
+  assert.deepEqual(log2, [['delete', 'full-swipe']], 'past both, and the margin: fires');
+});
+
+test('swipeRow v1.403: a vertical drag, a sideways drift inside a scroll, a pointercancel and a tap fire nothing', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  // vertical from the first lock decision; the far-left later moves must not count
+  s.pe('pointerdown', s.$('title'), { x: 390, y: 100, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 388, y: 120, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 100, y: 130, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 100, y: 130, pointerId: 7 });
+  assert.deepEqual(log, [], 'released to the page at the lock');
+  // a scroll with ~20px of drift
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 400, pointerId: 8 });
+  s.pe('pointermove', s.$('title'), { x: 190, y: 340, pointerId: 8 });
+  s.pe('pointermove', s.$('title'), { x: 180, y: 100, pointerId: 8 });
+  s.pe('pointerup', s.$('title'), { x: 180, y: 100, pointerId: 8 });
+  assert.deepEqual(log, []);
+  assert.equal(c.isOpen(), false);
+  // a locked full-distance drag that the browser takes back
+  drag(s, [390, 380, 100], { cancel: true });
+  assert.deepEqual(log, [], 'pointercancel runs nothing');
+  assert.equal(c.isOpen(), false);
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), false);
+  // a tap
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 100, pointerId: 9 });
+  s.pe('pointerup', s.$('title'), { x: 200, y: 100, pointerId: 9 });
+  s.click(s.$('title'));
+  assert.deepEqual(log, []);
+});
+
+test('swipeRow v1.403: a drag that starts on a revealed button never fires the full swipe', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 300]);
+  assert.equal(c.isOpen(), true);
+  s.tick(1000);
+  const b = btn(s, 'delete');
+  s.pe('pointerdown', b, { x: 390, y: 100, pointerId: 11 });
+  s.pe('pointermove', b, { x: 300, y: 100, pointerId: 11 });
+  s.pe('pointermove', b, { x: 50, y: 100, pointerId: 11 });
+  s.pe('pointerup', b, { x: 50, y: 100, pointerId: 11 });
+  assert.deepEqual(log, []);
+});
+
+test('swipeRow v1.403: the revealed danger button still needs a real tap that began on it (S3 is the caller\'s onSelect)', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 300]);
+  s.tick(1000);
+  s.click(btn(s, 'delete'), 1);
+  assert.deepEqual(log, [], 'a click with no press on the button does nothing');
+  assert.equal(c.isOpen(), true);
+  tapButton(s, btn(s, 'delete'));
+  assert.deepEqual(log, [['delete', 'button']]);
+  tapButton(s, btn(s, 'delete'));
+  assert.equal(log.length, 1, 'selecting closed the row: a second tap reaches nothing');
+});
+
+test('swipeRow v1.403: destroy mid-drag fires nothing on the release that follows', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  const title = s.$('title');
+  drag(s, [390, 380, 100], { hold: true });
+  c.destroy();
+  s.pe('pointerup', title, { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, []);
+});
+
+test('swipeRow v1.403: enabled() refuses at the press, at the lock and at the release', (t) => {
+  const s = setup(t);
+  const log = [];
+  let on = false;
+  const c = mkDanger(s, log, { enabled: () => on });
+  drag(s, [390, 380, 100]);
+  assert.deepEqual(log, [], 'off at the press: the row never moves');
+  // on again by the first move: a press that began while off stays off for its whole gesture
+  s.tick(1000);
+  s.pe('pointerdown', s.$('title'), { x: 390, y: 100, pointerId: 7 });
+  on = true;
+  s.pe('pointermove', s.$('title'), { x: 380, y: 100, pointerId: 7 });
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), false, 'off at the press alone refuses the gesture');
+  s.pe('pointermove', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, []);
+  on = false;
+  assert.ok(['', '0px'].includes(offsetOf(s)), 'no offset written');
+  s.tick(1000);
+  // off only at the lock: on at the press, turned off before the first lock-deciding move
+  on = true;
+  s.pe('pointerdown', s.$('title'), { x: 390, y: 100, pointerId: 7 });
+  on = false;
+  s.pe('pointermove', s.$('title'), { x: 380, y: 100, pointerId: 7 });
+  on = true;
+  s.pe('pointermove', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, [], 'off at the lock: released');
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), false);
+  // off only at the release: a menu came up under the finger
+  drag(s, [390, 380, 100], { hold: true });
+  on = false;
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, [], 'off at the release: nothing fires');
+  assert.equal(c.isOpen(), false);
+  assert.equal(offsetOf(s), '0px');
+  s.tick(1000);
+  on = true;
+  drag(s, [390, 380, 100]);
+  assert.deepEqual(log, [['delete', 'full-swipe']], 'on throughout: fires (the CONTROL)');
+});
+
+test('swipeRow v1.403: a mouse whose release was lost cannot drag by hovering, and a click cannot fire it', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  const m = { pointerType: 'mouse', pointerId: 1 };
+  s.pe('pointerdown', s.$('title'), { ...m, x: 390, y: 100, buttons: 1 });
+  s.pe('pointermove', s.$('title'), { ...m, x: 300, y: 100, buttons: 0 });   // the button came up outside the window
+  s.pe('pointermove', s.$('title'), { ...m, x: 100, y: 100, buttons: 0 });
+  s.pe('pointerup', s.$('title'), { ...m, x: 100, y: 100, buttons: 0 });
+  assert.deepEqual(log, [], 'hovering is not dragging');
+  assert.equal(c.isOpen(), false);
+  s.tick(1000);
+  drag(s, [390, 380, 100].map((x) => x), {});
+  assert.deepEqual(log, [['delete', 'full-swipe']], 'CONTROL: a touch drag still fires');
+  s.tick(1000);
+  s.pe('pointerdown', s.$('title'), { ...m, x: 390, y: 100, buttons: 1 });
+  s.pe('pointermove', s.$('title'), { ...m, x: 100, y: 100, buttons: 1 });
+  s.pe('pointerup', s.$('title'), { ...m, x: 100, y: 100, buttons: 0 });
+  assert.equal(log.length, 2, 'CONTROL: a real mouse drag with the button held fires');
+});
+
+test('swipeRow v1.403: a new primary press drops a drag whose release was lost; a second finger does not', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 100], { hold: true });   // the release never arrives
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 100, pointerId: 20 });
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), false);
+  assert.equal(offsetOf(s), '0px');
+  s.pe('pointerup', s.$('title'), { x: 200, y: 100, pointerId: 7 });
+  assert.deepEqual(log, [], 'the stale pointer\'s late release fires nothing');
+  s.pe('pointerup', s.$('title'), { x: 200, y: 100, pointerId: 20 });
+  s.tick(1000);
+  // a second finger (isPrimary false) leaves the running drag alone
+  drag(s, [390, 380, 100], { hold: true });
+  s.pe('pointerdown', s.$('title'), { x: 50, y: 300, pointerId: 21, isPrimary: false });
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), true);
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, [['delete', 'full-swipe']]);
+  assert.equal(c.isOpen(), false);
+});
+
+test('swipeRow v1.403: reset() ends a running drag without firing and closes an open row', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log);
+  drag(s, [390, 380, 100], { hold: true });
+  c.reset();
+  assert.equal(wrapOf(s).classList.contains('is-dragging'), false);
+  s.pe('pointerup', s.$('title'), { x: 100, y: 100, pointerId: 7 });
+  assert.deepEqual(log, []);
+  s.tick(1000);
+  drag(s, [390, 380, 300]);
+  assert.equal(c.isOpen(), true);
+  c.reset();
+  assert.equal(c.isOpen(), false);
+  assert.equal(offsetOf(s), '0px');
+});
+
+test('swipeRow v1.403: a label function is read again at each lock; an icon draws above the label; text stays the default', (t) => {
+  const s = setup(t);
+  let liked = false;
+  const actions = [
+    { id: 'like', kind: 'neutral', label: () => (liked ? 'Unlike' : 'Like'), icon: () => { const i = s.$('list').ownerDocument.createElement('i'); i.className = 'g'; return i; }, onSelect() {} },
+    { id: 'plain', kind: 'neutral', label: 'Plain', onSelect() {} },
+  ];
+  I.swipeRow(s.$('row'), { actions, fullSwipe: null, measure: MEASURE, win: WIN });
+  const like = btn(s, 'like');
+  assert.equal(like.querySelector('.ui-swipe__label').textContent, 'Like');
+  assert.ok(like.querySelector('i.g'), 'the icon is drawn');
+  assert.equal(btn(s, 'plain').textContent, 'Plain');
+  assert.equal(btn(s, 'plain').children.length, 0, 'no icon: bare text, as before');
+  liked = true;
+  assert.equal(like.querySelector('.ui-swipe__label').textContent, 'Like', 'not read until the next lock');
+  drag(s, [390, 380, 300]);
+  assert.equal(like.querySelector('.ui-swipe__label').textContent, 'Unlike');
+  assert.equal(like.querySelectorAll('i.g').length, 1, 'the repaint replaces, never stacks');
+});
+
+test('swipeRow v1.403: a tap on a closed row keeps its click (tapping a card plays it)', (t) => {
+  const s = setup(t);
+  mkDanger(s, []);
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 100, pointerId: 9 });
+  s.pe('pointerup', s.$('title'), { x: 200, y: 100, pointerId: 9 });
+  const e = s.click(s.$('title'));
+  assert.equal(e.defaultPrevented, false, 'the click passes untouched');
+});
+
+test('swipeRow v1.403: a tap on a just-revealed button inside the swallow window works; a pressless click there is still eaten', (t) => {
+  const s = setup(t);
+  const log = [];
+  mkDanger(s, log);
+  drag(s, [390, 380, 300]);
+  // no time passes: a touch drag raises no click, so the swallow is still armed
+  const stray = s.click(s.$('title'));
+  assert.equal(stray.defaultPrevented, true, 'the click ending the drag is eaten');
+  assert.deepEqual(log, []);
+  // again, with a real press this time
+  s.tick(1000);
+  s.tick(1000);
+  // close by a tap on the content, re-open, then tap inside the window
+  s.pe('pointerdown', s.$('title'), { x: 200, pointerId: 3 });
+  s.pe('pointerup', s.$('title'), { x: 200, pointerId: 3 });
+  s.click(s.$('title'));
+  s.tick(1000);
+  drag(s, [390, 380, 300]);
+  tapButton(s, btn(s, 'dismiss'));
+  assert.deepEqual(log, [['dismiss', 'button']], 'the press began a new gesture: its click is its own');
+});
+
+// ---- v1.403.0 gate r1: the real proportions (actions at or above the threshold), which the 400 / 160 fixture cannot show
+const PHONE = { rowWidth: () => 358, actionsWidth: () => 218 }; // the geometry the gate's C1 reproduced on
+
+test('swipeRow v1.403 gate C1: a wobble on an OPEN row fires nothing, at any distance, and the row stays open', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log, { measure: PHONE });
+  drag(s, [340, 330, 120]);   // open, short of the full point
+  assert.equal(c.isOpen(), true);
+  assert.deepEqual(log, []);
+  for (const nudge of [8, 10, 14, 20, 30, 100, 300]) {
+    s.tick(1000);
+    drag(s, [200, 200 - nudge]);
+    assert.deepEqual(log, [], nudge + 'px');
+    assert.equal(c.isOpen(), true, nudge + 'px');
+  }
+  // the gate's scroll shape on an open row: a first sample that locks sideways, then the finger goes up
+  s.tick(1000);
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 400, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 191, y: 398, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 188, y: 150, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 188, y: 150, pointerId: 7 });
+  assert.deepEqual(log, []);
+});
+
+test('swipeRow v1.403 gate C1: the same wobble on a non-danger full swipe keeps today\'s behaviour (notifications)', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = I.swipeRow(s.$('row'), { actions: mkActions(log), fullSwipe: 'dismiss', measure: PHONE, win: WIN });
+  drag(s, [340, 330, 130]);
+  assert.equal(c.isOpen(), true);
+  s.tick(1000);
+  drag(s, [200, 190]);
+  assert.deepEqual(log, [['dismiss', 'full-swipe']], 'unchanged: the opt-in alone tightens the rule');
+});
+
+test('swipeRow v1.403 gate W1: a danger full swipe must still be mostly horizontal at release', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log, { measure: PHONE });
+  const go = (dx, dy) => {
+    c.close(); // each from a CLOSED row: the open-row guard would mask this one (LESSONS 2)
+    s.tick(1000);
+    s.pe('pointerdown', s.$('title'), { x: 340, y: 700, pointerId: 7 });
+    s.pe('pointermove', s.$('title'), { x: 331, y: 698, pointerId: 7 }); // locks sideways
+    s.pe('pointermove', s.$('title'), { x: 340 + dx, y: 700 + dy, pointerId: 7 });
+    s.pe('pointerup', s.$('title'), { x: 340 + dx, y: 700 + dy, pointerId: 7 });
+  };
+  go(-260, -483);
+  assert.deepEqual(log, [], 'up and left, 25 degrees off vertical');
+  go(-260, -260);
+  assert.deepEqual(log, [], 'exactly diagonal is not horizontal');
+});
+
+test('swipeRow v1.403 gate W1 CONTROL: a sloppy but horizontal full swipe fires', (t) => {
+  const s = setup(t);
+  const log = [];
+  mkDanger(s, log, { measure: PHONE });
+  s.pe('pointerdown', s.$('title'), { x: 340, y: 700, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 331, y: 698, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 80, y: 640, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 80, y: 640, pointerId: 7 });
+  assert.deepEqual(log, [['delete', 'full-swipe']]);
+});
+
+test('swipeRow v1.403 gate W2: revealing every button never doubles as Trash: the margin past the buttons binds', (t) => {
+  const m = I.DANGER_FULL_SWIPE_MARGIN_PX;
+  assert.equal(m, 24);
+  const s = setup(t);
+  const log = [];
+  // row 300, actions 176: the threshold (180) is below actions + margin (200), so only the margin decides
+  const c = mkDanger(s, log, { measure: { rowWidth: () => 300, actionsWidth: () => 176 } });
+  drag(s, [290, 280, 290 - 176]);
+  assert.deepEqual(log, [], 'exactly the buttons: opens');
+  assert.equal(c.isOpen(), true);
+  c.close();
+  s.tick(1000);
+  drag(s, [290, 280, 290 - 199]);
+  assert.deepEqual(log, [], 'one short of the margin: opens');
+  c.close();
+  s.tick(1000);
+  drag(s, [290, 280, 290 - 200]);
+  assert.deepEqual(log, [['delete', 'full-swipe']], 'at the margin: fires');
 });

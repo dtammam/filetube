@@ -193,10 +193,11 @@ test('home: EVERY grid/row render and append reveals right after it writes (sour
     /host\.innerHTML = html \|\| '';\s*revealHomeArt\(host\);/, // Continue rows
     /host\.innerHTML = rows\.map\(buildFeedRowHtml\)\.join\(''\);\s*revealHomeArt\(host, signal\);/, // feed
     /encodeURIComponent\(searchQuery\),\s*\);\s*revealHomeArt\(booksRowHost, signal\);/, // search books row
+    /attachCardSwipe\(el, item\);\s*revealHomeArt\(videoGrid, signal\);/, // v1.403.0: Undo puts one card back (putCardBack)
   ];
   assert.ok(!/videoGrid\.innerHTML = items|videoGrid\.insertAdjacentHTML/.test(src), 'no grid write bypasses putCards');
   for (const re of sites) assert.match(src, re, String(re).slice(0, 90));
-  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 5, 'putCards + the three row/feed sites + the definition (a new render site must join)');
+  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 6, 'putCards + the three row/feed sites + putCardBack + the definition (a new render site must join)');
 });
 
 // ---------------------------------------------------------------- 4. grid skeleton
