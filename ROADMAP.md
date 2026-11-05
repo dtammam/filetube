@@ -85,6 +85,10 @@
 
 ### Bugs
 
+- [ ] **Reader page is 20-24 px taller than the window** _(v1.402.1 probe, 2026-11-05; present before it, not caused by it)_ - with a book open the
+  reader chassis ends exactly at the window bottom, but the document is taller (924 at 1440x900, 864 at 390x844, 414 at 844x390: the
+  `.app-container` bottom padding), so the page can scroll a little. Measured identical on 698ae741 (before v1.402.1). Look at it when
+  the reader's frame is next touched.
 - [ ] **Gate watchdog follow-ups** _(v1.393.0 gate, disclosed not fixed)_ - (a) engine, probe, re-pull and podcast gate jobs carry no
   budget (only channel and one-off jobs do; the others are bounded by their own spawn timeouts, and the engine's pip children are
   not yt-dlp groups the watchdog can prove gone); (b) a zombie job that wakes after its budget release can still overwrite its own
@@ -938,6 +942,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.402.1 - On a computer, the FileTube logo and search stay at the top while a book is open (2026-11-05)
+
+- Dean (2026-11-04, desktop browser): "when I click books ... the logo in the top left disappears". Root cause (measured on main 1b68378d,
+  headless Chromium 1440x900): since v1.44.3 the reader hides the shell header (`html.reader-immersive header`), a phone choice, but on a
+  computer the sidebar stays on screen, so the hidden header left an empty 56 px strip over it and dropped the search. Fix (Dean's ruling R1):
+  the two immersive rules now apply only at max-width 768 px and under `html.is-phone` at any width (a phone held sideways); the class and
+  read.js are unchanged and sizeReader() already measures the chassis top.
+- Measured (scripts/reader-header-probe.js, in-app click and direct load): 1440x900 header 0,0,1440x56 with logo and search at their /books
+  places, chassis 80..900 of 900; 390x844 and 844x390 is-phone: header hidden, chassis rects byte-identical to the base 698ae741.
+  Disclosed: the document under the reader is 20-24 px taller than the window, identical before this change (ROADMAP Planned > Bugs).
+  Gate and evidence: docs/exec-plans/completed/2026-11-05-reader-desktop-header.md; device checks: docs/DEVICE-CHECKS.md "Reader top bar on a computer (v1.402.1)".
 
 ### v1.402.0 - Books turn like paper: drag a page and it curls over, one page or two, EPUB and PDF (2026-11-03)
 

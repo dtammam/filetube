@@ -35,7 +35,12 @@ test('C2: read.js toggles reader-immersive on init and removes it on destroy', (
     'the class is applied before sizeReader() measures the chassis offset');
 });
 
-test('C2: CSS hides the header AND zeroes its top clearance under reader-immersive', () => {
-  assert.match(CSS, /html\.reader-immersive header \{ display: none; \}/, 'the shell header is hidden while reading');
-  assert.match(CSS, /html\.reader-immersive \.app-container \{ padding-top: 0; \}/, 'the 56px/mobile header clearance is reclaimed');
+test('C2 (v1.402.1): CSS hides the header AND zeroes its top clearance under reader-immersive, on the phone only', () => {
+  assert.match(CSS, /@media \(max-width: 768px\) \{\n {2}html\.reader-immersive header \{ display: none; \}\n {2}html\.reader-immersive \.app-container \{ padding-top: 0; \}\n\}/,
+    'the phone-width media block hides the header and reclaims the clearance');
+  assert.match(CSS, /^html\.is-phone\.reader-immersive header \{ display: none; \}$/m, 'a phone held sideways (is-phone, any width) hides it');
+  assert.match(CSS, /^html\.is-phone\.reader-immersive \.app-container \{ padding-top: 0; \}$/m, 'and reclaims the clearance');
+  // The desktop keeps the header: no top-level (unscoped) immersive rule may exist.
+  assert.doesNotMatch(CSS, /^html\.reader-immersive header \{ display: none; \}/m, 'no unscoped top-level hide (it left an empty strip over the desktop sidebar)');
+  assert.doesNotMatch(CSS, /^html\.reader-immersive \.app-container \{ padding-top: 0; \}/m, 'no unscoped top-level clearance reclaim');
 });

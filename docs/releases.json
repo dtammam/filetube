@@ -3802,5 +3802,11 @@
     "date": "2026-11-03",
     "title": "Books turn like paper",
     "intent": "Turning a page in a book now looks like a real page folding over: drag it with your finger or the mouse and the corner follows you, let go past about a third of the way and it turns, let go sooner and it settles back. Turn your phone or window sideways for two open pages. The side taps and the arrow keys turn pages the same way, quick taps never get lost, and links inside a book now take you where they point. PDFs turn the same way too, and Scroll pages in the menu brings back the old scrolling view. With Reduce Motion on, pages change at once. Tick boxes printed inside a book no longer tick."
+  },
+  {
+    "version": "1.402.1",
+    "date": "2026-11-05",
+    "title": "The logo and search stay while you read on a computer",
+    "intent": "On a computer, opening a book used to make the FileTube logo and the search box vanish, leaving an empty strip at the top. They now stay in place like on every other page, and the book still fits the window. On the phone, reading is still full screen as before."
   }
 ]
