@@ -22,6 +22,8 @@ const SHELL = read('index.html').replace(/<script[\s\S]*?<\/script>/g, '');
 const media = (n, extra) => Object.assign({ id: 'm' + n, type: 'video', title: 'Clip ' + n, folderName: 'clips', ext: '.mp4', duration: 20, liked: false }, extra);
 const tick = async (n = 8) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// A sheet reaches is-open on its next frame, which a loaded box delays: poll, never a fixed sleep.
+const until = async (fn, ms = 5000) => { const end = Date.now() + ms; while (!fn() && Date.now() < end) await wait(10); };
 
 async function boot(opts = {}) {
   const dom = new JSDOM(SHELL, { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true });
@@ -405,12 +407,12 @@ test('S3: the kebab menu\'s Move to Trash still asks, and sends nothing until th
   const b = await boot();
   try {
     b.card('m1').querySelector('.card-kebab').click();
-    await wait(30);
+    await until(() => b.doc.querySelector('.ui-sheet.is-open'));
     const row = Array.from(b.doc.querySelectorAll('.ui-sheet.is-open button, .ui-sheet.is-open [role="menuitem"]')).find((x) => /Move to Trash/.test(x.textContent));
     assert.ok(row, 'the menu offers it');
     await wait(420);
     row.click();
-    await wait(40);
+    await until(() => b.doc.querySelector('.ui-sheet.is-open .ui-confirm__actions'));
     assert.ok(b.doc.querySelector('.ui-sheet.is-open .ui-confirm__actions'), 'the confirm is up');
     assert.deepStrictEqual(b.writes(), [], 'nothing sent while it asks');
   } finally { b.done(); }
@@ -467,7 +469,7 @@ test('off while: a card menu is open: a drag running when it opened snaps back a
   try {
     b.fullSwipe('m2', { hold: true }); // the finger is past the full-swipe point, not released
     b.card('m3').querySelector('.card-kebab').click(); // a menu comes up under it
-    await wait(30);
+    await until(() => b.doc.querySelector('.ui-sheet.is-open'));
     assert.ok(b.doc.querySelector('.ui-sheet.is-open'));
     const el = b.card('m2').querySelector('.video-info') || b.card('m2');
     b.pe('pointerup', el, { x: 100 });
@@ -485,11 +487,12 @@ test('off while: the kebab\'s confirm is up (the menu has closed, only the open 
   const b = await boot();
   try {
     b.card('m1').querySelector('.card-kebab').click();
-    await wait(30);
+    await until(() => b.doc.querySelector('.ui-sheet.is-open'));
     const row = Array.from(b.doc.querySelectorAll('.ui-sheet.is-open button, .ui-sheet.is-open [role="menuitem"]')).find((x) => /Move to Trash/.test(x.textContent));
     await wait(420);
     row.click();
     await wait(500); // the menu's exit has run: only the confirm's sheet is left
+    await until(() => b.doc.querySelector('.ui-sheet.is-open .ui-confirm__actions'));
     assert.ok(b.doc.querySelector('.ui-sheet.is-open .ui-confirm__actions'), 'precondition: the confirm is up');
     b.fullSwipe('m2');
     await tick();
@@ -735,7 +738,7 @@ test('a long press whose finger then drifts: opening the card menu drops the dra
     const el = b.card('m2').querySelector('.video-info');
     b.pe('pointerdown', el, { x: 390 });
     await wait(480); // the hold fires: the menu opens with the finger still down
-    assert.ok(b.doc.querySelector('.ui-sheet.is-open') || b.doc.querySelector('.ui-menu'), 'precondition: the menu opened');
+    assert.ok(b.doc.querySelector('.ui-sheet'), 'precondition: the menu opened (its sheet exists from the open call)');
     b.pe('pointermove', el, { x: 380 });
     assert.strictEqual(b.card('m2').parentNode.classList.contains('is-dragging'), false);
     b.pe('pointermove', el, { x: 100 });
