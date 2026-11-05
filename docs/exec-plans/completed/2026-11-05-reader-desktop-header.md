@@ -3,10 +3,10 @@ plan: reader-desktop-header
 harness: v2 · lean
 branch: fix/v1.402.1-reader-desktop-header
 anchor: spec
-status: Planned
+status: Shipped v1.402.1
 next: the builder's Step 0, then W1
 design: Ruling approved by Dean 2026-11-05 (AskUserQuestion): R1 below
-gate: per .harness/scrutiny.toml (the version bump in package.json matches the deps rule: expect adversary + qa + security-brief)
+gate: adversary + qa + security-brief, APPROVED r1 @a8556fc6
 builder: standard
 ---
 
@@ -84,4 +84,16 @@ Hiding the sidebar while reading; any change to the reader's own bar; the page t
 
 ## Evidence
 
-(builder: the probe numbers, the test mutation result, suite counts, verbatim)
+Build commit a8556fc6 (W1+W2); pre-commit hook ran the full Node 22.23.1 suite: tests 10360, pass 10359, fail 0.
+- W1 mutation: re-adding an unscoped top-level `html.reader-immersive header { display: none; }` turned test/unit/reader-immersive.test.js red (pass 2, fail 1); restored: green. Targeted: reader-immersive + ipad-header-safe-area + home-mobile-scale 18/18. `npm run lint:ui` OK (TOTAL 3142, unchanged). Note: the rules moved after the main 768px block because home-mobile-scale.test.js takes the first `@media (max-width: 768px)` as the mobile block.
+- W2 probe (scripts/reader-header-probe.js, Node 22; same numbers for the in-app click and the direct load; base = 698ae741 in a git-archive sandbox):
+  - 1440x900: header flex 0,0,1440x56 (base: display none); search 460,10,564x36; chassis 254,80,1162x820 (bottom 900 of 900); base chassis y=24 h=876.
+  - 390x844 mobile: header none; chassis 16,16,358x776 - identical to base.
+  - 844x390 mobile + is-phone: header none; chassis 24,24,796x366 - identical to base.
+  - Document height 924 / 864 / 414 under the reader, equal to base (pre-existing 20-24 px overflow, ROADMAP Planned > Bugs).
+  - Not exercised: a two-page view on a computer (sizeReader() is view-independent; chassis bottom = window bottom).
+- Gate r1 @a8556fc6: adversary, qa, security-brief all APPROVED (verdict lines above).
+
+Gate: APPROVED r1 @a8556fc6 — security-brief
+Gate: APPROVED r1 @a8556fc6 — qa
+Gate: APPROVED r1 @a8556fc6 — adversary

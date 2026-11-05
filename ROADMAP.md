@@ -943,6 +943,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.402.1 - On a computer, the FileTube logo and search stay at the top while a book is open (2026-11-05)
+
+- Dean (2026-11-04, desktop browser): "when I click books ... the logo in the top left disappears". Root cause (measured on main 1b68378d,
+  headless Chromium 1440x900): since v1.44.3 the reader hides the shell header (`html.reader-immersive header`), a phone choice, but on a
+  computer the sidebar stays on screen, so the hidden header left an empty 56 px strip over it and dropped the search. Fix (Dean's ruling R1):
+  the two immersive rules now apply only at max-width 768 px and under `html.is-phone` at any width (a phone held sideways); the class and
+  read.js are unchanged and sizeReader() already measures the chassis top.
+- Measured (scripts/reader-header-probe.js, in-app click and direct load): 1440x900 header 0,0,1440x56 with logo and search at their /books
+  places, chassis 80..900 of 900; 390x844 and 844x390 is-phone: header hidden, chassis rects byte-identical to the base 698ae741.
+  Disclosed: the document under the reader is 20-24 px taller than the window, identical before this change (ROADMAP Planned > Bugs).
+  Gate and evidence: docs/exec-plans/completed/2026-11-05-reader-desktop-header.md; device checks: docs/DEVICE-CHECKS.md "Reader top bar on a computer (v1.402.1)".
+
 ### v1.402.0 - Books turn like paper: drag a page and it curls over, one page or two, EPUB and PDF (2026-11-03)
 
 - Dean (2026-11-03): the reader was "very functional utilitarian"; a locally hosted Kindle alternative "should feel like it". The
