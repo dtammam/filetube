@@ -3,10 +3,10 @@ plan: modern-swipe-trash
 harness: v2 · full (a destructive surface: LESSONS 9)
 branch: feat/v1.403.0-modern-swipe-trash
 anchor: spec
-status: Building
-next: gate round 2, then the release
+status: Shipped v1.403.0
+next: Dean's device checks (docs/DEVICE-CHECKS.md)
 design: Rulings approved by Dean 2026-11-05 (AskUserQuestion): S1-S6 below
-gate: adversary + qa + security-brief (full; the Adversary briefed to trash the WRONG thing)
+gate: APPROVED r2 @de157761 (adversary + qa + security-brief; full; the Adversary briefed to trash the WRONG thing)
 builder: smart
 ---
 
@@ -169,6 +169,49 @@ Deviations from the plan's letter, each measured (the full numbers land at the f
 - A failed podcast restore points at its show, not Settings > Trash (podcast episodes restore from the show, v1.400.0 gate r1 A7).
 - Bare Home is always history depth 0 (common.js, the top of the walk), so the swipe-back has nothing to pop there today: standing it down over the whole grid (adversary S3) costs nothing now; the probe stamps depth 1 to make "no Back" mean something, with a control that does go Back.
 
-Gate: APPROVED r1 @1ee00d37 — security-brief
-Gate: CHANGES r1 @1ee00d37 — qa
-Gate: CHANGES r1 @1ee00d37 — adversary
+Verified at de157761 (close-out below is bookkeeping only):
+- Full suite through the pre-commit hook (Node 22): `tests 10428, pass 10427, fail 0, skipped 1`. Node 24 is PR CI's.
+- `node scripts/modern-swipe-probe.js both`, load ~2.8: `ALL PASS: 195 passed, 0 failed`. An earlier run under seats' load: `FAILURES: 194 passed, 1 failed`, the frame-time line at p95 49.9 ms (qa r2; a re-run under load 33.4 ms; quiet 16.8 ms: load, inferred from that spread).
+- Widths (Chromium; WebKit desktop has a 12 px classic scrollbar, iOS overlays it):
+
+| Viewport | Input | Card | Actions | Full swipe |
+|---|---|---|---|---|
+| 390x844 | real touch | 358 | 176 (49.2%) | 215 (60.0%) |
+| 820x1180 | real touch | 167 | 88 (52.6%, two by two) | 112 (66.9%) |
+| 1440x900 | real mouse | 374 | 176 (47.1%) | 224 (60.0%) |
+| WebKit 390x844 | synthetic touch | 346 | 176 (50.9%) | 208 (60.0%) |
+| WebKit 820x1180 | synthetic touch | 163 | 88 (53.9%) | 112 (68.6%) |
+| WebKit 1440x900 | real mouse | 370 | 176 (47.6%) | 222 (60.0%) |
+
+  Sweep highs: 481 px 82.2% (a 136 px card, 112 px of drag), 320 px 69.4% (72.5% WebKit), 1500 px 68.8%, 1200 px 68.0%. The stop rule is for 390.
+- A full swipe trashes exactly that card (server record: one id lost of 91); Undo restores it to the same index; a real scroll with ~20 px of drift loses nothing (scrollY moved, no card mid-drag; on WebKit's synthetic rows the sample runs after the release, so only real touch and mouse bind it, and the unit tests bind the guard); select mode disables it and leaving restores it; an open card dragged right closes with no Back (the control beside it does go Back, at a stamped depth 1, since bare Home is depth 0).
+- At rest: byte-identical screenshots with and without the wrapper, every card rect equal, at 390, 820 and 1440 in Chromium and WebKit. Drag frames: p95 16.8 ms, median 16.7 ms (4x CPU throttle, 40 moves, Chromium).
+- Mutants: builder's: interaction.js 19 + 2 + 5, main.js wiring 42 + 9, all killed but one (`stale item at select`: equivalent, the same object); adversary's own 85 (78 killed; 7 survivors each ruled: masked by a sibling guard or equivalent, `phone buttons wide again` bound by the probe, `no live item read` has no reachable false branch).
+- lint 0 errors (6 older warnings); lint:ui OK, debt unchanged; overlay-containment clean.
+- Not measured: an iPhone. WebKit touch is synthetic. The device checks are the arbiter.
+- Disclosed, in ROADMAP Planned: the grid one card off after a race (file safe), the ~100 ms overlap on close, the kebab and bulk offset skip, no commit cue, the instruments' limits, podcast routes and read-only media (security-brief L1). An OK podcast DELETE whose body fails to read would say "already gone" and offer no Undo (reasoned, not built; restorable from the show).
+
+Gate r1 @1ee00d37: security-brief approved; qa and adversary CHANGES.
+Close-out after approval at de157761 is bookkeeping only. `git diff --name-only de157761..HEAD`:
+
+    ROADMAP.md
+    docs/DEVICE-CHECKS.md
+    docs/LESSONS.md
+    docs/exec-plans/completed/2026-11-05-modern-swipe-trash.md
+    docs/releases.json
+    package-lock.json
+    package.json
+
+`git diff de157761..HEAD -- package.json package-lock.json` changes only version lines:
+
+    -  "version": "1.402.1",
+    +  "version": "1.403.0",
+    -      "version": "1.402.1",
+    +      "version": "1.403.0",
+    -  "version": "1.402.1",
+    +  "version": "1.403.0",
+
+
+Gate: APPROVED r2 @de157761 — security-brief
+Gate: APPROVED r2 @de157761 — qa
+Gate: APPROVED r2 @de157761 — adversary

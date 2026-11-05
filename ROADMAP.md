@@ -447,6 +447,16 @@
 
 ### Features
 
+- **Swipe to Trash (v1.403.0) follow-ups** _(2026-11-05, the build and its gate; none blocks the release)_: (1) **The grid can be one card
+  off after a race; the file is safe:** Undo landing while a refresh is in flight can leave the restored card out until the next refresh;
+  a swipe during an in-flight page append can leave one card unshown until a refresh (the append overwrites the offset, as Hide from feed
+  always has). (2) **A closing card paints over its left neighbour for ~100 ms** on 3- and 4-up grids (the clip lifts as the row closes).
+  (3) **The kebab and bulk Move to Trash still skip one card at the next page** (they never decrement the offset; the swipe does). And the
+  kebab says "Moved to Trash" on a podcast whose file was already gone (the swipe says so honestly). (4) **No commit cue:** nothing shows the
+  drag has passed the full-swipe point; ask Dean after a week of use. (5) **Instruments:** the phone button width is bound by the probe
+  only, not the suite; on WebKit's synthetic rows the probe's "cards mid-drag" sample runs after the release, so only real touch and mouse
+  bind it (the unit tests bind the guard); the 4-pixel spots an r1 seat saw once on era 2014 light at 1440 stayed unexplained (the
+  no-wrapper control on the other eras showed the same noise).
 - **Page turn (v1.402.0) follow-ups** _(2026-11-03, the build and its gate; none blocks the release)_: (1) the PDF **Scroll
   pages** column (today's openPdf, kept as-is) can settle one page early on open in Chromium: it scrolls to the page before the
   canvases around it have rendered and they then grow (probe `pdfscroll`: page 3 opened at page 2; WebKit exact); (2) an EPUB
@@ -767,6 +777,10 @@
 
 ### Chores
 
+- [ ] **The podcast delete and restore routes ignore FILETUBE_READ_ONLY_MEDIA (v1.403.0 gate, security-brief L1, LOW, pre-existing)** - only the
+  media routes call `refuseIfReadOnlyMedia`; on a read-only-media instance sharing its podcasts folder, a capable user can move an episode to
+  Trash there (the kebab already could; the swipe removes the confirm in front of it). Restorable. Add the check to both routes.
+
 - [ ] **The side menu button has no aria-expanded and the closed drawer stays in the tab order (v1.389.0, disclosed)** - a sideways phone's keyboard or screen-reader user cannot tell the drawer's state; sync `aria-expanded` in toggleSidebarMenu / closeSidebarDrawer and make the closed drawer inert. Same-video adopt (dock or Feed to the watch page) does not enter fullscreen while sideways; decide if it should.
 
 - [ ] **Tidy the Cleanup page (Dean, 2026-10-10: "a little messy"; better section headers)** - /cleanup (lib/cleanup/shell.js, the
@@ -942,6 +956,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.403.0 - Swipe a card left on Modern home to move it to Trash, with Undo (2026-11-05)
+
+- Dean (2026-11-05): "when I want to delete things from that feed, it's a tap on a small button to then press delete, to then press yes,
+  and that's just friction every day". A full swipe left on a Modern home card moves it to Trash with no question and a toast with Undo,
+  which restores the file and puts the card back where it was. A shorter swipe reveals the card menu's own Like, Watch later, Hide from
+  feed and Move to Trash; the revealed Trash skips the confirm too. The ... menu keeps its confirm. Touch and mouse, the notifications
+  panel's own swipe code (`swipeRow`). Other views are unchanged.
+- swipeRow's rule stays: a danger full swipe throws without `dangerFullSwipe: true`. With it, gate r1 tightened the plan's rule: a row
+  closed at the press, a drag still mostly horizontal at release, and 24 px past the revealed buttons (qa C1 / adversary C1: at every
+  phone width an open row rested on the fire line, so an 8 px wobble trashed the card).
+- Measured (scripts/modern-swipe-probe.js, Chromium + WebKit, 195 of 195): 390x844 buttons 176 px, full swipe at 215 of 358 px (60.0%);
+  at rest byte-identical with and without the wrapper at 390, 820 and 1440 in both engines; drag frames p95 16.8 ms at 4x CPU throttle.
+  WebKit touch is synthetic; iOS is the device checks.
+  Disclosed: the five items in Planned > Features "Swipe to Trash (v1.403.0) follow-ups".
+  Gate and evidence: docs/exec-plans/completed/2026-11-05-modern-swipe-trash.md; device checks: docs/DEVICE-CHECKS.md "Swipe to Trash on Modern home (v1.403.0)".
 
 ### v1.402.1 - On a computer, the FileTube logo and search stay at the top while a book is open (2026-11-05)
 

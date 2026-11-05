@@ -3808,5 +3808,11 @@
     "date": "2026-11-05",
     "title": "The logo and search stay while you read on a computer",
     "intent": "On a computer, opening a book used to make the FileTube logo and the search box vanish, leaving an empty strip at the top. They now stay in place like on every other page, and the book still fits the window. On the phone, reading is still full screen as before."
+  },
+  {
+    "version": "1.403.0",
+    "date": "2026-11-05",
+    "title": "Swipe a card left on Modern home to move it to Trash",
+    "intent": "On Modern home, swipe a card all the way left and it goes to Trash right away, with no question and an Undo that puts it back where it was. A shorter swipe shows Like, Watch later, Hide from feed and Move to Trash, and that Trash doesn't ask either. It works by touch and by click-and-drag on a computer, and the ... menu's Move to Trash still asks first."
   }
 ]
