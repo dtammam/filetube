@@ -456,7 +456,8 @@
   drag has passed the full-swipe point; ask Dean after a week of use. (5) **Instruments:** the phone button width is bound by the probe
   only, not the suite; on WebKit's synthetic rows the probe's "cards mid-drag" sample runs after the release, so only real touch and mouse
   bind it (the unit tests bind the guard); the 4-pixel spots an r1 seat saw once on era 2014 light at 1440 stayed unexplained (the
-  no-wrapper control on the other eras showed the same noise).
+  controls showed logo and nav noise, not these spots; seen once); the delete-caller lock counts call text, so an alias or a raw fetch would pass it, and its
+  `removeAnyway` check reads only the swipe's own function, not where the URLs are built.
 - **Page turn (v1.402.0) follow-ups** _(2026-11-03, the build and its gate; none blocks the release)_: (1) the PDF **Scroll
   pages** column (today's openPdf, kept as-is) can settle one page early on open in Chromium: it scrolls to the page before the
   canvases around it have rendered and they then grow (probe `pdfscroll`: page 3 opened at page 2; WebKit exact); (2) an EPUB

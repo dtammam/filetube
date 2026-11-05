@@ -169,8 +169,9 @@ Deviations from the plan's letter, each measured (the full numbers land at the f
 - A failed podcast restore points at its show, not Settings > Trash (podcast episodes restore from the show, v1.400.0 gate r1 A7).
 - Bare Home is always history depth 0 (common.js, the top of the walk), so the swipe-back has nothing to pop there today: standing it down over the whole grid (adversary S3) costs nothing now; the probe stamps depth 1 to make "no Back" mean something, with a control that does go Back.
 
-Verified at de157761 (close-out below is bookkeeping only):
-- Full suite through the pre-commit hook (Node 22): `tests 10428, pass 10427, fail 0, skipped 1`. Node 24 is PR CI's.
+Measured at de157761, the code the seats approved at r2 (`public/`, `scripts/` and `lib/` have no diff from it to the final sha):
+- The UNIT suite through the pre-commit hook (Node 22): `tests 10428, pass 10427, fail 0, skipped 1`. That is not the full suite: the full suite at de157761 was RED, the pre-push hook's `tests 13287, pass 13273, fail 1, skipped 13` (the delete-caller lock below).
+- The full `npm test` at 4331276a, after the lock update (Node 22): `tests 13287, pass 13274, fail 0, skipped 13`. Node 24 is PR CI's.
 - `node scripts/modern-swipe-probe.js both`, load ~2.8: `ALL PASS: 195 passed, 0 failed`. An earlier run under seats' load: `FAILURES: 194 passed, 1 failed`, the frame-time line at p95 49.9 ms (qa r2; a re-run under load 33.4 ms; quiet 16.8 ms: load, inferred from that spread).
 - Widths (Chromium; WebKit desktop has a 12 px classic scrollbar, iOS overlays it):
 
@@ -192,16 +193,19 @@ Verified at de157761 (close-out below is bookkeeping only):
 - Disclosed, in ROADMAP Planned: the grid one card off after a race (file safe), the ~100 ms overlap on close, the kebab and bulk offset skip, no commit cue, the instruments' limits, podcast routes and read-only media (security-brief L1). An OK podcast DELETE whose body fails to read would say "already gone" and offer no Undo (reasoned, not built; restorable from the show).
 
 Gate r1 @1ee00d37: security-brief approved; qa and adversary CHANGES.
-Gate r2 @de157761: adversary, qa and security-brief all approved. Then the push's pre-push hook went red: `card-action-menu-fullchain.test.js` "source guard: every caller of the delete request" (`4 !== 3`), a lock the swipe's new caller rightly trips. The builder had gated without running the integration suite (LESSONS 2, the hook hides it); this round's lock update binds the swipe's caller, and the seats re-confirm.
-Close-out after approval at de157761 is bookkeeping only. `git diff --name-only de157761..HEAD`:
+Gate r2 @de157761: adversary, qa and security-brief all approved. Then the push's pre-push hook went red: `card-action-menu-fullchain.test.js` "source guard: every caller of the delete request" (`4 !== 3`), a lock the swipe's new caller rightly trips. The builder had gated without running the integration suite (LESSONS 2, the hook hides it); this round's lock update binds the swipe's caller.
+Gate r3 @4331276a: the lock is sound (adversary: 12 of 15 lock mutants killed; the survivors are the limits of counting call text, one of them killed by modern-swipe-view.test.js). Security-brief approved; qa and adversary CHANGES for two false Evidence statements, corrected above ("full suite" was the unit hook; "bookkeeping only" listed 7 files of 8).
+After approval at de157761 the diff is bookkeeping plus ONE non-bookkeeping file, `test/integration/card-action-menu-fullchain.test.js` (the delete-caller lock, reviewed in r3). `git diff --name-only de157761..4331276a`:
 
     ROADMAP.md
     docs/DEVICE-CHECKS.md
     docs/LESSONS.md
     docs/exec-plans/completed/2026-11-05-modern-swipe-trash.md
+    docs/exec-plans/active/2026-11-05-modern-swipe-trash.md
     docs/releases.json
     package-lock.json
     package.json
+    test/integration/card-action-menu-fullchain.test.js
 
 `git diff de157761..HEAD -- package.json package-lock.json` changes only version lines:
 
