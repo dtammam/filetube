@@ -224,6 +224,7 @@ for (const [name, end] of Object.entries(END_PATHS)) {
       assert.strictEqual(lab.hidden, true);
       assert.notStrictEqual(v.getAttribute('poster'), '/thumbnail/v1', 'no stuck thumbnail of the floating video');
       assert.notStrictEqual(v.webkitPresentationMode, 'picture-in-picture');
+      if (!r.na.owns()) assert.strictEqual(Object.prototype.hasOwnProperty.call(v, 'webkitPresentationMode'), false, 'a detached element answers for itself again');
     } finally { r.close(); }
   });
 }
@@ -273,6 +274,38 @@ function safari(w, log) {
   return { setMode(m) { mode = m; } };
 }
 
+test('a videoPip answered for no video of ours: a native TRACK or nothing owned never reads as floating, and pipPost refuses without an owned video', async () => {
+  const r = realm({ caps: PIP_CAPS });
+  try {
+    assert.strictEqual(r.na.pipPost('start'), false, 'nothing owned');
+    assert.deepStrictEqual(pipPosts(r), []);
+    const TRACK = { kind: 'track', id: 't1', src: '/api/offline/file/track/t1', title: 'Song', progress: { route: '/api/music/progress', key: 't1' } };
+    r.player.load('t1', { id: 't1', type: 'audio', title: 'Song', nativeQueue: () => ({ items: [TRACK], index: 0 }) }, { slot: r.slot });
+    await settle(60);
+    assert.strictEqual(r.na.owns('t1'), true, 'native plays the track');
+    assert.strictEqual(r.na.surfaceOwned(), false);
+    assert.strictEqual(r.na.pipPost('start'), false, 'a track has no PiP');
+    assert.deepStrictEqual(pipPosts(r), []);
+    r.fake.emit(PIP_ON);
+    assert.strictEqual(r.el().webkitPresentationMode, 'inline', 'the proxy of a track stays inline');
+    assert.strictEqual(pip(r).getAttribute('aria-pressed'), 'false');
+    assert.strictEqual(labelShown(r), false);
+  } finally { r.close(); }
+});
+
+test('a start answered and ended at once leaves no watchdog behind: no toast after a PiP that really ran', async () => {
+  const r = realm({ caps: PIP_CAPS });
+  const toasts = []; r.w.showToast = (m) => toasts.push(m);
+  try {
+    await loaded(r);
+    pip(r).click();
+    r.fake.emit(PIP_ON);
+    r.fake.emit(PIP_OFF);
+    await settle(3100);
+    assert.deepStrictEqual(toasts, []);
+  } finally { r.close(); }
+});
+
 test('R3 (iPhone Safari shape): the row uses webkitSetPresentationMode inside the click, the event presses it, the row or Apple\'s own control exits; never the standard call', async () => {
   const log = []; let sf;
   const r = realm({ noHost: true, beforeScripts: (w) => { sf = safari(w, log); } });
@@ -288,6 +321,7 @@ test('R3 (iPhone Safari shape): the row uses webkitSetPresentationMode inside th
     row.click();
     assert.ok(log.includes('set:picture-in-picture:sync'), 'synchronously inside the click: ' + log.join());
     assert.strictEqual(row.getAttribute('aria-pressed'), 'true');
+    assert.strictEqual(labelShown(r), false, 'the label is native-only: WebKit draws its own placeholder in the element');
     row.click();
     assert.ok(log.includes('set:inline:sync'));
     assert.strictEqual(row.getAttribute('aria-pressed'), 'false');
@@ -344,6 +378,12 @@ test('R3: WebKit answers no until media is loading: the row appears on the event
     log.supports = true;
     r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
     assert.strictEqual(pip(r).hidden, false);
+    log.supports = false;
+    r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
+    assert.strictEqual(pip(r).hidden, true);
+    log.supports = true; // no event this time: opening the cog re-reads it
+    r.wrapper().querySelector('#settings-btn').click();
+    assert.strictEqual(pip(r).hidden, false, 'the cog is the last check before the row can be seen');
   } finally { r.close(); }
 });
 
@@ -368,6 +408,11 @@ test('R3 desktop: the standard call and exit, as ever, with Mac Safari\'s WebKit
     assert.strictEqual(row.getAttribute('aria-pressed'), 'true');
     row.click();
     assert.strictEqual(exits, 1);
+    r.w.document.exitPictureInPicture = () => Promise.reject(Object.assign(new r.w.Error('x'), { name: 'InvalidStateError' }));
+    row.click();
+    await settle(10);
+    assert.deepStrictEqual(toasts, ['Picture-in-picture is not available here (InvalidStateError)'], 'a refused exit says so too');
+    toasts.length = 0;
     r.w.document.pictureInPictureElement = null;
     r.el().dispatchEvent(new r.w.Event('leavepictureinpicture'));
     assert.strictEqual(row.getAttribute('aria-pressed'), 'false');
