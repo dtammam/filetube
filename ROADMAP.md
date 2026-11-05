@@ -85,6 +85,10 @@
 
 ### Bugs
 
+- [ ] **Reader page is 20-24 px taller than the window** _(v1.402.1 probe, 2026-11-05; present before it, not caused by it)_ - with a book open the
+  reader chassis ends exactly at the window bottom, but the document is taller (924 at 1440x900, 864 at 390x844, 414 at 844x390: the
+  `.app-container` bottom padding), so the page can scroll a little. Measured identical on 698ae741 (before v1.402.1). Look at it when
+  the reader's frame is next touched.
 - [ ] **Gate watchdog follow-ups** _(v1.393.0 gate, disclosed not fixed)_ - (a) engine, probe, re-pull and podcast gate jobs carry no
   budget (only channel and one-off jobs do; the others are bounded by their own spawn timeouts, and the engine's pip children are
   not yt-dlp groups the watchdog can prove gone); (b) a zombie job that wakes after its budget release can still overwrite its own
