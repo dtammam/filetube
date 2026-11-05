@@ -758,6 +758,27 @@ function buildCardMenuItems(item, caps, opts) {
   return out;
 }
 
+// v1.403.0 (S2): the swipe's buttons on a Modern card, picked from the card's OWN menu entries
+// (buildCardMenuItems is the one roster, LESSONS 12): an action the menu does not offer has no
+// button. Trash is last, at the trailing edge, nearest the full-swipe end.
+const CARD_SWIPE_ACTION_IDS = ['like', 'watchlater', 'feedhide', 'delete'];
+const SWIPE_LEAVE_MS = 280; // --dur-sheet, the slide the wrapper's content runs before it is taken out of the grid
+function cardSwipeEntries(menuEntries) {
+  const list = Array.isArray(menuEntries) ? menuEntries : [];
+  return CARD_SWIPE_ACTION_IDS.map((id) => list.find((en) => en && en.id === id)).filter(Boolean);
+}
+// v1.403.0 (S1, W2): where a trashed card goes back: before the first card that followed it and is
+// still loaded, else after the nearest one that preceded it, else alone. `after` / `before` are the
+// id lists saved at the swipe, nearest first; `present` is the ids loaded now.
+function cardReturnSlot(after, before, present) {
+  const here = new Set((present || []).map(String));
+  const next = (after || []).map(String).find((id) => here.has(id));
+  if (next !== undefined) return { before: next };
+  const prev = (before || []).map(String).find((id) => here.has(id));
+  if (prev !== undefined) return { after: prev };
+  return {};
+}
+
 // v1.400.0 multi-select (M4, M5): the action bar's verbs for a SELECTION, in the ruling's
 // order. Applicability is the card menu's OWN rule: a card applies to queue / Watch later /
 // Like / Reheat / Move to Trash iff buildCardMenuItems offers that id for it (one roster, never
@@ -1086,6 +1107,8 @@ function migrateListeningRowPref() {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    cardSwipeEntries,
+    cardReturnSlot,
     buildCardDownloadHref,
     buildCardDownloadFilename,
     buildSkeletonGrid,
@@ -1372,7 +1395,10 @@ const PreviewCards = (function () {
     // below (a closure over the `let`s, not a value snapshot) -- so calling
     // this later, after loadLibrary() has populated them (or after a sidebar
     // reorder updates them), always re-renders with current data.
-    restoreSidebarFn = () => renderSidebarFolders(allFolders, folderSettings);
+    restoreSidebarFn = () => {
+      resetCardSwipes(); // v1.403.0: a row or a drag left behind when Home was cached does not come back with it
+      renderSidebarFolders(allFolders, folderSettings);
+    };
 
     const videoGrid = root.querySelector('#video-grid');
     const welcomeMessage = root.querySelector('#welcome-message');
@@ -1424,6 +1450,11 @@ const PreviewCards = (function () {
     // The one open card action menu (UI pass sweep S2), or null. A new menu, a
     // full grid re-render and destroy() all close it (closeCardMenu).
     let openCardMenuCtrl = null;
+
+    // v1.403.0: the swipe on Modern cards (see attachCardSwipe). Card element -> its swipeRow controller.
+    const cardSwipes = new Map();
+    const swipeTrashing = new Set();  // ids whose Move to Trash is in flight: one gesture, one request
+    let swipeUndoToast = null;        // the latest "Moved to Trash" toast; only the newest offers Undo
 
     // Sort preference persists across visits. v1.34 (Dean): precedence is
     // explicit per-browser dropdown pick (localStorage `filetube_sort`) >
@@ -1710,7 +1741,7 @@ const PreviewCards = (function () {
       // the Retry button's re-invocation of this same function (see the
       // catch block below) -- a retry gets its own fresh skeleton, not a
       // stale error card sitting there while the retried fetch is in flight.
-      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode, typeLine: isUnifiedSearch });
+      setGridHtml(buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode, typeLine: isUnifiedSearch }));
       // v1.100 (Dean): the toolbar's filters are SYNCHRONOUS (localStorage prefs,
       // the URL's search scope/type), so the chip row renders NOW - before the
       // config/videos fetches - and the toolbar is complete from the first
@@ -1830,7 +1861,7 @@ const PreviewCards = (function () {
             data = res.ok ? await res.json() : { items: [] };
           } catch (err) {
             if (err && err.name === 'AbortError') return;
-            if (token === modernReqToken) { videoGrid.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' }); syncSelection(); } // v1.400.0 gate r1: an emptied grid is reconciled too
+            if (token === modernReqToken) { setGridHtml(uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' })); syncSelection(); } // v1.400.0 gate r1: an emptied grid is reconciled too
             return;
           }
           if (token !== modernReqToken) return; // a newer chip click superseded this
@@ -1840,7 +1871,7 @@ const PreviewCards = (function () {
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
           if (items.length) putCards(items, false);
-          else { videoGrid.innerHTML = buildModernEmptyHtml(filter); syncSelection(); } // v1.400.0 gate r1 (qa W1 / adversary A2)
+          else { setGridHtml(buildModernEmptyHtml(filter)); syncSelection(); } // v1.400.0 gate r1 (qa W1 / adversary A2)
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -2057,7 +2088,7 @@ const PreviewCards = (function () {
         // view's per-instance `signal` (same AbortController every other
         // listener in this file uses), so a retry click can never fire
         // against an already-torn-down (navigated-away-from) instance.
-        videoGrid.innerHTML = buildErrorStateHtml({ message: 'Error loading library data from server.' });
+        setGridHtml(buildErrorStateHtml({ message: 'Error loading library data from server.' }));
         const retryBtn = videoGrid.querySelector('[data-error-retry]');
         if (retryBtn) retryBtn.addEventListener('click', () => loadLibrary(), { signal });
         // v1.102 (gate CRITICAL): stop the cold-load sidebar skeleton shimmering
@@ -2623,8 +2654,13 @@ const PreviewCards = (function () {
     // Replaces (or, with `append`, extends) the grid's cards. DOM nodes, never a
     // markup string: every card is built by buildVideoCardEl.
     function putCards(items, append) {
+      if (!append) detachAllCardSwipes(); // v1.403.0: a replace takes every controller with it
       const frag = document.createDocumentFragment();
-      items.forEach((it) => frag.appendChild(buildCardEl(it)));
+      items.forEach((it) => {
+        const el = buildCardEl(it);
+        frag.appendChild(el);
+        attachCardSwipe(el, it); // v1.403.0: Modern only; wraps in place, so the wrapper is the grid item
+      });
       if (append) videoGrid.appendChild(frag);
       else videoGrid.replaceChildren(frag);
       revealHomeArt(videoGrid, signal);
@@ -2658,7 +2694,11 @@ const PreviewCards = (function () {
     function removeCardFromGrid(id) {
       const cards = videoGrid.querySelectorAll('.video-card[data-id]');
       for (let i = 0; i < cards.length; i++) {
-        if (cards[i].getAttribute('data-id') === String(id)) { cards[i].remove(); break; }
+        if (cards[i].getAttribute('data-id') === String(id)) {
+          detachCardSwipe(cards[i]); // v1.403.0: unwraps first, so no empty grid cell stays behind
+          cards[i].remove();
+          break;
+        }
       }
       if (!videoGrid.querySelector('.video-card')) {
         renderMediaGridPage([], { append: false });
@@ -2899,6 +2939,8 @@ const PreviewCards = (function () {
     // v1.400.0 (M7, M9): `opts.quiet` is the bar's bulk Trash - the SAME request and the same
     // in-place removal, no per-item toast; the outcome comes back as { status: 'ok' | 'failed' |
     // 'refused', message } for the one summary. The single-card path (no opts) is unchanged.
+    // v1.403.0: `opts.silentSuccess` is the swipe: failures toast exactly as today, success stays
+    // quiet because trashCardFromSwipe says it with an Undo.
     async function deletePodcastCard(id, opts) {
       const quiet = !!(opts && opts.quiet);
       const say = (msg) => { if (!quiet) showToast(msg); };
@@ -2910,7 +2952,7 @@ const PreviewCards = (function () {
         currentTotal = Math.max(0, currentTotal - 1);
         removeCardFromGrid(id);
         updateItemCountBadge();
-        say('Moved to Trash');
+        if (!(opts && opts.silentSuccess)) say('Moved to Trash');
         return { status: 'ok' };
       } catch (_) {
         say('Could not delete the episode.');
@@ -2947,8 +2989,8 @@ const PreviewCards = (function () {
           // file that could not actually be removed (held open / read-only) --
           // surfacing only "File deleted." for all of them hid every honest
           // message this API sends. Same three-way toast as watch.js's delete.
-          say(deleteResultToast(data));
-          return { status: 'ok' };
+          if (!(opts && opts.silentSuccess)) say(deleteResultToast(data));
+          return { status: 'ok', result: data }; // result: the server's own answer (v1.403.0 reads trashId from it)
         }
         say('Error deleting file: ' + (data.error || 'unknown error'));
         return { status: 'failed' };
@@ -3013,7 +3055,7 @@ const PreviewCards = (function () {
         } else {
           emptyOpts = { icon: 'smart_display', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here - with thumbnails, durations, and playback that picks up where you left off.' };
         }
-        videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
+        setGridHtml(buildEmptyStateHtml(emptyOpts));
         const showAllBtn = videoGrid.querySelector('[data-format-show-all]');
         if (showAllBtn) showAllBtn.addEventListener('click', showAllFormats, { signal });
         // v1.400.0 gate r1 (qa W1 / adversary A2): an emptied grid drops every ticked id (M3 / M10) -
@@ -3423,8 +3465,9 @@ const PreviewCards = (function () {
     // failure the card is restored in place.
     function hideCardFromFeed(card, id) {
       if (!card || !id) return;
-      const parent = card.parentNode;
-      const anchor = card.nextSibling; // reinsertion point for a byte-identical undo
+      const outer = cardOuter(card); // v1.403.0: on Modern the swipe wrapper is the grid item
+      const parent = outer.parentNode;
+      const anchor = outer.nextSibling; // reinsertion point for a byte-identical undo
       const itemObj = currentItems.find((it) => String(it.id) === String(id));
       const restore = () => {
         if (parent) {
@@ -3432,9 +3475,11 @@ const PreviewCards = (function () {
           else parent.appendChild(card);
         }
         if (itemObj && !currentItems.some((it) => String(it.id) === String(id))) currentItems.push(itemObj);
+        if (itemObj) attachCardSwipe(card, itemObj); // re-wraps in place
         currentOffset += 1;
         currentTotal += 1;
       };
+      detachCardSwipe(card);
       card.remove();
       currentItems = currentItems.filter((it) => String(it.id) !== String(id));
       currentOffset -= 1;
@@ -3497,6 +3542,178 @@ const PreviewCards = (function () {
       if (shown.aborted || signal.aborted) return;
       if (item.kind === 'podcast') deletePodcastCard(item.id);
       else deleteCardById(item.id);
+    }
+
+    // ---- v1.403.0 swipe a Modern card (plan docs/exec-plans/completed/2026-11-05-modern-swipe-trash.md) ----
+    //
+    // One FTInteraction.swipeRow per media or podcast card on Modern home, the same helper the
+    // notifications panel uses. A short swipe reveals the card menu's own Like, Watch later, Hide from
+    // feed and Move to Trash; a full swipe, or the revealed Trash button, moves it to Trash with no
+    // question (S1, S3) and offers Undo. The kebab menu's Move to Trash keeps its confirm. The wrapper
+    // becomes the grid item: every path that removes a card goes through detachCardSwipe (or takes the
+    // whole grid with detachAllCardSwipes / setGridHtml), or an empty cell stays behind.
+
+    // The grid item a card sits in: its swipe wrapper on Modern, the card itself everywhere else.
+    function cardOuter(card) {
+      const p = card && card.parentNode;
+      return p && p.classList && p.classList.contains('ui-swipe') ? p : card;
+    }
+    function detachCardSwipe(card) {
+      const c = cardSwipes.get(card);
+      if (!c) return;
+      cardSwipes.delete(card);
+      c.destroy();
+    }
+    function detachAllCardSwipes() {
+      cardSwipes.forEach((c) => c.destroy());
+      cardSwipes.clear();
+    }
+    function resetCardSwipes() {
+      cardSwipes.forEach((c) => c.reset());
+    }
+    // Every markup write to the grid goes through here (a source lock in modern-swipe.test.js).
+    function setGridHtml(html) {
+      detachAllCardSwipes();
+      videoGrid.innerHTML = html;
+    }
+    // Read at the press, the lock and the release: no swipe in select mode, under an open menu or
+    // confirm, or off Home (the cached view's grid is detached, and this view's signal never fires then).
+    function cardSwipeEnabled() {
+      if (selectMode || bulkBusy || openCardMenuCtrl || signal.aborted || !videoGrid.isConnected) return false;
+      return !document.querySelector('.ui-sheet.is-open');
+    }
+    function cardSwipeRoster(item) {
+      return cardSwipeEntries(buildCardMenuItems(item, cardCaps, {
+        feedHideable: modernMode,
+        watchLater: watchLaterHas(item.id, item.kind) === true,
+      }));
+    }
+    function attachCardSwipe(card, item) {
+      const FI = window.FTInteraction;
+      if (!modernMode || !FI || typeof FI.swipeRow !== 'function' || !card || !item || cardSwipes.has(card)) return;
+      if (item.kind && item.kind !== 'media' && item.kind !== 'podcast') return;
+      const roster = cardSwipeRoster(item);
+      if (roster.length === 0) return;
+      const u = cardUi();
+      const current = (en) => cardSwipeRoster(item).find((x) => x.id === en.id) || en; // Like / Unlike follows the state
+      const hasTrash = roster.some((en) => en.id === 'delete');
+      // A mouse drag on a card is a swipe, never the browser's own drag of the thumbnail or a link: ui.css's
+      // user-drag:none covers Chromium and WebKit, the attribute covers Firefox, which ignores that property.
+      card.querySelectorAll('a, img').forEach((n) => n.setAttribute('draggable', 'false'));
+      cardSwipes.set(card, FI.swipeRow(card, {
+        actions: roster.map((en) => ({
+          id: en.id,
+          kind: en.danger ? 'danger' : 'neutral',
+          label: () => current(en).label,
+          icon: u && typeof u.icon === 'function' ? () => u.icon(current(en).icon, { size: 'sm' }) : undefined,
+          onSelect: () => {
+            // The item is read from THIS card's own data-id now, never an index or a value from setup.
+            const live = cardItemOf(card);
+            if (!live) return;
+            if (en.id === 'delete') trashCardFromSwipe(card, live);
+            else runCardAction(en.id, card, live);
+          },
+        })),
+        fullSwipe: hasTrash ? 'delete' : null,
+        dangerFullSwipe: hasTrash,
+        enabled: cardSwipeEnabled,
+      }));
+    }
+
+    // The card slides away and leaves at once (S1). It stays in the DOM and in currentItems until the
+    // server answers, so a refusal only has to call the returned function to bring it back as it was.
+    function slideCardAway(card) {
+      const wrap = cardOuter(card);
+      if (wrap === card) return () => {};
+      const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      wrap.classList.add('is-leaving');
+      let timer = null;
+      if (reduced) wrap.classList.add('is-gone');
+      else timer = setTimeout(() => { wrap.classList.add('is-gone'); }, SWIPE_LEAVE_MS);
+      return () => {
+        if (timer !== null) clearTimeout(timer);
+        wrap.classList.remove('is-leaving', 'is-gone');
+      };
+    }
+
+    // S1 / S3 / S6: today's Move to Trash for THIS item, without the confirm, then the Undo toast.
+    async function trashCardFromSwipe(card, item) {
+      const id = String(item.id);
+      if (swipeTrashing.has(id)) return;
+      swipeTrashing.add(id);
+      // Where it goes back, saved before it leaves (its neighbours by id, nearest first).
+      const ids = currentItems.map((it) => String(it.id));
+      const at = ids.indexOf(id);
+      const place = { after: ids.slice(at + 1), before: ids.slice(0, Math.max(0, at)).reverse(), view: modernGridKey() };
+      const bringBack = slideCardAway(card);
+      const isPodcast = item.kind === 'podcast';
+      const r = isPodcast
+        ? await deletePodcastCard(item.id, { silentSuccess: true })
+        : await deleteCardById(item.id, { silentSuccess: true });
+      swipeTrashing.delete(id);
+      if (r.status !== 'ok') { bringBack(); return; } // today's message already said why; the card stays
+      currentOffset -= 1; // the loaded window shrank by one, so the next page starts one earlier (hideCardFromFeed's bookkeeping)
+      const data = r.result || {};
+      // A media delete that did not land in Trash, or that left something behind, says so as it does today.
+      // No trashId means nothing to restore, so no Undo is offered.
+      const clean = isPodcast || (data.trashed === true && !data.fileRemainsOnDisk && !data.deletePending);
+      const message = clean ? 'Moved to Trash' : deleteResultToast(data);
+      const restoreUrl = isPodcast
+        ? '/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/restore'
+        : (data.trashId ? '/api/trash/' + encodeURIComponent(data.trashId) + '/restore' : null);
+      if (swipeUndoToast) swipeUndoToast.dismiss(); // only the newest trash offers Undo: the toast names no title
+      swipeUndoToast = restoreUrl
+        ? showToast(message, { label: 'Undo', onAction: () => undoSwipeTrash(item, restoreUrl, place) })
+        : showToast(message);
+    }
+
+    // What the grid is showing: a card goes back only into the same list it left.
+    function modernGridKey() {
+      return resolveModernChip(activeModernChip) + '|' + activeModernSort + '|' + (activeModernSort === 'random' ? currentSeed : '');
+    }
+
+    async function undoSwipeTrash(item, restoreUrl, place) {
+      const isPodcast = item.kind === 'podcast';
+      let body = null;
+      try {
+        const res = await fetch(restoreUrl, { method: 'POST' });
+        body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error('restore failed: ' + res.status);
+      } catch (_) {
+        // A podcast episode restores from its show, not Settings (v1.400.0 gate r1 A7).
+        showToast(isPodcast
+          ? 'Could not restore it. It is still in Trash: restore it from its show.'
+          : 'Could not restore it. It is still in Trash: see Settings > Trash.');
+        return;
+      }
+      // The file is back. The card follows only into the live list it left, under the same id.
+      const sameId = isPodcast || body.restoredId === undefined || String(body.restoredId) === String(item.id);
+      const already = currentItems.some((it) => String(it.id) === String(item.id));
+      if (already) return;
+      if (signal.aborted || !sameId || modernGridKey() !== place.view) { showToast('Restored'); return; }
+      putCardBack(item, place);
+    }
+
+    function putCardBack(item, place) {
+      const slot = cardReturnSlot(place.after, place.before, currentItems.map((it) => it.id));
+      const indexOfId = (id) => currentItems.findIndex((it) => String(it.id) === id);
+      if (slot.before !== undefined) currentItems.splice(indexOfId(slot.before), 0, item);
+      else if (slot.after !== undefined) currentItems.splice(indexOfId(slot.after) + 1, 0, item);
+      else currentItems.push(item);
+      currentTotal += 1;
+      currentOffset += 1;
+      updateItemCountBadge();
+      const hasCards = !!videoGrid.querySelector('.video-card[data-id]');
+      if (!hasCards) { putCards(currentItems, false); return; } // the empty state goes; nothing else was on screen
+      const cardWithId = (id) => Array.from(videoGrid.querySelectorAll('.video-card[data-id]')).find((c) => c.getAttribute('data-id') === id) || null;
+      const target = slot.before !== undefined ? cardWithId(slot.before) : (slot.after !== undefined ? cardWithId(slot.after) : null);
+      const el = buildCardEl(item);
+      if (target && slot.before !== undefined) videoGrid.insertBefore(el, cardOuter(target));
+      else if (target) videoGrid.insertBefore(el, cardOuter(target).nextSibling);
+      else videoGrid.appendChild(el);
+      attachCardSwipe(el, item);
+      revealHomeArt(videoGrid, signal);
+      syncSelection();
     }
 
     // Items whose transcript is loading (see runCardAction's transcript arm).
@@ -3570,6 +3787,7 @@ const PreviewCards = (function () {
       });
       if (!entries.length) return;
       closeCardMenu();
+      resetCardSwipes(); // v1.403.0: a long press whose finger then drifts must not also swipe
       const anchorEl = anchor && anchor.nodeType ? anchor
         : { getBoundingClientRect: () => ({ left: anchor ? anchor.x : 0, bottom: anchor ? anchor.y : 0 }) };
       openCardMenuCtrl = u.menu({
@@ -3715,6 +3933,7 @@ const PreviewCards = (function () {
       if (!selectMode) {
         selectMode = true;
         closeCardMenu();
+        resetCardSwipes(); // v1.403.0: select mode takes no swipe, and no row stays open under it
         selectSession = new AbortController();
         // Leaving the view (navigate, popstate, a folder change) ends the session: the router's
         // SHOWN-view signal, read now (the cached home never aborts its own, LESSONS 4).

@@ -943,3 +943,25 @@ test('swipeRow v1.403: a tap on a closed row keeps its click (tapping a card pla
   const e = s.click(s.$('title'));
   assert.equal(e.defaultPrevented, false, 'the click passes untouched');
 });
+
+test('swipeRow v1.403: a tap on a just-revealed button inside the swallow window works; a pressless click there is still eaten', (t) => {
+  const s = setup(t);
+  const log = [];
+  mkDanger(s, log);
+  drag(s, [390, 380, 300]);
+  // no time passes: a touch drag raises no click, so the swallow is still armed
+  const stray = s.click(s.$('title'));
+  assert.equal(stray.defaultPrevented, true, 'the click ending the drag is eaten');
+  assert.deepEqual(log, []);
+  // again, with a real press this time
+  s.tick(1000);
+  s.tick(1000);
+  // close by a tap on the content, re-open, then tap inside the window
+  s.pe('pointerdown', s.$('title'), { x: 200, pointerId: 3 });
+  s.pe('pointerup', s.$('title'), { x: 200, pointerId: 3 });
+  s.click(s.$('title'));
+  s.tick(1000);
+  drag(s, [390, 380, 300]);
+  tapButton(s, btn(s, 'dismiss'));
+  assert.deepEqual(log, [['dismiss', 'button']], 'the press began a new gesture: its click is its own');
+});

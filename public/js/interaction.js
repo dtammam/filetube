@@ -49,7 +49,8 @@
 //     have STARTED on that same button (its pointerdown, while open, still within
 //     the tap tolerance); a keyboard/programmatic click (detail 0) needs only the
 //     open, idle row. The underlay is `inert` + aria-hidden while closed.
-//   - The click that ends a drag activates nothing (one swallowed click).
+//   - The click that ends a drag activates nothing (one swallowed click, until the
+//     window ends or a new press starts its own gesture).
 //   - Tapping the row content while open only closes the row.
 //   - Selecting an action closes the row first, so a second tap cannot reach the
 //     same button again without a new swipe.
@@ -490,7 +491,16 @@
     }
     function armClickSwallow() {
       if (cancelSwallow) cancelSwallow();
-      cancelSwallow = swallowNextClick(doc, win);
+      var stop = swallowNextClick(doc, win);
+      // A new press is a new gesture: its click never ended this drag. A touch drag raises no
+      // click, so without this a tap on a just-revealed button inside the window was eaten.
+      function onNewPress() { if (cancelSwallow) cancelSwallow(); }
+      doc.addEventListener('pointerdown', onNewPress, true);
+      cancelSwallow = function () {
+        cancelSwallow = null;
+        doc.removeEventListener('pointerdown', onNewPress, true);
+        stop();
+      };
     }
     function onUp(e) {
       if (!drag || e.pointerId !== drag.id) return;
