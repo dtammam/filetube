@@ -6,7 +6,7 @@ anchor: spec
 status: Shipped v1.403.0
 next: Dean's device checks (docs/DEVICE-CHECKS.md)
 design: Rulings approved by Dean 2026-11-05 (AskUserQuestion): S1-S6 below
-gate: r3 pending (adversary + qa + security-brief; full; the Adversary briefed to trash the WRONG thing)
+gate: APPROVED r4 @48859364 (adversary + qa + security-brief; full; the Adversary briefed to trash the WRONG thing)
 builder: smart
 ---
 
@@ -216,3 +216,8 @@ After approval at de157761 the diff is bookkeeping plus ONE non-bookkeeping file
     +  "version": "1.403.0",
 
 
+Gate r4 (docs only, the corrected Evidence) closes it. After approval at 48859364 the only change is this plan's verdict lines and `gate:` field; `git diff --name-only 48859364..HEAD` prints this one file.
+
+Gate: APPROVED r4 @48859364 — security-brief
+Gate: APPROVED r4 @48859364 — qa
+Gate: APPROVED r4 @48859364 — adversary
