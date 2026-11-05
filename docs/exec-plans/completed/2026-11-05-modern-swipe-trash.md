@@ -6,7 +6,7 @@ anchor: spec
 status: Shipped v1.403.0
 next: Dean's device checks (docs/DEVICE-CHECKS.md)
 design: Rulings approved by Dean 2026-11-05 (AskUserQuestion): S1-S6 below
-gate: APPROVED r2 @de157761 (adversary + qa + security-brief; full; the Adversary briefed to trash the WRONG thing)
+gate: r3 pending (adversary + qa + security-brief; full; the Adversary briefed to trash the WRONG thing)
 builder: smart
 ---
 
@@ -192,6 +192,7 @@ Verified at de157761 (close-out below is bookkeeping only):
 - Disclosed, in ROADMAP Planned: the grid one card off after a race (file safe), the ~100 ms overlap on close, the kebab and bulk offset skip, no commit cue, the instruments' limits, podcast routes and read-only media (security-brief L1). An OK podcast DELETE whose body fails to read would say "already gone" and offer no Undo (reasoned, not built; restorable from the show).
 
 Gate r1 @1ee00d37: security-brief approved; qa and adversary CHANGES.
+Gate r2 @de157761: adversary, qa and security-brief all approved. Then the push's pre-push hook went red: `card-action-menu-fullchain.test.js` "source guard: every caller of the delete request" (`4 !== 3`), a lock the swipe's new caller rightly trips. The builder had gated without running the integration suite (LESSONS 2, the hook hides it); this round's lock update binds the swipe's caller, and the seats re-confirm.
 Close-out after approval at de157761 is bookkeeping only. `git diff --name-only de157761..HEAD`:
 
     ROADMAP.md
@@ -212,6 +213,3 @@ Close-out after approval at de157761 is bookkeeping only. `git diff --name-only 
     +  "version": "1.403.0",
 
 
-Gate: APPROVED r2 @de157761 — security-brief
-Gate: APPROVED r2 @de157761 — qa
-Gate: APPROVED r2 @de157761 — adversary
