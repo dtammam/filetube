@@ -201,7 +201,6 @@ After approval at de157761 the diff is bookkeeping plus ONE non-bookkeeping file
     docs/DEVICE-CHECKS.md
     docs/LESSONS.md
     docs/exec-plans/completed/2026-11-05-modern-swipe-trash.md
-    docs/exec-plans/active/2026-11-05-modern-swipe-trash.md
     docs/releases.json
     package-lock.json
     package.json
