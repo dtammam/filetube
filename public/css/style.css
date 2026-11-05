@@ -7509,6 +7509,50 @@ body[data-view="home"] .modern-select { display: inline-flex; }
   }
 }
 
+/* v1.403.0: a card's swipe wrapper (interaction.js swipeRow) is the grid item, and at rest it must
+   not change a pixel: no clip (a card's focus ring and kebab stay whole), no transform (no stacking
+   context per card, LESSONS 6), and the card stretches to its row as it did as a grid item. Clip,
+   transform and the buttons only exist while the card is moving or open. */
+.modern-home-mode #video-grid > .ui-swipe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.modern-home-mode #video-grid > .ui-swipe:not(.is-open):not(.is-dragging):not(.is-leaving) { overflow: visible; }
+.modern-home-mode #video-grid > .ui-swipe > .ui-swipe__content {
+  min-width: 0;
+  /* the shared rule's pan-y, keeping pinch zoom: a card fills the phone's screen */
+  touch-action: pan-y pinch-zoom;
+}
+.modern-home-mode #video-grid > .ui-swipe:not(.is-open):not(.is-dragging):not(.is-leaving) > .ui-swipe__content { transform: none; }
+/* the card slides off to the left, then leaves the grid (main.js slideCardAway) */
+.modern-home-mode #video-grid > .ui-swipe.is-leaving { pointer-events: none; }
+.modern-home-mode #video-grid > .ui-swipe.is-leaving > .ui-swipe__content { transform: translateX(-100%); }
+.modern-home-mode #video-grid > .ui-swipe.is-gone { display: none; }
+/* the buttons: an icon over a short label, four to a row at the hit size. 44px each leaves a real gap
+   between "all buttons showing" and the full swipe on a phone (176px, the full swipe at 215px of a 358px
+   card: 60%). Wider phone buttons put the two on the same line (v1.403.0 gate r1). */
+.modern-home-mode #video-grid .ui-swipe__action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: var(--hit);
+  min-width: 0;
+  padding: 0 var(--space-1);
+  font: var(--t-caption);
+  overflow-wrap: anywhere;
+}
+/* breakpoints 481-1199px: three-up cards as narrow as ~140px, where four buttons in a row are wider than
+   the card (measured: 176px on a 167px card at 820) and the full swipe could never be reached. Two by two. */
+@media (min-width: 481px) and (max-width: 1199px) {
+  .modern-home-mode #video-grid .ui-swipe__actions { display: grid; grid-template-columns: repeat(2, var(--hit)); }
+  .modern-home-mode #video-grid .ui-swipe__action { min-height: 0; }
+  /* three buttons (a podcast has no Hide): Trash takes the whole trailing row */
+  .modern-home-mode #video-grid .ui-swipe__action:last-child:nth-child(odd) { width: auto; grid-column: 1 / -1; }
+}
+
 /* the one-line filter-chip row (the .library-chips row; ui-chip chips) */
 .modern-chip-row {
   padding: var(--space-4) 0 var(--space-6);

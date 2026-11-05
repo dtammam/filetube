@@ -11326,6 +11326,9 @@ const SWIPE_BACK_OWNER_SELECTORS = [
   '[data-skin-seek]', '.ip-wheel', '.ipod-brick',
   '.whcal-stage', // the wheel-calibration tool's spin area (Settings > Experimental) - v1.311.2 gate W2
   'input[type="range"]', '[role="slider"]',
+  // v1.403.0: a Modern home card's swipe, its revealed buttons included (a closed card's touch-action
+  // alone would not cover those): dragging an open card back to the right closes it, never a back.
+  '#video-grid > .ui-swipe',
 ];
 // ...plus the NET for scrubbers nobody listed yet: an element that took the
 // browser's horizontal panning away (`touch-action: none`, or `pan-y` without

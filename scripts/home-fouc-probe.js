@@ -183,7 +183,7 @@ const OBSERVER_JS = `(function () {
     var grid = document.getElementById('video-grid');
     if (grid) {
       var skel = grid.querySelectorAll(':scope > .video-card.skeleton-card');
-      var real = grid.querySelectorAll(':scope > .video-card:not(.skeleton-card)');
+      var real = grid.querySelectorAll(':scope > .video-card:not(.skeleton-card), :scope > .ui-swipe > .video-card'); // v1.403.0: Modern's cards sit in a swipe wrapper
       if (skel.length && !real.length) { hf.skelCards = cardBoxes(skel); hf.skelAt = now; }
       if (real.length && hf.realFirst === null && hf.skelCards) { hf.realFirst = cardBoxes(real); hf.realAt = now; }
     }
@@ -275,7 +275,7 @@ const OBSERVER_JS = `(function () {
     var rel = function (arr) { return arr.map(function (e) { return { t: Math.round(e.t - t0), frame: e.frame - hf.frameAtT0, key: e.key, geo: e.geo }; }); };
     var cards = null;
     if (hf.skelCards && hf.realFirst) {
-      var final = cardBoxes(document.querySelectorAll('#video-grid > .video-card:not(.skeleton-card)'));
+      var final = cardBoxes(document.querySelectorAll('#video-grid > .video-card:not(.skeleton-card), #video-grid > .ui-swipe > .video-card'));
       cards = { skel: hf.skelCards, realFirst: hf.realFirst, realFinal: final, skelLastAt: Math.round(hf.skelAt - t0), realAt: Math.round(hf.realAt - t0) };
     }
     return JSON.stringify({ fcp: hf.fcp, t0: t0, frames: hf.frame - hf.frameAtT0, vw: innerWidth, vh: innerHeight,

@@ -5,6 +5,19 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Swipe to Trash on Modern home (v1.403.0)
+
+- [ ] v1.403.0 - (a) iPhone app, Modern home: swipe a video all the way left: it leaves, "Moved to Trash" with Undo.
+- [ ] v1.403.0 - (b) Tap Undo: it comes back in place and plays.
+- [ ] v1.403.0 - (c) A short swipe: Like, Watch later, Hide from feed, Move to Trash. Each works, Trash with no question. Tap one right after the buttons appear: the tap counts.
+- [ ] v1.403.0 - (d) Scroll the feed fast with a sloppy thumb: nothing gets trashed. Same with a row open: a small wobble on it never trashes.
+- [ ] v1.403.0 - (e) An open card dragged back right closes and does not go Back.
+- [ ] v1.403.0 - (f) A podcast episode card: the same (no Hide button on an episode).
+- [ ] v1.403.0 - (g) On a computer, click-drag a card left: the same.
+- [ ] v1.403.0 - (h) The ... menu's Move to Trash still asks.
+- [ ] v1.403.0 - (i) Notifications' swipe unchanged: a full swipe still only dismisses, and a Delete button still asks.
+- [ ] v1.403.0 - (j) Is the full swipe an easy swipe on the phone (60% of the card), and on an iPad (about 67%, buttons two by two)? Say if it feels long or too easy.
+
 ## Reader top bar on a computer (v1.402.1)
 
 - [ ] v1.402.1 - (a) On a computer, open a book: the FileTube logo and search stay at the top, and the book fits the window.

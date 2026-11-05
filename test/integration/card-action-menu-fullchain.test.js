@@ -559,16 +559,26 @@ test('DELETE by RIGHT-CLICK (desktop): the contextmenu opens the SAME menu (nati
   } finally { dom.window.close(); }
 });
 
-test('source guard: every caller of the delete request sits behind a confirm that resolved exactly true (the card menu\'s confirmAndDeleteCard; the bar\'s confirmBulkTrash)', () => {
+test('source guard: every caller of the delete request is known: behind a confirm that resolved exactly true (the card menu\'s confirmAndDeleteCard; the bar\'s confirmBulkTrash), or the Modern swipe (no confirm by Dean\'s ruling S1, an Undo instead)', () => {
   const src = fs.readFileSync(path.join(PUBLIC_DIR, 'js', 'main.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
   assert.strictEqual((src.match(/method: 'DELETE' \}\)/g) || []).length >= 1, true);
   // v1.400.0 multi-select (M7): a SECOND caller, the bar's bulk Trash (runBulkOne, quiet mode), reachable only
   // from startBulkRun('delete'), which runBulk enters only after confirmBulkTrash resolved true. Two calls, each
-  // behind its own confirm; a third caller is a finding.
+  // behind its own confirm. v1.403.0 (Dean's rulings S1, S3): a THIRD caller, the Modern swipe, deliberately with no
+  // confirm: trashCardFromSwipe, reachable only from a swipe action's onSelect on a Modern card, bound below. Any
+  // fourth caller is a finding.
   const callers = src.match(/deleteCardById\(/g) || [];
-  assert.strictEqual(callers.length, 3, 'the definition + the card menu call + the bulk call');
+  assert.strictEqual(callers.length, 4, 'the definition + the card menu call + the bulk call + the swipe call');
   // v1.376.0 W2: a podcast card trashes through its own route, behind the SAME confirm.
-  assert.strictEqual((src.match(/deletePodcastCard\(/g) || []).length, 3, 'the podcast delete: the definition + the card menu call + the bulk call');
+  assert.strictEqual((src.match(/deletePodcastCard\(/g) || []).length, 4, 'the podcast delete: the definition + the card menu call + the bulk call + the swipe call');
+  // v1.403.0: the swipe's own call sits in trashCardFromSwipe, whose ONE caller is the swipe action's onSelect, and a card gets
+  // that action only through attachCardSwipe, which refuses anything but Modern home.
+  const swipeFn = src.slice(src.indexOf('async function trashCardFromSwipe('), src.indexOf('function modernGridKey('));
+  assert.match(swipeFn, /await deletePodcastCard\(item\.id, \{ silentSuccess: true \}\)\s*: await deleteCardById\(item\.id, \{ silentSuccess: true \}\);/, 'the swipe\'s call, in its one function');
+  assert.ok(!/removeAnyway/.test(swipeFn), 'never ?removeAnyway (S6)');
+  assert.strictEqual((src.match(/trashCardFromSwipe\(/g) || []).length, 2, 'the definition + the swipe action');
+  assert.match(src, /if \(en\.id === 'delete'\) trashCardFromSwipe\(card, live\);/, 'the one caller is the swipe action');
+  assert.match(src, /function attachCardSwipe\(card, item\) \{\s*const FI = window\.FTInteraction;\s*if \(!modernMode \|\|/, 'Modern home only (S5)');
   const bulk = src.slice(src.indexOf('async function runBulkOne('), src.indexOf('async function runBulk('));
   assert.match(bulk, /if \(action === 'delete'\) \{\s*return item\.kind === 'podcast' \? await deletePodcastCard\(item\.id, \{ quiet: true \}\) : await deleteCardById\(item\.id, \{ quiet: true \}\);/, 'the bulk call is the quiet twin inside runBulkOne');
   const gate = src.slice(src.indexOf('async function runBulk('), src.indexOf('async function startBulkRun('));

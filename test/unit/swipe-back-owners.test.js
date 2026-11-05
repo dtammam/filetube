@@ -270,3 +270,33 @@ test('pocket menus (v1.332): no menu list claims the sideways drag - a right swi
   assert.strictEqual(backs.n, 1, 'a right swipe on a menu row goes back');
   assert.ok(!SWIPE_BACK_OWNER_SELECTORS.some((s) => /skin-swipe/.test(s)), 'the retired swipe-owner selector is gone');
 });
+
+// v1.403.0 (plan 2026-11-05-modern-swipe-trash): the REAL Modern card markup through the REAL swipeRow, with no stylesheet in
+// this jsdom, so the touch-action NET cannot help: the named owner is what stands the swipe-back down. A drag that begins on
+// the revealed buttons (they sit outside the card, with no touch-action of their own) is the one the NET could never cover.
+test('v1.403.0: a Modern card\'s swipe (the card and its revealed buttons) owns the rightward drag; beside it the back still fires', () => {
+  const FI = require('../../public/js/interaction.js');
+  const { doc, win, backs } = boot('<body><main id="content"><p id="plain">x</p><div id="video-grid" class="video-grid"></div><div id="other"></div></main></body>');
+  const grid = doc.getElementById('video-grid');
+  const mk = (host) => {
+    const card = doc.createElement('div');
+    card.className = 'video-card';
+    card.innerHTML = '<a class="card-media" href="/watch.html?v=x"><div class="ui-thumb"><img alt=""></div></a><div class="video-info"><a class="video-title" href="/watch.html?v=x">T</a></div>';
+    host.appendChild(card);
+    FI.swipeRow(card, { doc, win, actions: [{ id: 'delete', label: 'Move to Trash', kind: 'danger', onSelect() {} }], fullSwipe: 'delete', dangerFullSwipe: true });
+    return card;
+  };
+  const card = mk(grid);
+  assert.ok(card.parentNode.classList.contains('ui-swipe'), 'precondition: the wrapper is the grid item');
+  assert.strictEqual(card.parentNode.parentNode, grid);
+  for (const el of [card, card.querySelector('.video-title'), card.querySelector('img'), card.parentNode.querySelector('[data-action="delete"]')]) {
+    assert.strictEqual(swipeBackStandDownReason(el, doc, win), 'owner', el.tagName);
+    dragRight(win, el);
+  }
+  assert.strictEqual(backs.n, 0, 'a rightward drag from the card or its buttons belongs to the swipe, never a back');
+  dragRight(win, doc.getElementById('plain'));
+  assert.strictEqual(backs.n, 1, 'CONTROL: on this same page plain content still goes back');
+  // the notifications shape: a swipe row that is not a Modern card is not named by this owner (its NET applies in a browser)
+  const elsewhere = mk(doc.getElementById('other'));
+  assert.strictEqual(swipeBackStandDownReason(elsewhere.parentNode.querySelector('[data-action="delete"]'), doc, win), null, 'scoped to the Modern grid');
+});
