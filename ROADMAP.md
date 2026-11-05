@@ -958,6 +958,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.404.0 - Picture-in-picture works on the iPhone: the app (with its next update) and Safari (2026-11-05)
+
+- Dean (2026-11-05): "The picture-in-picture mode never worked in iOS. Like, it just, the button doesn't work." In the app the web's `<video>` has no source since v1.399.0, so the
+  standard call could only be refused, and a silent catch hid that. New bridge capability `nativeVideoPip`, intent `video.pip`, event `videoPip`: the row starts and stops Apple's PiP on
+  native's layer, and a playing video floats by itself when you leave the app (native's half is the iOS Root's). Without the capability the row is hidden on a native video, never dead.
+- Native's state answers on the proxied element as `webkitPresentationMode`, so every existing reader follows it with no second predicate. While floating: the surface posts
+  `visible: false`, the box shows the thumbnail and "Playing in picture-in-picture"; every end path clears that with or without a `videoPip`.
+- Safari: `webkitSetPresentationMode` inside the tap on phones and tablets; desktops keep the standard call. A refusal now toasts its error name, and a start nobody answers toasts after 3 s.
+  Automatic PiP in Safari: WebKit has no working web API for it (`autoPictureInPicture` only reflects), so Safari is button-only.
+- Disclosed: Safari's old failure is NOT root-caused from source (a loaded inline video in a live tap passes every gate WebKit has); the device check (a) floats it or names the reason.
+  Gate and evidence: docs/exec-plans/completed/2026-11-05-ios-pip.md; device checks: docs/DEVICE-CHECKS.md "Picture-in-picture on the iPhone (v1.404.0)"
+
 ### v1.403.0 - Swipe a card left on Modern home to move it to Trash, with Undo (2026-11-05)
 
 - Dean (2026-11-05): "when I want to delete things from that feed, it's a tap on a small button to then press delete, to then press yes,
