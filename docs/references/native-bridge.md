@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -74,6 +74,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `audio.subscribe` | (none) | `nativeAudio` | sends one full `audioState` now, then one per real change, plus `audioTick` about once a second while playing |
 | `audio.unsubscribe` | (none) | `nativeAudio` | stops them (playback goes on) |
 | `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0, optional `layer: 'below' \| 'above'` (v1.401.0; sent only when `nativeVideoDock` is announced; `'above'` only with `space: 'viewport'`) | `nativeVideo` (+ `nativeVideoDock` for `layer`) | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0); `layer: 'above'` moves the picture view above the web view for the docked mini player, touches passing through (v1.401.0) |
+| `video.pip` | `action: 'start' \| 'stop'` | `nativeVideoPip` | `start` begins `AVPictureInPictureController` on the native player's layer (a user-initiated start: the web sends it from the button's click); `stop` ends it; a `start` while already in picture-in-picture, or a `stop` while not, is a no-op (v1.404.0) |
 
 ## 3. Native to web events
 
@@ -90,6 +91,7 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `audioState` | `rev`, `queue: [Item]` (native's whole queue, radio appends included), `index`, `state: 'idle' \| 'loading' \| 'playing' \| 'paused' \| 'ended' \| 'failed'`, `positionSec`, `durationSec` (both clip-relative for a clip Item; 0 while unknown), optional `bufferedSec`, `rate`, `modes`, `sleep: { mode, endsAt? }`, optional `error` (the `audioError` enum, only with `failed`), optional `videoSize: { w, h }` (v1.399.0, a video Item's presentation size once known) | on subscribe, then on every real change: a new item, play / pause, a seek, the end of the queue, a mode / rate / sleep change, a failure (v1.397.0) |
 | `audioTick` | `rev`, `positionSec`, optional `bufferedSec` | about once a second while playing; never while paused |
 | `audioError` | `id` (the Item's id), `error: 'network' \| 'notPlayable' \| 'revoked' \| 'notOnServer' \| 'other'` | once per item native could not play (it then skips to the next item, or ends with `state: 'failed'` on the last) |
+| `videoPip` | `active: boolean` | on every picture-in-picture start and stop, whoever caused it (the web's button, automatic picture-in-picture, Apple's own controls), and once at load with `false` (v1.404.0) |
 
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
 does not know as `'other'`.
@@ -228,6 +230,24 @@ unchanged: `visible: false` still hides the layer, and the host still hides it o
 desktop and app builds without `nativeVideoDock` (the v0.16 app): byte-identical to v1.400.1 - the dock shows the thumbnail and no `layer`
 field is ever sent.
 
+**Picture-in-picture (v1.404.0; add-only, plan docs/exec-plans/active/2026-11-05-ios-pip.md).** Under a native surface the web's `<video>` has no
+`src`, so the standard `requestPictureInPicture()` can only be refused: PiP has to be native. With **`nativeVideoPip`** announced (only ever
+beside `nativeVideo`) the settings menu's picture-in-picture row posts **`video.pip { action }`**, only while native owns the current video, and
+its pressed state and label come ONLY from **`videoPip { active }`**. **Automatic PiP:** native sets
+`canStartPictureInPictureAutomaticallyFromInline = true` while its owned video is PLAYING and `false` while paused, ended or idle; it holds while the
+surface is docked or hidden (`visible: false`), so a video playing in the mini player also floats when the user leaves the app. **While PiP is active**
+the web posts `visible: false` (the player box shows the thumbnail and "Playing in picture-in-picture") and `visible: true` again on
+`active: false`. So `visible: false` hides the in-page layer but must never end PiP or take the player away from PiP's layer, and the v1.399.0 rule that
+native detaches the player from its layer on backgrounding does not apply while PiP is active or about to start automatically. PiP's own controls act on
+native's player; the web learns the state through the existing `audioState` and `audioTick`, unchanged. PiP's "return to app" ends PiP and the picture
+returns to the web's last `video.surface` rect (the web's `visible: true` follows `active: false`). PiP survives SPA navigation and the dock. **Native ends PiP** on a main-frame
+navigation commit (section 6), on `audio.stop` and on a new video (an `audio.load` of another Item), and sends `active: false`. **The web does not wait for
+that event at those points:** `audio.stop`, every `audio.load` and native's "I lost my queue" snapshot clear its pressed state and thumbnail, and so does a persisted `pageshow`. **The one signal in the
+page:** `public/js/native-audio.js` answers `webkitPresentationMode` on the proxied element (`'picture-in-picture'` or `'inline'`) and fires
+`webkitpresentationmodechanged`, the shape WebKit's own PiP has, so every existing reader and listener follows it with no second predicate. **A host without
+`nativeVideoPip`** (app v0.16, v0.17): the row is hidden while native owns a video and `video.pip` is never sent. A video on the web element in the app (the Feed,
+previews, 360) uses the browser path below the bridge if WebKit allows it, else the row is hidden. Safari, the PWA and desktop never send it.
+
 ## 4. Server side: `/api/host-info`
 
 A public `GET /api/host-info` (no login) answers
@@ -248,6 +268,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | nativeAudio | native owns playback (the engine, the audio session, the lock screen, the queue it was sent, radio appends, progress posts); the web sends intents and renders snapshots | public/js/native-audio.js holds the ONE subscription per page, builds the Items and drives the shared media element as a proxy of native's state (v1.397.0) |
 | nativeVideo | native owns the video's playback AND its picture layer (sound, picture, the audio session, the lock screen, backgrounding, progress posts); the web owns WHERE the picture goes (the hole it paints and the `video.surface` rect), the controls, captions and skins on top | public/js/native-audio.js claims a watch-page video at the player's choke point, proxies the element (videoWidth / videoHeight from `audioState.videoSize`) and sends the ONE coalesced `video.surface` per layout change; the docked mini player sends `visible: false` without `nativeVideoDock` (v1.399.0; with it the dock is live, next row) |
 | nativeVideoDock | native owns the picture view's side of the web view (`layer`), the touch passthrough and the rounded corners; the web decides WHEN the docked picture is live (`layer: 'above'`, `visible` false while a web surface covers the dock) | public/js/native-audio.js sends `layer` only under this capability; the dock's bar, X and caption strip stay web (v1.401.0) |
+| nativeVideoPip | native owns picture-in-picture (the controller, automatic start, its own controls, ending it); the web asks with the button and displays what `videoPip` says | public/js/native-audio.js sends `video.pip` only while it owns the video and answers the proxy's `webkitPresentationMode` from `videoPip` (v1.404.0) |
 | nativeVideoAudio | a pure widening of nativeAudio: the engine also accepts a video or a TV episode as SOUND; in v1.398.0 the web sends only a Listen row (a video played as audio from the watch page) | a Listen row is proxied like a track; the background handoff of a playing video was NOT built (the spike failed; a native video surface is the next plan) (v1.398.0) |
 
 ## 6. Release of held capabilities
@@ -264,4 +285,5 @@ binds its OWN `pagehide` / `pageshow` pair (skin-surface.js's re-assert covers o
 SURFACE (v1.399.0) is released the same way: the host hides the picture layer on every main-frame navigation commit and when the
 web view goes away (the sound plays on, as for `nativeAudio`), and the page that next shows the item sends a fresh `video.surface`
 (a persisted `pageshow` re-sends the current one). The same release covers a `layer: 'above'` surface (v1.401.0): the host hides the
-picture view on the navigation commit whichever side of the web view it is on, and the next page's `video.surface` places it again.
+picture view on the navigation commit whichever side of the web view it is on, and the next page's `video.surface` places it again. Picture-in-picture (v1.404.0) ends with them: the host ends PiP on the navigation commit and when
+the web view goes away, and the next page's `{ active: false }` at load says so; a page restored from the back-forward cache clears its own pressed state on a persisted `pageshow`.
