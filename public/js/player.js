@@ -1145,6 +1145,18 @@ function nativeSurfaceOwned() { var n = nativeAudioApi(); return !!(n && typeof 
 function nativeDockLive() { var n = nativeAudioApi(); return !!(n && typeof n.dockLive === 'function' && n.dockLive()); }
 // v1.401.0 (gate r1 adversary C2): the live dock's layout class (html.ft-native-dock) is set at the reparent, before the fly-in pose
 // and the first docked measure read the dock's box (the caption strip is part of both); a no-op without the capability or a surface video
+// v1.404.0 (plan docs/exec-plans/active/2026-11-05-ios-pip.md, R1-R3): which door the picture-in-picture row uses. 'native' = video.pip (the
+// element has nothing loaded: a native-owned video without the capability has no PiP at all, so no row); 'presentation' = WebKit's
+// webkitSetPresentationMode, phones and tablets only (WebKit's standard call ends in that same method, behind more gates:
+// HTMLVideoElementPictureInPicture.cpp); 'standard' = requestPictureInPicture, desktop byte-identical; 'none' = no row. A host with
+// nativeVideo while the element is still empty (the deferred early load, a rendition transcoding) has nothing to float yet.
+function pipRouteDecision(s) {
+  if (s.nativeOwned) return s.nativePip ? 'native' : 'none';
+  if (s.nativeVideo && s.elementEmpty) return 'none';
+  if (s.mobile && s.supportsPresentation) return 'presentation';
+  return s.standardEnabled ? 'standard' : 'none';
+}
+var PIP_START_WATCHDOG_MS = 3000; // WebKit's webkitSetPresentationMode returns nothing and its refusals are silent; native's start has no failure event
 function nativeDockMark(on) { var n = nativeAudioApi(); if (n && typeof n.markDocked === 'function') { try { n.markDocked(on); } catch (_) { /* inert */ } } }
 // v1.398.0 (plan docs/exec-plans/completed/2026-10-28-native-video-audio.md, S1): a same-id load that takes an item BACK from native
 // to the web element - the watch page re-opening a Listen row native plays (Listen -> Watch). An adopt would keep the src-less
@@ -2237,6 +2249,7 @@ function formatViewportDetail(win) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     resolveOfflineLocalSrc, // v1.387.0 offline playback: the phone's copy to play online, or null
+    pipRouteDecision, // v1.404.0: which door the picture-in-picture row uses
     formatViewportDetail, // UI pass D7: the viewport line of the ?debugLifecycle=1 log
     ensureTheaterButton, // v1.317 (T1): the one writer of #theater-btn (watch + music inject through it)
     resolveCssFsScrollPlan,
@@ -2429,6 +2442,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // FR-8(b) (TG, v1.22.0): native Picture-in-Picture button, queried/wired
   // once alongside the rest of the custom bar above.
   var pipBtn;
+  var pipWatchdog = 0, pipLabel = null; // v1.404.0 (R3, R1): a start nobody answered; the player box's "Playing in picture-in-picture"
 
   // FR-4 (T1, v1.22.1): persistent playback-speed cycle button, queried/
   // wired once alongside the rest of the custom bar above.
@@ -3199,7 +3213,12 @@ if (typeof module !== 'undefined' && module.exports) {
     return !!(document.fullscreenElement === host || document.fullscreenElement === mediaPlayer) ||
       !!(stagedFullscreen && fsStageEl && document.fullscreenElement === fsStageEl) ||
       !!(mediaPlayer && mediaPlayer.webkitDisplayingFullscreen) ||
-      !!(mediaPlayer && mediaPlayer.webkitPresentationMode === 'picture-in-picture') ||
+      pipPresenting();
+  }
+  // v1.404.0 (R1, R4): THE picture-in-picture signal. Under a native surface the proxied element answers webkitPresentationMode from
+  // videoPip (native-audio.js), so native's PiP is read here too, with no second predicate.
+  function pipPresenting() {
+    return !!(mediaPlayer && mediaPlayer.webkitPresentationMode === 'picture-in-picture') ||
       !!(document.pictureInPictureElement && document.pictureInPictureElement === mediaPlayer);
   }
 
@@ -6113,6 +6132,51 @@ if (typeof module !== 'undefined' && module.exports) {
     minimizeTapGuardTimer = setTimeout(function () { minimizeTapGuardTimer = null; minimizeTapGuardUntil = 0; refreshMinimizeButton(); }, Math.max(0, until - Date.now()));
     refreshMinimizeButton();
   }
+  // v1.404.0 (R1-R4): the picture-in-picture row and the player box's label.
+  function currentPipRoute() {
+    var na = nativeAudioApi();
+    return pipRouteDecision({
+      nativeOwned: nativeSurfaceOwned(),
+      nativePip: !!(na && na.videoPip),
+      nativeVideo: nativeVideoOn(),
+      elementEmpty: !!(mediaPlayer && !mediaPlayer.currentSrc && !mediaPlayer.getAttribute('src')),
+      mobile: isMobileFormFactor(),
+      supportsPresentation: !!(mediaPlayer && typeof mediaPlayer.webkitSupportsPresentationMode === 'function' && typeof mediaPlayer.webkitSetPresentationMode === 'function' && mediaPlayer.webkitSupportsPresentationMode('picture-in-picture')),
+      standardEnabled: !!document.pictureInPictureEnabled,
+    });
+  }
+  function clearPipWatchdog() { if (pipWatchdog) { clearTimeout(pipWatchdog); pipWatchdog = 0; } }
+  function armPipWatchdog() {
+    clearPipWatchdog();
+    pipWatchdog = setTimeout(function () { pipWatchdog = 0; if (!pipPresenting()) pipRefused({ name: 'no response' }); }, PIP_START_WATCHDOG_MS);
+  }
+  // A refusal is never silent (LESSONS-rules "a swallowed rejection"): the error's name is the diagnosis a device check can read back.
+  function pipRefused(err) {
+    clearPipWatchdog();
+    var name = (err && err.name) || 'Error';
+    if (typeof showToast === 'function') showToast('Picture-in-picture is not available here (' + name + ')');
+  }
+  function syncPipButton() {
+    if (!pipBtn) return;
+    var presenting = pipPresenting();
+    if (presenting) clearPipWatchdog();
+    var hide = !presenting && currentPipRoute() === 'none';
+    if (pipBtn.hidden !== hide) pipBtn.hidden = hide;
+    var pressed = presenting ? 'true' : 'false';
+    if (pipBtn.getAttribute('aria-pressed') !== pressed) {
+      pipBtn.setAttribute('aria-pressed', pressed);
+      pipBtn.setAttribute('aria-label', presenting ? 'Exit picture in picture' : 'Picture in picture');
+    }
+    var showLabel = presenting && nativeSurfaceOwned();
+    if (showLabel && !pipLabel && host) {
+      pipLabel = document.createElement('div');
+      pipLabel.className = 'player-pip-label';
+      pipLabel.textContent = 'Playing in picture-in-picture';
+      host.appendChild(pipLabel);
+    }
+    if (pipLabel && pipLabel.hidden === showLabel) pipLabel.hidden = !showLabel;
+  }
+
   function refreshMinimizeButton() {
     if (!host) return;
     if (!minimizeBtn) {
@@ -8843,29 +8907,50 @@ if (typeof module !== 'undefined' && module.exports) {
     // FR-8(b) (TG, v1.22.0, AC58-AC60): native Picture-in-Picture -- wired
     // ONCE here, alongside the rest of the custom bar, so it rides the
     // persistent host across FULL/DOCKED/CLOSED exactly like every other
-    // control-bar listener above. Feature-detected via
-    // `document.pictureInPictureEnabled`: browsers/contexts without support
-    // (or where it's been disabled) never show a dead/inert button (AC58).
+    // control-bar listener above. Feature-detected per load (v1.404.0:
+    // pipRouteDecision, WebKit answers its support only once media is loading):
+    // browsers/contexts without support (or where it's been disabled) never
+    // show a dead/inert button (AC58).
     // Hidden in `.audio-mode` via CSS (no PiP concept for an audio-only
     // element) -- independent of `.ff-mobile`, since PiP only ever matters
     // where the custom bar itself is the active control surface. Toggling
     // PiP is completely independent of the in-app dock (AC60): the two are
     // separate, additive affordances that never fight over `mediaPlayer`.
     if (pipBtn) {
-      if (!document.pictureInPictureEnabled) {
-        pipBtn.style.display = 'none';
-      } else {
-        pipBtn.addEventListener('click', function () {
-          if (!mediaPlayer) return;
-          if (document.pictureInPictureElement) {
-            var px = document.exitPictureInPicture();
-            if (px && px.catch) px.catch(function () {});
-          } else {
-            var pr = mediaPlayer.requestPictureInPicture();
-            if (pr && pr.catch) pr.catch(function () {});
-          }
+      // No await and no timer before any call below: the click's user gesture must still be live (R3).
+      pipBtn.addEventListener('click', function () {
+        if (!mediaPlayer) return;
+        var route = currentPipRoute();
+        if (route === 'none' && !document.pictureInPictureElement) return; // a hidden row is not a door (and an empty element cannot float)
+        if (route === 'native') {
+          var na = nativeAudioApi();
+          if (pipPresenting()) { clearPipWatchdog(); na.pipPost('stop'); } else if (na.pipPost('start')) armPipWatchdog();
+        } else if (route === 'presentation' && mediaPlayer.webkitPresentationMode === 'picture-in-picture') {
+          try { mediaPlayer.webkitSetPresentationMode('inline'); } catch (e1) { pipRefused(e1); }
+        } else if (route === 'presentation' && !document.pictureInPictureElement) {
+          armPipWatchdog();
+          try { mediaPlayer.webkitSetPresentationMode('picture-in-picture'); } catch (e2) { pipRefused(e2); }
+        } else if (document.pictureInPictureElement) {
+          var px = document.exitPictureInPicture();
+          if (px && px.catch) px.catch(pipRefused);
+        } else {
+          // WebKit can leave this promise unsettled (its presentation call no-ops behind the gates), so the watchdog runs until it settles
+          armPipWatchdog();
+          var pr;
+          try { pr = mediaPlayer.requestPictureInPicture(); } catch (e3) { pipRefused(e3); return; }
+          if (pr && pr.then) pr.then(clearPipWatchdog, pipRefused);
+        }
+      });
+      // R4: the pressed state and the row follow the element, whoever started or ended PiP
+      if (mediaPlayer) {
+        ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged', 'loadedmetadata'].forEach(function (t) {
+          mediaPlayer.addEventListener(t, syncPipButton);
+        });
+        ['loadstart', 'emptied'].forEach(function (t) {
+          mediaPlayer.addEventListener(t, function () { clearPipWatchdog(); syncPipButton(); });
         });
       }
+      syncPipButton();
     }
 
     // A6 (T16, v1.24 UX Round, Wave 5): CC (captions) toggle -- the ONE
@@ -9412,6 +9497,7 @@ if (typeof module !== 'undefined' && module.exports) {
         closeChaptersMenu();
         if (opening) {
           syncChaptersEditRow();
+          syncPipButton(); // v1.404.0: who owns the video may have changed with no event on the element (a stand-down, a close)
           settingsMenu.hidden = false;
           clampBarMenuHeight(settingsMenu);
           settingsBtn.setAttribute('aria-expanded', 'true');
@@ -9466,6 +9552,7 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.addEventListener('webkitbeginfullscreen', function () {
           if (!isMobileFormFactor() || inNativeControlsMode()) return;
           if (!currentData || currentData.type === 'audio') return;
+          if (mediaPlayer.webkitPresentationMode === 'picture-in-picture') return; // v1.404.0 (R4): never bounce a video out of PiP
           // v1.381.0: in a Feed card the rotation is ignored - bounce iOS's native player straight back to the card (the same
           // enter-window bounce as below, so it is not the established-fullscreen exit iOS pauses on), with no faux armed
           var feedHost = rotateIgnoredForHost(host && host.parentElement && host.parentElement.classList);
@@ -9485,6 +9572,8 @@ if (typeof module !== 'undefined' && module.exports) {
           var tries = 0;
           (function bounce() {
             if (!mediaPlayer.webkitDisplayingFullscreen) return; // native released -> faux is what shows
+            // v1.404.0 (R4): webkitDisplayingFullscreen is ALSO true in PiP (WebKit HTMLMediaElement::isFullscreen), and this exit would end it
+            if (mediaPlayer.webkitPresentationMode === 'picture-in-picture') return;
             try { mediaPlayer.webkitExitFullscreen(); } catch (_) { /* fine */ }
             if (++tries < 5) setTimeout(bounce, 45);
           })();

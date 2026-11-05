@@ -23,7 +23,7 @@
 (function (root) {
   var FILE_ROUTE = '/api/offline/file/';
   var RATE_MIN = 0.5, RATE_MAX = 3;
-  var PROXY_PROPS = ['currentTime', 'duration', 'paused', 'ended', 'playbackRate', 'defaultPlaybackRate', 'readyState', 'buffered', 'seeking', 'play', 'pause', 'videoWidth', 'videoHeight'];
+  var PROXY_PROPS = ['currentTime', 'duration', 'paused', 'ended', 'playbackRate', 'defaultPlaybackRate', 'readyState', 'buffered', 'seeking', 'play', 'pause', 'videoWidth', 'videoHeight', 'webkitPresentationMode'];
   var DEFAULT_MODES = { autoplay: true, shuffle: false, loop: 'off' };
   var ERROR_COPY = {
     network: 'No connection right now',
@@ -167,6 +167,7 @@
     var videoOn = enabled && host.has('nativeVideoAudio'); // v1.398.0: the engine also takes a video's sound (a Listen row)
     var surfaceOn = videoOn && host.has('nativeVideo'); // v1.399.0: and a watch-page video's PICTURE (one native player, the web's controls on top)
     var dockOn = surfaceOn && host.has('nativeVideoDock'); // v1.401.0: and the DOCKED picture stays live, native's layer above the web view (plan 2026-11-01-live-dock-picture)
+    var pipOn = surfaceOn && host.has('nativeVideoPip'); // v1.404.0: and picture-in-picture is native's too (plan 2026-11-05-ios-pip)
     var noop = function () {};
     if (!enabled) {
       return {
@@ -195,6 +196,7 @@
     var erroredIds = Object.create(null);
     var queueUids = Object.create(null); // index -> the Up-next entry uid the Item came from (D12: the pointer follows native)
     var seenItemKey = null;
+    var pipRaw = false;       // v1.404.0: what native last said in videoPip (cleared at the end paths the web itself causes: pipSet below)
     var ownedSurface = false; // v1.399.0: the owned Item is a watch-page video native plays with its picture (not a Listen row)
     var sizeKey = '';        // v1.399.0 (S4): the videoSize the proxy last reported (resize fires on a change)
     var surfaceLast = null;  // v1.399.0 (S3): the last video.surface posted (a repeat is never sent)
@@ -333,6 +335,12 @@
         // answers before loadedmetadata)
         def('videoWidth', function () { return videoSize().w; });
         def('videoHeight', function () { return videoSize().h; });
+        // v1.404.0 (R1): native's PiP answers on the element in WebKit's own shape, so every reader (player.js inNativeFullscreen, watch.js
+        // nativePresentationKind) and listener (the chevron, the 360 sync, the PiP row) follows it: one signal, no second predicate
+        if (pipOn) {
+          def('webkitPresentationMode', function () { return pipActive() ? 'picture-in-picture' : 'inline'; });
+          if (pipActive()) later(function () { fire('webkitpresentationmodechanged'); }); // a page that adopts a video already floating
+        }
         surfaceWire(); surfaceSchedule();
       }
     }
@@ -345,6 +353,21 @@
       for (var i = 0; i < PROXY_PROPS.length; i++) { try { delete el[PROXY_PROPS[i]]; } catch (_) { /* best-effort */ } }
       if (surfaceOn) surfaceOff(el);
       el = null;
+    }
+
+    // ---- picture-in-picture (v1.404.0, plan 2026-11-05-ios-pip) ----------------------------------------------------------------
+    // The web element has nothing loaded, so PiP is native's: the button posts video.pip and only videoPip says what is true. pipActive is
+    // scoped to the video native plays for us. While it floats the surface posts visible: false and the box shows the thumbnail (surfaceMeasure).
+    function pipActive() { return pipOn && pipRaw && ownedSurface && !!ownedId; }
+    function pipSet(active) {
+      if (pipRaw === active) return;
+      pipRaw = active;
+      fire('webkitpresentationmodechanged');
+      if (surfaceOn && el && ownedSurface && ownedId) surfaceSync();
+    }
+    function pipPost(action) {
+      if (!pipOn || !ownedSurface || !ownedId) return false;
+      return post('video.pip', { action: action });
     }
 
     // ---- the picture surface (v1.399.0, S3 + S3a + S5 + S8) -----------------------------------------------------------
@@ -521,8 +544,9 @@
       if (!viewportSpace) { x += num(win.scrollX, 0); y += num(win.scrollY, 0); }
       var round = function (v) { return Math.round(v * 100) / 100; };
       var shown = w > 0 && h > 0 && !(cs && cs.display === 'none');
-      var visible = docked ? (dockLive && shown && !covered) : shown; // R4: covered = the layer hides, the thumbnail shows
-      var m = { live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked, fs: fs };
+      var pip = pipActive(); // v1.404.0 (R1): the picture is in Apple's window; the box shows the thumbnail wherever it sits
+      var visible = (docked ? (dockLive && shown && !covered) : shown) && !pip; // R4: covered = the layer hides, the thumbnail shows
+      var m = { pip: pip, live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked, fs: fs };
       if (dockOn) m.layer = dockLive ? 'above' : 'below'; // v1.401.0: only under the capability (absent = below on the wire)
       return m;
     }
@@ -571,7 +595,7 @@
         var hm = m;
         if (m.live && m.visible && prev) hm = Object.assign({}, m, { rect: rectIntersect(m.rect, prev) });
         var holeOpen = m.visible && (msg.layer !== 'above' || m.live || aboveHold > 0);
-        dockArt(m.docked && (!(dockOn && m.live) || !m.visible)); // v1.401.0: the LIVE picture flies into the dock; the poster waits for the rest (it sits under the above layer, ready for a covered dock, R4) - unless the dock is covered mid-flight, then the thumbnail flies as in v1.400.1. Without the capability: the v1.400.1 rule, the thumbnail from the fly-in's first frame
+        dockArt(m.pip || (m.docked && (!(dockOn && m.live) || !m.visible))); // v1.404.0: the thumbnail while floating, in the slot too. v1.401.0: the LIVE picture flies into the dock; the poster waits for the rest (it sits under the above layer, ready for a covered dock, R4) - unless the dock is covered mid-flight, then the thumbnail flies as in v1.400.1. Without the capability: the v1.400.1 rule, the thumbnail from the fly-in's first frame
         holeApply(holeOpen ? hm : null, el);
         if (m.live) occludeApply(m); else occludeClear();
       } catch (_) { /* a paint detail never breaks playback */ }
@@ -660,7 +684,7 @@
       if (!m) {
         if (body.classList.contains('ft-native-video')) body.classList.remove('ft-native-video');
         if (holeEl && holeEl.hasAttribute('style')) { holeEl.removeAttribute('style'); holeClip = ''; }
-        if (dockPoster && target && !target.closest('#player-dock')) { target.removeAttribute('poster'); dockPoster = false; }
+        if (dockPoster && target && !target.closest('#player-dock') && !pipActive()) { target.removeAttribute('poster'); dockPoster = false; }
         return;
       }
       if (!holeEl) {
@@ -709,6 +733,7 @@
       var prevItem = currentItem();
       var wasPlaying = playing();
       snap = s;
+      if (lostQueue) pipSet(false); // v1.404.0: an engine that restarted holds no PiP, whether or not its videoPip arrives
       if (!lostQueue) tick = { pos: num(s.positionSec, 0), at: now() }; // a lost queue keeps the last known position: the re-send resumes there (r2-S3)
       playIntent = false; pauseIntent = false;
       lastRate = num(s.rate, lastRate);
@@ -807,6 +832,7 @@
       return { items: items, index: i };
     }
     function sendLoad(items, idx, positionSec, autoplay) {
+      pipSet(false); // v1.404.0: native ends PiP on a new load; the web never waits for that videoPip to clear the state
       rev += 1;
       var ok = post('audio.load', { queue: items, index: idx, positionSec: Math.max(0, num(positionSec, 0)), autoplay: !!autoplay, modes: modes(), rate: Math.min(RATE_MAX, Math.max(RATE_MIN, lastRate)), rev: rev });
       if (!ok) { rev -= 1; return false; }
@@ -962,6 +988,7 @@
     function stop() {
       post('audio.stop');
       ownedId = null; ownedItem = null; ownedSurface = false; posted = null; provider = null; seenItemKey = null; followed = false; pendingJump = null;
+      pipSet(false); // v1.404.0: audio.stop ends PiP (ownership is already gone, so this posts no surface; surfaceOff below closes it)
       queueUids = Object.create(null);
       if (snap) { snap = { rev: snap.rev, queue: [], index: 0, state: 'idle', positionSec: 0, durationSec: 0, rate: lastRate, modes: snap.modes, sleep: { mode: 'off' } }; }
       tick = null;
@@ -1016,9 +1043,11 @@
     }
 
     subscribe();
+    if (pipOn) host.on('videoPip', function (d) { pipSet(d.active); }); // the ONE listener, for the page's whole life (a persisted page keeps it)
     try {
       win.addEventListener('pagehide', function () { unsubscribe(); });
-      win.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) subscribe(); });
+      // v1.404.0: the host ended PiP on the navigation commit that hid this page, and that videoPip went to another page
+      win.addEventListener('pageshow', function (ev) { if (ev && ev.persisted) { pipSet(false); subscribe(); } });
     } catch (_) { /* no window events */ }
 
     return {
@@ -1031,6 +1060,7 @@
       subscribed: function () { return subscribed; },
       syncSurface: function () { if (surfaceRaf) { try { win.cancelAnimationFrame(surfaceRaf); } catch (_) { /* best-effort */ } surfaceRaf = 0; } surfaceSync(); }, // v1.399.0: measure now (the player calls it on a placement change; tests too)
       lastSurface: function () { return surfaceLast; },
+      videoPip: pipOn, pipPost: pipPost, // v1.404.0: the PiP row's route (player.js); its pressed state reads the element's webkitPresentationMode
       dockLive: function () { return dockOn; }, // v1.401.0: a docked surface video shows LIVE above the web view (player.js: the dock's bar layout and the pull's target)
       dockCovered: function () { return covered; }, // v1.401.0 (R4): a web surface overlaps the docked picture right now (tests)
       markDocked: function (on) { dockClassApply(!!(on && dockOn && ownedSurface && ownedId)); }, // v1.401.0 (gate r1 adversary C2): player.js dock() / mountInSlot set the bar-and-strip layout at the reparent, BEFORE the fly-in pose and the first docked measure are read (the strip's height must be in both); surfaceSync keeps it true after

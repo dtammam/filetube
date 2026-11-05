@@ -38,11 +38,14 @@ test('FIX A: the first condition checks document.fullscreenElement against host/
   );
 });
 
-test('FIX A: the other three conditions (webkitDisplayingFullscreen, webkit PiP, standard PiP) are unchanged', () => {
+test('FIX A: the other three conditions (webkitDisplayingFullscreen, webkit PiP, standard PiP) are unchanged; v1.404.0: the two PiP ones live in pipPresenting, which this function calls', () => {
   const body = inNativeFullscreenMatch[1];
   assert.match(body, /!!\(mediaPlayer && mediaPlayer\.webkitDisplayingFullscreen\)/);
-  assert.match(body, /!!\(mediaPlayer && mediaPlayer\.webkitPresentationMode === 'picture-in-picture'\)/);
-  assert.match(body, /!!\(document\.pictureInPictureElement && document\.pictureInPictureElement === mediaPlayer\)/);
+  assert.match(body, /pipPresenting\(\)/);
+  const pip = /function pipPresenting\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  assert.ok(pip, 'pipPresenting exists');
+  assert.match(pip[1], /!!\(mediaPlayer && mediaPlayer\.webkitPresentationMode === 'picture-in-picture'\)/);
+  assert.match(pip[1], /!!\(document\.pictureInPictureElement && document\.pictureInPictureElement === mediaPlayer\)/);
 });
 
 // Executable proof that the identity check actually discriminates: build the

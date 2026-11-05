@@ -1869,6 +1869,23 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
 /* v1.358: the locked 2x pill is a control (tap or Enter/Space unlocks); the lock glyph shows only then. */
 .speed-badge__lock { display: none; }
 #speed-badge.is-locked { pointer-events: auto; }
+
+/* v1.404.0 (R1): the player box while native's picture floats (the thumbnail is the element's poster). A hint, never a target: the bar stays live. */
+.player-pip-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--badge-ground);
+  color: var(--on-overlay);
+  font: var(--t-callout);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.player-pip-label[hidden],
+#player-dock .player-pip-label { display: none; } /* the dock's box is the thumbnail alone */
 #speed-badge.is-locked .speed-badge__lock { display: inline-block; }
 
 /* Double-tap ripple feedback */
@@ -5175,6 +5192,8 @@ html:has(> body.ft-audio-expanded),
 #settings-menu #speed-btn::before { content: "Playback speed"; }
 #settings-menu #cc-btn::before { content: "Subtitles"; }
 #settings-menu #pip-btn::before { content: "Picture-in-picture"; }
+#settings-menu #pip-btn[aria-pressed="true"]::before { content: "Exit picture-in-picture"; } /* v1.404.0 (R4) */
+#settings-menu #pip-btn[hidden] { display: none; } /* v1.404.0: the row's display:flex would otherwise beat [hidden] */
 /* CC row lights up in the follow-along red when captions are ON. */
 #settings-menu .cc-btn.active { color: var(--yt-red); }
 
