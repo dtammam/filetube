@@ -33,7 +33,17 @@
 //     is ignored, so the native caret loupe and paste menu keep working there.
 //
 // swipeRow safety (D8.3, a destructive surface - the full gate attacks this):
-//   - The full-swipe action may never be kind 'danger': setup throws.
+//   - The full-swipe action may not be kind 'danger': setup throws, unless the caller
+//     states `dangerFullSwipe: true` (exactly true; v1.403.0, Modern home's Move to
+//     Trash, which is restorable and answers with an Undo). Notifications does not.
+//   - A full swipe (danger or not) fires ONLY on release of a horizontally LOCKED
+//     drag that passed max(threshold * rowW, actionsW), once per gesture. Never from
+//     a tap, a vertical scroll, a pointercancel, a drag that began on an action
+//     button (those live outside the row, so the drag never starts), a mouse whose
+//     button is no longer held, a destroyed controller, or while `enabled()` says no.
+//   - `opts.enabled` (optional, read when a press starts, at the lock and at release):
+//     false = this surface takes no swipe right now (select mode, a menu is up). A
+//     drag already running when it turns false snaps back and fires nothing.
 //   - Every action (danger included) runs ONLY from a click on its revealed
 //     button while the row is open and not mid-drag. A pointer click must also
 //     have STARTED on that same button (its pointerdown, while open, still within
@@ -43,6 +53,10 @@
 //   - Tapping the row content while open only closes the row.
 //   - Selecting an action closes the row first, so a second tap cannot reach the
 //     same button again without a new swipe.
+//
+// A button is text by default. `label` may be a function (read again at each lock, so
+// it follows state: Like / Unlike) and `icon` a function returning an element, drawn
+// above the label in a .ui-swipe__label span when given.
 (function () {
   var LONG_PRESS_MS = 450;
   var LONG_PRESS_TOLERANCE_PX = 8;
@@ -290,7 +304,7 @@
     return s;
   }
 
-  function validateActions(actions, fullSwipe) {
+  function validateActions(actions, fullSwipe, dangerFullSwipe) {
     if (!Array.isArray(actions) || actions.length === 0) throw new Error('swipeRow: actions must be a non-empty array');
     var ids = {};
     actions.forEach(function (a) {
@@ -304,7 +318,7 @@
     if (fullSwipe === null || fullSwipe === undefined) return null;
     var full = ids[fullSwipe];
     if (!full) throw new Error('swipeRow: fullSwipe "' + fullSwipe + '" is not an action id');
-    if (full.kind === 'danger') throw new Error('swipeRow: a danger action can never be the full-swipe action ("' + fullSwipe + '")');
+    if (full.kind === 'danger' && dangerFullSwipe !== true) throw new Error('swipeRow: a danger action can never be the full-swipe action ("' + fullSwipe + '") without dangerFullSwipe: true');
     return full;
   }
 
@@ -313,7 +327,8 @@
     if (!rowEl || !rowEl.nodeType) throw new Error('swipeRow: rowEl must be an element');
     if (managed && managed.has(rowEl)) throw new Error('swipeRow: this row already has a swipe controller');
     var actions = opts.actions;
-    var fullAction = validateActions(actions, opts.fullSwipe);
+    var fullAction = validateActions(actions, opts.fullSwipe, opts.dangerFullSwipe);
+    var isEnabled = typeof opts.enabled === 'function' ? opts.enabled : function () { return true; };
     var threshold = opts.threshold === undefined ? FULL_SWIPE_THRESHOLD : opts.threshold;
     if (typeof threshold !== 'number' || !(threshold > 0 && threshold <= 1)) throw new Error('swipeRow: threshold must be in (0, 1]');
     var doc = docOf(rowEl, opts);
@@ -325,6 +340,24 @@
     };
 
     // ---- DOM ----
+    function labelOf(a) {
+      var l = typeof a.label === 'function' ? a.label() : a.label;
+      return l == null ? '' : String(l);
+    }
+    // Rewrites a button only when its words changed (an icon function follows the same state).
+    function paintButton(b, a) {
+      var text = labelOf(a);
+      if (b.getAttribute('data-label') === text) return;
+      b.setAttribute('data-label', text);
+      if (typeof a.icon !== 'function') { b.textContent = text; return; }
+      b.textContent = '';
+      var glyph = a.icon();
+      if (glyph) b.appendChild(glyph);
+      var span = doc.createElement('span');
+      span.className = 'ui-swipe__label';
+      span.textContent = text;
+      b.appendChild(span);
+    }
     var parent = rowEl.parentNode;
     var hadClassAttr = rowEl.hasAttribute('class');
     var origClass = rowEl.getAttribute('class');
@@ -338,7 +371,7 @@
       b.type = 'button';
       b.className = 'ui-swipe__action ui-swipe__action--' + a.kind;
       b.setAttribute('data-action', a.id);
-      b.textContent = a.label == null ? '' : String(a.label);
+      paintButton(b, a);
       actionsEl.appendChild(b);
       return b;
     });
@@ -407,11 +440,21 @@
       return d;
     }
 
+    // Drops a running drag without firing: the row goes back where it was.
+    function abandonDrag() {
+      var wasOpen = open;
+      endDrag();
+      if (wasOpen) snapOpen(); else snapClosed();
+    }
     function onDown(e) {
-      if (destroyed || drag) return;
+      if (destroyed) return;
       if (e.isPrimary === false) return;
+      // A new PRIMARY press while a drag is held means that drag's release was lost (a
+      // mouse let go outside the window, the row left the page under the finger).
+      if (drag) abandonDrag();
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (inField(e.target)) return;
+      if (!isEnabled()) return;
       drag = { id: e.pointerId, x0: num(e.clientX, 0), y0: num(e.clientY, 0),
         base: open ? -measure.actionsWidth() : 0, dx: 0, locked: null, captured: false };
       rowEl.addEventListener('pointermove', onMove);
@@ -420,14 +463,17 @@
     }
     function onMove(e) {
       if (!drag || e.pointerId !== drag.id) return;
+      // A mouse whose button is no longer held lost its release: hovering is not dragging.
+      if (e.pointerType === 'mouse' && e.buttons === 0) { abandonDrag(); return; }
       var dx = num(e.clientX, drag.x0) - drag.x0;
       var dy = num(e.clientY, drag.y0) - drag.y0;
       if (!drag.locked) {
         if (Math.sqrt(dx * dx + dy * dy) < DIRECTION_LOCK_PX) return;
         // Mostly vertical, or a rightward start on a closed row (nothing to
         // reveal): release the gesture entirely - the page scrolls as usual.
-        if (Math.abs(dy) >= Math.abs(dx) || (!open && dx > 0)) { endDrag(); return; }
+        if (Math.abs(dy) >= Math.abs(dx) || (!open && dx > 0) || !isEnabled()) { endDrag(); return; }
         drag.locked = 'h';
+        actions.forEach(function (a, i) { paintButton(buttons[i], a); });
         dragging = true;
         wrap.classList.add('is-dragging');
         rowEl.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -452,6 +498,7 @@
       var d = endDrag();
       if (!wasLocked) return;              // a tap: the click handler decides
       armClickSwallow();                   // the click ending a drag activates nothing
+      if (!isEnabled()) { if (open) snapOpen(); else snapClosed(); return; }
       var dist = -d.dx;
       var actionsW = measure.actionsWidth();
       var rowW = measure.rowWidth();
@@ -468,9 +515,7 @@
     }
     function onCancel(e) {
       if (!drag || e.pointerId !== drag.id) return;
-      var wasOpen = open;
-      endDrag();
-      if (wasOpen) snapOpen(); else snapClosed();   // back to where it was; nothing runs
+      abandonDrag();   // back to where it was; nothing runs
     }
 
     // Tapping the content of an open row only closes it.
@@ -524,6 +569,8 @@
 
     ctrl = {
       close: function () { if (open) snapClosed(); },
+      // Ends a running drag without firing and closes the row (the view is leaving or coming back).
+      reset: function () { if (drag) endDrag(); snapClosed(); },
       isOpen: function () { return open; },
       destroy: function () {
         if (destroyed) return;
