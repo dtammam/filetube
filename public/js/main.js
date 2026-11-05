@@ -2922,8 +2922,8 @@ const PreviewCards = (function () {
     // the watch page's delete flow uses -- no new endpoint, no contract
     // change. `id` is the menu's own item id (the menu is built per card from
     // that card's item - never an index or a shared variable), so there is no id
-    // mixup between cards. It runs ONLY after the Move to Trash confirm resolved
-    // true (confirmAndDeleteCard). On a 409 (read-only/permission-denied mount, `{readOnly:true}`)
+    // mixup between cards. From the menu it runs only after the Move to Trash confirm resolved
+    // true (confirmAndDeleteCard); the swipe calls it directly (trashCardFromSwipe). On a 409 (read-only/permission-denied mount, `{readOnly:true}`)
     // this surfaces an explanatory toast and stops -- it NEVER follows up
     // with `?removeAnyway=true` (that opt-in UI stays out of scope per the
     // design; only a path that has already seen a 409 may ever send it, and
@@ -2953,7 +2953,7 @@ const PreviewCards = (function () {
         removeCardFromGrid(id);
         updateItemCountBadge();
         if (!(opts && opts.silentSuccess)) say('Moved to Trash');
-        return { status: 'ok' };
+        return { status: 'ok', result: await res.json().catch(() => ({})) }; // 'trashed', or 'deleted-on-disk' when the file was already gone
       } catch (_) {
         say('Could not delete the episode.');
         return { status: 'failed' };
@@ -3515,8 +3515,9 @@ const PreviewCards = (function () {
       a.remove();
     }
 
-    // DELETE IS DESTRUCTIVE (LESSONS 9): the ONLY path to the delete request.
-    // It asks ui.confirm with copy that says what DELETE /api/videos/:id does
+    // DELETE IS DESTRUCTIVE (LESSONS 9): the card MENU's one path to the delete request (the bar's
+    // bulk Trash has its own confirm; the swipe, trashCardFromSwipe, skips it by Dean's ruling and
+    // answers with an Undo). It asks ui.confirm with copy that says what DELETE /api/videos/:id does
     // (cardDeleteConfirmCopy: a move to Trash) and calls deleteCardById only
     // when the confirm resolves exactly true - Cancel, Esc, the scrim, Close and
     // a missing ui all resolve to no delete.
@@ -3568,10 +3569,11 @@ const PreviewCards = (function () {
       cardSwipes.forEach((c) => c.destroy());
       cardSwipes.clear();
     }
+    signal.addEventListener('abort', detachAllCardSwipes, { once: true }); // the view is destroyed (never on a cached Home)
     function resetCardSwipes() {
       cardSwipes.forEach((c) => c.reset());
     }
-    // Every markup write to the grid goes through here (a source lock in modern-swipe.test.js).
+    // Every markup write to the grid goes through here (a source lock in modern-swipe-view.test.js).
     function setGridHtml(html) {
       detachAllCardSwipes();
       videoGrid.innerHTML = html;
@@ -3656,10 +3658,11 @@ const PreviewCards = (function () {
       const data = r.result || {};
       // A media delete that did not land in Trash, or that left something behind, says so as it does today.
       // No trashId means nothing to restore, so no Undo is offered.
-      const clean = isPodcast || (data.trashed === true && !data.fileRemainsOnDisk && !data.deletePending);
-      const message = clean ? 'Moved to Trash' : deleteResultToast(data);
+      const podcastTrashed = isPodcast && data.status === 'trashed';
+      const clean = podcastTrashed || (!isPodcast && data.trashed === true && !data.fileRemainsOnDisk && !data.deletePending);
+      const message = clean ? 'Moved to Trash' : (isPodcast ? 'The file was already gone.' : deleteResultToast(data));
       const restoreUrl = isPodcast
-        ? '/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/restore'
+        ? (podcastTrashed ? '/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/restore' : null)
         : (data.trashId ? '/api/trash/' + encodeURIComponent(data.trashId) + '/restore' : null);
       if (swipeUndoToast) swipeUndoToast.dismiss(); // only the newest trash offers Undo: the toast names no title
       swipeUndoToast = restoreUrl

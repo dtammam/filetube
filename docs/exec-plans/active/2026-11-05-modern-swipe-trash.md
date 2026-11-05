@@ -3,8 +3,8 @@ plan: modern-swipe-trash
 harness: v2 · full (a destructive surface: LESSONS 9)
 branch: feat/v1.403.0-modern-swipe-trash
 anchor: spec
-status: Kickoff
-next: the builder's Step 0, then W1
+status: Building
+next: gate round 2, then the release
 design: Rulings approved by Dean 2026-11-05 (AskUserQuestion): S1-S6 below
 gate: adversary + qa + security-brief (full; the Adversary briefed to trash the WRONG thing)
 builder: smart
@@ -162,4 +162,13 @@ confirm; the Feed (reels) view.
 
 ## Evidence
 
-(builder fills)
+Deviations from the plan's letter, each measured (the full numbers land at the final sha):
+- W1 asked for a danger full swipe at `max(threshold * rowW, actionsW)`. Gate r1 (qa C1, adversary C1, W1, W2) measured that wrong: at every phone width the open row rests ON that line, so an 8 px wobble on an open row trashed the card, and a mostly vertical drag fired too. A danger full swipe now also needs a row closed at the press, `|dx| > |dy|` at release, and 24 px past the revealed buttons. Notifications' neutral full swipe is unchanged.
+- Buttons: 44 px each, an icon over the menu's own label; four in a row at <= 480 px and >= 1200 px, two by two at 481-1199 px (four in a row were 176 px on a 167 px card at 820, where the full swipe was unreachable). No button dropped. 390x844: actions 176 px, full swipe at 215 px of 358 (60.0%), under the 65% stop rule.
+- Applies to every swipeRow, notifications included: a new primary press drops a drag whose release was lost; a mouse with no button held cannot drag; a new press ends the post-drag click swallow (a tap on a just-revealed button inside the 400 ms window was eaten).
+- A failed podcast restore points at its show, not Settings > Trash (podcast episodes restore from the show, v1.400.0 gate r1 A7).
+- Bare Home is always history depth 0 (common.js, the top of the walk), so the swipe-back has nothing to pop there today: standing it down over the whole grid (adversary S3) costs nothing now; the probe stamps depth 1 to make "no Back" mean something, with a control that does go Back.
+
+Gate: APPROVED r1 @1ee00d37 — security-brief
+Gate: CHANGES r1 @1ee00d37 — qa
+Gate: CHANGES r1 @1ee00d37 — adversary

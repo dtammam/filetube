@@ -41,10 +41,15 @@
 //     a tap, a vertical scroll, a pointercancel, a drag that began on an action
 //     button (those live outside the row, so the drag never starts), a mouse whose
 //     button is no longer held, a destroyed controller, or while `enabled()` says no.
+//   - A DANGER full swipe also needs (v1.403.0 gate r1): a row that was CLOSED at the
+//     press (an open row already rests at actionsW, so an 8px wobble on it passed the
+//     line; it has its Trash button instead), a drag still mostly horizontal at release
+//     (the lock judges one early sample), and DANGER_FULL_SWIPE_MARGIN_PX past the fully
+//     revealed buttons, so revealing them never doubles as the danger action.
 //   - `opts.enabled` (optional, read when a press starts, at the lock and at release):
 //     false = this surface takes no swipe right now (select mode, a menu is up). A
 //     drag already running when it turns false snaps back and fires nothing.
-//   - Every action (danger included) runs ONLY from a click on its revealed
+//   - Apart from the full swipe, every action (danger included) runs ONLY from a click on its revealed
 //     button while the row is open and not mid-drag. A pointer click must also
 //     have STARTED on that same button (its pointerdown, while open, still within
 //     the tap tolerance); a keyboard/programmatic click (detail 0) needs only the
@@ -64,6 +69,7 @@
   var DIRECTION_LOCK_PX = 8;
   var TAP_TOLERANCE_PX = 8;
   var FULL_SWIPE_THRESHOLD = 0.6;
+  var DANGER_FULL_SWIPE_MARGIN_PX = 24;
   // How long a pending "swallow the next click" stays armed after release. The
   // click a release produces is dispatched in the same task as the pointerup
   // (touch-action: manipulation removes the iOS delay); the window only bounds a
@@ -457,7 +463,7 @@
       if (inField(e.target)) return;
       if (!isEnabled()) return;
       drag = { id: e.pointerId, x0: num(e.clientX, 0), y0: num(e.clientY, 0),
-        base: open ? -measure.actionsWidth() : 0, dx: 0, locked: null, captured: false };
+        base: open ? -measure.actionsWidth() : 0, dx: 0, rawDx: 0, rawDy: 0, fromOpen: open, locked: null, captured: false };
       rowEl.addEventListener('pointermove', onMove);
       rowEl.addEventListener('pointerup', onUp);
       rowEl.addEventListener('pointercancel', onCancel);
@@ -482,6 +488,8 @@
           try { rowEl.setPointerCapture(drag.id); drag.captured = true; } catch (_) { /* not capturable */ }
         }
       }
+      drag.rawDx = dx;
+      drag.rawDy = dy;
       var rowW = measure.rowWidth();
       var x = drag.base + dx;
       if (x > 0) x = 0;
@@ -512,10 +520,12 @@
       var dist = -d.dx;
       var actionsW = measure.actionsWidth();
       var rowW = measure.rowWidth();
-      // A full swipe must pass the threshold AND the revealed actions, so dragging
-      // to reveal wide actions never doubles as a full swipe.
-      var fullAt = Math.max(threshold * rowW, actionsW);
-      if (fullAction && rowW > 0 && dist >= fullAt && dist > 0) {
+      // A full swipe must pass the threshold AND the revealed actions. A danger one has
+      // the three further conditions of the safety block at the top of this file.
+      var danger = !!fullAction && fullAction.kind === 'danger';
+      var fullAt = Math.max(threshold * rowW, danger ? actionsW + DANGER_FULL_SWIPE_MARGIN_PX : actionsW);
+      var dangerOk = !danger || (!d.fromOpen && Math.abs(d.rawDx) > Math.abs(d.rawDy));
+      if (fullAction && dangerOk && rowW > 0 && dist >= fullAt && dist > 0) {
         snapClosed();
         fullAction.onSelect({ id: fullAction.id, row: rowEl, via: 'full-swipe' });
         return;
@@ -631,6 +641,7 @@
     LONG_PRESS_TOLERANCE_PX: LONG_PRESS_TOLERANCE_PX,
     DIRECTION_LOCK_PX: DIRECTION_LOCK_PX,
     FULL_SWIPE_THRESHOLD: FULL_SWIPE_THRESHOLD,
+    DANGER_FULL_SWIPE_MARGIN_PX: DANGER_FULL_SWIPE_MARGIN_PX,
     CLICK_SWALLOW_MS: CLICK_SWALLOW_MS,
   };
   if (typeof window !== 'undefined') window.FTInteraction = api;

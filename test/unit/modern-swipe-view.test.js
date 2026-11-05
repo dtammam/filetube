@@ -30,6 +30,7 @@ async function boot(opts = {}) {
   const w = dom.window;
   if (w.document.readyState !== 'complete') await new Promise((r) => w.addEventListener('load', r));
   if (opts.modern !== false) w.localStorage.setItem('ft-modern-mode', 'on');
+  if (opts.sort) w.localStorage.setItem('filetube_modern_sort', opts.sort);
   w.matchMedia = () => ({ matches: !!opts.reduced, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
   const observers = [];
@@ -69,7 +70,7 @@ async function boot(opts = {}) {
       if (over) return over;
       return res(200, { success: true, trashed: true, trashId: 'trash-' + u.split('/').pop(), message: 'Moved to Trash' });
     }
-    if (method === 'DELETE' && u.startsWith('/api/podcasts/episodes/')) return res(200, { ok: true, status: 'trashed' });
+    if (method === 'DELETE' && u.startsWith('/api/podcasts/episodes/')) return res(200, opts.podDel || { ok: true, status: 'trashed' });
     if (method === 'POST' && u.endsWith('/restore')) {
       const over = server.restore && server.restore(u);
       if (over) return over;
@@ -758,6 +759,137 @@ test('CSS lock: at rest the wrapper clips nothing and transforms nothing; four b
   assert.match(css, /touch-action: pan-y pinch-zoom;/);
   const ui = read('css/ui.css');
   assert.ok(ui.indexOf('.ui-swipe {') !== -1 && css.includes('.modern-home-mode #video-grid > .ui-swipe.is-gone { display: none; }'));
+});
+
+test('a podcast whose file was already gone: no false "Moved to Trash", and no Undo that could only fail', async () => {
+  const pod = { id: 'ep1', kind: 'podcast', type: 'audio', title: 'Ep', showName: 'Show', subId: 's1', liked: false };
+  const b = await boot({ pages: [[media(1), pod]], podDel: { ok: true, status: 'deleted-on-disk' } });
+  try {
+    b.fullSwipe('ep1');
+    await tick();
+    assert.deepStrictEqual(b.toasts(), ['The file was already gone.']);
+    assert.strictEqual(b.undo(), null);
+  } finally { b.done(); }
+});
+
+test('a delete that is still held open says so, as today (deletePending)', async () => {
+  const b = await boot({ del: () => ({ ok: true, status: 200, json: async () => ({ success: true, trashed: true, trashId: 't1', deletePending: true }) }) });
+  try {
+    b.fullSwipe('m2');
+    await tick();
+    assert.match(b.toasts().join(), /held open/);
+  } finally { b.done(); }
+});
+
+test('Undo after a re-sort: the file comes back, the card does not land in a list sorted differently', async () => {
+  let gone = false;
+  const b = await boot({ gridFor: () => (gone ? [media(1), media(3), media(4)] : [media(1), media(2), media(3), media(4)]) });
+  try {
+    b.fullSwipe('m2');
+    await tick();
+    const undo = b.undo();
+    gone = true;
+    await wait(420);
+    b.doc.querySelector('.modern-sort-btn').click();
+    await until(() => b.doc.querySelector('.ui-sheet.is-open'));
+    await wait(420);
+    const opt = Array.from(b.doc.querySelectorAll('.ui-sheet.is-open button, .ui-sheet.is-open [role="menuitem"], .ui-sheet.is-open [role="menuitemradio"]')).find((x) => /Oldest/.test(x.textContent));
+    assert.ok(opt, 'the sort menu offers it');
+    opt.click();
+    await tick(30);
+    assert.ok(b.log.some((l) => /sort=oldest/.test(l)), 'precondition: the grid re-sorted');
+    undo.click();
+    await tick();
+    assert.ok(b.writes().includes('POST /api/trash/trash-m2/restore'));
+    assert.deepStrictEqual(b.ids(), ['m1', 'm3', 'm4'], 'not inserted into the re-sorted list');
+  } finally { b.done(); }
+});
+
+test('Undo in a shuffled list: a new shuffle is a different list; the same shuffle takes the card back', async () => {
+  let shuffled = false;
+  const b = await boot({ sort: 'random', gridFor: () => (shuffled ? [media(1)] : [media(1), media(3)]) });
+  try {
+    // the card leaves, the list refreshes under a NEW seed and no longer has it: no insert
+    b.fullSwipe('m3');
+    await tick();
+    const undo = b.undo();
+    shuffled = true;
+    await b.w.__filetubeRefreshLibrary();
+    await tick(30);
+    assert.deepStrictEqual(b.ids(), ['m1'], 'precondition: the new shuffle does not list it');
+    undo.click();
+    await tick();
+    assert.deepStrictEqual(b.ids(), ['m1'], 'not inserted into the new shuffle');
+  } finally { b.done(); }
+  const c = await boot({ sort: 'random', gridFor: () => [media(1), media(3)] });
+  try {
+    c.fullSwipe('m1');
+    await tick();
+    c.undo().click();
+    await tick();
+    assert.deepStrictEqual(c.ids(), ['m1', 'm3'], 'CONTROL: the same shuffle takes it back');
+  } finally { c.done(); }
+});
+
+test('Undo grows the total back: the last page is not lost, and the count badge says so', async () => {
+  const offsets = [];
+  const page0 = Array.from({ length: 60 }, (_, i) => media(i + 1));
+  const b = await boot({ total: 61, gridFor: (f, o) => { if (o !== 0) offsets.push(o); return o === 0 ? page0 : [media(61)]; } });
+  try {
+    const badge = () => b.doc.getElementById('library-item-count').textContent;
+    b.fullSwipe('m2');
+    await tick();
+    const during = badge();
+    b.undo().click();
+    await tick();
+    assert.notStrictEqual(badge(), during, 'the badge followed the Undo');
+    b.observers[b.observers.length - 1].cb([{ isIntersecting: true }]);
+    await tick(20);
+    assert.deepStrictEqual(offsets, [60], 'offset 0 + limit 60 < total 61: the last page still loads');
+  } finally { b.done(); }
+});
+
+test('Undo after the view was destroyed: the file comes back, nothing is drawn into a dead view', async () => {
+  const b = await boot();
+  try {
+    b.fullSwipe('m2');
+    await tick();
+    const undo = b.undo();
+    b.view.destroy();
+    undo.click();
+    await tick();
+    assert.ok(b.writes().includes('POST /api/trash/trash-m2/restore'));
+    await wait(450);
+    assert.match(b.toasts().join(), /Restored/);
+    assert.strictEqual(b.wraps().length, 0, 'destroy took the controllers too');
+  } finally { b.done(); }
+});
+
+test('Undo in select mode: the card that returns wears its tick like the rest', async () => {
+  const b = await boot();
+  try {
+    b.fullSwipe('m2');
+    await tick();
+    const undo = b.undo();
+    await wait(420);
+    b.doc.querySelector('.modern-select .ui-btn').click();
+    await tick();
+    undo.click();
+    await tick();
+    assert.ok(b.card('m2'), 'precondition: it came back');
+    assert.ok(b.card('m2').querySelector('.card-tick'), 'the reconciler ran');
+  } finally { b.done(); }
+});
+
+test('the view\'s destroy takes every controller with it', async () => {
+  const b = await boot();
+  try {
+    b.shortSwipe('m2');
+    const card = b.card('m2');
+    b.view.destroy();
+    assert.strictEqual(card.classList.contains('ui-swipe__content'), false);
+    assert.strictEqual(b.wraps().length, 0);
+  } finally { b.done(); }
 });
 
 test('source lock: every markup write to the grid goes through setGridHtml, which takes the controllers first', () => {

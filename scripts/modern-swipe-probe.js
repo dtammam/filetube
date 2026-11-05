@@ -163,7 +163,8 @@ const metrics = (r, n) => r.page.evaluate((i) => {
     btnW: btns.map((b) => Math.round(b.getBoundingClientRect().width)),
   };
 }, n);
-const fullDist = (m) => Math.max(0.6 * m.rowW, m.actionsW);
+const MARGIN = 24; // interaction.js DANGER_FULL_SWIPE_MARGIN_PX
+const fullDist = (m) => Math.max(0.6 * m.rowW, m.actionsW + MARGIN);
 const gridOrder = (r) => r.page.evaluate(() => Array.from(document.querySelectorAll('#video-grid .video-card[data-id]')).map((c) => c.getAttribute('data-id')));
 const emptyCells = (r) => r.page.evaluate(() => Array.from(document.querySelectorAll('#video-grid > .ui-swipe')).filter((w) => !w.querySelector('.video-card')).length);
 const toastText = (r) => r.page.evaluate(() => Array.from(document.querySelectorAll('.ui-toast')).map((t) => t.textContent).join(' | '));
@@ -221,7 +222,7 @@ async function runSize(env, engine, size, slot) {
   const m = await metrics(r, k);
   const pct = (v) => (100 * v / m.rowW).toFixed(1);
   const atFull = fullDist(m);
-  const widthOk = size.name !== '390x844' || 100 * atFull / m.rowW <= 65;
+  const widthOk = (size.name !== '390x844' || 100 * atFull / m.rowW <= 65) && atFull - m.actionsW >= MARGIN;
   report(widthOk && m.actionsW < m.rowW, `${tag} width: card ${m.rowW.toFixed(0)} px, actions ${m.actionsW} px (${pct(m.actionsW)}%), full swipe at ${atFull.toFixed(0)} px (${pct(atFull)}%), buttons ${JSON.stringify(m.btnW)} ${JSON.stringify(m.labels)}`);
   const clipped = await page.evaluate(() => {
     // a label never overflows its button (the longest menu label included)
@@ -265,12 +266,18 @@ async function runSize(env, engine, size, slot) {
   // a vertical scroll with sideways drift trashes nothing
   {
     const before = serverIds(env);
-    const y0Scroll = await page.evaluate(() => window.scrollY);
     const c = await cardAt(r, k + 1);
+    await sleep(100);
+    const y0Scroll = await page.evaluate(() => window.scrollY);
     const startY = Math.min(c.y + c.h * 0.8, size.viewport.height - 40);
     const x0 = c.x + c.w * 0.6;
     const drift = [[-20, -60], [-20, -120], [20, -180], [-20, -300], [-20, -400]];
-    await finger(r, x0, startY, drift.map(([dx, dy], i) => { void i; return [x0 + dx, Math.max(20, startY + dy)]; }), { stepMs: 16 });
+    let draggingMid = 0;
+    const realTouch = !!r.cdp && size.input === 'touch';
+    await finger(r, x0, startY, drift.map(([dx, dy]) => [x0 + dx, Math.max(20, startY + dy)]), { stepMs: 16,
+      mid: async () => { draggingMid = await page.evaluate(() => document.querySelectorAll('#video-grid .ui-swipe.is-dragging').length); } });
+    await sleep(100);
+    const y1Scroll = await page.evaluate(() => window.scrollY);
     // and a drift that starts sideways before the finger goes vertical
     const c2 = await cardAt(r, k + 1);
     const sy = Math.min(c2.y + c2.h * 0.8, size.viewport.height - 40);
@@ -278,8 +285,46 @@ async function runSize(env, engine, size, slot) {
     await finger(r, x1, sy, [[x1 - 9, sy - 2], [x1 - 14, sy - 40], [x1 - 18, sy - 120], [x1 - 20, sy - 300]], { stepMs: 16 });
     await sleep(450);
     const after = serverIds(env);
-    const moved = await page.evaluate(() => window.scrollY);
-    report(after.size === before.size, `${tag} a scroll with ~20 px of drift: server lost ${before.size - after.size}, scrollY ${y0Scroll.toFixed(0)} -> ${moved.toFixed(0)}`);
+    // only real touch scrolls: a mouse drag or a synthetic touch moves no page, so those lines claim only "no swipe locked"
+    const scrolled = !realTouch || Math.abs(y1Scroll - y0Scroll) > 50;
+    report(after.size === before.size && scrolled && draggingMid === 0,
+      `${tag} ${realTouch ? 'a real scroll' : 'a vertical drag (no page scroll on this input)'} with ~20 px of drift: server lost ${before.size - after.size}, cards mid-drag ${draggingMid}, scrollY ${y0Scroll.toFixed(0)} -> ${y1Scroll.toFixed(0)}`);
+    await closeRows(r);
+  }
+
+  // the gate's r1 cases: nothing trashes short of a deliberate, horizontal full swipe that starts on a closed card
+  {
+    const before = serverIds(env);
+    const c = await cardAt(r, k + 1);
+    // exactly the buttons: all revealed, nothing fired
+    await swipeLeft(r, c, m.actionsW);
+    await sleep(450);
+    const revealed = await page.evaluate((id) => { const x = Array.from(document.querySelectorAll('#video-grid .video-card[data-id]')).find((n) => n.getAttribute('data-id') === id); return x.parentNode.classList.contains('is-open'); }, c.id);
+    report(revealed && serverIds(env).size === before.size, `${tag} a drag of exactly the buttons (${m.actionsW} px): opens, nothing fired`);
+    // wobbles and a scroll on the OPEN row
+    for (const nudge of [10, 14, 20, 30, 60]) {
+      const q = await rectOnly(r, c.id);
+      const x = q.x + 30; const y = q.y + q.h * 0.4;
+      await finger(r, x + nudge + 10, y, [[x + nudge, y], [x, y]]);
+      await sleep(450);
+    }
+    const q2 = await rectOnly(r, c.id);
+    const sx = q2.x + 40; const sy = Math.min(q2.y + q2.h * 0.8, size.viewport.height - 40);
+    await finger(r, sx, sy, [[sx - 9, sy - 2], [sx - 11, Math.max(20, sy - 120)], [sx - 12, Math.max(20, sy - 250)]], { stepMs: 16 });
+    await sleep(450);
+    const lost = before.size - serverIds(env).size;
+    report(lost === 0, `${tag} an open row: wobbles of 10-60 px and a scroll that starts sideways: server lost ${lost}`);
+    await closeRows(r);
+    // a mostly vertical drag on a CLOSED card that the lock read as sideways (25 degrees off vertical, past the full point)
+    const c3 = await cardAt(r, k + 1);
+    const vx = c3.x + c3.w - 12; const vy = Math.min(c3.y + c3.h * 0.9, size.viewport.height - 30);
+    const far = fullDist(m) + 8;
+    const steps = [[vx - 9, vy - 2]];
+    for (let i = 1; i <= 8; i++) steps.push([vx - 9 - (far * i) / 8, vy - 2 - (far * 2.1 * i) / 8]);
+    await finger(r, vx, vy, steps.map(([a, b2]) => [a, Math.max(4, b2)]), { stepMs: 10 });
+    await sleep(450);
+    const lost2 = before.size - serverIds(env).size;
+    report(lost2 === 0, `${tag} a mostly vertical drag past the full point: server lost ${lost2}`);
     await closeRows(r);
   }
 
@@ -507,7 +552,7 @@ async function runWidths(env, engine) {
     const m = await metrics(r, 2);
     const f = fullDist(m);
     const p = 100 * f / m.rowW;
-    report(f < m.rowW && p <= 70, `${engine} width ${width}: card ${m.rowW.toFixed(0)} px, actions ${m.actionsW} px, full swipe at ${f.toFixed(0)} px (${p.toFixed(1)}%), buttons ${JSON.stringify(m.btnW)}`);
+    report(f < m.rowW && p <= (width <= 480 ? 75 : 85) /* the smallest phone: 200 px of a 288 px card (69%), 72.5% under desktop WebKit's 12 px classic scrollbar; 390 is held to the plan's 65% in runSize */ && f - m.actionsW >= MARGIN, `${engine} width ${width}: card ${m.rowW.toFixed(0)} px, actions ${m.actionsW} px, full swipe at ${f.toFixed(0)} px (${p.toFixed(1)}%), buttons ${JSON.stringify(m.btnW)}`);
     await r.browser.close();
   }
 }

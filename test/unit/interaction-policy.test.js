@@ -740,8 +740,8 @@ test('swipeRow v1.403: a drag short of max(threshold, actions) opens, never fire
   assert.equal(c2.isOpen(), true);
   c2.close();
   s.tick(1000);
-  drag(s, [390, 380, 90]);
-  assert.deepEqual(log2, [['delete', 'full-swipe']], 'past both: fires');
+  drag(s, [390, 380, 60]);
+  assert.deepEqual(log2, [['delete', 'full-swipe']], 'past both, and the margin: fires');
 });
 
 test('swipeRow v1.403: a vertical drag, a sideways drift inside a scroll, a pointercancel and a tap fire nothing', (t) => {
@@ -964,4 +964,89 @@ test('swipeRow v1.403: a tap on a just-revealed button inside the swallow window
   drag(s, [390, 380, 300]);
   tapButton(s, btn(s, 'dismiss'));
   assert.deepEqual(log, [['dismiss', 'button']], 'the press began a new gesture: its click is its own');
+});
+
+// ---- v1.403.0 gate r1: the real proportions (actions at or above the threshold), which the 400 / 160 fixture cannot show
+const PHONE = { rowWidth: () => 358, actionsWidth: () => 218 }; // the geometry the gate's C1 reproduced on
+
+test('swipeRow v1.403 gate C1: a wobble on an OPEN row fires nothing, at any distance, and the row stays open', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log, { measure: PHONE });
+  drag(s, [340, 330, 120]);   // open, short of the full point
+  assert.equal(c.isOpen(), true);
+  assert.deepEqual(log, []);
+  for (const nudge of [8, 10, 14, 20, 30, 100, 300]) {
+    s.tick(1000);
+    drag(s, [200, 200 - nudge]);
+    assert.deepEqual(log, [], nudge + 'px');
+    assert.equal(c.isOpen(), true, nudge + 'px');
+  }
+  // the gate's scroll shape on an open row: a first sample that locks sideways, then the finger goes up
+  s.tick(1000);
+  s.pe('pointerdown', s.$('title'), { x: 200, y: 400, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 191, y: 398, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 188, y: 150, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 188, y: 150, pointerId: 7 });
+  assert.deepEqual(log, []);
+});
+
+test('swipeRow v1.403 gate C1: the same wobble on a non-danger full swipe keeps today\'s behaviour (notifications)', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = I.swipeRow(s.$('row'), { actions: mkActions(log), fullSwipe: 'dismiss', measure: PHONE, win: WIN });
+  drag(s, [340, 330, 130]);
+  assert.equal(c.isOpen(), true);
+  s.tick(1000);
+  drag(s, [200, 190]);
+  assert.deepEqual(log, [['dismiss', 'full-swipe']], 'unchanged: the opt-in alone tightens the rule');
+});
+
+test('swipeRow v1.403 gate W1: a danger full swipe must still be mostly horizontal at release', (t) => {
+  const s = setup(t);
+  const log = [];
+  const c = mkDanger(s, log, { measure: PHONE });
+  const go = (dx, dy) => {
+    c.close(); // each from a CLOSED row: the open-row guard would mask this one (LESSONS 2)
+    s.tick(1000);
+    s.pe('pointerdown', s.$('title'), { x: 340, y: 700, pointerId: 7 });
+    s.pe('pointermove', s.$('title'), { x: 331, y: 698, pointerId: 7 }); // locks sideways
+    s.pe('pointermove', s.$('title'), { x: 340 + dx, y: 700 + dy, pointerId: 7 });
+    s.pe('pointerup', s.$('title'), { x: 340 + dx, y: 700 + dy, pointerId: 7 });
+  };
+  go(-260, -483);
+  assert.deepEqual(log, [], 'up and left, 25 degrees off vertical');
+  go(-260, -260);
+  assert.deepEqual(log, [], 'exactly diagonal is not horizontal');
+});
+
+test('swipeRow v1.403 gate W1 CONTROL: a sloppy but horizontal full swipe fires', (t) => {
+  const s = setup(t);
+  const log = [];
+  mkDanger(s, log, { measure: PHONE });
+  s.pe('pointerdown', s.$('title'), { x: 340, y: 700, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 331, y: 698, pointerId: 7 });
+  s.pe('pointermove', s.$('title'), { x: 80, y: 640, pointerId: 7 });
+  s.pe('pointerup', s.$('title'), { x: 80, y: 640, pointerId: 7 });
+  assert.deepEqual(log, [['delete', 'full-swipe']]);
+});
+
+test('swipeRow v1.403 gate W2: revealing every button never doubles as Trash: the margin past the buttons binds', (t) => {
+  const m = I.DANGER_FULL_SWIPE_MARGIN_PX;
+  assert.equal(m, 24);
+  const s = setup(t);
+  const log = [];
+  // row 300, actions 176: the threshold (180) is below actions + margin (200), so only the margin decides
+  const c = mkDanger(s, log, { measure: { rowWidth: () => 300, actionsWidth: () => 176 } });
+  drag(s, [290, 280, 290 - 176]);
+  assert.deepEqual(log, [], 'exactly the buttons: opens');
+  assert.equal(c.isOpen(), true);
+  c.close();
+  s.tick(1000);
+  drag(s, [290, 280, 290 - 199]);
+  assert.deepEqual(log, [], 'one short of the margin: opens');
+  c.close();
+  s.tick(1000);
+  drag(s, [290, 280, 290 - 200]);
+  assert.deepEqual(log, [['delete', 'full-swipe']], 'at the margin: fires');
 });

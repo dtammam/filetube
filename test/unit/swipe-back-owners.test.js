@@ -293,7 +293,7 @@ test('v1.403.0: a Modern card\'s swipe (the card and its revealed buttons) owns 
     assert.strictEqual(swipeBackStandDownReason(el, doc, win), 'owner', el.tagName);
     dragRight(win, el);
   }
-  assert.strictEqual(backs.n, 0, 'dragging an open card back to the right closes it, never a back');
+  assert.strictEqual(backs.n, 0, 'a rightward drag from the card or its buttons belongs to the swipe, never a back');
   dragRight(win, doc.getElementById('plain'));
   assert.strictEqual(backs.n, 1, 'CONTROL: on this same page plain content still goes back');
   // the notifications shape: a swipe row that is not a Modern card is not named by this owner (its NET applies in a browser)

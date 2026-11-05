@@ -7529,7 +7529,9 @@ body[data-view="home"] .modern-select { display: inline-flex; }
 .modern-home-mode #video-grid > .ui-swipe.is-leaving { pointer-events: none; }
 .modern-home-mode #video-grid > .ui-swipe.is-leaving > .ui-swipe__content { transform: translateX(-100%); }
 .modern-home-mode #video-grid > .ui-swipe.is-gone { display: none; }
-/* the buttons: an icon over a short label, narrow enough that the full swipe stays an easy swipe */
+/* the buttons: an icon over a short label, four to a row at the hit size. 44px each leaves a real gap
+   between "all buttons showing" and the full swipe on a phone (176px, the full swipe at 215px of a 358px
+   card: 60%). Wider phone buttons put the two on the same line (v1.403.0 gate r1). */
 .modern-home-mode #video-grid .ui-swipe__action {
   display: flex;
   flex-direction: column;
@@ -7541,9 +7543,6 @@ body[data-view="home"] .modern-select { display: inline-flex; }
   padding: 0 var(--space-1);
   font: var(--t-caption);
   overflow-wrap: anywhere;
-}
-@media (max-width: 480px) {
-  .modern-home-mode #video-grid .ui-swipe__action { width: max(var(--hit), 14vw); }
 }
 /* breakpoints 481-1199px: three-up cards as narrow as ~140px, where four buttons in a row are wider than
    the card (measured: 176px on a 167px card at 820) and the full swipe could never be reached. Two by two. */
