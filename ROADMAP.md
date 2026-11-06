@@ -965,7 +965,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   native's layer, and a playing video floats by itself when you leave the app (native's half is the iOS Root's). Without the capability the row is hidden on a native video, never dead.
 - Native's state answers on the proxied element as `webkitPresentationMode`, so every existing reader follows it with no second predicate. While floating: the surface posts
   `visible: false`, the box shows the thumbnail and "Playing in picture-in-picture"; every end path clears that with or without a `videoPip`.
-- Safari: `webkitSetPresentationMode` inside the tap on phones and tablets; desktops keep the standard call. A refusal now toasts its error name, and a start nobody answers toasts after 3 s.
+- Safari with the custom player on (off, Apple's own controls have their own button): `webkitSetPresentationMode` inside the tap on phones and tablets; desktops keep the standard call. A refusal now toasts its error name, and a request nobody answers toasts after 3 s.
   Automatic PiP in Safari: WebKit has no working web API for it (`autoPictureInPicture` only reflects), so Safari is button-only.
 - Disclosed: Safari's old failure is NOT root-caused from source (a loaded inline video in a live tap passes every gate WebKit has); the device check (a) floats it or names the reason.
   Gate and evidence: docs/exec-plans/completed/2026-11-05-ios-pip.md; device checks: docs/DEVICE-CHECKS.md "Picture-in-picture on the iPhone (v1.404.0)"

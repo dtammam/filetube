@@ -240,13 +240,13 @@ the web posts `visible: false` (the player box shows the thumbnail and "Playing 
 `active: false`. So `visible: false` hides the in-page layer but must never end PiP or take the player away from PiP's layer, and the v1.399.0 rule that
 native detaches the player from its layer on backgrounding does not apply while PiP is active or about to start automatically. PiP's own controls act on
 native's player; the web learns the state through the existing `audioState` and `audioTick`, unchanged. PiP's "return to app" ends PiP and the picture
-returns to the web's last `video.surface` rect (the web's `visible: true` follows `active: false`). PiP survives SPA navigation and the dock. **Native ends PiP** on a main-frame
-navigation commit (section 6), on `audio.stop` and on a new video (an `audio.load` of another Item), and sends `active: false`. **The web does not wait for
-that event at those points:** `audio.stop`, every `audio.load` and native's "I lost my queue" snapshot clear its pressed state and thumbnail, and so does a persisted `pageshow`. **The one signal in the
+returns to the web's last `video.surface` RECT (that message says `visible: false`: the layer shows when the web answers `active: false` with `visible: true`). PiP survives SPA navigation and the dock. **Native ends PiP** on a main-frame
+navigation commit (section 6), on `audio.stop` and on every `audio.load` (the same Item re-sent included), and sends `active: false`. **The web does not wait for
+that event at those points:** `audio.stop`, every `audio.load` and native's "I lost my queue" snapshot clear its pressed state and thumbnail, and so does a persisted `pageshow`. So on a new video the web's `visible: true` goes out just BEFORE the `audio.load` and can land while PiP is still up: it only unhides the layer. A `video.pip` nobody answers in 3 s is a toast on the web, for `start` and `stop` alike. **The one signal in the
 page:** `public/js/native-audio.js` answers `webkitPresentationMode` on the proxied element (`'picture-in-picture'` or `'inline'`) and fires
 `webkitpresentationmodechanged`, the shape WebKit's own PiP has, so every existing reader and listener follows it with no second predicate. **A host without
 `nativeVideoPip`** (app v0.16, v0.17): the row is hidden while native owns a video and `video.pip` is never sent. A video on the web element in the app (the Feed,
-previews, 360) uses the browser path below the bridge if WebKit allows it, else the row is hidden. Safari, the PWA and desktop never send it.
+previews, 360) uses the browser's own PiP if WebKit allows it, else the row is hidden. Safari, the PWA and desktop never send it.
 
 ## 4. Server side: `/api/host-info`
 

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.404.0 picture-in-picture, W1 (plan docs/exec-plans/active/2026-11-05-ios-pip.md, the Contract): the `nativeVideoPip` half of the
+// [UNIT] v1.404.0 picture-in-picture, W1 (plan 2026-11-05-ios-pip, the Contract): the `nativeVideoPip` half of the
 // bridge AT THE ADAPTER. native-bridge-contract.test.js proves the tables equal the schema; this file proves they BIND: `video.pip` leaves
 // the page only under `nativeVideoPip` with a known action, and `videoPip` reaches a listener only with a boolean `active`.
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 /* global document, window, HTMLVideoElement, getComputedStyle */
-// v1.404.0 picture-in-picture (plan docs/exec-plans/active/2026-11-05-ios-pip.md, W3): the real-browser half of R3. It boots the real server on a
-// scratch library with one real H.264 clip and the custom player on, opens the watch page in a touch context and taps the REAL settings
+// v1.404.0 picture-in-picture (plan 2026-11-05-ios-pip, W3): the real-browser half of R3. It boots the real server on a
+// scratch library with one generated VP8 clip (both engines decode it) and the custom player on (without it a phone gets Apple's controls and no row), opens the watch page in a touch context and taps the REAL settings
 // cog and the REAL picture-in-picture row (page.touchscreen.tap: trusted touch input, not a dispatched click), then asserts:
 //
 //   - the tap on the row arrives as a trusted click whose target is the row (no touch handler cancelled it: R3's "does a tap really click?");
@@ -19,6 +19,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const REPO = path.resolve(__dirname, '..');
 const ENGINE_ARG = process.argv[2] || 'both';
@@ -34,10 +35,11 @@ async function boot() {
   const server = require(path.join(REPO, 'server.js'));
   const lib = path.join(process.env.DATA_DIR, 'library');
   fs.mkdirSync(lib, { recursive: true });
-  const fp = path.join(lib, 'clip.mp4');
-  fs.copyFileSync(path.join(REPO, 'test_media', 'Welcome_to_FileTube.mp4'), fp);
+  const fp = path.join(lib, 'clip.webm');
+  // test_media/Welcome_to_FileTube.mp4 is 65 bytes of text, not a video
+  execFileSync(process.env.FFMPEG || path.join(os.homedir(), '.local', 'bin', 'ffmpeg-static', 'ffmpeg'), ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=24:duration=20', '-c:v', 'libvpx', '-b:v', '300k', fp]);
   const id = server.getMediaId(fp);
-  const metadata = { [id]: { id, type: 'video', title: 'PiP probe', name: 'clip.mp4', filePath: fp, rootFolder: lib, folderName: 'library', channelName: 'Probe', duration: 20, width: 640, height: 360, hasThumbnail: false, ext: '.mp4', addedAt: 1788000000000, size: fs.statSync(fp).size } };
+  const metadata = { [id]: { id, type: 'video', title: 'PiP probe', name: 'clip.webm', filePath: fp, rootFolder: lib, folderName: 'library', channelName: 'Probe', duration: 20, width: 640, height: 360, hasThumbnail: false, ext: '.webm', addedAt: 1788000000000, size: fs.statSync(fp).size } };
   const { seedState } = require(path.join(REPO, 'test', 'helpers', 'seed-state'));
   seedState({ folders: [lib], folderSettings: {}, metadata, liked: [], settings: { scanIntervalMinutes: 0, pruneMissing: false, cacheMaxBytes: null, mobileCustomPlayer: true } });
   const listening = await new Promise((resolve) => { const s = server.app.listen(0, '127.0.0.1', () => resolve(s)); });
@@ -46,7 +48,9 @@ async function boot() {
 
 // Runs before any page script. Records the touch and click facts, the PiP calls and whether each ran inside a click.
 function instrument(opts) {
-  const log = window.__pip = { events: [], calls: [], posts: [], inClick: false, engine: null };
+  const log = window.__pip = { events: [], calls: [], posts: [], engine: null };
+  // the event being dispatched right now: true only inside the click's own call stack (a stamp cleared by a bubble listener would never clear: the bar stops propagation)
+  const inClick = () => !!(window.event && window.event.type === 'click');
   const P = HTMLVideoElement.prototype;
   log.engine = { pictureInPictureEnabled: document.pictureInPictureEnabled === undefined ? 'undefined' : document.pictureInPictureEnabled, requestPictureInPicture: typeof P.requestPictureInPicture, webkitSupportsPresentationMode: typeof P.webkitSupportsPresentationMode, webkitSetPresentationMode: typeof P.webkitSetPresentationMode };
   Object.defineProperty(navigator, 'platform', { configurable: true, get: () => 'iPhone' });
@@ -58,13 +62,12 @@ function instrument(opts) {
     return mm(q);
   };
   P.webkitSupportsPresentationMode = function () { return true; };
-  P.webkitSetPresentationMode = function (m) { log.calls.push({ call: 'webkitSetPresentationMode', arg: m, inClick: log.inClick }); };
-  P.requestPictureInPicture = function () { log.calls.push({ call: 'requestPictureInPicture', inClick: log.inClick }); return Promise.reject(new Error('recorder')); };
+  P.webkitSetPresentationMode = function (m) { log.calls.push({ call: 'webkitSetPresentationMode', arg: m, inClick: inClick() }); };
+  P.requestPictureInPicture = function () { log.calls.push({ call: 'requestPictureInPicture', inClick: inClick() }); return Promise.reject(new Error('recorder')); };
   for (const t of ['touchstart', 'touchend']) window.addEventListener(t, (e) => { log.events.push({ t, id: e.target && e.target.id, trusted: e.isTrusted, prevented: e.defaultPrevented }); });
-  window.addEventListener('click', (e) => { log.inClick = true; log.events.push({ t: 'click', id: e.target && e.target.id, trusted: e.isTrusted }); }, true);
-  window.addEventListener('click', () => { log.inClick = false; });
+  window.addEventListener('click', (e) => { log.events.push({ t: 'click', id: e.target && e.target.id, trusted: e.isTrusted }); }, true);
   if (opts.caps) {
-    window.FileTubeHost = { bridge: 1, app: { name: 'filetube-ios', version: '0.18.0', build: '1' }, platform: 'ios', capabilities: opts.caps, post(m) { log.posts.push({ type: m.type, action: m.action, inClick: log.inClick }); } };
+    window.FileTubeHost = { bridge: 1, app: { name: 'filetube-ios', version: '0.18.0', build: '1' }, platform: 'ios', capabilities: opts.caps, post(m) { log.posts.push({ type: m.type, action: m.action, inClick: inClick() }); } };
   }
 }
 
@@ -106,7 +109,7 @@ async function openRow(page) {
       const { ctx, page } = await open(browser, env);
       const eng = await page.evaluate(() => window.__pip.engine);
       console.log(`INFO ${engine} answers, before the recorders: ${JSON.stringify(eng)}`);
-      await page.waitForFunction(() => { const v = document.getElementById('media-player'); return v && v.readyState >= 1; }, null, { timeout: 30000 }).catch(() => {});
+      await page.waitForFunction(() => { const v = document.getElementById('media-player'); return v && v.readyState >= 1; }, null, { timeout: 30000 });
       const open1 = await openRow(page);
       report(open1.menuOpen === true, `${engine} browser: a real tap on the cog opens the menu ${JSON.stringify(open1)}`);
       report(open1.rowHidden === false, `${engine} browser: the row shows`);

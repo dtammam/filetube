@@ -157,7 +157,7 @@
     // v1.399.0 nativeVideo: the ONE new intent - where the picture goes (public/js/native-audio.js sends it, coalesced per frame).
     // v1.401.0 nativeVideoDock: `layer` rides the same intent, gated by its own capability (fieldCaps: the field, not the message).
     'video.surface': { cap: 'nativeVideo', fieldCaps: { layer: 'nativeVideoDock' }, fields: { rect: surfaceRectSpec(), space: { enum: SURFACE_SPACES.slice(), req: true }, visible: { is: 'boolean', req: true }, fit: { enum: SURFACE_FITS.slice(), req: true }, radius: { is: 'number', min: 0, req: true }, layer: { enum: SURFACE_LAYERS.slice() } } },
-    // v1.404.0 nativeVideoPip (plan docs/exec-plans/active/2026-11-05-ios-pip.md, the Contract): start or stop Apple's picture-in-picture
+    // v1.404.0 nativeVideoPip (plan 2026-11-05-ios-pip, the Contract): start or stop Apple's picture-in-picture
     // on the native player's layer. public/js/native-audio.js sends it from the button's click, only while native owns the current video.
     'video.pip': { cap: 'nativeVideoPip', fields: { action: { enum: ['start', 'stop'], req: true } } },
   };

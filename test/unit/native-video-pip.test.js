@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.404.0 picture-in-picture, W2 + W3 (plan docs/exec-plans/active/2026-11-05-ios-pip.md, R1-R4). The REAL player.js, native-audio.js and
+// [UNIT] v1.404.0 picture-in-picture, W2 + W3 (plan 2026-11-05-ios-pip, R1-R4). The REAL player.js, native-audio.js and
 // host-adapter.js in a jsdom realm with a fake host (test/helpers/live-dock-realm.js); the row is reached through a real click on it and native
 // through videoPip events, never a hand-set flag (LESSONS 2). jsdom cannot float a video: WebKit's own calls are fakes that record, and whether Apple's
 // window opens is the device check. scripts/pip-tap-probe.js proves the click arrives from a real tap in WebKit.
@@ -41,6 +41,8 @@ test('pipRouteDecision: every door', () => {
   assert.strictEqual(d({ mobile: true, standardEnabled: true }), 'standard', 'a phone without the WebKit call');
   assert.strictEqual(d({ supportsPresentation: true, standardEnabled: true }), 'standard', 'Mac Safari stays on the standard call');
   assert.strictEqual(d({ supportsPresentation: true }), 'none', 'a desktop without the standard call: hidden, as before this release');
+  assert.strictEqual(d({ mobile: true, webkitSaysNo: true, standardEnabled: true }), 'none', 'a phone, media loaded, WebKit says no: pictureInPictureEnabled ignores the embedder');
+  assert.strictEqual(d({ webkitSaysNo: true, standardEnabled: true }), 'standard', 'desktop byte-identical');
   assert.strictEqual(d({}), 'none');
 });
 
@@ -130,6 +132,7 @@ for (const [name, caps] of [['v0.17 (dock, no pip)', DOCK_CAPS], ['v0.16 (no doc
 test('R2: a web-element video in the app (native stands down) takes the browser path when WebKit allows it, else hides; the row follows ownership', async () => {
   let setCalls = [], supports = true;
   const r = realm({ caps: DOCK_CAPS, beforeScripts: (w) => {
+    w.document.pictureInPictureEnabled = true; // WebKit's real shape: true on the platform whatever the embedder allows
     w.HTMLVideoElement.prototype.webkitSupportsPresentationMode = () => supports;
     w.HTMLVideoElement.prototype.webkitSetPresentationMode = (m) => { setCalls.push(m); };
   } });
@@ -147,12 +150,20 @@ test('R2: a web-element video in the app (native stands down) takes the browser 
     assert.deepStrictEqual(setCalls, ['picture-in-picture']);
     assert.deepStrictEqual(pipPosts(r), [], 'never video.pip for a video native does not own');
     supports = false;
+    r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
+    assert.strictEqual(pip(r).hidden, false, 'not loaded yet: its no means nothing');
+    Object.defineProperty(r.el(), 'readyState', { configurable: true, get: () => 1 });
+    r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
+    assert.strictEqual(pip(r).hidden, true, 'loaded and WebKit still says no (Q1): hidden, whatever pictureInPictureEnabled says');
+    delete r.el().readyState;
+    r.el().removeAttribute('src');
+    supports = true;
     r.el().dispatchEvent(new r.w.Event('emptied'));
-    assert.strictEqual(pip(r).hidden, true, 'WebKit says no, and this host has no standard call: hidden');
+    assert.strictEqual(pip(r).hidden, true, 'R2 wiring: this host, the element empty again: nothing to float, though WebKit and the platform say yes');
   } finally { r.close(); }
 });
 
-test('the one predicate: native PiP reads as a native presentation through the element - the chevron hides and returns, watch.js says pip, the hold never engages', async () => {
+test('the one predicate: native PiP reads as a native presentation through the element - the chevron hides and returns, watch.js says pip', async () => {
   const r = realm({ caps: PIP_CAPS });
   try {
     await loaded(r);
@@ -185,7 +196,7 @@ test('a docked video: PiP holds across the dock; the dock shows the thumbnail wi
     assert.strictEqual(pip(r).getAttribute('aria-pressed'), 'true', 'PiP survives the dock');
     assert.ok(r.wrapper().closest('#player-dock').contains(label(r)), 'the label rides the host');
     const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
-    assert.ok(/#player-dock \.player-pip-label \{ display: none; \}/.test(css), 'CSS keeps it out of the mini box');
+    assert.ok(/#player-dock \.player-pip-label \{ display: none; \}/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'CSS keeps it out of the mini box');
     await settle(80);
     r.fake.emit(PIP_OFF);
     assert.strictEqual(r.last().visible, true);
@@ -268,7 +279,7 @@ function safari(w, log) {
   let mode = 'inline';
   Object.defineProperty(P, 'webkitPresentationMode', { configurable: true, get: () => mode });
   P.webkitSupportsPresentationMode = (m) => { log.push('supports:' + m); return log.supports !== false; };
-  P.webkitSetPresentationMode = function (m) { log.push('set:' + m + ':' + (log.inClick ? 'sync' : 'async')); if (log.throwIt) throw log.throwIt; if (!log.silent) { mode = m; this.dispatchEvent(new w.Event('webkitpresentationmodechanged')); } };
+  P.webkitSetPresentationMode = function (m) { log.push('set:' + m + ':' + (w.event && w.event.type === 'click' ? 'sync' : 'async')); if (log.throwIt) throw log.throwIt; if (!log.silent) { mode = m; this.dispatchEvent(new w.Event('webkitpresentationmodechanged')); } };
   P.requestPictureInPicture = function () { log.push('standard'); return Promise.resolve(); };
   w.document.pictureInPictureEnabled = true;
   return { setMode(m) { mode = m; } };
@@ -306,6 +317,81 @@ test('a start answered and ended at once leaves no watchdog behind: no toast aft
   } finally { r.close(); }
 });
 
+test('a fresh page adopting a video already floating: no load, and the row, the label and the surface say so', async () => {
+  const r = realm({ caps: PIP_CAPS });
+  try {
+    r.fake.emit(STATE(0, { state: 'playing' }));
+    r.fake.emit(PIP_ON);
+    await settle(10);
+    r.player.load('v1', VIDEO, { slot: r.slot });
+    await settle(80);
+    assert.strictEqual(r.fake.of('audio.load').length, 0, 'a follow');
+    assert.strictEqual(pip(r).getAttribute('aria-pressed'), 'true');
+    assert.strictEqual(labelShown(r), true);
+    assert.strictEqual(r.last().visible, false);
+  } finally { r.close(); }
+});
+
+function touch(r, el, type, x, y) {
+  const e = new r.w.Event(type, { bubbles: true, cancelable: true });
+  const t = { clientX: x, clientY: y, identifier: 1, target: el };
+  e.touches = type === 'touchend' ? [] : [t];
+  e.changedTouches = [t];
+  el.dispatchEvent(e);
+  return e;
+}
+
+test('picture touches under PiP (gate r1): the hold never engages, and a pan before a tap never leaves the picture dead', async () => {
+  const r = realm({ caps: PIP_CAPS, settings: { mobileCustomPlayer: true } });
+  try {
+    await loaded(r);
+    const v = r.el();
+    // a finger already down when PiP starts: its armed hold must not fire
+    touch(r, v, 'touchstart', 100, 350);
+    r.fake.emit(PIP_ON);
+    r.fake.clear();
+    await settle(600);
+    assert.deepStrictEqual(r.fake.of('audio.setRate'), [], 'no 2x under PiP');
+    touch(r, v, 'touchend', 100, 350);
+    await settle(450);
+    // a pan on the picture, then a tap elsewhere: the tap is judged against its own start
+    touch(r, v, 'touchstart', 100, 350); touch(r, v, 'touchmove', 100, 300); touch(r, v, 'touchend', 100, 300);
+    await settle(450);
+    r.fake.clear();
+    touch(r, v, 'touchstart', 200, 350);
+    touch(r, v, 'touchmove', 201, 350); // 1 px of jitter
+    const end = touch(r, v, 'touchend', 201, 350);
+    await settle(450);
+    assert.strictEqual(end.defaultPrevented, true, 'the tap is a tap');
+    assert.ok(r.fake.types().some((t) => t === 'audio.pause' || t === 'audio.play'), 'and it toggles: ' + r.fake.types().join());
+  } finally { r.close(); }
+});
+
+test('the watchdog is about the video it was asked of: a close, a pagehide and a new item say nothing; an unanswered stop says so', async () => {
+  for (const leave of [(r) => r.player.close(), (r) => r.w.dispatchEvent(new r.w.Event('pagehide')), (r) => r.player.load('v2', Object.assign({}, VIDEO, { id: 'v2' }), { slot: r.slot })]) {
+    const r = realm({ caps: PIP_CAPS });
+    const toasts = []; r.w.showToast = (m) => toasts.push(m);
+    try {
+      await loaded(r);
+      pip(r).click();
+      leave(r);
+      await settle(3200);
+      assert.deepStrictEqual(toasts, []);
+    } finally { r.close(); }
+  }
+  const r = realm({ caps: PIP_CAPS });
+  const toasts = []; r.w.showToast = (m) => toasts.push(m);
+  try {
+    await loaded(r);
+    r.fake.emit(PIP_ON);
+    pip(r).click();
+    assert.deepStrictEqual(pipPosts(r), ['stop']);
+    await settle(3200);
+    assert.deepStrictEqual(toasts, ['Picture-in-picture is not available here (no response)']);
+    assert.strictEqual(pip(r).getAttribute('aria-pressed'), 'true', 'still only what native says');
+  } finally { r.close(); }
+});
+
 test('R3 (iPhone Safari shape): the row uses webkitSetPresentationMode inside the click, the event presses it, the row or Apple\'s own control exits; never the standard call', async () => {
   const log = []; let sf;
   const r = realm({ noHost: true, beforeScripts: (w) => { sf = safari(w, log); } });
@@ -316,8 +402,6 @@ test('R3 (iPhone Safari shape): the row uses webkitSetPresentationMode inside th
     r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
     const row = pip(r);
     assert.strictEqual(row.hidden, false);
-    row.addEventListener('click', () => { log.inClick = true; }, { capture: true });
-    r.wrapper().addEventListener('click', () => { log.inClick = false; });
     row.click();
     assert.ok(log.includes('set:picture-in-picture:sync'), 'synchronously inside the click: ' + log.join());
     assert.strictEqual(row.getAttribute('aria-pressed'), 'true');
@@ -353,18 +437,37 @@ test('R3: WebKit\'s silent no-op becomes a toast after the watchdog; a thrown re
   } finally { r.close(); }
 });
 
-test('R3: a load cancels a pending watchdog: no toast about the video the user left', async () => {
-  const log = [];
-  const r = realm({ noHost: true, beforeScripts: (w) => { safari(w, log); } });
+for (const ev of ['emptied', 'loadstart']) {
+  test('R3: ' + ev + ' cancels a pending watchdog: no toast about the media the user left', async () => {
+    const log = [];
+    const r = realm({ noHost: true, beforeScripts: (w) => { safari(w, log); } });
+    const toasts = []; r.w.showToast = (m) => toasts.push(m);
+    try {
+      r.player.load('v1', VIDEO, { slot: r.slot });
+      await settle(60);
+      log.silent = true;
+      pip(r).click();
+      r.el().dispatchEvent(new r.w.Event(ev));
+      await settle(3100);
+      assert.deepStrictEqual(toasts, []);
+    } finally { r.close(); }
+  });
+}
+
+test('R3: WebKit leaving the standard promise unsettled forever is a toast; a row stays up while presenting even if WebKit then says no', async () => {
+  const log = []; let sf;
+  const r = realm({ noHost: true, desktop: true, beforeScripts: (w) => { sf = safari(w, log); w.HTMLVideoElement.prototype.requestPictureInPicture = () => new Promise(() => {}); } });
   const toasts = []; r.w.showToast = (m) => toasts.push(m);
   try {
     r.player.load('v1', VIDEO, { slot: r.slot });
     await settle(60);
-    log.silent = true;
     pip(r).click();
-    r.el().dispatchEvent(new r.w.Event('emptied'));
     await settle(3100);
-    assert.deepStrictEqual(toasts, []);
+    assert.deepStrictEqual(toasts, ['Picture-in-picture is not available here (no response)']);
+    r.w.document.pictureInPictureEnabled = false;
+    sf.setMode('picture-in-picture');
+    r.el().dispatchEvent(new r.w.Event('webkitpresentationmodechanged'));
+    assert.strictEqual(pip(r).hidden, false, 'the way out stays');
   } finally { r.close(); }
 });
 
@@ -456,7 +559,7 @@ test('R4: the rotate bounce never kicks a video out of PiP (webkitDisplayingFull
 });
 
 test('the row\'s labels are CSS on aria-pressed; [hidden] beats the row\'s display (LESSONS: [hidden] loses to any author display rule)', () => {
-  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.ok(css.includes('#settings-menu #pip-btn[aria-pressed="true"]::before { content: "Exit picture-in-picture"; }'));
   assert.ok(css.includes('#settings-menu #pip-btn[hidden] { display: none; }'));
   assert.ok(/\.player-pip-label\[hidden\],/.test(css));

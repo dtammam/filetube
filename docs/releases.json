@@ -3819,6 +3819,6 @@
     "version": "1.404.0",
     "date": "2026-11-05",
     "title": "Picture-in-picture works on the iPhone",
-    "intent": "In Safari on an iPhone, the Picture-in-picture row in a video's settings now floats the video, and if iOS refuses, it says why instead of doing nothing. In the iPhone app it needs the next app update: then the row floats the video, and a playing video floats by itself when you swipe home. Until that update the app hides the row. Safari has no automatic version, so there it is the button only."
+    "intent": "In Safari on an iPhone with the custom player controls on, the Picture-in-picture row now asks for Safari's own picture-in-picture, and if iOS refuses it says why instead of doing nothing. With the controls off, Apple's own button is there as before. In the iPhone app it needs the next app update: then the row floats the video, and a playing video floats by itself when you swipe home. Until that update the app hides the row. Safari has no automatic version, so there it is the button only."
   }
 ]
