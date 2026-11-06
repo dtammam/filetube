@@ -447,6 +447,8 @@
 
 ### Features
 
+- [ ] **Picture-in-picture (v1.404.0) follow-ups** _(gate r2 notes, none user-blocking; take them when a device check or the next touch asks)_: the Adversary's surviving mutants on code it measured correct: `webkitSaysNo` needing `hasWebkitPip` (bound on the pure function only), the Safari exit's `armPipWatchdog(false)`, `startY` and the one-finger scope in the touch reset. QA's label notes: under the Dynamic Island in portrait faux fullscreen (no safe-area inset), and sharing the locked 2x badge's spot. `PIP_START_WATCHDOG_MS` now also covers a stop: rename it when next touched.
+
 - **Swipe to Trash (v1.403.0) follow-ups** _(2026-11-05, the build and its gate; none blocks the release)_: (1) **The grid can be one card
   off after a race; the file is safe:** Undo landing while a refresh is in flight can leave the restored card out until the next refresh;
   a swipe during an in-flight page append can leave one card unshown until a refresh (the append overwrites the offset, as Hide from feed
@@ -957,6 +959,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.404.0 - Picture-in-picture on the iPhone: the app (with its next update) and Safari (2026-11-06)
+
+- Dean (2026-11-05): "The picture-in-picture mode never worked in iOS. Like, it just, the button doesn't work." In the app the web's `<video>` has no source since v1.399.0, so the
+  standard call could only be refused, and a silent catch hid that. New bridge capability `nativeVideoPip`, intent `video.pip`, event `videoPip`: the row starts and stops Apple's PiP on
+  native's layer, and a playing video floats by itself when you leave the app (native's half is the iOS Root's). Without the capability the row is hidden on a native video, never dead.
+- Native's state answers on the proxied element as `webkitPresentationMode`, so every existing reader follows it with no second predicate. While floating: the surface posts
+  `visible: false`, the box shows the thumbnail and "Playing in picture-in-picture"; every end path clears that with or without a `videoPip`.
+- Safari with the custom player on (off, Apple's own controls have their own button): `webkitSetPresentationMode` inside the tap on phones and tablets; desktops keep the standard call. A refusal now toasts its error name, and a request nobody answers toasts after 3 s.
+  Automatic PiP in Safari: WebKit has no working web API for it (`autoPictureInPicture` only reflects), so Safari is button-only.
+- Disclosed: Safari's old failure is NOT root-caused from source (a loaded inline video in a live tap passes every gate WebKit has); the device check (a) floats it or names the reason.
+  Gate and evidence: docs/exec-plans/completed/2026-11-05-ios-pip.md; device checks: docs/DEVICE-CHECKS.md "Picture-in-picture on the iPhone (v1.404.0)"
 
 ### v1.403.0 - Swipe a card left on Modern home to move it to Trash, with Undo (2026-11-05)
 

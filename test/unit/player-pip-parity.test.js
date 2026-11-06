@@ -30,9 +30,8 @@ const SHELLS = [
 ];
 
 // v1.112 (Dean, settings cog): #pip-btn moved OFF the bar into #settings-menu as
-// the last menu row (class gains `settings-menu-item`). It keeps its own
-// `document.pictureInPictureEnabled` gate (player.js hides it where unsupported),
-// which now hides the ROW; the toggle handler is unchanged (id-keyed).
+// the last menu row (class gains `settings-menu-item`). player.js hides the ROW
+// where PiP cannot work (v1.404.0: pipRouteDecision, id-keyed; test/unit/native-video-pip.test.js).
 const PIP_BTN_MARKUP = '<button type="button" id="pip-btn" class="pc-btn settings-menu-item pip-btn" aria-label="Picture in picture">⧉</button>';
 
 test('pip-btn parity: every shell\'s #player-host-template carries the exact same #pip-btn markup', () => {

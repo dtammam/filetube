@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -157,6 +157,9 @@
     // v1.399.0 nativeVideo: the ONE new intent - where the picture goes (public/js/native-audio.js sends it, coalesced per frame).
     // v1.401.0 nativeVideoDock: `layer` rides the same intent, gated by its own capability (fieldCaps: the field, not the message).
     'video.surface': { cap: 'nativeVideo', fieldCaps: { layer: 'nativeVideoDock' }, fields: { rect: surfaceRectSpec(), space: { enum: SURFACE_SPACES.slice(), req: true }, visible: { is: 'boolean', req: true }, fit: { enum: SURFACE_FITS.slice(), req: true }, radius: { is: 'number', min: 0, req: true }, layer: { enum: SURFACE_LAYERS.slice() } } },
+    // v1.404.0 nativeVideoPip (plan 2026-11-05-ios-pip, the Contract): start or stop Apple's picture-in-picture
+    // on the native player's layer. public/js/native-audio.js sends it from the button's click, only while native owns the current video.
+    'video.pip': { cap: 'nativeVideoPip', fields: { action: { enum: ['start', 'stop'], req: true } } },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -210,6 +213,8 @@
     },
     audioTick: { fields: { rev: { is: 'number', min: 0, req: true }, positionSec: { is: 'number', min: 0, req: true }, bufferedSec: { is: 'number', min: 0 } } },
     audioError: { lenient: { error: 'other' }, fields: { id: { is: 'string', min: 1, max: 512, req: true }, error: { enum: AUDIO_ERRORS.slice(), req: true } } },
+    // v1.404.0 nativeVideoPip: every start and stop, whoever caused it (the button, automatic PiP, Apple's own controls), and { active: false } once at load.
+    videoPip: { fields: { active: { is: 'boolean', req: true } } },
   };
 
   function fieldOk(spec, v) {

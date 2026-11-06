@@ -25,7 +25,7 @@ A reel-style page that mixes videos, podcasts, books and songs, one card at a ti
 
 ## Watch
 
-Library video plays in an app-owned player: keyboard shortcuts, chapters, a mini-player that docks while you browse, theatre mode, Picture-in-Picture, speed, loop, and progress that follows you across devices.
+Library video plays in an app-owned player: keyboard shortcuts, chapters, a mini-player that docks while you browse, theatre mode, Picture-in-Picture (on the iPhone: the button in Safari; the button and automatic in the app from its next update), speed, loop, and progress that follows you across devices.
 Files a browser cannot play (AVI, HEVC, VP9, AC-3 and friends) are transcoded on demand to H.264/AAC MP4, so they play on an iPhone too.
 **On by default:** yes. It needs FFmpeg for thumbnails and transcoding (the Docker image includes it; on a local run it is optional and put on your PATH).
 Add folders in Settings > Videos, then **Save & Scan Library**.
