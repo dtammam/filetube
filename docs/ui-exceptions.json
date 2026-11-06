@@ -16046,7 +16046,7 @@
       },
       {
         "key": "public/js/player.js|style.display",
-        "count": 22,
+        "count": 21,
         "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       }

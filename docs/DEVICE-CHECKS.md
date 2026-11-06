@@ -5,6 +5,17 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Picture-in-picture on the iPhone (v1.404.0; (c)-(h) after the app build that announces nativeVideoPip)
+
+- [ ] v1.404.0 - (a) iPhone Safari with Settings "Use custom player controls on touch devices" ON (off, Apple's own controls show and FileTube has no row), a video, the settings cog, Picture-in-picture: it floats; the row now says Exit picture-in-picture, and it (or Apple's own control) brings it back. A toast "not available here (<name>)" instead: note the name, it is the reason Safari refused.
+- [ ] v1.404.0 - (b) A desktop browser: the same row floats and returns as before.
+- [ ] v1.404.0 - (c) App build with PiP: the row floats the video; sound and picture continue; the player box shows the thumbnail and "Playing in picture-in-picture".
+- [ ] v1.404.0 - (d) Swipe home while a video plays: it floats by itself. Paused: it does not.
+- [ ] v1.404.0 - (e) A video in the mini player, swipe home: it floats.
+- [ ] v1.404.0 - (f) PiP's own play / pause and "return to app": the app's controls follow, the picture is back in place, and the row is back to Picture-in-picture.
+- [ ] v1.404.0 - (g) An app build before that one: no picture-in-picture row on a video (never a dead one).
+- [ ] v1.404.0 - (h) App build with PiP, floating: sign out. The window closes. And a video that ends with autoplay on: the window closes with it and the next video plays in the app (a new video ends PiP): tell the builder if you would rather it kept floating.
+
 ## Swipe to Trash on Modern home (v1.403.0)
 
 - [ ] v1.403.0 - (a) iPhone app, Modern home: swipe a video all the way left: it leaves, "Moved to Trash" with Undo.

@@ -1871,6 +1871,23 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
 #speed-badge.is-locked { pointer-events: auto; }
 #speed-badge.is-locked .speed-badge__lock { display: inline-block; }
 
+/* v1.404.0 (R1): the player box while native's picture floats (the thumbnail is the element's poster). A hint, never a target: the bar stays live. */
+.player-pip-label {
+  position: absolute;
+  top: var(--space-6); /* the speed badge's place: the wrapper's box includes the bar, so its middle is not the picture's */
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--badge-ground);
+  color: var(--on-overlay);
+  font: var(--t-callout);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.player-pip-label[hidden],
+#player-dock .player-pip-label { display: none; } /* the dock's box is the thumbnail alone */
+
 /* Double-tap ripple feedback */
 .skip-ripple {
   position: absolute;
@@ -5175,6 +5192,8 @@ html:has(> body.ft-audio-expanded),
 #settings-menu #speed-btn::before { content: "Playback speed"; }
 #settings-menu #cc-btn::before { content: "Subtitles"; }
 #settings-menu #pip-btn::before { content: "Picture-in-picture"; }
+#settings-menu #pip-btn[aria-pressed="true"]::before { content: "Exit picture-in-picture"; } /* v1.404.0 (R4) */
+#settings-menu #pip-btn[hidden] { display: none; } /* v1.404.0: the row's display:flex would otherwise beat [hidden] */
 /* CC row lights up in the follow-along red when captions are ON. */
 #settings-menu .cc-btn.active { color: var(--yt-red); }
 
@@ -6280,10 +6299,9 @@ html.ft-native-dock #player-dock .cc-overlay-text {
 }
 
 /* === v1.22 FR-8: native Picture-in-Picture button ============================
-   `#pip-btn` sits on the custom bar alongside `#fs-btn` (same `.pc-btn` sizing/
-   theming -- no new color tokens needed). `document.pictureInPictureEnabled`
-   feature-detection (player.js's wireHostListeners()) hides it entirely where
-   unsupported, so this rule only ever needs to cover the ONE case CSS alone
+   `#pip-btn` is a row of the settings cog (same `.pc-btn` theming -- no new color
+   tokens needed). player.js syncPipButton / pipRouteDecision (v1.404.0) hides it
+   entirely where PiP cannot work, so this rule only ever needs to cover the ONE case CSS alone
    can't feature-detect: hiding it for AUDIO (no PiP concept for an audio-only
    element) -- independent of `.ff-mobile`, since PiP is available on desktop
    (custom bar always active there) and mobile audio (custom bar kept, AC3)

@@ -32,7 +32,7 @@ test('nativeVideoDock is a known capability; layer is an optional enum on video.
   assert.strictEqual(def.cap, 'nativeVideo', 'the message itself still needs nativeVideo');
   assert.deepStrictEqual(def.fieldCaps, { layer: 'nativeVideoDock' }, 'the FIELD is gated by nativeVideoDock');
   assert.deepStrictEqual(def.fields.layer, { enum: ['below', 'above'] }, 'optional: absent = below');
-  assert.deepStrictEqual(Object.keys(adapterModule.MESSAGES).filter((t) => t.indexOf('video.') === 0), ['video.surface'], 'still the ONE video message');
+  assert.deepStrictEqual(Object.keys(adapterModule.MESSAGES).filter((t) => t.indexOf('video.') === 0), ['video.surface', 'video.pip'], 'nativeVideoDock added no message of its own (video.pip is v1.404.0, nativeVideoPip)');
 });
 
 test('a host WITHOUT nativeVideoDock never receives `layer`: a message carrying it is refused (below and above alike), one without it goes out exactly as in v1.399.0', () => {
@@ -73,7 +73,7 @@ test('the schema and the doc carry the capability (inert sibling list, LESSONS 1
   assert.deepStrictEqual(branch.properties.layer, { $ref: '#/$defs/surfaceLayer' });
   assert.ok(!branch.required.includes('layer'), 'optional: add-only within v1');
   const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'references', 'native-bridge.md'), 'utf8');
-  assert.ok(doc.includes("'nativeVideo', 'nativeVideoDock']"), 'section 1 announces it');
+  assert.ok(doc.includes("'nativeVideo', 'nativeVideoDock'"), 'section 1 announces it');
   assert.ok(/\| `video\.surface` \|[^\n]*`layer: 'below' \\\| 'above'`/.test(doc), 'the message table carries layer');
   assert.ok(doc.includes('**Live dock picture (v1.401.0'), 'the section 3 block');
   assert.ok(/^\| nativeVideoDock \|/m.test(doc), 'the owners table (section 5)');

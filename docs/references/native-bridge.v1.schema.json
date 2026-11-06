@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo", "nativeVideoDock"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo", "nativeVideoDock", "nativeVideoPip"] }
         }
       }
     },
@@ -62,7 +62,8 @@
         { "properties": { "type": { "const": "audio.stop" } } },
         { "properties": { "type": { "const": "audio.subscribe" } } },
         { "properties": { "type": { "const": "audio.unsubscribe" } } },
-        { "properties": { "type": { "const": "video.surface" }, "rect": { "$ref": "#/$defs/surfaceRect" }, "space": { "enum": ["document", "viewport"] }, "visible": { "type": "boolean" }, "fit": { "enum": ["contain", "cover"] }, "radius": { "type": "number", "minimum": 0 }, "layer": { "$ref": "#/$defs/surfaceLayer" } }, "required": ["rect", "space", "visible", "fit", "radius"] }
+        { "properties": { "type": { "const": "video.surface" }, "rect": { "$ref": "#/$defs/surfaceRect" }, "space": { "enum": ["document", "viewport"] }, "visible": { "type": "boolean" }, "fit": { "enum": ["contain", "cover"] }, "radius": { "type": "number", "minimum": 0 }, "layer": { "$ref": "#/$defs/surfaceLayer" } }, "required": ["rect", "space", "visible", "fit", "radius"] },
+        { "description": "v1.404.0 nativeVideoPip (announced only beside nativeVideo): start or stop AVPictureInPictureController on the native player's layer. Sent from the web button's click, only under the capability and only while native owns the current video. A start while already in picture-in-picture, or a stop while not, is a no-op.", "properties": { "type": { "const": "video.pip" }, "action": { "enum": ["start", "stop"] } }, "required": ["action"] }
       ]
     },
     "audioItem": {
@@ -217,6 +218,14 @@
             "error": { "enum": ["network", "notPlayable", "revoked", "notOnServer", "other"] }
           },
           "required": ["id", "error"]
+        },
+        {
+          "description": "v1.404.0 nativeVideoPip: on every picture-in-picture start and stop, whoever caused it (the web's button, automatic picture-in-picture, Apple's own controls), and once at load with active false.",
+          "properties": {
+            "type": { "const": "videoPip" },
+            "active": { "type": "boolean" }
+          },
+          "required": ["active"]
         }
       ]
     },

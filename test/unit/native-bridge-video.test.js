@@ -28,10 +28,10 @@ const item = (id) => ({ kind: 'video', id, src: '/api/offline/file/video/' + id,
 const MODES = { autoplay: true, shuffle: false, loop: 'off' };
 const STATE = (extra) => Object.assign({ v: 1, type: 'audioState', rev: 1, queue: [item('v1')], index: 0, state: 'playing', positionSec: 3, durationSec: 100, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
 
-test('nativeVideo is a known capability; video.surface is the ONE video message and it is gated by nativeVideo alone (S1, S2, S3)', () => {
+test('nativeVideo is a known capability; video.surface is its ONE video message and it is gated by nativeVideo alone (S1, S2, S3)', () => {
   assert.ok(adapterModule.CAPABILITIES.includes('nativeVideo'));
   const videoMessages = Object.keys(adapterModule.MESSAGES).filter((t) => t.indexOf('video.') === 0);
-  assert.deepStrictEqual(videoMessages, ['video.surface'], 'no video.* transport: play, pause, seek, rate and stop stay audio.*');
+  assert.deepStrictEqual(videoMessages, ['video.surface', 'video.pip'], 'no video.* transport: play, pause, seek, rate and stop stay audio.* (video.pip, v1.404.0, is presentation, not transport)');
   assert.strictEqual(adapterModule.MESSAGES['video.surface'].cap, 'nativeVideo');
   assert.deepStrictEqual(adapterModule.SURFACE_SPACES, ['document', 'viewport']);
   assert.deepStrictEqual(adapterModule.SURFACE_FITS, ['contain', 'cover']);

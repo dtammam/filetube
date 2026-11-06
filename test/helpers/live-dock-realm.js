@@ -28,7 +28,7 @@ function realm(opts) {
   opts = opts || {};
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: new VirtualConsole() });
   const w = dom.window;
-  w.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q)) || (!!opts.reduced && /prefers-reduced-motion/.test(q)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  w.matchMedia = (q) => ({ matches: (!opts.desktop && /max-width:\s*768px|pointer:\s*coarse|hover:\s*none/.test(q) && !/any-pointer/.test(q)) || (!!opts.reduced && /prefers-reduced-motion/.test(q)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
   w.HTMLMediaElement.prototype.load = function () {};
   w.HTMLMediaElement.prototype.pause = function () {};
@@ -40,13 +40,14 @@ function realm(opts) {
   w.MediaMetadata = function (init) { Object.assign(this, init); };
   w.fetch = (u) => {
     const url = String(u); let body = {};
-    if (url === '/api/settings') body = { backgroundAudioForVideo: true };
+    if (url === '/api/settings') body = Object.assign({ backgroundAudioForVideo: true }, opts.settings || {});
     else if (/\/prepare-audio$/.test(url)) body = { audioStatus: 'ready' };
     else if (url.indexOf('/api/queue') === 0) body = { entries: [], pointerUid: null };
     else if (/^\/api\/progress\//.test(url)) body = { timestamp: 0 };
     return Promise.resolve({ ok: true, status: 200, json: async () => body });
   };
-  const fake = installFakeHost(w, opts.caps || DOCK_CAPS);
+  const fake = opts.noHost ? null : installFakeHost(w, opts.caps || DOCK_CAPS); // noHost: a browser (v1.404.0's Safari and desktop realms)
+  if (opts.beforeScripts) opts.beforeScripts(w);
   // the player box's rounded corner in the slot (12) and the DOCK's own corner (7; the wrapper has none inside the dock): plain rules
   // jsdom's cascade applies (it resolves no tokens)
   const style = w.document.createElement('style'); style.textContent = '#player-wrapper { border-top-left-radius: 12px; } #player-dock #player-wrapper { border-top-left-radius: 0; } #player-dock { border-top-left-radius: 7px; }'; w.document.head.appendChild(style);
@@ -84,8 +85,8 @@ function realm(opts) {
     hole: () => w.document.getElementById('ft-video-hole'),
     clip: () => { const h = w.document.getElementById('ft-video-hole'); return h ? (h.style.getPropertyValue('clip-path') || '') : ''; },
     bodyOn: () => w.document.body.classList.contains('ft-native-video'),
-    surfaces: () => fake.of('video.surface'),
-    last: () => { const s = fake.of('video.surface'); return s[s.length - 1]; },
+    surfaces: () => (fake ? fake.of('video.surface') : []),
+    last: () => { if (!fake) return undefined; const s = fake.of('video.surface'); return s[s.length - 1]; },
     poster: () => w.document.getElementById('media-player').getAttribute('poster'),
     close: () => w.close(),
   };
