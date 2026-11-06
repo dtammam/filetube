@@ -230,7 +230,7 @@ unchanged: `visible: false` still hides the layer, and the host still hides it o
 desktop and app builds without `nativeVideoDock` (the v0.16 app): byte-identical to v1.400.1 - the dock shows the thumbnail and no `layer`
 field is ever sent.
 
-**Picture-in-picture (v1.404.0; add-only, plan docs/exec-plans/active/2026-11-05-ios-pip.md).** Under a native surface the web's `<video>` has no
+**Picture-in-picture (v1.404.0; add-only, plan docs/exec-plans/completed/2026-11-05-ios-pip.md).** Under a native surface the web's `<video>` has no
 `src`, so the standard `requestPictureInPicture()` can only be refused: PiP has to be native. With **`nativeVideoPip`** announced (only ever
 beside `nativeVideo`) the settings menu's picture-in-picture row posts **`video.pip { action }`**, only while native owns the current video, and
 its pressed state and label come ONLY from **`videoPip { active }`**. **Automatic PiP:** native sets

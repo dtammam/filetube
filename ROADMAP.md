@@ -447,6 +447,8 @@
 
 ### Features
 
+- [ ] **Picture-in-picture (v1.404.0) follow-ups** _(gate r2 notes, none user-blocking; take them when a device check or the next touch asks)_: the Adversary's surviving mutants on code it measured correct: `webkitSaysNo` needing `hasWebkitPip` (bound on the pure function only), the Safari exit's `armPipWatchdog(false)`, `startY` and the one-finger scope in the touch reset. QA's label notes: under the Dynamic Island in portrait faux fullscreen (no safe-area inset), and sharing the locked 2x badge's spot. `PIP_START_WATCHDOG_MS` now also covers a stop: rename it when next touched.
+
 - **Swipe to Trash (v1.403.0) follow-ups** _(2026-11-05, the build and its gate; none blocks the release)_: (1) **The grid can be one card
   off after a race; the file is safe:** Undo landing while a refresh is in flight can leave the restored card out until the next refresh;
   a swipe during an in-flight page append can leave one card unshown until a refresh (the append overwrites the offset, as Hide from feed
@@ -958,7 +960,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.404.0 - Picture-in-picture works on the iPhone: the app (with its next update) and Safari (2026-11-05)
+### v1.404.0 - Picture-in-picture on the iPhone: the app (with its next update) and Safari (2026-11-06)
 
 - Dean (2026-11-05): "The picture-in-picture mode never worked in iOS. Like, it just, the button doesn't work." In the app the web's `<video>` has no source since v1.399.0, so the
   standard call could only be refused, and a silent catch hid that. New bridge capability `nativeVideoPip`, intent `video.pip`, event `videoPip`: the row starts and stops Apple's PiP on

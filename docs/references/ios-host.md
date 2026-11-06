@@ -104,7 +104,7 @@ plan](../exec-plans/completed/2026-10-11-offline-server.md); the design is [ios-
 
 Contract v1 (add-only) gains `nativeVideoPip`, the intent `video.pip { action }` and the event `videoPip { active }`. Under a native surface the web element has
 nothing loaded, so the standard browser call can only be refused (silently, until this release): PiP has to be `AVPictureInPictureController` on native's layer, started
-by the web's button and automatically when a playing video leaves the app. The FileTube half is [the ios-pip plan](../exec-plans/active/2026-11-05-ios-pip.md);
+by the web's button and automatically when a playing video leaves the app. The FileTube half is [the ios-pip plan](../exec-plans/completed/2026-11-05-ios-pip.md);
 details and owners: [native-bridge.md](native-bridge.md) sections 1, 2, 3, 5 and 6 ("Picture-in-picture (v1.404.0)").
 
 ## Addendum 2026-10-28 (v1.399.0): the native video surface, eleven capabilities

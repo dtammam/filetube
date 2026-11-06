@@ -5,7 +5,7 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
-## Picture-in-picture on the iPhone (v1.404.0; (c)-(g) after the app build that announces nativeVideoPip)
+## Picture-in-picture on the iPhone (v1.404.0; (c)-(h) after the app build that announces nativeVideoPip)
 
 - [ ] v1.404.0 - (a) iPhone Safari with Settings "Use custom player controls on touch devices" ON (off, Apple's own controls show and FileTube has no row), a video, the settings cog, Picture-in-picture: it floats; the row now says Exit picture-in-picture, and it (or Apple's own control) brings it back. A toast "not available here (<name>)" instead: note the name, it is the reason Safari refused.
 - [ ] v1.404.0 - (b) A desktop browser: the same row floats and returns as before.
