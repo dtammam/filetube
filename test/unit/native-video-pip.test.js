@@ -386,6 +386,7 @@ test('the watchdog is about the video it was asked of: a close, a pagehide and a
     r.fake.emit(PIP_ON);
     pip(r).click();
     assert.deepStrictEqual(pipPosts(r), ['stop']);
+    r.el().dispatchEvent(new r.w.Event('loadedmetadata')); // a re-sync while still floating must not disarm a stop's watchdog
     await settle(3200);
     assert.deepStrictEqual(toasts, ['Picture-in-picture is not available here (no response)']);
     assert.strictEqual(pip(r).getAttribute('aria-pressed'), 'true', 'still only what native says');
