@@ -642,11 +642,28 @@ function collectVPM(arg) {
   }
   const nav = document.getElementById('bottom-nav');
   const navShown = !!(nav && getComputedStyle(nav).display !== 'none' && nav.getBoundingClientRect().height > 0);
+  // The Modern pill scrolls sideways when its tabs do not fit (v1.405.0, "scroll inside the pill"), so a tab
+  // parked past the pill's edge is unreachable BY DESIGN until it is scrolled to. Bring each tab into view by
+  // the nav's OWN scrollLeft (never scrollIntoView: it can scroll the page and move every other measurement),
+  // hit-test it, and restore the scroll after the loop. A pill that cannot be scrolled
+  // gets no help (scrollWidth <= clientWidth, or overflow-x not auto/scroll, which a finger cannot scroll either):
+  // a tab outside it stays outside and its hit test fails.
+  const navScroll0 = navShown ? nav.scrollLeft : 0;
   const tabs = navShown ? Array.from(nav.querySelectorAll('.bottom-nav-item')).filter((t) => !t.hidden && getComputedStyle(t).display !== 'none' && t.getBoundingClientRect().width > 0).map((t) => {
+    let scrolled = false;
+    if (nav.scrollWidth > nav.clientWidth && /^(auto|scroll)$/.test(getComputedStyle(nav).overflowX)) {
+      const nr = nav.getBoundingClientRect();
+      const tr = t.getBoundingClientRect();
+      let dx = 0;
+      if (tr.left < nr.left) dx = tr.left - nr.left;
+      else if (tr.right > nr.right) dx = tr.right - nr.right;
+      if (dx) { const before = nav.scrollLeft; nav.scrollTo({ left: before + dx, behavior: 'instant' }); scrolled = nav.scrollLeft !== before; }
+    }
     const r = t.getBoundingClientRect();
     const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return { name: t.getAttribute('data-nav') || '?', box: box(r), hit: name(hit), self: !!(hit && t.contains(hit)) };
+    return { name: t.getAttribute('data-nav') || '?', box: box(r), hit: name(hit), self: !!(hit && t.contains(hit)), scrolled };
   }) : [];
+  if (navShown && nav.scrollLeft !== navScroll0) nav.scrollTo({ left: navScroll0, behavior: 'instant' });
   const covers = [];
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
@@ -691,7 +708,7 @@ function evalVPM(d) {
   if (d.scrollW > d.vw) failures.push(`sideways scroll: the page is ${d.scrollW}px wide in a ${d.vw}px viewport`);
   if (d.portrait && !d.isPocket) {
     if (!d.tabs.length) failures.push('VACUOUS: no bottom-bar tab shown in portrait');
-    for (const t of d.tabs) if (!t.self) failures.push(`bottom-bar ${t.name}: its centre hits ${t.hit}, not the tab`);
+    for (const t of d.tabs) if (!t.self) failures.push(`bottom-bar ${t.name}: its centre hits ${t.hit}, not the tab${t.scrolled ? ' (after the pill was scrolled to bring it into view)' : ' (the pill was not scrolled for it: it needed no scroll, or cannot scroll)'}`);
   }
   for (const c of d.covers) failures.push(`a layer takes taps over more than half the viewport: ${c.sel} ${JSON.stringify(c.box)} z ${c.z}`);
   if (!d.isPocket && !d.centre.ok) failures.push(`the content centre ${d.centre.at.join(',')} hits ${d.centre.hit}, outside #view-root`);
