@@ -1331,7 +1331,9 @@ const PreviewCards = (function () {
     // life (the v1.85 cached-home scar). refresh() runs on every DOM mutation.
     if (observer && observed.size) {
       observed.forEach(function (el) {
-        if (!el.isConnected) { observer.unobserve(el); observed.delete(el); ratios.delete(el); }
+        // v1.406.0 P (plan 2026-11-08-smoothness): the mark goes with the observation. Home is CACHED on nav-away and the same
+        // card nodes come back on Back; a card left marked was never observed again, so no preview ever played after Back.
+        if (!el.isConnected) { observer.unobserve(el); observed.delete(el); ratios.delete(el); el.removeAttribute('data-pv-obs'); }
       });
     }
     const cards = document.querySelectorAll('.card-preview[data-preview-id]:not([data-pv-obs])');

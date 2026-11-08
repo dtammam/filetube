@@ -12252,7 +12252,8 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const root = doc.getElementById('view-root');
       if (!root) return null;
-      return { root, title: doc.title || '' };
+      const vm = doc.querySelector('meta[name="ft-version"]'); // v1.406.0 G: the shell cache keeps only the running version's shells
+      return { root, title: doc.title || '', version: vm ? String(vm.getAttribute('content') || '') : '' };
     } catch (_) {
       return null;
     }
@@ -12326,12 +12327,31 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // "generalize rather than fork twice" instruction). A failed load clears
   // its slot so a later navigation can retry instead of wedging forever.
   const viewScriptPromises = {};
+  // v1.406.0 G (plan 2026-11-08-smoothness): the page's own shell names each lazy view script's content hash
+  // (server.js injectViewScriptVersions: <meta name="ft-view-scripts" content="/js/music.js=<hash> ...">), so the script
+  // is asked for by its immutable versioned URL - cached by the browser, never a revalidation round trip. A script the
+  // meta does not name (an older server, a module-served file) keeps its bare URL, as before.
+  let viewScriptVersions = null;
+  function versionedScriptSrc(src) {
+    if (!viewScriptVersions) {
+      viewScriptVersions = Object.create(null);
+      try {
+        const meta = document.querySelector('meta[name="ft-view-scripts"]');
+        const raw = meta ? String(meta.getAttribute('content') || '') : '';
+        raw.split(/\s+/).forEach((pair) => {
+          const m = /^(\/js\/[A-Za-z0-9_-]+\.js)=([0-9a-f]{8,64})$/.exec(pair);
+          if (m) viewScriptVersions[m[1]] = m[2];
+        });
+      } catch (_) { /* no meta: bare URLs */ }
+    }
+    return viewScriptVersions[src] ? src + '?v=' + viewScriptVersions[src] : src;
+  }
   function ensureScriptLoaded(src, registryKey) {
     if (viewRegistry[registryKey]) return Promise.resolve();
     if (viewScriptPromises[src]) return viewScriptPromises[src];
     viewScriptPromises[src] = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = src;
+      script.src = versionedScriptSrc(src);
       script.addEventListener('load', () => resolve());
       script.addEventListener('error', () => {
         viewScriptPromises[src] = null; // allow a later retry instead of wedging forever
@@ -12368,6 +12388,111 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     const src = VIEW_SCRIPT_SRC[view];
     return src ? ensureScriptLoaded(src, view) : Promise.resolve();
   }
+
+  // ---- v1.406.0 G: the view-shell cache --------------------------------------------------------------------------------
+  // Every hop used to wait for the destination's whole HTML shell (35-44 KB, no-cache) before anything changed on screen
+  // (the audit measured 110-260 ms on the VPN model, 390-930 ms on cell, no feedback). Each shell's #view-root (and its
+  // <title>) is static per PATH - the server sends the same file for every query (server.js shellHtmlForRequestPath; the
+  // /cleanup, /feed and /pages transforms take no request input) and the view's script reads the query - so the parsed
+  // fragment is kept per pathname and a later hop swaps from it at once, in the same task as the tap.
+  //  - Never a reused node (LESSONS 4): the cache holds a parsed copy that is never inserted; every hop imports a deep clone.
+  //  - Never a new shell with old JS: a fetched shell is cached only when its ft-version equals the running page's (a release
+  //    mid-session keeps swapping as before, uncached, until the next full load).
+  //  - Same-route and hash rules are unchanged (navigate's same-location no-op runs before any of this).
+  //  - A signed-out session still lands on the login page: a cache hit asks the shell with HEAD behind the swap, and a
+  //    redirected or refused answer loads the URL for real (the router's existing fallback).
+  //  - The view's lazy script loads IN PARALLEL with its shell (it used to load first, then the shell).
+  //  - At idle after boot the nav destinations' shells are fetched once (and their lazy scripts warmed in the HTTP cache).
+  const SHELL_CACHE_MAX = 24;
+  const shellCache = new Map(); // pathname -> { root: a parsed #view-root never inserted, title }
+  function runningFtVersion() {
+    const m = document.querySelector('meta[name="ft-version"]');
+    return m ? String(m.getAttribute('content') || '') : '';
+  }
+  function shellKeyOf(url) {
+    try { return new URL(url, window.location.href).pathname; } catch (_) { return null; }
+  }
+  function cloneShellEntry(entry) {
+    return { root: document.importNode(entry.root, true), title: entry.title };
+  }
+  function rememberShell(key, root, title) {
+    if (!key) return;
+    if (shellCache.has(key)) shellCache.delete(key);
+    shellCache.set(key, { root: root.cloneNode(true), title });
+    while (shellCache.size > SHELL_CACHE_MAX) shellCache.delete(shellCache.keys().next().value);
+  }
+  function revalidateShellSession(url) {
+    try {
+      fetch(url, { method: 'HEAD', credentials: 'same-origin' })
+        .then((res) => {
+          const want = shellKeyOf(url);
+          const landed = res && res.url ? shellKeyOf(res.url) : want;
+          if ((res && (res.status === 401 || res.status === 403)) || (res && res.redirected && landed !== want)) window.location.assign(url);
+        })
+        .catch(() => { /* offline: the cached shell stands, the view's own fetches report it */ });
+    } catch (_) { /* no fetch */ }
+  }
+  // The fragment for `url`: a clone of the cached shell (sync-resolved), or the fetched one (cached for next time).
+  // Resolves null when the response has no #view-root; rejects on a non-OK answer or a network failure.
+  function loadViewShell(url, opts) {
+    const key = shellKeyOf(url);
+    const hit = key ? shellCache.get(key) : null;
+    if (hit) {
+      if (!(opts && opts.prefetch)) revalidateShellSession(url);
+      return Promise.resolve(cloneShellEntry(hit));
+    }
+    return fetch(url, { credentials: 'same-origin' })
+      .then((res) => {
+        if (!res.ok) throw new Error('view shell: fetch failed with status ' + res.status);
+        return res.text();
+      })
+      .then((html) => {
+        const fragment = extractViewFragment(html);
+        if (!fragment) return null;
+        if (fragment.version === runningFtVersion()) rememberShell(key, fragment.root, fragment.title);
+        return { root: fragment.root, title: fragment.title };
+      });
+  }
+  // A view and its shell together: the lazy script and the shell are asked at once; the swap waits for both.
+  function loadViewAndShell(view, url) {
+    return Promise.all([ensureViewScriptLoaded(view), loadViewShell(url)]).then((both) => both[1]);
+  }
+  // Idle prefetch: each nav destination's shell once (sequentially, never competing with the first screen), and its lazy
+  // script fetched into the HTTP cache by its versioned URL (not executed: a view's script runs when it is first opened).
+  let shellPrefetchStarted = false;
+  function prefetchNavShells() {
+    if (shellPrefetchStarted || typeof document === 'undefined') return;
+    shellPrefetchStarted = true;
+    const urls = [];
+    const seen = new Set();
+    const add = (href) => {
+      let u;
+      try { u = new URL(href, window.location.href); } catch (_) { return; }
+      if (u.origin !== window.location.origin) return;
+      const view = deriveRouteView(u.pathname);
+      if (!view || seen.has(u.pathname) || shellCache.has(u.pathname)) return;
+      seen.add(u.pathname);
+      urls.push({ url: u.pathname, view });
+    };
+    document.querySelectorAll('#bottom-nav a[href]').forEach((a) => add(a.getAttribute('href'))); // the tabs a thumb reaches
+    add('/watch.html');
+    const next = () => {
+      const item = urls.shift();
+      if (!item) return;
+      const src = VIEW_SCRIPT_SRC[item.view];
+      if (src && !viewRegistry[item.view]) { try { fetch(versionedScriptSrc(src), { credentials: 'same-origin' }).catch(() => {}); } catch (_) { /* best-effort */ } }
+      loadViewShell(item.url, { prefetch: true }).catch(() => {}).then(next);
+    };
+    next();
+  }
+  function schedulePrefetchNavShells() {
+    const run = () => { try { prefetchNavShells(); } catch (_) { /* a prefetch never breaks the page */ } };
+    try {
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: SHELL_PREFETCH_DELAY_MS * 2 });
+      else setTimeout(run, SHELL_PREFETCH_DELAY_MS);
+    } catch (_) { /* no timers */ }
+  }
+  const SHELL_PREFETCH_DELAY_MS = 2000;
 
   // The one swap routine every navigation (an in-app click, `popstate`, and
   // the progressive-enhancement boot) funnels through -- exactly one code
@@ -12449,15 +12574,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // reconcile opportunity would.
   function loadFreshHomeView(url, scrollY) {
     const gen = ++navGeneration;
-    return ensureViewScriptLoaded('home')
-      .then(() => fetch(url, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('home dirty-reconcile: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    return loadViewAndShell('home', url) // v1.406.0 G
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('home dirty-reconcile: response had no #view-root');
         swapToView('home', fragment.root, fragment.title, scrollY, url);
       })
@@ -12667,15 +12786,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       return Promise.resolve();
     }
 
-    return ensureViewScriptLoaded(view)
-      .then(() => fetch(parsed.href, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('navigate: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    return loadViewAndShell(view, parsed.href) // v1.406.0 G: the cached shell (or its fetch) and the view's script, together
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('navigate: response had no #view-root');
         // Update the URL BEFORE swapping (see the ordering comment above
         // `navigate`) -- the winning (non-stale) navigation pushes/replaces
@@ -12834,7 +12947,13 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // gate r1: REPLACE, never push - the Click player is the same /music page, so Back from it lands where Back
     // from /music would (a push left a dead Back press: the idle Click player stayed up on /music).
     if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
-    navigate(target.href);
+    // v1.406.0 G: the tapped control holds its pressed state ([data-pressed], ui.css) until the swap, so a hop that still
+    // has to fetch (a first visit) answers the tap at once; released however the navigation ends
+    let pressed = false;
+    try { if (!anchor.hasAttribute('data-pressed')) { anchor.setAttribute('data-pressed', ''); pressed = true; } } catch (_) { /* detached */ }
+    const release = () => { if (pressed) { try { anchor.removeAttribute('data-pressed'); } catch (_) { /* gone */ } } };
+    const p = navigate(target.href);
+    if (p && typeof p.then === 'function') p.then(release, release); else release();
   }
 
   // Re-derives the view from `location` (the browser has ALREADY updated it
@@ -12888,15 +13007,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       return;
     }
 
-    ensureViewScriptLoaded(state.view)
-      .then(() => fetch(state.url, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('popstate: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    loadViewAndShell(state.view, state.url) // v1.406.0 G
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('popstate: response had no #view-root');
         swapToView(state.view, fragment.root, fragment.title, state.scrollY, targetUrl);
       })
@@ -12954,6 +13067,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // those), and it fires again harmlessly if a page IS the home view.
     probeAndReconcileRepullButton();
     scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
+    schedulePrefetchNavShells(); // v1.406.0 G: the nav destinations' shells at idle, so the first tap swaps at once too
   }
 
   window.FileTube = window.FileTube || {};

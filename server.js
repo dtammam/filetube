@@ -3504,6 +3504,21 @@ function injectVersionMeta(html) {
   if (/<head\b[^>]*>/i.test(html)) return html.replace(/(<head\b[^>]*>)/i, `$1${tag}`);
   return html; // no <head> (not a shell we template) -- leave untouched
 }
+// v1.406.0 G (plan 2026-11-08-smoothness): the scripts the SPA router loads lazily on an in-app hop (common.js
+// VIEW_SCRIPT_SRC - test/unit/smoothness-view-shell-cache.test.js binds the two lists equal). Each shell names their
+// content hashes in one meta, so the router asks for `<src>?v=<hash>` - an immutable, cached URL - instead of the bare
+// path (no-cache: one revalidation round trip per first use per load). A file this server does not serve from public/
+// (subscriptions.js lives in its module) is left out, and the router keeps the bare URL for it.
+const LAZY_VIEW_SCRIPTS = ['/js/tv.js', '/js/subscriptions.js', '/js/books.js', '/js/read.js', '/js/music.js', '/js/podcasts.js', '/js/history.js', '/js/cleanup.js', '/js/feed.js', '/js/pages.js', '/js/stats.js'];
+function injectViewScriptVersions(html) {
+  if (/<meta\s+name="ft-view-scripts"/i.test(html) || !/<\/head>/i.test(html)) return html;
+  const pairs = [];
+  for (const src of LAZY_VIEW_SCRIPTS) {
+    const v = staticAssets.versionOf(src);
+    if (typeof v === 'string' && /^[0-9a-f]+$/.test(v)) pairs.push(src + '=' + v);
+  }
+  return html.replace(/<\/head>/i, () => `<meta name="ft-view-scripts" content="${pairs.join(' ')}"></head>`);
+}
 // Read a header shell from disk and send it with the custom-logo class injected
 // when one is configured. Returns false (having sent nothing) if the file can't
 // be read, so callers can fall through. Shared by the static-shell middleware
@@ -3529,6 +3544,7 @@ function sendShellHtml(res, absFilePath, transform) {
   html = injectCustomLogoClass(html);
   html = injectVersionMeta(html); // v1.90: expose the running version to the client
   html = staticAssets.rewriteHtml(html); // v1.386.0: content-versioned asset URLs (lib/staticAssets.js)
+  html = injectViewScriptVersions(html); // v1.406.0 G: the lazy view scripts' versioned URLs for the router
   if (isDiagEnabled()) {
     // Perf-diagnostics: ride the collector on EVERY shell from this ONE choke
     // point, so a soft-nav'd view can never land on a shell that lacks it (the
@@ -7593,6 +7609,7 @@ if (require.main === module) {
 // Exported for testing (see test/). Importing this module has no side effects
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
+  LAZY_VIEW_SCRIPTS, // v1.406.0 G: bound equal to common.js VIEW_SCRIPT_SRC (smoothness-view-shell-cache test)
   app,
   pages, // v1.395.0 Pages: tests seed items through the real service and capture
   feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)

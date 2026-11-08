@@ -238,6 +238,11 @@ test('watch page: loadRelatedFiles + setupTrackNavContext request the FULL list 
   try {
     await settle();
     const { document } = dom.window;
+    // v1.406.0 H: both full-list fetches wait for the player's first 'playing' (or a 1.5 s cap) - start it
+    const media = document.getElementById('media-player');
+    assert.ok(media, 'the player is mounted');
+    media.dispatchEvent(new dom.window.Event('playing'));
+    await settle();
 
     // ---- both callers must have requested the FULL set, not a 60-item page ----
     const relatedCall = calls.find((c) => c.url.indexOf('/api/videos?limit=') === 0);
