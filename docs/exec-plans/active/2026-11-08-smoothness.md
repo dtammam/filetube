@@ -170,3 +170,68 @@ A single-page rebuild; cross-document view transitions; bfcache work; intent pre
 view transitions (Planned); any native work beyond the two fields (the iOS Root's).
 
 ## Evidence
+
+### Build (2026-11-08, builder Opus)
+
+Commits: W1 b1717d7c (A1 + A2 + H), W2 ce9cff13 (G + P), W3 03591414 (A3), W4 a1ca1549 (E1 + E2 + E3 + F), W5 80a917e1 (M + docs),
+origin/main merged a0acbd8b (vpm-pill-scroll + baselines; no file overlap with the branch, checked with `git diff --name-only`).
+
+Decisions and deviations, stated:
+- A1: `isFullWatchSeedItem` is decided by what the player reads (`type` + boolean `needsTranscode`); a list record still passes by
+  size + filePath. The Modern grid and home rows gain `server.js watchSeedFields` (hasThumbnail, needsTranscode, transcodeStatus,
+  width, height, the EFFECTIVE projection, audioStatus) - never a path or size. Home rows (Classic Continue watching, feed rows) now
+  stash a seed too.
+- A2: the web element's cover drops on `playing` / `seeked` / `error`, not on requestVideoFrameCallback: the
+  fullscreen-edge-and-video-state lock (WebKit attaches a video output for rVFC, the v1.312 blackout shape) went red on the first
+  cut and was honoured. A native item that FAILS keeps its thumbnail with the error toast (no 'error' event on the proxy; a black box
+  would be worse) - a deviation from "error drops the cover" for the native case only.
+- G: the bottom-nav shells and the watch shell are prefetched at idle (not the desktop sidebar's). A shell is cached only when its
+  ft-version equals the page's; a release mid-session still swaps an uncached new shell as before. A cache hit re-checks the session
+  with HEAD (a redirect loads the URL for real).
+- E3: deferred to the first screen: the pinned sidebar fetch, the handoff card, the bell probe, the queue chip read. NOT deferred
+  (count-gated nav items keep their timing): History, Liked, Downloads, the health probe. Config and auth/me are shared single
+  requests; settings starts with config. The health probe is single-flight.
+- E2: the snapshot paints only on a home instance's FIRST load (a refresh / retry keeps its skeleton - a test caught the first cut).
+  Painted before the user is known (cleared on sign-out, on the login / welcome shells, and on a mismatch once /api/auth/me answers);
+  a different user reaching the home without passing those would see one frame of the old cards - disclosed.
+- M: the switch is "Player and timing log", not "Player event log": it now also records launch and tab timings.
+- Masked mutants (documented, not fake-tested): E1-3 the boot-time cap arm (every shell either marks through the router or arms the
+  cap through a deferred read); M12 the close-time cover drop (the closed host is detached; the next load's teardown drops it); A3-13
+  the seeded frame's own `posSec = 0` (masked by buildSkinCtx's foreign-element guard); the row listener's kind gate (masked by the
+  watch-href check); H's per-view settings + the old `done` flag were removed as redundant.
+
+Mutation (each restored from a backup copy, never git checkout): W1 A2 19 + 3 + 1 re-run, A1 10, rows 5, H 8 + 3, health 3; W2 G 12 + 2,
+P 2; W3 A3 15 + 6 + 2; W4 19 + 8 + 2. Every survivor is fixed, removed as dead code, or listed as masked above.
+
+Suites (the merged tree a0acbd8b + the W5 commit): `npm test` on Node 22.23.1: tests 13424, pass 13411, fail 0, skipped 13; on Node
+24.20.0: tests 13424, pass 13411, fail 0, skipped 13. `npm run lint:ui`: OK (the live debt equals docs/ui-exceptions.json).
+`node scripts/overlay-containment-lint.js --enforce`: clean (0 violations).
+
+### Measurement (W5; base = `git archive 0ece22d6`, branch = this tree; the audit's probe with a cover flag and a tile-tap flow)
+
+Instrument: scratchpad `measure/sm-probe.js` (the audit's sa-probe.js + FT_ROOT, the `.player-cover` in the sampler, a Jump back in
+tile tap). Modern home, 390x844 touch, VPN model (80 ms RTT, 20 Mbps), n = 1 per cell, box load 1.5-3.6. Milliseconds from the tap
+(launch rows: from navigation start). Numbers copied from the probe's JSON lines.
+
+| Outcome | Flow | Chromium 4x CPU base -> branch | WebKit 1x base -> branch |
+|---|---|---|---|
+| O1 | video tap: swap -> picture source on screen (black box) | view 199, poster 368 (169 ms black) -> view 146, cover 146 (0) | view 156, poster 290 (134 ms black) -> view 96, cover 96 (0) |
+| O1 | video tap: first frame | 624 -> 408 | 694 -> 557 |
+| O2 | Music tile tap with another song loaded: the OTHER song shown | 325 ms -> 0 | (Chromium only) |
+| O2 | ... tapped title on screen | 359 -> 42 | (Chromium only) |
+| O3 | tap -> URL change (dead time), video tap | 137 -> 21 | 121 -> 13 |
+| O3 | Music tab hop: view swapped / skeleton | 153, skeleton 153-276 -> 78, none | 134, skeleton 134-236 -> 27, none |
+| O3 | dock tap -> Music panel | 229 -> 99 | 143 -> 34 |
+| O4 | relaunch (warm cache): skeleton / first card | 327 / 1416 -> none / 917 | 456 / 1455 -> 552 / 1090 |
+| O4 | first launch (empty cache and storage): first card | 1316 -> 1222 | 1203 -> 1107 |
+
+Read with care: the Chromium O2/O3 rows are from the second Chromium run (out-*-cr2, after the tile flow was fixed to dock first);
+the first Chromium run gave the same picture (video black 179 -> 0 ms, tab hop 168 -> 68). The probe's `/music?play=` flow
+(navigate with no tap, so no seed) still shows "Unknown track" for 281 -> 272 ms (Chromium) - a deep link has nothing to seed from;
+O2 is about a TAP. WebKit's relaunch shows a skeleton at 552 ms: the snapshot paints, then WebKit's run measured a skeleton frame
+in the avatar strip (`sk` counts any shimmer) - not re-run. O5 (shimmer under 150 ms) and O6 (previews after Back) are bound by
+tests, not measured by this probe (its library has no preview clips). Native (O1 under the app, O4's splash) needs the app build.
+Filmstrips sent to Dean (SendUserFile): video tap and Music tile tap, base over branch, 0-1500 ms.
+
+Relay: the iOS Root relay (pictureReady + host.ready, as frozen above) sent to "SANDYJAR iOS Dev Root" 2026-11-08 (Remote Control,
+no reply path).
