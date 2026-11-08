@@ -31,7 +31,9 @@ function realm(opts = {}) {
   const media = { phone: opts.phone !== false, landscape: !!opts.landscape };
   w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? media.phone : q === '(orientation: landscape)' ? media.landscape : false,
     addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-  w.fetch = () => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
+  // the page's own boot (common.js's DOMContentLoaded block) runs in this window too; its probes answer 404, or never (pendingFetch:
+  // a cold load whose capability probes have not landed yet)
+  w.fetch = opts.pendingFetch ? () => new Promise(() => {}) : () => Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) });
   if (opts.config) w.localStorage.setItem('ft-bottomnav', JSON.stringify(opts.config));
   const fake = opts.caps === null ? null : installFakeHost(w, { capabilities: opts.caps || ALL_CAPS.concat(['nativeTabBar']) });
   w.eval(read('public/js/host-adapter.js'));
@@ -44,7 +46,8 @@ function realm(opts = {}) {
   const visibleIds = () => Array.prototype.filter.call(nav().querySelectorAll('.bottom-nav-item[data-nav]'), (el) => !el.hidden).map((el) => el.getAttribute('data-nav'));
   const boot = async () => { w.applyBottomNavCustomization(); w.applyNavHighlight('/', ''); w.initNativeTabBar(); await settle(); };
   const emit = (detail) => fake.emit(Object.assign({ v: 1 }, detail));
-  return { w, dom, fake, $, nav, settle, bars, last, visibleIds, boot, emit, media, close: () => w.close() };
+  const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await new Promise((res) => setTimeout(res, 10)); } return false; };
+  return { w, dom, fake, $, nav, settle, until, bars, last, visibleIds, boot, emit, media, close: () => w.close() };
 }
 
 // ---- the census: every position:fixed family above --z-nav, from the stylesheets, classified ------------------------------------
@@ -187,6 +190,26 @@ test('cap on: the async injectors\' race (both insert afterend on Settings) stil
   } finally { r.close(); }
 });
 
+test('cap on: the v1.339 pre-paint placeholders (index.html\'s own reserve script) are in the FIRST nav.bar, in the web bar\'s places; a tap on one does nothing', async () => {
+  const r = realm({ pendingFetch: true });
+  try {
+    const html = INDEX;
+    const at = html.indexOf("var last = JSON.parse(window.localStorage.getItem('ft-bottomnav-last')");
+    const start = html.lastIndexOf('<script>', at) + '<script>'.length;
+    const script = html.slice(start, html.indexOf('</script>', at));
+    r.w.localStorage.setItem('ft-bottomnav-last', JSON.stringify(['home', 'feed', 'playlists', 'history', 'oneoff-download', 'you']));
+    r.w.eval(script); // the shell's inline block, as it runs before first paint
+    assert.ok(r.$('#bottom-nav [data-ft-reserve="you"]'), 'precondition: the placeholders are painted');
+    r.w.applyBottomNavCustomization(); r.w.applyNavHighlight('/', ''); r.w.initNativeTabBar(); await r.settle(); // the probes are still pending
+    assert.deepEqual(r.bars()[0].items.map((i) => i.id), ['home', 'feed', 'playlists', 'history', 'oneoff-download', 'you'], 'spaced like the web bar from the first message');
+    assert.deepEqual(r.bars()[0].items.find((i) => i.id === 'you'), { id: 'you', label: 'You', active: false });
+    let clicks = 0;
+    r.w.document.addEventListener('click', () => { clicks++; }, true);
+    r.emit({ type: 'navTap', id: 'you' });
+    assert.equal(clicks, 0, 'no live data-nav element: the tap is ignored, as a tap on the web placeholder');
+  } finally { r.close(); }
+});
+
 test('cap on: the You avatar sends its photo path as imageUrl; a photo off-origin is left out (the message still goes)', async () => {
   const r = realm();
   try {
@@ -257,6 +280,8 @@ const SURFACES = [
     return { later: () => { p.hidden = false; }, undo: () => { p.hidden = true; } };
   }, 'music-skin'],
   ['native fullscreen', (r) => { Object.defineProperty(r.w.document, 'fullscreenElement', { configurable: true, get: () => r.nav() }); r.w.document.dispatchEvent(new r.w.Event('fullscreenchange')); return () => { Object.defineProperty(r.w.document, 'fullscreenElement', { configurable: true, get: () => null }); r.w.document.dispatchEvent(new r.w.Event('fullscreenchange')); }; }, 'fullscreen'],
+  ['the ?debugLifecycle=1 log (inline-styled, player.js)', (r) => { const el = r.w.document.createElement('div'); el.id = 'ft-lifecycle-overlay'; r.w.document.body.appendChild(el); return () => el.remove(); }, 'diagnostics-log'],
+  ['the rotate log (inline-styled, common.js)', (r) => { const el = r.w.document.createElement('div'); el.id = 'ft-rotate-panel'; r.w.document.body.appendChild(el); return () => el.remove(); }, 'diagnostics-log'],
   ['the keyboard (a focused text field)', (r) => { r.$('#field').focus(); return () => r.$('#field').blur(); }, 'keyboard'],
   ['a retro look', (r) => { r.w.document.documentElement.setAttribute('data-theme', '2005'); return () => r.w.document.documentElement.setAttribute('data-theme', '2021'); }, null],
   ['landscape', (r) => { r.media.landscape = true; r.w.dispatchEvent(new r.w.Event('resize')); return () => { r.media.landscape = false; r.w.dispatchEvent(new r.w.Event('resize')); }; }, null],
@@ -275,6 +300,7 @@ for (const [name, open, coverName] of SURFACES) {
       assert.equal(r.nav().hidden, false, 'the web bar is back under the surface, exactly as today');
       if (coverName) assert.equal(r.w.bottomNavCoveredBy(), coverName);
       undo();
+      await r.until(() => !r.w.document.querySelector('.ui-sheet')); // a closing ui.js sheet still covers until it is removed (gate r1)
       await r.settle(); await r.settle();
       assert.equal(r.last().visible, true, 'cleared: the native pill returns');
       assert.equal(r.nav().hidden, true);
@@ -295,6 +321,35 @@ test('visible: after an SPA navigation REPLACES #view-root (the router\'s oldRoo
     bar.hidden = false; await r.settle();
     assert.equal(r.last().visible, false, 'the reader bar in the new root hides the native pill');
     bar.hidden = true; await r.settle();
+    assert.equal(r.last().visible, true);
+  } finally { r.close(); }
+});
+
+test('visible: a ui.js sheet that is CLOSING (is-closing, sliding out) still covers; the pill returns only once it is removed', async () => {
+  const r = realm();
+  try {
+    await r.boot();
+    const sh = r.w.ui.sheet({ variant: 'bottom', title: 'T', doc: r.w.document });
+    sh.open(); await r.settle();
+    assert.equal(r.last().visible, false);
+    sh.close(); await r.settle();
+    assert.ok(r.$('.ui-sheet.is-closing'), 'precondition: the sheet is on its way out, still on screen');
+    assert.equal(r.last().visible, false, 'no pill over the sliding sheet');
+    assert.equal(r.w.bottomNavCoveredBy(), 'sheet');
+    assert.ok(await r.until(() => !r.$('.ui-sheet')), 'the sheet is removed');
+    await r.settle();
+    assert.equal(r.last().visible, true);
+  } finally { r.close(); }
+});
+
+test('visible: a surface that is in the DOM but not rendered (visibility:hidden), and an in-flow .mms-full (off the phone takeover), cover nothing', async () => {
+  const r = realm();
+  try {
+    await r.boot();
+    const b = r.w.document.createElement('div'); b.className = 'speed-sheet-backdrop'; b.style.visibility = 'hidden'; r.w.document.body.appendChild(b);
+    const p = r.w.document.createElement('div'); p.className = 'music-nowplaying-panel mms mms-full'; r.$('#view-root').appendChild(p); // no is-phone rule: position static
+    await r.settle();
+    assert.equal(r.w.bottomNavCoveredBy(), null);
     assert.equal(r.last().visible, true);
   } finally { r.close(); }
 });
@@ -352,6 +407,24 @@ test('navBarMetrics: native\'s height becomes --native-tab-bar-h, and the offset
     const css = read('public/css/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.match(css, /:root\[data-theme="2021"\]\[data-native-tab-bar\]\s*\{\s*--mobile-bottom-nav-h:\s*calc\(var\(--native-tab-bar-h, calc\(var\(--pill-h\) \+ var\(--pill-gap\)\)\) \+ env\(safe-area-inset-bottom\)\);\s*\}/);
   } finally { r.close(); }
+});
+
+test('navBarMetrics: every change of the bar\'s reserve (native takes over, its height changes, the web bar comes back) tells the JS-sized reader', async () => {
+  const r = realm();
+  try {
+    let n = 0;
+    r.w.addEventListener('ft-bottom-nav-reserve', () => { n++; });
+    await r.boot();
+    assert.equal(n, 1, 'native took the pill over');
+    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 2, 'its metrics landed after the reader sized');
+    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 2, 'the same height: nothing to re-measure');
+    r.emit({ type: 'navBarMetrics', height: 74 }); assert.equal(n, 3, 'Dynamic Type / rotation');
+    r.w.document.body.classList.add('ft-css-fullscreen'); await r.settle(); assert.equal(n, 4, 'the web bar is back');
+    await r.settle(); assert.equal(n, 4, 'a re-evaluation that changes nothing sends nothing');
+  } finally { r.close(); }
+  const src = read('public/js/read.js');
+  const body = src.slice(src.indexOf('function sizeReader()'), src.indexOf("window.addEventListener('resize'", src.indexOf('function sizeReader()')));
+  assert.match(body, /window\.addEventListener\('ft-bottom-nav-reserve', \(\) => \{\n\s*sizeReader\(\);/, 'read.js re-sizes the reader on it');
 });
 
 test('navBarMetrics: a JS-sized surface (the reader) reserves the offset var while native draws, though the web pill is [hidden]', async () => {

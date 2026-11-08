@@ -5771,13 +5771,18 @@ const NATIVE_TAB_BAR_COVERS = [
   // [name, selector, fixedOnly]: a match that is rendered (not [hidden], not display:none / visibility:hidden) covers the bar.
   // Every family here is position:fixed by its CSS (the census binds that); fixedOnly re-checks it where the SAME class is
   // an in-flow panel off the phone (.mms-full outside html.is-phone / .mms-popout).
-  ['sheet', '.ui-scrim.is-open, .ui-sheet.is-open'], // every ui.js sheet, dialog, menu and popover (the account menu, Playlists, confirms)
+  // every ui.js sheet, dialog, menu and popover (the account menu, Playlists, confirms) - while it closes too: close() swaps is-open
+  // for is-closing and the sheet slides out for --dur-sheet before it is removed (gate r1: the pill came back over the slide)
+  ['sheet', '.ui-scrim.is-open, .ui-sheet.is-open, .ui-sheet.is-closing'],
   ['faux-fullscreen', '#player-wrapper.css-fullscreen'],
   ['audio-expanded', '#player-wrapper.audio-mode.audio-expanded'],
   ['speed-sheet', '.speed-sheet-backdrop'],
   ['watch-calendar', '.whcal-overlay'],
   ['reader-nowplaying', '.reader-nowplaying'], // fixed at bottom 0, over the bar (the reader's narration bar)
   ['music-skin', '.mms-full', true], // the phone music skin takeover (fixed, inset 0)
+  // two diagnostics panels built with INLINE styles (so the stylesheet census cannot see them): fixed, bottom 0, z 999999, over
+  // the bar today - the ?debugLifecycle=1 log (player.js) and the rotate log (common.js); the device reads them on the phone
+  ['diagnostics-log', '#ft-lifecycle-overlay, #ft-rotate-panel'],
 ];
 // Inputs that raise no keyboard; every other focused input, textarea, select (iOS's picker) or editable raises one.
 const NO_KEYBOARD_INPUTS = ['button', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'reset', 'submit', 'hidden'];
@@ -5816,18 +5821,21 @@ function nativeTabBarVisible() {
   return bottomNavCoveredBy() === null;
 }
 
-const ntb = { host: null, last: null, timer: null, height: null, drawing: false, mo: null, viewRoot: null };
+const ntb = { host: null, last: null, timer: null, height: null, drawing: false, mo: null, viewRoot: null, reserveKey: '' };
 function nativeTabBarDrawing() { return ntb.drawing; }
-// The payload, from the live bar: the items applyBottomNavCustomization left visible, in its (DOM) order.
+// The payload, from the live bar: the items applyBottomNavCustomization left visible, in its (DOM) order. A v1.339 pre-paint
+// placeholder (data-ft-reserve: Download, Subs, You before their probes land) goes under its reserved id, exactly where the web
+// bar holds its place, so the native pill is spaced like the web bar from the first message (gate r1: it popped 4 -> 6 items);
+// a navTap on it finds no live data-nav element and does nothing, as a tap on the web placeholder does.
 function nativeTabBarPayload() {
   const nav = document.getElementById('bottom-nav');
   if (!nav) return null;
   const items = [];
-  const els = nav.querySelectorAll('.bottom-nav-item[data-nav]');
-  for (let i = 0; i < els.length && items.length < 32; i++) {
+  const els = nav.querySelectorAll('.bottom-nav-item');
+  for (let i = 0; i < els.length; i++) {
     const el = els[i];
-    if (el.hidden || el.parentNode !== nav) continue;
-    const id = el.getAttribute('data-nav');
+    const id = el.getAttribute('data-nav') || el.getAttribute('data-ft-reserve');
+    if (el.hidden || !id) continue;
     const it = { id, label: bottomNavItemName(el) || id, active: el.classList.contains('active') };
     const img = el.querySelector('img.ui-avatar__img');
     const src = img ? img.getAttribute('src') : null;
@@ -5844,6 +5852,13 @@ function nativeTabBarSetDrawing(on) {
   const metered = on && ntb.height !== null;
   if (root.hasAttribute('data-native-tab-bar') !== metered) {
     if (metered) root.setAttribute('data-native-tab-bar', ''); else root.removeAttribute('data-native-tab-bar');
+  }
+  // the bar's reserve just changed renderer or height: a surface that sizes itself in JS (the reader, read.js sizeReader, which
+  // otherwise measures only at init and on resize) re-measures on this event (gate r1: native's metrics landed after the reader sized)
+  const key = on + '|' + (metered ? ntb.height : '');
+  if (key !== ntb.reserveKey) {
+    ntb.reserveKey = key;
+    try { window.dispatchEvent(new window.CustomEvent('ft-bottom-nav-reserve')); } catch (_) { /* no CustomEvent */ }
   }
 }
 function nativeTabBarFlush() {
@@ -5882,23 +5897,15 @@ function nativeTabBarWatch() {
     }
     const wrapper = document.getElementById('player-wrapper');
     if (wrapper) ntb.mo.observe(wrapper, { attributes: true, attributeFilter: ['class'] }); // css-fullscreen, audio-expanded
-    watchItems(); // an injected item (Download, Subs, You) is watched for its own hidden flips too
   };
   ntb.mo = new window.MutationObserver(() => { watchKids(); nativeTabBarSchedule(); });
-  const watchItems = () => {
-    const bar = document.getElementById('bottom-nav');
-    if (bar) for (let i = 0; i < bar.children.length; i++) ntb.mo.observe(bar.children[i], { attributes: true, attributeFilter: ['hidden'] });
-  };
   ntb.mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] }); // the look; is-phone
   ntb.mo.observe(document.body, { attributes: true, attributeFilter: ['class'], childList: true }); // every ui.js surface is a body child
-  // the bar itself: applyBottomNavCustomization re-appends (childList) and hides (hidden) items, applyNavHighlight moves the
+  // the bar itself: applyBottomNavCustomization re-appends every visible item (childList) after any hide, applyNavHighlight moves the
   // lit item (class), the theme item renames itself (text), the You avatar lands or fails over (src): every customization and
   // every navigation reaches the pill through this one observer. The bar's OWN hidden attribute (ours) is not watched.
   const nav = document.getElementById('bottom-nav');
-  if (nav) {
-    ntb.mo.observe(nav, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'src', 'aria-label'] });
-    watchItems();
-  }
+  if (nav) ntb.mo.observe(nav, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'src', 'aria-label'] });
   watchKids();
   watchViewRoot();
   ['focusin', 'focusout', 'fullscreenchange', 'webkitfullscreenchange'].forEach((t) => document.addEventListener(t, nativeTabBarSchedule, true));

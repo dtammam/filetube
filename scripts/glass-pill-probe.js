@@ -117,9 +117,14 @@ async function measureTree(OUT) {
   };
   process.on('exit', cleanup);
   let list = null;
-  for (let i = 0; i < 40 && !list; i++) { await new Promise((r) => setTimeout(r, 250)); try { list = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json(); } catch (_) { /* not up */ } }
-  if (!list) throw new Error('Chromium never exposed its debug endpoint');
-  const { send, ev } = await cdp(list.find((t) => t.type === 'page').webSocketDebuggerUrl);
+  // wait for a PAGE target, not just the endpoint: right after start the list can be empty (gate r1 qa S2: an empty list is truthy)
+  let page = null;
+  for (let i = 0; i < 60 && !page; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    try { list = await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json(); page = Array.isArray(list) ? list.find((t) => t.type === 'page') : null; } catch (_) { /* not up */ }
+  }
+  if (!page) throw new Error('Chromium never exposed a page target on its debug endpoint');
+  const { send, ev } = await cdp(page.webSocketDebuggerUrl);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const waitFor = async (expr, ms) => { const end = Date.now() + (ms || 15000); while (Date.now() < end) { if (await ev(expr)) return true; await sleep(100); } return false; };
   await send('Network.enable'); await send('Page.enable');

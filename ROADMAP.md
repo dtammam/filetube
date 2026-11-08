@@ -452,6 +452,12 @@
   load; the router `replaceWith`s it on every in-app navigation), so a view-owned fixed panel toggled by `hidden` (the Pocket cover, `.mms-full`) after an in-app
   navigation may not hide the live dock picture until another signal fires. Measure with scripts/live-dock-probe.js after a navigation before fixing.
   (2) The Feed's card stack was n/a in the R6 sweep (no feed items in the probe library); its height reads the one offset in CSS.
+  (3) Gate r1 qa S1: with nativeTabBar on, `#view-root`'s subtree childList wakes the coalesced evaluation on any text change in the
+  view (the player's time label, about 4 Hz); an unchanged payload is never re-sent, but the idle cost (7 querySelectorAll +
+  getComputedStyle + a stringify per wake) is not bound by a flush-count test (LESSONS 3). (4) Gate r1 adversary N4, suspected and
+  not run on WebKit: the keyboard check trusts `document.activeElement`, so a text field hidden without losing focus (the header
+  search after a history-row tap runs closeSearch, which only drops html.search-open) may keep `visible: false` (the web pill shows
+  instead of the glass one) until focus moves; count the field only when it is rendered.
 
 - [ ] **Picture-in-picture (v1.404.0) follow-ups** _(gate r2 notes, none user-blocking; take them when a device check or the next touch asks)_: the Adversary's surviving mutants on code it measured correct: `webkitSaysNo` needing `hasWebkitPip` (bound on the pure function only), the Safari exit's `armPipWatchdog(false)`, `startY` and the one-finger scope in the touch reset. QA's label notes: under the Dynamic Island in portrait faux fullscreen (no safe-area inset), and sharing the locked 2x badge's spot. `PIP_START_WATCHDOG_MS` now also covers a stop: rename it when next touched.
 

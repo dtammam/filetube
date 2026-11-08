@@ -1336,6 +1336,12 @@ if (typeof module !== 'undefined' && module.exports) {
     sizeReaderSurface = sizeReader;
     sizeReader();
     let sizeDebounce = null;
+    // v1.405.0: the bar's reserve changes without a resize when the iPhone app takes the pill over or hands it back
+    // (common.js nativeTabBarSetDrawing): re-measure then too
+    window.addEventListener('ft-bottom-nav-reserve', () => {
+      sizeReader();
+      if (adapter && typeof adapter.refit === 'function') adapter.refit();
+    }, { signal });
     window.addEventListener('resize', () => {
       if (sizeDebounce) clearTimeout(sizeDebounce);
       sizeDebounce = setTimeout(() => {

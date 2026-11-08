@@ -75,7 +75,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `audio.unsubscribe` | (none) | `nativeAudio` | stops them (playback goes on) |
 | `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0, optional `layer: 'below' \| 'above'` (v1.401.0; sent only when `nativeVideoDock` is announced; `'above'` only with `space: 'viewport'`) | `nativeVideo` (+ `nativeVideoDock` for `layer`) | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0); `layer: 'above'` moves the picture view above the web view for the docked mini player, touches passing through (v1.401.0) |
 | `video.pip` | `action: 'start' \| 'stop'` | `nativeVideoPip` | `start` begins `AVPictureInPictureController` on the native player's layer (a user-initiated start: the web sends it from the button's click); `stop` ends it; a `start` while already in picture-in-picture, or a `stop` while not, is a no-op (v1.404.0) |
-| `nav.bar` | `items: [{ id, label, active, imageUrl? }]` (at most 32; `id` 1..64, `label` 1..128, `imageUrl` a same-origin PATH), `visible: boolean` | `nativeTabBar` | draws the icon-only glass tab pill (`UIGlassEffect`) above the web view with the items in this order, the `active` one selected, each `id` mapped to an SF Symbol pair from a table native owns (an unknown id = a generic symbol, never nothing; `imageUrl` = the account photo); `label` is the accessibility label and the long-press name; `visible: false` hides it at once (v1.405.0) |
+| `nav.bar` | `items: [{ id, label, active, imageUrl? }]` (at most 32; `id` 1..64, `label` 1..128, `imageUrl` a same-origin PATH), `visible: boolean` | `nativeTabBar` | draws the icon-only glass tab pill (`UIGlassEffect`) above the web view with the items in this order, the `active` one selected, each `id` mapped to an SF Symbol pair from a table native owns (an unknown id = a generic symbol, never nothing; `imageUrl` = the account photo: native accepts only a value that starts with `/` and a non-`/` character, resolves it against the configured server origin without percent-decoding first, refuses it when the result's origin differs, and fetches it with the web view's own session cookie, never the device token); `label` is the accessibility label and the long-press name; `visible: false` hides it at once (v1.405.0) |
 
 ## 3. Native to web events
 
@@ -94,7 +94,7 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `audioError` | `id` (the Item's id), `error: 'network' \| 'notPlayable' \| 'revoked' \| 'notOnServer' \| 'other'` | once per item native could not play (it then skips to the next item, or ends with `state: 'failed'` on the last) |
 | `videoPip` | `active: boolean` | on every picture-in-picture start and stop, whoever caused it (the web's button, automatic picture-in-picture, Apple's own controls), and once at load with `false` (v1.404.0) |
 | `navTap` | `id` (string, 1..64) | a tap on a native pill item; nothing else is sent and the selection does not move until the next `nav.bar` says so (v1.405.0) |
-| `navBarMetrics` | `height` (CSS px, 0..400: the pill's height plus its gap above the safe area, the safe area excluded) | once after the announce, then on every change (rotation, Dynamic Type) (v1.405.0) |
+| `navBarMetrics` | `height` (CSS px, 0..400: the pill's height plus its gap above the safe area, the safe area excluded) | in reply to each page's FIRST `nav.bar` (the web listens from then; one sent earlier is lost), then on every change (rotation, Dynamic Type) (v1.405.0) |
 
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
 does not know as `'other'`.
@@ -266,7 +266,10 @@ and `visible`), the web pill is `[hidden]` but stays in the DOM: it is the item 
 `[data-nav=id]` element, so links go through the SPA router and Playlists opens its sheet; a hidden or missing id is ignored). The
 offset follows the renderer: the web pill's CSS defines `--mobile-bottom-nav-h` (pill + gap + safe area); while native draws it is
 `navBarMetrics.height` + the safe area (the web writes only `--native-tab-bar-h`, CSS derives the var), so the content's last row,
-the docked mini player and the reader clear the pill with either renderer. **Without `nativeTabBar`** (Safari, the PWA, an app build
+the docked mini player and the reader clear the pill with either renderer (the reader sizes itself in JS, so common.js tells it
+on a `ft-bottom-nav-reserve` window event whenever the renderer or native's height changes). Native sends `navBarMetrics` in reply
+to each page's first `nav.bar` - the web listens from its boot, after the announce, so a metric sent earlier would be lost - and
+then on every change. **Without `nativeTabBar`** (Safari, the PWA, an app build
 without it) no `nav.bar` is ever sent and the web pill shows.
 
 ## 4. Server side: `/api/host-info`

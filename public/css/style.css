@@ -3808,9 +3808,11 @@ html.has-player-dock .bottom-nav-tip {
     overflow-x: auto;
     overflow-y: hidden;
     overscroll-behavior-x: contain;
-    /* corner-clip-safe: the pill's own items are plain links/buttons with no transform, video or will-change, so
-       no compositing layer can reach a rounded corner while the row scrolls; the DOM cannot split clip from
-       scroll here (applyBottomNavCustomization appends the items straight into #bottom-nav) */
+    /* corner-clip-safe: the pill's items are plain links/buttons with no video or will-change; the ONE animated
+       transform inside is the loading shimmer of the You avatar (.skeleton-shimmer::after, while the photo or its
+       pre-paint placeholder loads), and it is clipped by the avatar's own round overflow:hidden box, inset from
+       the pill's corners by the pill's padding; the DOM cannot split clip from scroll here (applyBottomNavCustomization
+       appends the items straight into #bottom-nav) */
   }
   [data-theme="2021"] .bottom-nav::-webkit-scrollbar {
     width: 0;
