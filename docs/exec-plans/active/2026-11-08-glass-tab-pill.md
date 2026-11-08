@@ -3,8 +3,8 @@ plan: glass-tab-pill
 harness: v2 · full
 branch: feat/v1.405.0-glass-tab-pill
 anchor: spec
-status: Kickoff done; build not started
-next: the builder reads Step 0, then W1 (the web pill)
+status: Built W1-W4; gate pending
+next: the full Node 22 suite, then the gate (adversary, qa, security-brief)
 design: Rulings approved by Dean 2026-11-08 (AskUserQuestion): Q1-Q5 below; look A picked from three mockups
 gate: pending (adversary + qa + security-brief; a new bridge capability, message and event = a boundary-shaped surface)
 builder: smart
@@ -203,4 +203,68 @@ not picked); changing what the bar can hold or its defaults; desktop; the iOS im
 
 ## Evidence
 
-(builder fills in)
+Builder: FileTube Builder (Opus), 2026-11-08. Branch from main f835967e (origin/main unmoved at the W4 commit). Commits: W1 ab1e38dd, W2 a77aaea5,
+W3 03e284c8, W4 (docs + 1.405.0) on top.
+
+**Step 0 notes.** `--space-4` is 8px, not the 16px of Q5's gutters, so the pill reads a new `--pill-gutter: 16px` (Dean's ruling wins over the R1
+wording). The callout and selection are already off app-wide (ui.css `body`: `-webkit-touch-callout: none`), and ui-lint rule 6 forbids a second
+one, so R3 adds none.
+
+**Rulings taken during the build (Dean, AskUserQuestion, 2026-11-08, after the W1 crops):** R4 stop rule -> "Scroll inside the pill"; the look ->
+"Looks right" (light + dark crops at 390px sent before W2).
+
+**R1 / lints.** `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json", TOTAL 3141 before and after (no new debt; every
+new value is a token in tokens.css: `--pill-ground/-solid/-rim/-edge/-shadow/-glass` per Modern mode, `--pill-pad/-h/-gap/-gutter`).
+`npm run lint:overlay`: "overlay-containment: clean (0 violations)". The lint DID ask once R4 made the pill scroll (overflow-x:auto + a radius on one
+rule, and the DOM cannot split them: applyBottomNavCustomization appends items straight into #bottom-nav), so the rule carries a reviewed
+`corner-clip-safe` note (items are plain links/buttons, no transform / video / will-change); mutant without the note -> "1 violation(s)".
+
+**R2 - every consumer reads the ONE var** (`grep -n 'var(--mobile-bottom-nav-h' public/css/*.css`): ui.css:908 `.ui-toast-host`; style.css
+1049/1052 `.select-bar` (+dock), 1475 `#player-dock`, 3023/3040 `#handoff-card`, 3142/3148 `#remote-pill`, 3584/3597 `.bottom-nav-tip` (new),
+3606 `.bottom-nav-reserve-probe` (new), 3723 `.main-content` padding, 4202/4204 `#player-wrapper.portrait-media` max-height, 7132
+`#dl-status-chip`, 13384 the Feed's `.feed-stack`. JS: read.js sizeReader read `bottomNav.offsetHeight` (its own copy, under-reserving the
+floating pill by its gap + the safe area) and now reads `FileTube.bottomNavReservePx()` (the strip height on retro looks, unchanged; the resolved
+var on the pill; the var while native draws). Definitions: `:root` (72px strip), `:root[data-theme="2021"]` (pill + gap + inset),
+`:root[data-theme="2021"][data-native-tab-bar]` (navBarMetrics + inset) - one per renderer (glass-tab-pill.test.js R2).
+
+**R4 (scripts/glass-pill-probe.js, Modern light).** Default bar: 6 items [home, feed, playlists, history, oneoff-download, you]; narrowest 57.7px
+(390), 55.2px (375), 46px (320); pill 358/343/288 x 56; offset 64px (+ inset); no scroll. Full roster (FT_PILL_FULL=1): 14 items, before the ruling
+24.7 / 23.6 / 19.7px (base's flat bar: 27.8 / 26.8 / 22.8px); after: 44px each, row 628px scrolling in 358/343/288px.
+
+**R5 (base f835967e vs branch, the same probe).** `--compare`: "SUMMARY compared=26 differ=0 ok" for the default config AND the full-roster config
+(Original/Classic/Flat x light/dark x 390/375/320, plus all four looks x two modes at 1024px: the bar's box and 25 computed properties, every item's
+box + 10 properties, the labels, the resolved offset, `.main-content` padding, `#player-dock` bottom). Re-run after W2: 26/0.
+
+**R6 sweep (FT_PILL_SWEEP=1, Modern and Original at 390x844): "SUMMARY checks=22 failed=0 ok".** reader-reserve 64=64 (Original 52=52); last row
+746.7 <= bar top 780; toast 772 <= 780; chip 772 <= 780; dock bottom 72px >= 64px; Playlists sheet covers the bar (hit test lands on the sheet);
+faux fullscreen visibility hidden; R3 real touch: tip "History", path still "/" after the release; tip above a showing dock (674 <= 682); a tap
+navigates to /history; landscape: display none, reserve 0. Feed: n/a (no feed items in the probe library; its height is CSS reading the var).
+By CSS analysis: sheets at --z-sheet and the music skin (fixed inset 0, z 1100) cover it as before; the reader's now-playing bar (fixed, bottom 0,
+z 940) covers it as before; page turn lives inside the reader chassis (sized by the reserve above). Not measured in a browser: the reader with a
+real book, page turn, the music skin (no media in the probe library) - device check (f).
+
+**R3.** jsdom on the real binder + engine: hold 500ms shows the accessible name (an aria-label wins), the click after is swallowed (default
+prevented), a tap is unchanged, every retro look and desktop never arm. Tip z = --z-dock - 1 (test/unit/native-dock-covered.test.js's census:
+nothing new above the dock), lifted above the dock while it shows.
+
+**W3 contract.** Covering surfaces (derived census, test/unit/native-tab-bar.test.js): covers = `.ui-scrim`/`.ui-sheet` is-open (every ui.js
+sheet, dialog, menu, popover), faux fullscreen (`body.ft-css-fullscreen`, `#player-wrapper.css-fullscreen`), `#player-wrapper.audio-expanded`,
+`.speed-sheet-backdrop`, `.whcal-overlay`, `.reader-nowplaying`, `.mms-full`; plus native fullscreen and the keyboard (a focused text field,
+select or editable). clear = header, `.select-bar`, `#player-dock`, `#handoff-card`, `#remote-pill`, `#dl-status-chip`, `.ui-toast-host`,
+`.bottom-nav-tip`. under (no z-index) = the mms tray panel, `.ipm-kb`. jsdom (real index.html bar, ui.js, interaction.js, host-adapter.js behind
+a fake host, common.js): 30 tests. Real browser with a fake host (FT_PILL_NATIVE=1): "SUMMARY native-checks=11 failed=0 ok" - first payload
+equals the DOM's visible order with the lit item; web pill [hidden] + display none; navBarMetrics 62 -> offset 62; navTap playlists opens the
+sheet and sends visible:false; Escape -> visible:true; navTap history navigates and selects history; keyboard up/down flips visible; a retro look
+-> visible:false; cap off: 0 nav.bar, web pill shown. That probe caught a real defect jsdom missed: the router `replaceWith`s `#view-root`, so the
+first draft's once-bound observer went stale after a navigation (fixed: re-found at every flush; a jsdom test now replaces the root).
+
+**Mutation (LESSONS 2), each restored from a backup copy.** W1: 5 mutants, 4 red; the survivor (an overflow guard) was redundant and removed. W2
+R3: 7 red / 7. W2 reserve: 3 red / 3. W3: 34 mutants, 32 red; the two survivors were a redundant `el.hidden` fast path (removed) and the empty-
+label fallback (test added, then red); the view-root rewire: 3 mutants, 1 red; the two survivors were two redundant rewire points (one kept, bound).
+Two explicit re-send hooks (in applyBottomNavCustomization / applyNavHighlight) were removed as duplicates of the bar's own MutationObserver.
+
+**Changes to existing tests (growth, not weakening):** native-bridge-pip.test.js pinned `nativeVideoPip` as the LAST capability; it now checks it
+is announced (the add-only list grew). glass-tab-pill.test.js R2 counts three definitions (one per renderer).
+
+**Suites (Node 22.23.1).** Pre-commit hook (the unit suite): W1 10468 tests, 10467 pass, 0 fail; W2 10475 / 10474 / 0; W3 10505 / 10504 / 0
+(1 skipped each). Full `npm test` before the gate: see below.
