@@ -82,3 +82,42 @@ until Dean says so.**
 Anything else from the smoothness plan; native changes beyond a relay.
 
 ## Evidence
+
+### W1 - reproduce (2026-11-08, builder Opus)
+
+Instrument: `test/integration/switch-click.test.js` - the REAL watch view (watch.js, common.js, main.js), player.js,
+native-audio.js and host-adapter.js in one jsdom realm (watch.html), a fake host that models today's app (v0.17: an
+`audio.load` answers `loading` after 40 ms, `audio.play` answers `playing` after 120 ms then an `audioTick` each second, NO
+`pictureReady` field), the two hydration fetches answering after 250 ms, the seeds and detail records SERVER-EMITTED
+(`/api/home?view=grid`, `/api/videos`, `/api/videos/:id`). Flow: cold-open A, `player.dock()` + destroy (the router's
+leave-watch), stash the card's seed, init watch for B. The same file was run unchanged in a `git archive v1.405.0` sandbox.
+Every post to native recorded with its ms since the tap (`item=...` = the Item, identical on both trees: kind video, src
+`/api/offline/file/video/vb`, artworkSrc `/thumbnail/vb`, durationSec 600, progress `/api/progress`).
+
+| Switch | v1.405.0 | main (v1.406.0) |
+|---|---|---|
+| docked A -> Modern card B | `+274ms audio.load rev=2 pos=0 autoplay=false`, `+281ms audio.play`, `+292ms video.surface below visible` | `+18ms audio.load rev=2 pos=0 autoplay=false`, `+20ms audio.play`, `+37ms video.surface below visible` |
+| docked A -> Classic card B | `+17ms audio.load rev=2`, `+18ms audio.play`, `+37ms video.surface below` | `+17ms audio.load rev=2`, `+19ms audio.play`, `+36ms video.surface below` |
+| docked Music track -> Modern B | `+304ms audio.load rev=2`, `+321ms audio.play`, `+338ms video.surface below` | `+35ms audio.load rev=2`, `+37ms audio.play`, `+65ms video.surface below` |
+
+- Every switch, both trees: ONE `audio.load`, ONE `audio.play`, ONE `video.surface`, ZERO `audio.stop`, ZERO second load at
+  hydration (the hydration `player.load` is an adopt; `claimVideo`'s same-item follow backs it). Suspects 1 and 2 REFUTED.
+- Web media elements during the switch (every `play()` and `src` set on any `<video>`/`<audio>`): `[]` on both trees.
+  Negative control (same realm, no native host): `+13ms src= video#media-player /video/vb`, `+14ms play() video#media-player`
+  - the instrument sees a web play when there is one.
+- Suspect 3: with a host that sends `pictureReady: true` main posted `video.surface` between load and play (v1.405.0 after
+  play); with today's app model (no field) the order is identical on both trees - an artifact of the fake, not a web change.
+- The ONLY web-side change at a switch: Modern's one load now goes out at the tap (+18 ms) instead of after hydration
+  (+274 ms) - the intended O1, and exactly what Classic already did on v1.405.0.
+- Stop rule hit (no extra post, no abrupt stop). New lead outside the native-post axis (not in the plan's suspects): v1.406.0
+  P made Modern card previews (a muted web `<video>`, `play()` 1.5 s after a card is >= 60% in view) play again after Back -
+  before it, no preview ever played on a cached Home. `PreviewCards` has no stand-down while the player plays, and a tap
+  detaches the cached Home, which pauses (HTML spec) any rolling preview at the same moment native swaps to B. Dean's flow
+  (watch -> back to Home -> tap another) is exactly the newly enabled case; a fresh, uncached Home ran previews on v1.405.0
+  too ("possibly the first audio switch"). Unproven on the device: LESSONS 5 records that any play on a second element, even
+  muted, disturbs iOS's audio session.
+- Binding (mutants in a `git archive HEAD` sandbox, the tree untouched): M1 `audio.stop` before `claimVideo`'s sendLoad ->
+  `# pass 0 # fail 3`; M2 hydration re-sends (player.load adopt off AND claimVideo's same-item follow off) -> `# pass 0
+  # fail 3`; M3 adopt off alone -> `# pass 3 # fail 0` (MASKED: the claimVideo follow sends nothing for the same item, two
+  redundant guards, LESSONS 2); restored -> `# pass 3 # fail 0`.
+- Next: Dean's device discriminator (asked 2026-11-08), then W2 on the cause it proves.
