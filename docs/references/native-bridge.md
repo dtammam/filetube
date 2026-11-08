@@ -264,10 +264,12 @@ classified): an open ui.js sheet, dialog, menu or popover (`.ui-scrim` / `.ui-sh
 now-playing bar, the phone music skin (`.mms-full`), and the on-screen keyboard (a focused text field). While native draws (announced
 and `visible`), the web pill is `[hidden]` but stays in the DOM: it is the item source and the `navTap` target (`.click()` on the live
 `[data-nav=id]` element, so links go through the SPA router and Playlists opens its sheet; a hidden or missing id is ignored). The
-offset follows the renderer: the web pill's CSS defines `--mobile-bottom-nav-h` (pill + gap + safe area); while native draws it is
+offset follows the renderer: the web pill's CSS defines `--mobile-bottom-nav-h` (pill + gap + safe area); while native owns the page it is
 `navBarMetrics.height` + the safe area (the web writes only `--native-tab-bar-h`, CSS derives the var), so the content's last row,
 the docked mini player and the reader clear the pill with either renderer (the reader sizes itself in JS, so common.js tells it
-on a `ft-bottom-nav-reserve` window event whenever the renderer or native's height changes). Native sends `navBarMetrics` in reply
+on a `ft-bottom-nav-reserve` window event whenever native takes the page over or lets go, or its height changes). The offset
+follows native's OWNERSHIP of the page (announced, metrics in, Modern phone portrait), not `visible`: while a sheet, a menu or
+the keyboard covers the pill, native's reserve stands, so nothing re-flows under them. Native sends `navBarMetrics` in reply
 to each page's first `nav.bar` - the web listens from its boot, after the announce, so a metric sent earlier would be lost - and
 then on every change. **Without `nativeTabBar`** (Safari, the PWA, an app build
 without it) no `nav.bar` is ever sent and the web pill shows.

@@ -3660,8 +3660,9 @@ html.has-player-dock .bottom-nav-tip {
   :root[data-theme="2021"] {
     --mobile-bottom-nav-h: calc(var(--pill-h) + var(--pill-gap) + env(safe-area-inset-bottom));
   }
-  /* ...and while the iPhone app draws the pill (nativeTabBar), native's own height + gap (navBarMetrics, written by
-     common.js as --native-tab-bar-h with data-native-tab-bar on <html>) + the inset: one definition per renderer. */
+  /* ...and while the iPhone app owns the pill on the page (nativeTabBar announced, its metrics in; a sheet covering the pill
+     does not change it), native's own height + gap (navBarMetrics, written by common.js as --native-tab-bar-h with
+     data-native-tab-bar on <html>) + the inset: one definition per renderer. */
   :root[data-theme="2021"][data-native-tab-bar] {
     --mobile-bottom-nav-h: calc(var(--native-tab-bar-h, calc(var(--pill-h) + var(--pill-gap))) + env(safe-area-inset-bottom));
   }

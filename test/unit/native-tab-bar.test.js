@@ -400,31 +400,57 @@ test('navBarMetrics: native\'s height becomes --native-tab-bar-h, and the offset
     r.emit({ type: 'navBarMetrics', height: -1 }); r.emit({ type: 'navBarMetrics', height: 'big' }); r.emit({ type: 'navBarMetrics', height: 9999 });
     assert.equal(root.style.getPropertyValue('--native-tab-bar-h'), '62px', 'a bad metric is dropped as data');
     r.w.document.body.classList.add('ft-css-fullscreen'); await r.settle();
-    assert.equal(root.hasAttribute('data-native-tab-bar'), false, 'the web bar is back: its own offset again');
+    assert.equal(root.hasAttribute('data-native-tab-bar'), true, 'covered: native still owns the page, its reserve stands (gate r2)');
     r.w.document.body.classList.remove('ft-css-fullscreen'); await r.settle();
+    r.w.document.documentElement.setAttribute('data-theme', '2005'); await r.settle();
+    assert.equal(root.hasAttribute('data-native-tab-bar'), false, 'a retro look: the web strip and its own offset');
+    r.w.document.documentElement.setAttribute('data-theme', '2021'); await r.settle();
     assert.equal(root.hasAttribute('data-native-tab-bar'), true);
+    r.media.landscape = true; r.w.dispatchEvent(new r.w.Event('resize')); await r.settle();
+    assert.equal(root.hasAttribute('data-native-tab-bar'), false, 'landscape: no pill on the page');
     // the CSS half: one definition per renderer
     const css = read('public/css/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
     assert.match(css, /:root\[data-theme="2021"\]\[data-native-tab-bar\]\s*\{\s*--mobile-bottom-nav-h:\s*calc\(var\(--native-tab-bar-h, calc\(var\(--pill-h\) \+ var\(--pill-gap\)\)\) \+ env\(safe-area-inset-bottom\)\);\s*\}/);
   } finally { r.close(); }
 });
 
-test('navBarMetrics: every change of the bar\'s reserve (native takes over, its height changes, the web bar comes back) tells the JS-sized reader', async () => {
+test('navBarMetrics: every change of the bar\'s reserve (native takes the page over, its height changes, it lets go) tells the JS-sized reader', async () => {
   const r = realm();
   try {
     let n = 0;
     r.w.addEventListener('ft-bottom-nav-reserve', () => { n++; });
     await r.boot();
-    assert.equal(n, 1, 'native took the pill over');
-    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 2, 'its metrics landed after the reader sized');
-    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 2, 'the same height: nothing to re-measure');
-    r.emit({ type: 'navBarMetrics', height: 74 }); assert.equal(n, 3, 'Dynamic Type / rotation');
-    r.w.document.body.classList.add('ft-css-fullscreen'); await r.settle(); assert.equal(n, 4, 'the web bar is back');
-    await r.settle(); assert.equal(n, 4, 'a re-evaluation that changes nothing sends nothing');
+    assert.equal(n, 0, 'drawing without metrics: the reserve is still the web pill\'s own');
+    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 1, 'its metrics landed after the reader sized');
+    r.emit({ type: 'navBarMetrics', height: 70 }); assert.equal(n, 1, 'the same height: nothing to re-measure');
+    r.emit({ type: 'navBarMetrics', height: 74 }); assert.equal(n, 2, 'Dynamic Type / rotation');
+    r.w.document.documentElement.setAttribute('data-theme', '2005'); await r.settle(); assert.equal(n, 3, 'a retro look: native lets go');
+    await r.settle(); assert.equal(n, 3, 'a re-evaluation that changes nothing sends nothing');
   } finally { r.close(); }
   const src = read('public/js/read.js');
   const body = src.slice(src.indexOf('function sizeReader()'), src.indexOf("window.addEventListener('resize'", src.indexOf('function sizeReader()')));
   assert.match(body, /window\.addEventListener\('ft-bottom-nav-reserve', \(\) => \{\n\s*sizeReader\(\);/, 'read.js re-sizes the reader on it');
+});
+
+test('navBarMetrics: a sheet, a menu or the keyboard covering the pill never touches the reserve - no event, the offset stays native\'s (gate r2: the reader re-flowed under every sheet)', async () => {
+  const r = realm();
+  try {
+    await r.boot();
+    r.emit({ type: 'navBarMetrics', height: 70 });
+    let n = 0;
+    r.w.addEventListener('ft-bottom-nav-reserve', () => { n++; });
+    const root = r.w.document.documentElement;
+    const sh = r.w.ui.sheet({ variant: 'bottom', title: 'T', doc: r.w.document });
+    sh.open(); await r.settle();
+    assert.equal(r.last().visible, false, 'precondition: the native pill is told to hide');
+    assert.equal(root.hasAttribute('data-native-tab-bar'), true);
+    assert.equal(root.style.getPropertyValue('--native-tab-bar-h'), '70px');
+    sh.close(); await r.until(() => !r.$('.ui-sheet')); await r.settle();
+    r.$('#field').focus(); await r.settle(); r.$('#field').blur(); await r.settle();
+    assert.equal(r.last().visible, true);
+    assert.equal(n, 0, 'no reserve change, so the reader never re-sizes under a sheet or the keyboard');
+    assert.equal(root.hasAttribute('data-native-tab-bar'), true);
+  } finally { r.close(); }
 });
 
 test('navBarMetrics: a JS-sized surface (the reader) reserves the offset var while native draws, though the web pill is [hidden]', async () => {

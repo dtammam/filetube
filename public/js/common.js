@@ -5707,7 +5707,9 @@ function bottomNavReservePx() {
   if (typeof document === 'undefined' || typeof window === 'undefined') return 0;
   const nav = document.getElementById('bottom-nav');
   if (!nav) return 0;
-  const native = nativeTabBarDrawing(); // the web pill is [hidden] while the app draws it: the var (navBarMetrics + inset) is the reserve
+  // the web pill is [hidden] while the app draws it: the var (navBarMetrics + inset, or the web pill's own before the metrics land) is
+  // the reserve. Covered by a sheet, the web pill shows again and the pill-mode branch below reads the same var (native's while it owns the page)
+  const native = nativeTabBarDrawing();
   if (!native && window.getComputedStyle(nav).display === 'none') return 0;
   if (!native && !bottomNavIsPill()) return nav.offsetHeight;
   const probe = document.createElement('div');
@@ -5816,13 +5818,21 @@ function bottomNavCoveredBy() {
 }
 // THE predicate: the Modern look, the phone breakpoint in portrait (the landscape rule hides the web bar), nothing covering.
 function nativeTabBarVisible() {
+  return nativeTabBarPillMode() && bottomNavCoveredBy() === null;
+}
+// The page shows a pill at all (Modern, phone breakpoint, portrait) - the half of the predicate that does not change with a sheet.
+function nativeTabBarPillMode() {
   if (!bottomNavIsPill()) return false;
   try { if (window.matchMedia('(orientation: landscape)').matches) return false; } catch (_) { /* no media queries */ }
-  return bottomNavCoveredBy() === null;
+  return true;
 }
 
 const ntb = { host: null, last: null, timer: null, height: null, drawing: false, mo: null, viewRoot: null, reserveKey: '' };
 function nativeTabBarDrawing() { return ntb.drawing; }
+// The app OWNS the pill on this page: announced, its metrics in, and the page shows a pill (Modern, phone, portrait). The bar's
+// reserve follows THIS, never `visible`: a sheet, a menu or the keyboard covering the pill hides native's view but keeps native's
+// reserve (gate r2: following `visible` re-sized and re-flowed the reader under every sheet, and moved the dock and padding a few px).
+function nativeTabBarOwned() { return !!ntb.host && ntb.height !== null && nativeTabBarPillMode(); }
 // The payload, from the live bar: the items applyBottomNavCustomization left visible, in its (DOM) order. A v1.339 pre-paint
 // placeholder (data-ft-reserve: Download, Subs, You before their probes land) goes under its reserved id, exactly where the web
 // bar holds its place, so the native pill is spaced like the web bar from the first message (gate r1: it popped 4 -> 6 items);
@@ -5849,13 +5859,14 @@ function nativeTabBarSetDrawing(on) {
   const nav = document.getElementById('bottom-nav');
   if (nav && nav.hidden !== on) nav.hidden = on; // [hidden] (ui.css's global rule): out of sight, still the item source + the navTap target
   const root = document.documentElement;
-  const metered = on && ntb.height !== null;
-  if (root.hasAttribute('data-native-tab-bar') !== metered) {
-    if (metered) root.setAttribute('data-native-tab-bar', ''); else root.removeAttribute('data-native-tab-bar');
+  const owned = nativeTabBarOwned();
+  if (root.hasAttribute('data-native-tab-bar') !== owned) {
+    if (owned) root.setAttribute('data-native-tab-bar', ''); else root.removeAttribute('data-native-tab-bar');
   }
-  // the bar's reserve just changed renderer or height: a surface that sizes itself in JS (the reader, read.js sizeReader, which
-  // otherwise measures only at init and on resize) re-measures on this event (gate r1: native's metrics landed after the reader sized)
-  const key = on + '|' + (metered ? ntb.height : '');
+  // the bar's reserve just changed (native took the page over or let go, or its height changed): a surface that sizes itself in JS
+  // (the reader, read.js sizeReader, which otherwise measures only at init and on resize) re-measures on this event (gate r1: native's
+  // metrics landed after the reader sized). A cover flip changes nothing here (gate r2).
+  const key = owned ? String(ntb.height) : '';
   if (key !== ntb.reserveKey) {
     ntb.reserveKey = key;
     try { window.dispatchEvent(new window.CustomEvent('ft-bottom-nav-reserve')); } catch (_) { /* no CustomEvent */ }
@@ -18772,7 +18783,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver
     // test alone would only prove the decision, never its use.
     applyBottomNavCustomization, readBottomNavConfig, writeBottomNavConfig,
-    bottomNavIsPill, bottomNavItemName, bindBottomNavLongPress, bottomNavReservePx, nativeTabBarVisible, bottomNavCoveredBy, nativeTabBarPayload, initNativeTabBar, nativeTabBarDrawing, NATIVE_TAB_BAR_COVERS, // v1.405.0 nativeTabBar (W3)
+    bottomNavIsPill, bottomNavItemName, bindBottomNavLongPress, bottomNavReservePx, nativeTabBarVisible, nativeTabBarOwned, bottomNavCoveredBy, nativeTabBarPayload, initNativeTabBar, nativeTabBarDrawing, NATIVE_TAB_BAR_COVERS, // v1.405.0 nativeTabBar (W3)
     BOTTOM_NAV_NAME_MS, BOTTOM_NAV_TIP_LINGER_MS, // v1.405.0 the glass tab pill (R3)
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
