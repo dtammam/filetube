@@ -120,4 +120,38 @@ Every post to native recorded with its ms since the tap (`item=...` = the Item, 
   `# pass 0 # fail 3`; M2 hydration re-sends (player.load adopt off AND claimVideo's same-item follow off) -> `# pass 0
   # fail 3`; M3 adopt off alone -> `# pass 3 # fail 0` (MASKED: the claimVideo follow sends nothing for the same item, two
   redundant guards, LESSONS 2); restored -> `# pass 3 # fail 0`.
-- Next: Dean's device discriminator (asked 2026-11-08), then W2 on the cause it proves.
+- Dean's device discriminator (AskUserQuestion, 2026-11-08), a video docked and playing: (1) open another from Search (no
+  previews) - CLICK; (2) on Home, tap a card within 1 s, before any preview starts - CLICK; (3) on Home, tap while a card's
+  silent preview is rolling - NO click. Previews REFUTED as the cause (the click comes without them, and not with one).
+- H3 (the axis the answer points at: (1) and (2) start the new video inside the tap with no web media active, (3) has a muted
+  preview already active): a web media-element operation in the tap's user gesture. Falsifier: no element operation in the
+  tap's task. Probe (the same realm, REAL `load()`, `pause()`, `removeAttribute('src'|'poster')`, poster/muted sets, marked when
+  they run synchronously inside the tap's `init`), docked A -> Modern B, verbatim:
+  - main: `[TAP-TASK] pause() audio#bg-audio-sidecar`, `[TAP-TASK] removeAttribute(src) audio#bg-audio-sidecar`, `[TAP-TASK]
+    load() audio#bg-audio-sidecar`, `[TAP-TASK] removeAttribute(poster) video#media-player`, `[TAP-TASK] removeAttribute(src)
+    video#media-player`, `[TAP-TASK] load() video#media-player`, `[TAP-TASK] removeAttribute(poster) video#media-player` x2,
+    `[TAP-TASK] pause() audio#bg-audio-sidecar`, `[TAP-TASK] removeAttribute(src) audio#bg-audio-sidecar`, `[TAP-TASK] load()
+    audio#bg-audio-sidecar` - all 11 inside the tap.
+  - v1.405.0: the same 11 operations, NONE in the tap's task (they ran at hydration, ~2.4 s later on the phone).
+  H3 holds on the web side: the only change at a switch is that these resets of src-less elements moved into the gesture.
+
+### W2 - fix (2026-11-08)
+
+- `mediaElementHoldsMedia(el)` (player.js, exported): a `src` attribute, a `currentSrc`, a `srcObject`, or a `networkState`
+  other than NETWORK_EMPTY. Every reset of the shared element and the sidecar on the switch and close paths skips an element
+  that holds nothing: teardownMediaState (the element, the sidecar), releaseBackgroundAudioElement, close() (the element incl.
+  its pause - a `pause()` on a NETWORK_EMPTY element runs the resource selection algorithm - and the sidecar). A browser's
+  element holds the previous video, so it resets exactly as before. The seed start at the tap (O1) is untouched.
+- Not changed: `pauseSuppressingHandoff` (other callers reach native's proxied pause through it on an empty element) and the
+  keep-alive stop (the keep-alive never starts under native; a guard there survived its mutant K8, so it was reverted rather
+  than shipped unbound).
+- Tests (`test/integration/switch-click.test.js`): the three switches now also assert NO real `load()`, `pause()`, `src` set or
+  src removal on any media element; a browser (host without native audio) still drops A, `load()`s, then sets B's src; the
+  dock's [x] under native touches no element and posts one `audio.stop`; the helper's four axes.
+- Mutants (sandbox): K1 teardown element guard off, K2' teardown sidecar guard off, K3 releaseBackgroundAudioElement guard off,
+  K4 helper always true -> each `# fail 3` (the three native switches); K5 helper always false -> `# fail 1` (the browser
+  reset); K6 close element guard off, K7' close sidecar guard off -> `# fail 1` (the [x] test); restored `# pass 6 # fail 0`.
+- Full suite, Node v22.23.1, `npm test` before the lock fix: `# tests 13438 # pass 13424 # fail 1 # skipped 13` - the one
+  failure `v1.161.3 (gate WARNING): stopBgKeepAlive is mirrored at ALL FOUR bgAudioEl-teardown sites` (a source lock pinning
+  `if (bgAudioEl) {` after the keep-alive stop): the guard moved INSIDE that block, the lock unchanged; then
+  `node --test test/unit/player-background-audio.test.js test/integration/switch-click.test.js`: `# tests 125 # pass 125 # fail 0`.

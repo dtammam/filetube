@@ -113,6 +113,20 @@
 // when the requested id already matches what's currently loaded AND the
 // controller isn't CLOSED (a CLOSED controller has released its source, so
 // even a matching id always needs a fresh load).
+// v1.406.1 switch-click (plan docs/exec-plans/active/2026-11-08-switch-click.md): does a media element hold anything a reset would
+// drop? A reset (pause, removeAttribute('src') + load()) of an element that holds nothing changes nothing on the page. Since
+// v1.406.0 a card's seed starts the next video INSIDE the tap, so a switch's eleven resets of the src-less shared element and
+// sidecar (native owns the sound) moved into the tap's user gesture - the only web-side change at a switch the measurement found
+// (native's posts are identical to v1.405.0). Dean's device test (2026-11-08) fits it: a click opening from Search or a quick Home
+// tap, none while a card preview (web media already active) was rolling. So a reset skips an element that holds nothing; a
+// browser's element (a src) resets as before. The device check "Switch click (v1.406.1)" is the arbiter.
+function mediaElementHoldsMedia(el) {
+  if (!el) return false;
+  if (typeof el.hasAttribute === 'function' && el.hasAttribute('src')) return true;
+  if (el.currentSrc) return true;
+  if (el.srcObject) return true;
+  return typeof el.networkState === 'number' && el.networkState !== 0; // NETWORK_EMPTY: nothing loading, nothing loaded
+}
 function isAdoptLoad(currentId, requestedId, state) {
   return currentId != null && currentId === requestedId && state !== 'closed';
 }
@@ -2251,6 +2265,7 @@ function formatViewportDetail(win) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    mediaElementHoldsMedia, // v1.406.1: a teardown resets only an element that holds media
     resolveOfflineLocalSrc, // v1.387.0 offline playback: the phone's copy to play online, or null
     pipRouteDecision, // v1.404.0: which door the picture-in-picture row uses
     formatViewportDetail, // UI pass D7: the viewport line of the ?debugLifecycle=1 log
@@ -3605,6 +3620,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function releaseBackgroundAudioElement() {
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar on a foreground return
     if (!bgAudioEl) return;
+    if (!mediaElementHoldsMedia(bgAudioEl)) return; // v1.406.1: nothing to release (never a load() in the tap's gesture)
     try { bgAudioEl.pause(); } catch (_) {}
     try { bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) {}
   }
@@ -10263,7 +10279,9 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar at EVERY teardown site (gate: enumerate all 4 bgAudioEl-teardowns, not just release*)
     if (bgAudioEl) {
-      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset - no load() in the tap
+        try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      }
     }
     // FR-2 (T2, v1.21.0): stop the rAF fill loop (docs/RELIABILITY.md: must
     // be cancelled on pause/close -- `mediaPlayer.pause()` below already
@@ -10365,8 +10383,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // ever called (see `load()`), so playback continuity there is
       // untouched.
       mediaPlayer.removeAttribute('poster');
-      mediaPlayer.removeAttribute('src');
-      mediaPlayer.load();
+      if (mediaElementHoldsMedia(mediaPlayer)) { // v1.406.1: under native the element is a src-less proxy - no load() in the tap
+        mediaPlayer.removeAttribute('src');
+        mediaPlayer.load();
+      }
     }
   }
 
@@ -11180,7 +11200,10 @@ if (typeof module !== 'undefined' && module.exports) {
     setCaptionsOn(false);
     hideCaptionOverlay();
     nativeCueList = null; // v1.399.0 (S7): the next item parses its own
-    if (mediaPlayer) {
+    // v1.406.1: nativeAudioRelease() above already handed the element back (native stopped with audio.stop), so an element that
+    // holds nothing is left alone - a pause() on a NETWORK_EMPTY element runs the resource selection algorithm (HTML spec), the
+    // same media work in the [x] tap that clicked native's audio at a switch
+    if (mediaPlayer && mediaElementHoldsMedia(mediaPlayer)) {
       try {
         // F5 (two-reviewer gate, structural consistency, v1.27.1
         // post-release): routed through `pauseSuppressingHandoff` (not a
@@ -11208,7 +11231,9 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     stopBgKeepAlive(); // v1.161.3: a CLOSE can never leave the keep-alive playing either (all 4 teardown sites)
     if (bgAudioEl) {
-      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset - no load() in the tap
+        try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      }
     }
     setPlaybackState('none');
     hideDock();

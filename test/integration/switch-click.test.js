@@ -79,6 +79,15 @@ function realm(opts) {
   w.HTMLMediaElement.prototype.play = function () { webMedia.push({ t: Date.now(), ev: 'play() ' + tag(this) + ' src=' + (this.getAttribute('src') || '') }); return Promise.resolve(); };
   const srcDesc = Object.getOwnPropertyDescriptor(w.HTMLMediaElement.prototype, 'src');
   Object.defineProperty(w.HTMLMediaElement.prototype, 'src', { configurable: true, get: srcDesc.get, set(v) { webMedia.push({ t: Date.now(), ev: 'src= ' + tag(this) + ' ' + v }); srcDesc.set.call(this, v); } });
+  // v1.406.1 (W2): the REAL element resets too - load(), pause() and removeAttribute('src') on any media element (native-audio
+  // proxies play / pause on the shared element while it owns it, so a proxied pause never reaches the prototype). Dean's device
+  // test: a media load() inside the tap's gesture with no web media active clicked the audio native was playing.
+  const realLoad = w.HTMLMediaElement.prototype.load;
+  w.HTMLMediaElement.prototype.load = function () { webMedia.push({ t: Date.now(), ev: 'load() ' + tag(this) }); return realLoad.call(this); };
+  const realPause = w.HTMLMediaElement.prototype.pause;
+  w.HTMLMediaElement.prototype.pause = function () { webMedia.push({ t: Date.now(), ev: 'pause() ' + tag(this) }); return realPause.call(this); };
+  const realRemove = w.Element.prototype.removeAttribute;
+  w.Element.prototype.removeAttribute = function (n) { if (n === 'src' && this instanceof w.HTMLMediaElement) webMedia.push({ t: Date.now(), ev: 'removeAttribute(src) ' + tag(this) }); return realRemove.call(this, n); };
   const setAttr = w.Element.prototype.setAttribute;
   w.Element.prototype.setAttribute = function (n, v) { if (n === 'src' && this instanceof w.HTMLMediaElement) webMedia.push({ t: Date.now(), ev: 'setAttribute(src) ' + tag(this) + ' ' + v }); return setAttr.call(this, n, v); };
   w.navigator.mediaSession = { metadata: null, playbackState: 'none', setActionHandler() {}, setPositionState() {} };
@@ -97,7 +106,7 @@ function realm(opts) {
     if (url.indexOf('/api/videos?') === 0) return json({ items: [], total: 0 });
     return json({});
   };
-  const fake = installFakeHost(w, { capabilities: CAPS });
+  const fake = installFakeHost(w, { capabilities: opts.caps || CAPS }); // caps: ['orientation'] = a host without native audio (the web plays)
   // stamp each post with the ms since the last tap (the timing axis of an audible cut)
   let tapAt = Date.now();
   const rawPost = fake.host.post;
@@ -176,8 +185,9 @@ function trace(fake) {
   });
 }
 
-// The switch's contract (v1.405.0's shape, measured on both trees): ONE audio.load for the new item, no audio.stop, no second
-// load at hydration, one audio.play; and no web media element plays or takes a src (native owns the sound). `t` is the trace.
+// The switch's contract: ONE audio.load for the new item, no audio.stop, no second load at hydration, one audio.play (v1.405.0's
+// shape, measured on both trees); and no web media element is touched at all - no play, src, load(), pause() or src removal
+// (v1.406.1: native owns the sound, and an element reset inside the tap clicked native's audio on the phone).
 function assertOneHandover(fake, webMedia, id) {
   const t = trace(fake);
   const loads = fake.of('audio.load');
@@ -185,7 +195,7 @@ function assertOneHandover(fake, webMedia, id) {
   assert.strictEqual(loads[0].queue[loads[0].index].id, id, 'the load names the tapped item');
   assert.strictEqual(fake.of('audio.stop').length, 0, 'never stop-then-load:\n' + t.join('\n'));
   assert.strictEqual(fake.of('audio.play').length, 1, 'one play:\n' + t.join('\n'));
-  assert.deepStrictEqual(webMedia, [], 'no web media element plays during the switch');
+  assert.deepStrictEqual(webMedia, [], 'no web media element plays, loads, pauses or drops a src during the switch (v1.406.1)');
 }
 
 async function switchFromDocked(seedFor) {
@@ -227,4 +237,50 @@ test('W1: a docked Music track -> Modern card B: one handover load, no stop', as
   assert.strictEqual(r.player().currentId, 'vb', 'B loaded');
   assertOneHandover(r.fake, r.webMedia(), 'vb');
   teardown(r);
+});
+
+// The browser half (no native host): the element holds the previous video, so the switch still resets it before the new src -
+// the guard skips only an element that holds nothing (the poster/last-frame reset of v1.18.0 FR-2 is unchanged).
+test('W2: without a native host the switch still resets the element that holds the previous video', async () => {
+  const r = realm({ caps: ['orientation'] });
+  await r.openWatch('va', null);
+  await r.settle(600);
+  r.leaveToHome();
+  await r.settle(100);
+  await r.openWatch('vb', shapes.grid.vb);
+  await r.settle(600);
+  const ops = r.webMedia();
+  const reset = ops.findIndex((e) => /removeAttribute\(src\) video#media-player/.test(e));
+  const load = ops.findIndex((e, i) => i > reset && /load\(\) video#media-player/.test(e));
+  const src = ops.findIndex((e) => /src= video#media-player \/video\/vb/.test(e));
+  assert.ok(reset >= 0 && load > reset && src > load, 'drop A, load(), then B\'s src:\n' + ops.join('\n'));
+  teardown(r);
+});
+
+// The dock's [x] (player.close) runs the same resets as a switch (the element, the sidecar, the keep-alive): under native they
+// hold nothing, so nothing is reset there either - native's audio.stop is the whole close.
+test('W2: closing a docked native video touches no web media element', async () => {
+  const r = realm();
+  await r.openWatch('va', null);
+  await r.settle(1600);
+  r.leaveToHome();
+  await r.settle(150);
+  r.fake.clear(); r.resetClock();
+  r.player().close();
+  await r.settle(100);
+  assert.deepStrictEqual(r.webMedia(), [], 'no load(), pause() or src removal on an element that holds nothing');
+  assert.strictEqual(r.fake.of('audio.stop').length, 1, 'native stops');
+  teardown(r);
+});
+
+test('W2: mediaElementHoldsMedia reads each way an element can hold media', () => {
+  const { mediaElementHoldsMedia } = require('../../public/js/player.js');
+  const el = (o) => Object.assign({ hasAttribute: (n) => n === 'src' && !!o.srcAttr, currentSrc: '', srcObject: null, networkState: 0 }, o);
+  assert.strictEqual(mediaElementHoldsMedia(null), false);
+  assert.strictEqual(mediaElementHoldsMedia(el({})), false, 'an empty element (NETWORK_EMPTY, no src): nothing to reset');
+  assert.strictEqual(mediaElementHoldsMedia(el({ srcAttr: true })), true, 'a src attribute');
+  assert.strictEqual(mediaElementHoldsMedia(el({ currentSrc: '/video/x' })), true, 'a resolved source (a <source> child)');
+  assert.strictEqual(mediaElementHoldsMedia(el({ srcObject: {} })), true, 'a stream');
+  assert.strictEqual(mediaElementHoldsMedia(el({ networkState: 2 })), true, 'still loading (NETWORK_LOADING)');
+  assert.strictEqual(mediaElementHoldsMedia(el({ networkState: 1 })), true, 'loaded and idle (NETWORK_IDLE)');
 });
