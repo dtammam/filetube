@@ -193,3 +193,17 @@ Gate: CHANGES r1 @0968d274 - adversary - code binds (6/6 green, mutants red, bro
 > tap) or a media-element `load()` in the web view change the app's AVAudioSession category/activation while native plays? The "no click with a
 > preview playing" result suggests WebKit's own media session state matters. A 30-second check: lock-screen Next in a Music queue (pure native,
 > no web work) - a click there is the item swap.
+Gate: APPROVED r2 @cc6dd9d8 - qa - r1 W1/W2/S1/S2 all fixed as prescribed (eight resets + poster stays, hypothesis wording, LESSONS moved to section 1, helper above isAdoptLoad doc, Q1/Q2/Q4 now red on test 7), new teardown pause guard correct in browsers and bound native-side (always-pause mutant red on test 8), 137/137 targeted + lint 0 errors; SUGGESTIONS (non-blocking): the browser direction of the teardown pause guard is unbound (never-pause mutant survives, load() pauses anyway), ROADMAP "since v1.406.0 a seeded switch (Modern, Classic, rows)" while W1 shows Classic already loaded at the tap on v1.405.0, and the ledger line "the app's next update addresses the other" promises an unbuilt app fix on a relay with no reply yet.
+Gate: APPROVED r2 @cc6dd9d8 - adversary - W1 and W2 closed (the record now ships H3 as a hypothesis, Search measured at hydration, the MediaSession double clear named as the next suspect, LESSONS moved to section 1); S1 fixed and bound (teardown pause guard: mutant off -> test 8 red, cold deep link now web=[]), S2 fixed; mutants re-run 8/8 green, 294/294 neighbours, eslint 0; SUGGESTIONS (non-blocking): DEVICE-CHECKS (d) says Search web work equals v1.405.0 but on v1.406.1 its resets are gone too (measured web=[]), the teardown pause now skips an empty element left paused=false by a play() during "Preparing this video" (spec-reasoned, unmeasured in jsdom; arm: || !mediaPlayer.paused), releases.json promises the app update addresses the other cause before the iOS Root has answered.
+
+### Gate r2 fix round (2026-11-08)
+
+- Both seats APPROVED r2 @cc6dd9d8 with SUGGESTIONS. Taken (a code change, so a delta re-check at the new sha): adversary S2 - the r1 teardown
+  pause guard skipped an element that is empty but NOT paused (play pressed while "Preparing this video": a play() on a NETWORK_EMPTY element
+  leaves paused false, and the load algorithm resets paused only when networkState is not EMPTY), so the next src could start on its own; the
+  guard is now `mediaElementHoldsMedia(mediaPlayer) || !mediaPlayer.paused` (under native the proxy pause is a no-op in the transition; a
+  released element after the [x] is paused). Test 9 binds it; mutants R2a (drop the arm) -> `not ok 9 # pass 8 # fail 1`, R2b (always pause)
+  -> `not ok 8 # pass 8 # fail 1`, restored `# pass 9 # fail 0`. Wording: DEVICE-CHECKS (d) (v1.406.1 removes the Search resets too; adversary
+  S1), ROADMAP (only Modern and rows moved into the tap, Classic already loaded there on v1.405.0; qa S2), the ledger no longer promises an app
+  update (qa S3, adversary S3). Not taken: qa S1 (the browser direction of the pause guard is bound outside this file - the F-D/F1/F5 lock and
+  player-black-picture-log, measured by the adversary in r2).

@@ -332,3 +332,23 @@ test('W2 (gate r1): close the docked native video, then open another - no media 
   assertOneHandover(r.fake, r.webMedia(), 'vb');
   teardown(r);
 });
+
+// gate r2 (adversary S2): a browser element that holds no src but is NOT paused (play pressed while "Preparing this video": a play()
+// on an empty element leaves paused false) is still paused at a switch, or the next video's src would start on its own
+test('W2 (gate r2): without a native host an empty but unpaused element is still paused by a switch', async () => {
+  const r = realm({ caps: ['orientation'] });
+  await r.openWatch('va', null);
+  await r.settle(600);
+  const el = r.w.document.getElementById('media-player');
+  el.removeAttribute('src'); // the awaiting-transcode element: no src
+  let paused = false; // jsdom's paused never moves (its play() is stubbed): stand in for the browser's state after play() on it
+  Object.defineProperty(el, 'paused', { configurable: true, get: () => paused });
+  const realPause = r.w.HTMLMediaElement.prototype.pause;
+  el.pause = function () { paused = true; return realPause.call(this); };
+  r.resetClock();
+  await r.openWatch('vb', null);
+  await r.settle(600);
+  assert.ok(paused, 'the switch paused the empty, playing element');
+  delete el.pause; delete el.paused;
+  teardown(r);
+});

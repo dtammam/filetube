@@ -10366,10 +10366,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // `document.visibilityState === 'visible'`, since a new load is
       // itself always user/foreground-initiated) happens to make it safe
       // either way.
-      // v1.406.1 (gate r1 adversary S1): an element that holds nothing has nothing to pause - a native-owned one (its proxy's pause
-      // is a no-op here: nativeAudioBeginLoad set the transition) and a released one after the dock's [x], whose pause would reach
-      // the REAL empty element
-      if (mediaElementHoldsMedia(mediaPlayer)) pauseSuppressingHandoff(mediaPlayer);
+      // v1.406.1 (gate r1 adversary S1): an element that holds nothing and is paused has nothing to pause - a released one after the
+      // dock's [x], whose pause would reach the REAL empty element. Still paused: an element holding media, and one that is NOT paused
+      // although empty (gate r2 adversary S2: play pressed while "Preparing this video" leaves paused false with no src, and the
+      // next src would start on its own); a native-owned element's proxy pause is a no-op here (nativeAudioBeginLoad set the transition)
+      if (mediaElementHoldsMedia(mediaPlayer) || !mediaPlayer.paused) pauseSuppressingHandoff(mediaPlayer);
       // FR-2 (v1.18.0): reset the visible poster/last-decoded frame to
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition

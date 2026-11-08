@@ -998,8 +998,9 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   app, server-emitted seeds; the same file run on a v1.405.0 sandbox): every switch (Modern, Classic, Music -> video) sends ONE audio.load, one
   audio.play, one video.surface, no audio.stop and no second load at hydration on BOTH versions - the plan's three suspects refuted. Dean's device
   A/B: a click from Search and from a quick Home tap, none while a muted card preview was rolling.
-- What the web change addresses (a hypothesis): since v1.406.0 a seeded switch (Modern, Classic, rows) runs eight resets (pause, src removal,
-  load) of the src-less shared element and sidecar inside the tap's gesture; v1.405.0 Modern ran them at hydration. `mediaElementHoldsMedia` now
+- What the web change addresses (a hypothesis): a seeded switch runs eight resets (pause, src removal, load) of the src-less shared element
+  and sidecar inside the tap's gesture; v1.406.0 moved Modern (and the home rows) there, while Classic already loaded in the tap on v1.405.0
+  with no click reported - one more case the hypothesis has to explain. `mediaElementHoldsMedia` now
   skips every such reset on the switch and close paths; a browser element holding the previous video resets as before; the instant start is kept.
 - What it does NOT explain (gate r1, measured): a Search result's seed is partial, so its loads and resets run at hydration op for op as on
   v1.405.0, yet Dean heard the click there; and the MediaSession clear moved into the tap too and runs twice per switch (untouched). So the app's
