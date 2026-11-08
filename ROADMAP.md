@@ -447,6 +447,11 @@
 
 ### Features
 
+- [ ] **Smoothness, the deferred half (v1.406.0 plan, Dean 2026-11-08: out of that release)** _(2026-11-08)_: (C) intent prefetch -
+  start a card's watch data and its shell on pointerdown (cancel on pointercancel), the residual API wait after the v1.406.0 shell
+  cache; (V) same-document view transitions (`document.startViewTransition` around the router swap) - off while native owns a picture
+  surface (the layer is outside the snapshot), WKWebView support read from the "Player and timing log" export first. Both measured
+  with the v1.406.0 probe (scratchpad sm-probe, the audit's) base vs branch before shipping.
 - [ ] **Glass tab pill (v1.405.0) follow-ups** _(2026-11-08, the build; none blocks the release)_: (1) **Suspected, unverified: the v1.401.0 dock cover scan has
   the same once-bound `#view-root` observer** that v1.405.0 found in its own first draft (public/js/native-audio.js `coverWire` observes the element it finds at
   load; the router `replaceWith`s it on every in-app navigation), so a view-owned fixed panel toggled by `hidden` (the Pocket cover, `.mms-full`) after an in-app

@@ -3163,6 +3163,7 @@ if (typeof module !== 'undefined' && module.exports) {
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
       inTabEngine.paint();
       ensureSkinReflect();
+      if (straightToPlayerPending && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('panel-filled', String(playingId || '')); // v1.406.0 M
       straightToPlayerPending = false; // the REAL skin is painted - the cover has served its purpose
       return true;
     }
@@ -5990,6 +5991,7 @@ if (typeof module !== 'undefined' && module.exports) {
             ? SKINS.renderFull(_sid, seed ? seededSkinCtx(seed) : buildSkinCtx(-1)) : '';
         } catch (_) { nowPlayingPanel.innerHTML = ''; }
         nowPlayingPanel.hidden = false;
+        if (window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('music-frame', seed ? 'seeded' : 'plain'); // v1.406.0 M
       }
       return coverEarly;
     }

@@ -267,3 +267,29 @@ test('F: every skeleton and art shimmer waits --skeleton-delay (150 ms) then fad
   assert.match(rule('img.art-shimmer'), /skeleton-delay-in var\(--dur-fade\) var\(--ease-std\) var\(--skeleton-delay\) both/);
   assert.match(css, /@keyframes skeleton-delay-in \{\s*from \{ opacity: 0; \}\s*to \{ opacity: 1; \}\s*\}/, 'opacity only: no layout property moves');
 });
+
+// ---- M -----------------------------------------------------------------------------------------------------------------------
+
+test('M: with the "Player and timing log" on, a launch and a hop leave their marks in the one log, in order (first-card, host-ready, tap, swap); off, nothing is recorded', async () => {
+  const log = (w) => { try { return JSON.parse(w.localStorage.getItem('ft-lifecycle-log') || '[]').filter((e) => /^perf:/.test(e.type)); } catch (_) { return []; } };
+  const f = makeFetch({ grid: ['a', 'b'] });
+  const { dom, posts } = loadShell('index.html', f.fetchImpl, { app: true, storage: { 'ft-debug-lifecycle': '1' } });
+  const w = dom.window;
+  try {
+    assert.ok(await until(() => readyPosts(posts).length === 1, 300));
+    const link = w.document.querySelector('#bottom-nav a[href="/history"], a[href="/history"]');
+    link.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, button: 0, detail: 1 }));
+    await sleep(50);
+    const types = log(w).map((e) => e.type);
+    for (const t of ['perf:first-card', 'perf:host-ready', 'perf:tap']) assert.ok(types.includes(t), `${t} recorded (got ${types})`);
+    assert.ok(types.indexOf('perf:first-card') < types.indexOf('perf:host-ready'), 'the first card before host.ready');
+    const tap = log(w).find((e) => e.type === 'perf:tap');
+    assert.match(tap.detail, /^\/history t=\d+ms tap\+0ms$/, 'the tap names its target and its time');
+  } finally { w.close(); }
+  const g = makeFetch();
+  const off = loadShell('index.html', g.fetchImpl, { app: true });
+  try {
+    assert.ok(await until(() => readyPosts(off.posts).length === 1, 300));
+    assert.strictEqual(log(off.dom.window).length, 0, 'the switch off: no marks');
+  } finally { off.dom.window.close(); }
+});

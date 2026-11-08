@@ -394,6 +394,7 @@
         var yes = typeof snap.pictureReady === 'boolean' ? snap.pictureReady === true : (fromTick === true && snap.state === 'playing');
         if (!yes) return;
         pictureLatch = k;
+        try { if (win.FileTube && typeof win.FileTube.perfMark === 'function') win.FileTube.perfMark('picture-ready', (typeof snap.pictureReady === 'boolean' ? 'field ' : 'tick ') + ownedId); } catch (_) { /* a mark never breaks playback */ }
       }
       if (pictureShownKey === k) return;
       pictureShownKey = k;
@@ -622,7 +623,12 @@
       // R2 (v1.400.1): native's layer lands on the frame AFTER this post, the hole on this one. During live motion the hole opens only where
       // the picture is under either lag: the intersection of this rect and the one posted before it. The final measure is exact.
       var prev = (m.live && surfaceLast && surfaceLast.visible && surfaceLast.space === m.space) ? surfaceLast.rect : null;
-      if (!same && post('video.surface', msg)) { if (msg.layer === 'above' && !wasAbove) aboveHold = 2; surfaceLast = msg; }
+      var wasVisible = !!(surfaceLast && surfaceLast.visible);
+      if (!same && post('video.surface', msg)) {
+        if (msg.layer === 'above' && !wasAbove) aboveHold = 2;
+        surfaceLast = msg;
+        if (msg.visible && !wasVisible) { try { if (win.FileTube && typeof win.FileTube.perfMark === 'function') win.FileTube.perfMark('surface-visible', ownedId); } catch (_) { /* a mark never breaks playback */ } } // v1.406.0 M
+      }
       try {
         var hm = m;
         if (m.live && m.visible && prev) hm = Object.assign({}, m, { rect: rectIntersect(m.rect, prev) });

@@ -226,3 +226,15 @@ test('A2 CSS belt: the cover never paints while the hole is open', () => {
   assert.match(css, /body\.ft-native-video \.player-cover \{\s*visibility: hidden;\s*\}/);
   assert.match(css, /\.player-cover \{[^}]*pointer-events: none;[^}]*\}/, 'a cover never takes a touch');
 });
+
+test('M: the native picture marks its moments in the lifecycle log - cover shown, surface visible, picture ready (by field), first frame', async () => {
+  const r = realm({ caps: DOCK_CAPS, beforeScripts: (w) => w.localStorage.setItem('ft-debug-lifecycle', '1') });
+  try {
+    const rev = await claimed(r);
+    r.fake.emit(NOT_READY(rev));
+    await settle(30);
+    r.fake.emit(STATE(rev));
+    const types = JSON.parse(r.w.localStorage.getItem('ft-lifecycle-log') || '[]').map((e) => e.type).filter((t) => /^perf:/.test(t));
+    assert.deepStrictEqual(types, ['perf:cover-shown', 'perf:surface-visible', 'perf:picture-ready', 'perf:first-frame'], 'in this order');
+  } finally { r.close(); }
+});

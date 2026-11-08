@@ -142,7 +142,7 @@ Some readings put together:
    into the file before frame one. A read-only check lists them (it changes nothing):
    `docker exec <your container> node scripts/probe-faststart.js --list`. Most worth running if
    **Time-to-first-frame** is long while **Throughput @20MB** is fine.
-2. **Stalls on the phone, live.** Settings > **Troubleshooting** > **Show lifecycle debug log**, then
+2. **Stalls on the phone, live.** Settings > **Troubleshooting** > **Player and timing log**, then
    reload. While a video plays, a `video:waiting` or `video:stalled` line appears each time it runs out of
    data, and a `video:check` line about 6 seconds after each start shows whether frames advance. Newest
    lines are at the top. Switch it off after.

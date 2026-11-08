@@ -66,7 +66,7 @@ docs/exec-plans/completed/2026-10-04-loupe-black-checks.md, ruling D6).
 
 ## Who follows it
 
-- **The lifecycle log** (Settings > Troubleshooting > "Show lifecycle debug log", `ft-lifecycle-log`,
+- **The lifecycle log** (Settings > Troubleshooting > "Player and timing log" (until v1.406.0 "Show lifecycle debug log"), `ft-lifecycle-log`,
   player.js): since v1.362.2. Its panel is "Show the log on screen" (`ft-debug-lifecycle-overlay`).
 
 - **The error log** (Settings > Troubleshooting > Export error log / Clear error log, `ft-boot-errors`,

@@ -1618,6 +1618,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Gate round 2 (adversarial W-B): whether a full seed will pre-load,
     // decided ONCE -- it changes what the 'reparent' branch below should do.
     const canSeedPreload = Boolean(watchSeed && isFullWatchSeedItem(watchSeed.item));
+    if (watchSeed && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('seed-paint', (canSeedPreload ? 'full ' : 'partial ') + mediaId); // v1.406.0 M
     if (entryReparentAction === 'adopt') {
       // v1.40.0: carry the CURRENT browse context on the early adopt-mount too,
       // so re-opening a docked video from a new list view refreshes autoplay's

@@ -10192,7 +10192,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (coverEl.parentNode !== mediaPlayer.parentNode || coverEl.previousSibling !== mediaPlayer) mediaPlayer.insertAdjacentElement('afterend', coverEl);
     coverForId = id;
     coverNative = !!native;
-    recordLifecycleEvent('cover:show', { detail: (native ? 'native ' : 'web ') + id });
+    perfMark('cover-shown', (native ? 'native ' : 'web ') + id);
     return true;
   }
   function coverDrop(reason) {
@@ -10201,7 +10201,7 @@ if (typeof module !== 'undefined' && module.exports) {
     coverForId = null;
     coverNative = false;
     if (coverEl && coverEl.parentNode) coverEl.parentNode.removeChild(coverEl);
-    recordLifecycleEvent('cover:drop', { detail: reason + ' ' + id });
+    perfMark(reason === 'picture-ready' || reason === 'playing' ? 'first-frame' : 'cover-drop', reason + ' ' + id);
     return true;
   }
   function coverOnWebEvent(ev) {
@@ -11517,6 +11517,19 @@ if (typeof module !== 'undefined' && module.exports) {
 
   window.FileTube = window.FileTube || {};
   window.FileTube.player = api;
+  // v1.406.0 M (plan 2026-11-08-smoothness): the smoothness marks - one line per moment ('perf:<name>') in the SAME lifecycle log
+  // (recorded only while Settings > Troubleshooting > "Player and timing log" is on; exported with its one button). Each line
+  // carries the time since the page's navigation start and since the last tap (`tap` starts a hop), so a device export reads
+  // as tap -> swap -> seed paint -> cover -> picture ready, or launch -> first card -> host.ready.
+  var perfTapAt = null;
+  function perfMark(name, detail) {
+    var now = 0;
+    try { now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); } catch (_) { now = Date.now(); }
+    if (name === 'tap') perfTapAt = now;
+    var since = perfTapAt === null ? '' : ' tap+' + Math.round(now - perfTapAt) + 'ms';
+    recordLifecycleEvent('perf:' + String(name).slice(0, 40), { detail: (detail ? String(detail).slice(0, 160) + ' ' : '') + 't=' + Math.round(now) + 'ms' + since });
+  }
+  window.FileTube.perfMark = perfMark;
   // v1.92: share the pure storyboard geometry with the grid card preview
   // (main.js) - one source of truth, no duplicated sprite math.
   window.FileTube.storyboard = { frameForTime: storyboardFrameForTime, tile: storyboardTile };

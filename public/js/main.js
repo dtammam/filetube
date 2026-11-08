@@ -1803,6 +1803,7 @@ const PreviewCards = (function () {
     function markHomeFirstContent() {
       const W = window.FileTube;
       if (!W || typeof W.markFirstContent !== 'function') return;
+      if (typeof W.perfMark === 'function' && !(typeof W.firstContent === 'function' && W.firstContent().done)) W.perfMark('first-card', homeSnapshotLayoutKey() ? 'home' : 'home-scoped'); // v1.406.0 M
       const host = (homeFeedHost && !homeFeedHost.hidden && homeFeedHost.isConnected) ? homeFeedHost : videoGrid;
       const imgs = host ? Array.from(host.querySelectorAll('img')).slice(0, HOME_FIRST_ART_COUNT) : [];
       const decodes = imgs.map((img) => (typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve()));

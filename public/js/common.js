@@ -3923,6 +3923,10 @@ function mediaFetchAllowed() {
 // FIRST_CONTENT_CAP_MS is the floor's ceiling: whatever happens (a view that never marks, a stalled grid, an error page), the
 // moment comes, host.ready is posted and the deferred fetches run.
 const FIRST_CONTENT_CAP_MS = 1500;
+// v1.406.0 M: a smoothness mark into the lifecycle log (player.js perfMark; a no-op when the page has no player or the log is off)
+function ftPerfMark(name, detail) {
+  try { if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark(name, detail); } catch (_) { /* a mark never breaks the page */ }
+}
 let firstContentDone = false;
 let firstContentReason = '';
 let firstContentCapTimer = 0;
@@ -3937,6 +3941,7 @@ function markFirstContent(reason) {
   if (firstContentDone) return false;
   firstContentDone = true;
   firstContentReason = String(reason || '');
+  ftPerfMark('host-ready', firstContentReason);
   if (firstContentCapTimer) { clearTimeout(firstContentCapTimer); firstContentCapTimer = 0; }
   postHostReady();
   const run = firstContentWaiters.splice(0);
@@ -12705,6 +12710,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // hooked here instead of a MutationObserver.
     probeAndReconcileRepullButton();
     scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
+    ftPerfMark('swap', view); // v1.406.0 M: the new view is in the document (its init ran)
   }
 
   // v1.30.0 T8 (B1, AC5.2b): the SAME fetch -> extract `#view-root` -> swap
@@ -13091,6 +13097,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // gate r1: REPLACE, never push - the Click player is the same /music page, so Back from it lands where Back
     // from /music would (a push left a dead Back press: the idle Click player stayed up on /music).
     if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
+    ftPerfMark('tap', target.pathname + target.search); // v1.406.0 M
     // v1.406.0 G: the tapped control holds its pressed state ([data-pressed], ui.css) until the swap, so a hop that still
     // has to fetch (a first visit) answers the tap at once; released however the navigation ends
     let pressed = false;
