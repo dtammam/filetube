@@ -447,6 +447,21 @@
 
 ### Features
 
+- [ ] **Glass tab pill (v1.405.0) follow-ups** _(2026-11-08, the build; none blocks the release)_: (1) **Suspected, unverified: the v1.401.0 dock cover scan has
+  the same once-bound `#view-root` observer** that v1.405.0 found in its own first draft (public/js/native-audio.js `coverWire` observes the element it finds at
+  load; the router `replaceWith`s it on every in-app navigation), so a view-owned fixed panel toggled by `hidden` (the Pocket cover, `.mms-full`) after an in-app
+  navigation may not hide the live dock picture until another signal fires. Measure with scripts/live-dock-probe.js after a navigation before fixing.
+  (2) The Feed's card stack was n/a in the R6 sweep (no feed items in the probe library); its height reads the one offset in CSS.
+  (3) Gate r1 qa S1: with nativeTabBar on, `#view-root`'s subtree childList wakes the coalesced evaluation on any text change in the
+  view (the player's time label, about 4 Hz); an unchanged payload is never re-sent, but the idle cost (7 querySelectorAll +
+  getComputedStyle + a stringify per wake) is not bound by a flush-count test (LESSONS 3). (4) Gate r1 adversary N4, suspected and
+  not run on WebKit: the keyboard check trusts `document.activeElement`, so a text field hidden without losing focus (the header
+  search after a history-row tap runs closeSearch, which only drops html.search-open) may keep `visible: false` (the web pill shows
+  instead of the glass one) until focus moves; count the field only when it is rendered. (5) Gate r3 notes: public/js/host-adapter.js:122
+  still says the web sets the offset "while native draws" (it is while native OWNS the page since gate r2); and if the adapter ever refuses
+  a nav.bar while native owns the page, the web pill shows with native's offset under it and native keeps its last message (unreachable
+  with today's bounded ids and labels).
+
 - [ ] **Picture-in-picture (v1.404.0) follow-ups** _(gate r2 notes, none user-blocking; take them when a device check or the next touch asks)_: the Adversary's surviving mutants on code it measured correct: `webkitSaysNo` needing `hasWebkitPip` (bound on the pure function only), the Safari exit's `armPipWatchdog(false)`, `startY` and the one-finger scope in the touch reset. QA's label notes: under the Dynamic Island in portrait faux fullscreen (no safe-area inset), and sharing the locked 2x badge's spot. `PIP_START_WATCHDOG_MS` now also covers a stop: rename it when next touched.
 
 - **Swipe to Trash (v1.403.0) follow-ups** _(2026-11-05, the build and its gate; none blocks the release)_: (1) **The grid can be one card
@@ -959,6 +974,20 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.405.0 - A floating glass pill replaces the bottom bar on Modern, in the browser now and drawn natively in the iPhone app with its next update (2026-11-08)
+
+- Dean (2026-11-08): "a new, modern bottom pill for those same things ... a functional replacement of the bottom bar ... in the iOS app ... a true first-class
+  experience with the liquid glass view ... without the text." Rulings Q1-Q5: Modern only (retro looks byte-identical), native Liquid Glass in the app, icons only
+  (the name stays the accessible name; a long press shows it), no shrink on scroll, look A "Capsule".
+- Web: the same `#bottom-nav`, items, order, customizer and injected items, restyled on Modern at phone width into a floating pill (16px gutters, 8px above the home
+  indicator, blur + saturation, a solid ground without backdrop-filter). `--mobile-bottom-nav-h` stays the one offset (the pill + its gap + the safe area). R4 (Dean):
+  every item keeps 44px and an over-full pill scrolls sideways, the lit item scrolled into view. The reader now sizes itself from that offset (it read the strip's
+  own height, which would have left its bottom under the floating pill).
+- App: new bridge capability `nativeTabBar` - message `nav.bar`, events `navTap` and `navBarMetrics`; `visible` is one enumerated predicate with a stylesheet-derived
+  census (native's half is the iOS Root's; the relay is in the completed plan).
+- Measured: R5 base vs branch 26/26 identical (Original/Classic/Flat on a phone, every look on desktop); the R6 sweep 22 checks 0 failed; the native-host browser
+  checks 11/0. Gate and evidence: docs/exec-plans/completed/2026-11-08-glass-tab-pill.md; device checks: docs/DEVICE-CHECKS.md "Glass tab pill (v1.405.0)".
 
 ### v1.404.0 - Picture-in-picture on the iPhone: the app (with its next update) and Safari (2026-11-06)
 

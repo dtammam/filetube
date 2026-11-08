@@ -5,6 +5,20 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Glass tab pill (v1.405.0; (g)-(k) after the app build that announces nativeTabBar)
+
+- [ ] v1.405.0 - (a) iPhone Safari or the home-screen app, Modern look, light and dark: the bottom bar is a floating rounded pill on every page that had the bar (Home, Watch, History, Music, Podcasts, Books, a book, Stats, TV, Settings, Subscriptions); the page shows through it while you scroll.
+- [ ] v1.405.0 - (b) Scroll to the end of a long list: the last row clears the pill. Play something and dock it: the mini player sits above the pill.
+- [ ] v1.405.0 - (c) Press and hold an item: its name shows above the pill, and letting go does not open it. A normal tap opens it as before.
+- [ ] v1.405.0 - (d) Settings, the bottom bar customizer: hide one, reorder, opt one in - the pill follows. Opt in most of them: the pill scrolls sideways and the selected one stays in view.
+- [ ] v1.405.0 - (e) Original, Classic and Flat: the old full-width bar, unchanged.
+- [ ] v1.405.0 - (f) A sheet (Playlists, the account menu), the keyboard, fullscreen, a book being read aloud (its now-playing bar): covered or hidden exactly as before.
+- [ ] v1.405.0 - (g) App build with the glass pill: Liquid Glass, with the same items, order and selection as Settings says (the You avatar too).
+- [ ] v1.405.0 - (h) A tap navigates; Playlists opens its sheet.
+- [ ] v1.405.0 - (i) The pill hides under every sheet, menu and dialog, the keyboard, fullscreen and the music skin, and comes back after.
+- [ ] v1.405.0 - (j) The mini player sits above the pill; the end of a long list clears it.
+- [ ] v1.405.0 - (k) Switch to a retro look: the old web bar, no glass. An app build before that one: the web pill, as in (a).
+
 ## Picture-in-picture on the iPhone (v1.404.0; (c)-(h) after the app build that announces nativeVideoPip)
 
 - [ ] v1.404.0 - (a) iPhone Safari with Settings "Use custom player controls on touch devices" ON (off, Apple's own controls show and FileTube has no row), a video, the settings cog, Picture-in-picture: it floats; the row now says Exit picture-in-picture, and it (or Apple's own control) brings it back. A toast "not available here (<name>)" instead: note the name, it is the reason Safari refused.
