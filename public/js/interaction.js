@@ -31,6 +31,9 @@
 //     the release as a tap on its first item).
 //   - A press that starts inside a field (input/textarea/select/contenteditable)
 //     is ignored, so the native caret loupe and paste menu keep working there.
+//   - `opts.enabled` (optional, read at each pointerdown; v1.405.0): false = this
+//     press is not watched at all (no timer, no click swallow), so a surface that
+//     takes a long press only in some states behaves exactly as unbound in the rest.
 //
 // swipeRow safety (D8.3, a destructive surface - the full gate attacks this):
 //   - The full-swipe action may not be kind 'danger': setup throws, unless the caller
@@ -184,6 +187,7 @@
       if (e.isPrimary === false) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (inField(e.target)) return;
+      if (typeof opts.enabled === 'function' && !opts.enabled(e)) return;
       var x = num(e.clientX, 0), y = num(e.clientY, 0);
       press = { id: e.pointerId, x: x, y: y, lastX: x, lastY: y, event: e, timer: null, fired: false, type: e.pointerType };
       press.timer = win.setTimeout(function () { if (press) { press.timer = null; fire(); } }, ms);

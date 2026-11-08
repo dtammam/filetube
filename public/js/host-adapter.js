@@ -11,7 +11,7 @@
 // comes back as DATA: an event is validated against EVENTS and ignored when it does not fit.
 (function (root) {
   var VERSION_RE = /^\d+\.\d+\.\d+/;
-  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip'];
+  var CAPABILITIES = ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip', 'nativeTabBar'];
   // v1.387.0 offline playback (plan D5). The download kinds the web may ask for (the manifest's enum) and the
   // fields of one downloaded ITEM as native reports it: a `download` event, and each element of a
   // `downloadsSnapshot`. kind is always a single-item kind; an album or season add reports its MEMBERS, each
@@ -114,6 +114,32 @@
   // and 'above' only with space 'viewport' (native rejects it with 'document').
   var SURFACE_LAYERS = ['below', 'above'];
   function surfaceRectSpec() { return { is: 'object', req: true, props: { x: { is: 'number', req: true }, y: { is: 'number', req: true }, w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
+  // v1.405.0 nativeTabBar (plan docs/exec-plans/completed/2026-11-08-glass-tab-pill.md, the Contract): the app draws Modern's bottom pill
+  // natively (Liquid Glass) above the web view. nav.bar = the items in the web bar's visible order (id = a bottom-bar roster id or an
+  // injected one such as 'you'; label = the item's accessible name; active = the lit item; imageUrl = the account photo, a same-origin
+  // PATH only - a message carrying any other imageUrl is refused whole, never trimmed) and `visible` (common.js nativeTabBarVisible(),
+  // the ONE predicate). navTap = a tap on a native item (the web clicks its live element); navBarMetrics = the pill's height + its gap
+  // above the safe area, CSS px, the safe area excluded (the web sets --mobile-bottom-nav-h from it while native draws).
+  var NAV_BAR_MAX_ITEMS = 32;
+  function navBarItemFields() {
+    return {
+      id: { is: 'string', min: 1, max: 64, req: true },
+      label: { is: 'string', min: 1, max: 128, req: true },
+      active: { is: 'boolean', req: true },
+      imageUrl: { is: 'string', min: 1, max: 2048 },
+    };
+  }
+  // A path on the page's own origin: one leading '/', never '//' (a scheme-relative URL is another host), no backslash (WebKit
+  // reads a backslash as a slash, so '/' + backslash + 'host' is '//host'), no whitespace or control character.
+  function sameOriginPath(u) {
+    if (typeof u !== 'string' || u.charAt(0) !== '/' || u.charAt(1) === '/' || u.indexOf('\\') >= 0) return false;
+    for (var i = 0; i < u.length; i++) { var c = u.charCodeAt(i); if (c <= 32 || c === 127) return false; }
+    return true;
+  }
+  function navBarImagesOk(items) {
+    for (var i = 0; i < items.length; i++) { if (items[i] && items[i].imageUrl !== undefined && !sameOriginPath(items[i].imageUrl)) return false; }
+    return true;
+  }
   function videoSizeSpec() { return { is: 'object', props: { w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
 
   // Web to native. cap = the capability that must be announced (null = always). fields: the allowed
@@ -160,6 +186,8 @@
     // v1.404.0 nativeVideoPip (plan 2026-11-05-ios-pip, the Contract): start or stop Apple's picture-in-picture
     // on the native player's layer. public/js/native-audio.js sends it from the button's click, only while native owns the current video.
     'video.pip': { cap: 'nativeVideoPip', fields: { action: { enum: ['start', 'stop'], req: true } } },
+    // v1.405.0 nativeTabBar: the native pill's items + whether it shows. common.js sends it coalesced, only on a change.
+    'nav.bar': { cap: 'nativeTabBar', fields: { items: { is: 'array', req: true, max: NAV_BAR_MAX_ITEMS, items: { is: 'object', props: navBarItemFields() } }, visible: { is: 'boolean', req: true } } },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).
@@ -215,6 +243,10 @@
     audioError: { lenient: { error: 'other' }, fields: { id: { is: 'string', min: 1, max: 512, req: true }, error: { enum: AUDIO_ERRORS.slice(), req: true } } },
     // v1.404.0 nativeVideoPip: every start and stop, whoever caused it (the button, automatic PiP, Apple's own controls), and { active: false } once at load.
     videoPip: { fields: { active: { is: 'boolean', req: true } } },
+    // v1.405.0 nativeTabBar: a tap on a native pill item (the web clicks that item's live element; an id with none is ignored), and the
+    // pill's height + its gap above the safe area in CSS px (safe area excluded), once after the announce and on every change.
+    navTap: { fields: { id: { is: 'string', min: 1, max: 64, req: true } } },
+    navBarMetrics: { fields: { height: { is: 'number', min: 0, max: 400, req: true } } },
   };
 
   function fieldOk(spec, v) {
@@ -327,6 +359,7 @@
         }
         if (type === 'video.surface' && f.layer === 'above' && f.space !== 'viewport') { warn("layer 'above' needs space 'viewport'", type); return false; } // v1.401.0: the pairing native enforces
         if (type === 'audio.load' && !audioQueueOk(f.queue)) { warn('an Item breaks the src / artworkSrc / radioSeed rules', type); return false; } // v1.398.0 (V4)
+        if (type === 'nav.bar' && !navBarImagesOk(f.items)) { warn('an imageUrl is not a same-origin path', type); return false; } // v1.405.0
         var msg = pick(def.fields, f);
         msg.v = 1;
         msg.type = type;
@@ -386,6 +419,7 @@
       on: on,
       appLike: appLike,
       allowsMediaFetch: allowsMediaFetch,
+      sameOriginPath: sameOriginPath, // v1.405.0: the nav.bar imageUrl rule, so common.js leaves out what post() would refuse
     };
 
     if (present) {
@@ -400,7 +434,7 @@
     return host;
   }
 
-  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX, SURFACE_SPACES: SURFACE_SPACES, SURFACE_FITS: SURFACE_FITS, SURFACE_LAYERS: SURFACE_LAYERS };
+  var api = { create: create, MESSAGES: MESSAGES, EVENTS: EVENTS, CAPABILITIES: CAPABILITIES, DOWNLOAD_KINDS: DOWNLOAD_KINDS, DOWNLOAD_ITEM_KINDS: DOWNLOAD_ITEM_KINDS, DOWNLOAD_STATES: DOWNLOAD_STATES, DOWNLOAD_ERRORS: DOWNLOAD_ERRORS, AUDIO_KINDS: AUDIO_KINDS, AUDIO_PROGRESS_ROUTES: AUDIO_PROGRESS_ROUTES, AUDIO_ART_PREFIXES: AUDIO_ART_PREFIXES, audioItemOk: audioItemOk, AUDIO_STATES: AUDIO_STATES, AUDIO_ERRORS: AUDIO_ERRORS, AUDIO_SLEEP_MODES: AUDIO_SLEEP_MODES, AUDIO_QUEUE_MAX: AUDIO_QUEUE_MAX, SURFACE_SPACES: SURFACE_SPACES, SURFACE_FITS: SURFACE_FITS, SURFACE_LAYERS: SURFACE_LAYERS, sameOriginPath: sameOriginPath, NAV_BAR_MAX_ITEMS: NAV_BAR_MAX_ITEMS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root && root.document) {
     root.FileTube = root.FileTube || {};

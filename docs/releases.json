@@ -3820,5 +3820,11 @@
     "date": "2026-11-06",
     "title": "Picture-in-picture on the iPhone",
     "intent": "In Safari on an iPhone with the custom player controls on, the Picture-in-picture row now asks for Safari's own picture-in-picture, and if iOS refuses it says why instead of doing nothing. With the controls off, Apple's own button is there as before. In the iPhone app it needs the next app update: then the row floats the video, and a playing video floats by itself when you swipe home. Until that update the app hides the row. Safari has no automatic version, so there it is the button only."
+  },
+  {
+    "version": "1.405.0",
+    "date": "2026-11-08",
+    "title": "A floating glass pill for the bottom bar on Modern",
+    "intent": "On the Modern look on a phone, the bottom bar is now a rounded pill that floats above the bottom of the screen, with the page showing through it as you scroll. It holds the same items in the same order, follows your bar settings, and shows icons only: press and hold one to see its name. If you turn on more items than fit, the pill scrolls sideways. The iPhone app draws it with Apple's Liquid Glass after its next update. Original, Classic and Flat keep their usual bar."
   }
 ]
