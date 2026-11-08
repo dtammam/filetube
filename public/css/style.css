@@ -258,6 +258,9 @@
      it here, inside the one guard, so the partition stays intact. */
   .library-chips,
   .modern-avatar-bar { scrollbar-width: none; }
+  /* v1.405.0: the Modern glass tab pill scrolls sideways when it holds more items than fit (R4); its webkit
+     side is the ::-webkit-scrollbar rule beside the pill. */
+  [data-theme="2021"] .bottom-nav { scrollbar-width: none; }
   /* v1.281 (Dean): the immersive mobile music skin hides its bar the same way (webkit
      side: body.mms-on ::-webkit-scrollbar display:none) - kills the launch scrollbar flash. */
   body.mms-on, body.mms-on * { scrollbar-width: none; }
@@ -3617,6 +3620,13 @@ select {
     /* v1.45.0 T1: the sticky home filter bar clears the mobile header. */
     --sticky-bar-top: var(--mobile-header-h);
   }
+  /* v1.405.0 the glass tab pill (plan 2026-11-08-glass-tab-pill R2): on Modern the bar is a pill floating
+     --pill-gap above the safe area, so the ONE offset becomes the pill + its gap + the inset. Content scrolls
+     UNDER the pill (the glass shows it); this reserve only lets the last row and #player-dock clear it.
+     The other looks keep the 72px strip above, byte-identical. */
+  :root[data-theme="2021"] {
+    --mobile-bottom-nav-h: calc(var(--pill-h) + var(--pill-gap) + env(safe-area-inset-bottom));
+  }
 
   /* v1.26.2 polish fix (Dean punchlist, systemic version): every prior
      iOS-input-zoom fix (search box, one-off/subscribe modal fields, setup
@@ -3731,6 +3741,63 @@ select {
   }
   .bottom-nav > .bottom-nav-item.active {
     color: var(--ink-1);
+  }
+
+  /* v1.405.0 the glass tab pill (plan 2026-11-08-glass-tab-pill, Dean's look A "Capsule"): on Modern the
+     strip above becomes a floating, fully rounded pill - full width minus 16px gutters, --pill-gap above the
+     home indicator, icons only (the label stays as each item's accessible name, visually hidden - never
+     display:none on the only name), the active item in a soft inner capsule. Same element, same ids, same
+     items and order: only the paint changes. Display is NOT redeclared, so the landscape and faux-fullscreen
+     hides below keep winning. A WebKit without backdrop-filter gets a solid ground (@supports not). */
+  [data-theme="2021"] .bottom-nav {
+    left: var(--pill-gutter);
+    right: var(--pill-gutter);
+    bottom: calc(env(safe-area-inset-bottom) + var(--pill-gap));
+    height: var(--pill-h);
+    padding: var(--pill-pad);
+    align-items: center;
+    border-top: 0;
+    border-radius: var(--radius-full);
+    background: var(--pill-ground);
+    -webkit-backdrop-filter: var(--pill-glass);
+    backdrop-filter: var(--pill-glass);
+    box-shadow: inset 0 0 0 var(--hairline) var(--pill-rim), 0 0 0 var(--hairline) var(--pill-edge), var(--pill-shadow);
+    /* R4 (Dean, 2026-11-08: "scroll inside the pill"): every item keeps a 44px target; when more are opted in
+       than fit (the full roster is 14 items, the pill holds 6 at 320px and 7 at 375/390px), the row scrolls
+       sideways inside the pill. flex-start, never space-around: an overflowing space-around centres and puts
+       the first items out of reach. */
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    /* corner-clip-safe: the pill's own items are plain links/buttons with no transform, video or will-change, so
+       no compositing layer can reach a rounded corner while the row scrolls; the DOM cannot split clip from
+       scroll here (applyBottomNavCustomization appends the items straight into #bottom-nav) */
+  }
+  [data-theme="2021"] .bottom-nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  @supports not ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+    [data-theme="2021"] .bottom-nav { background: var(--pill-ground-solid); }
+  }
+  [data-theme="2021"] .bottom-nav > .bottom-nav-item {
+    flex: 1 0 var(--hit);
+    min-width: var(--hit);
+    height: var(--hit);
+    padding: 0;
+    border-radius: var(--radius-full);
+  }
+  [data-theme="2021"] .bottom-nav > .bottom-nav-item.active {
+    background: var(--fill-selected);
+  }
+  [data-theme="2021"] .bottom-nav .bottom-nav-label {
+    position: absolute;
+    width: var(--hairline);
+    height: var(--hairline);
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   /* v1.75 (Dean's report: "In bottom bar, Home is not always left-most"):

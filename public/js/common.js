@@ -3538,7 +3538,7 @@ function applyNavHighlight(pathname, search) {
     // Never light an item the layout has hidden (adversarial gate round 2, S4):
     // a floored/opt-in change between paints could otherwise strand `.active`
     // on a display:none node, which reads to the user as an unlit bar.
-    if (item && !item.hidden) { item.classList.add('active'); setBottomNavItemFilled(item, true); }
+    if (item && !item.hidden) { item.classList.add('active'); setBottomNavItemFilled(item, true); revealBottomNavItem(bottomNav, item); }
   }
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
@@ -3547,6 +3547,18 @@ function applyNavHighlight(pathname, search) {
     const match = href && sidebar.querySelector('a.sidebar-item[href="' + href + '"]');
     if (match) match.classList.add('active');
   }
+}
+
+// v1.405.0 (plan 2026-11-08-glass-tab-pill R4, Dean: "scroll inside the pill"): on Modern a bar with more items
+// than fit scrolls sideways inside the pill, so the lit item could sit past its edge. Bring it into view (no
+// animation). A bar that does not overflow (every other look, and any bar that fits) never moves: its items all
+// sit inside [0, clientWidth] at scrollLeft 0, so neither branch below fires.
+function revealBottomNavItem(nav, item) {
+  const view = nav.clientWidth;
+  const left = item.offsetLeft;
+  const right = left + item.offsetWidth;
+  if (left < nav.scrollLeft) nav.scrollLeft = left;
+  else if (right > nav.scrollLeft + view) nav.scrollLeft = right - view;
 }
 
 // Which BOTTOM-BAR item a resolved nav key lights. Pure, because the DOM shell

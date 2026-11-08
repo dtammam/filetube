@@ -58,6 +58,15 @@
   --thumb-ground: #e5e5ea;
   --star: #ffcc00;
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.18);
+  /* v1.405.0 the glass tab pill (Modern's phone bottom bar, plan 2026-11-08-glass-tab-pill Q5 look A):
+     a translucent ground under a blur + saturation, a light inner rim and a soft drop shadow.
+     Only the Modern blocks read them (style.css scopes the pill to [data-theme="2021"]). */
+  --pill-ground: rgba(255, 255, 255, 0.72);
+  --pill-ground-solid: #ffffff;
+  --pill-rim: rgba(255, 255, 255, 0.6);
+  --pill-edge: rgba(0, 0, 0, 0.08);
+  --pill-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --pill-glass: blur(20px) saturate(180%);
 
   /* D2.5 era knobs */
   --font-ui: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
@@ -114,6 +123,10 @@
   --tile-w: 108px;              /* a ui-tile card's width on a shelf, a card grid's minimum column (step 7) */
   --player-dock-w: 160px;       /* v1.377.0: the phone mini player's width (style.css, max-width 768) and the right edge of the handoff card beside it */
   --row-compact: 44px;
+  --pill-pad: 6px;              /* v1.405.0 the glass tab pill: inset of the item row inside the pill */
+  --pill-h: calc(var(--hit) + 2 * var(--pill-pad)); /* the pill's height: a 44px item row + its inset */
+  --pill-gap: 8px;              /* the pill floats this far above the safe area (the home indicator) */
+  --pill-gutter: 16px;          /* the pill's side gutters (Q5: full width minus 16px each side) */
   --row-default: 56px;
   --row-media: 64px;
   --inset: 16px;
@@ -238,6 +251,12 @@
   --thumb-ground: #1c1c1e;
   --star: #ffcc00;
   --shadow-overlay: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --pill-ground: rgba(44, 44, 46, 0.66);
+  --pill-ground-solid: #2c2c2e;
+  --pill-rim: rgba(255, 255, 255, 0.14);
+  --pill-edge: rgba(0, 0, 0, 0.5);
+  --pill-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --pill-glass: blur(20px) saturate(180%);
   --font-ui: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --font-heading: 'Geist', 'Roboto', 'Helvetica Neue', system-ui, Arial, sans-serif;
   --btn-radius: var(--r-md);
