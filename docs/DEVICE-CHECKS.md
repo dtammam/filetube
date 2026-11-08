@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Switch click (v1.406.1; in the iPhone app)
+
+- [ ] v1.406.1 - (a) A video docked and playing, Home, tap another video right away (within a second): no click or glitch in the sound.
+- [ ] v1.406.1 - (b) The same from Classic home, and from a Search result.
+- [ ] v1.406.1 - (c) Music playing (docked) -> tap a video on Home: no click.
+- [ ] v1.406.1 - (d) The new video still shows its thumbnail in the player from the first frame (v1.406.0's instant start is kept). (b) from a Search result is the discriminating one: on v1.406.0 its web work matched v1.405.0's (resets at hydration, not in the tap) and v1.406.1 removes those resets too, so a click there with none in (a) cannot come from the page's element resets and points at the app's own item swap (relayed to the iOS Root). A click still heard in (a) means the web diagnosis was wrong too: the next web suspect is the lock-screen info the page clears twice per switch, once inside the tap; re-root-cause, never re-patch.
+
 ## Smoothness (v1.406.0; (h)-(i) after the app build that sends pictureReady and waits for host.ready)
 
 - [ ] v1.406.0 - (a) Modern home -> tap a video: the player box shows the video's thumbnail from the first frame, then the picture - never a black box. Classic home, a Continue watching row and a related card: the same.

@@ -108,6 +108,21 @@
 // the actual FULL/DOCKED/CLOSED decisions are verifiable without a DOM/
 // browser harness (this codebase has none; see CONTRIBUTING.md).
 
+// v1.406.1 switch-click (plan docs/exec-plans/active/2026-11-08-switch-click.md): does a media element hold anything a reset would
+// drop? A reset (pause, removeAttribute('src') + load()) of an element that holds nothing changes nothing on the page, so it is
+// skipped; a browser's element (a src) resets as before. Why it matters on the iPhone app (a HYPOTHESIS, not proven): native owns
+// the sound there and the shared element and the sidecar are src-less, yet a switch from a seeded card (v1.406.0) ran their eight
+// pause / src-removal / load() calls inside the tap's user gesture, and Dean heard a click on such a switch. The same click from a
+// Search result, whose resets run at hydration exactly as on v1.405.0, is NOT explained by this; the app's own item swap is the
+// other suspect (relayed to the iOS Root). The device check "Switch click (v1.406.1)" is the arbiter.
+function mediaElementHoldsMedia(el) {
+  if (!el) return false;
+  if (typeof el.hasAttribute === 'function' && el.hasAttribute('src')) return true;
+  if (el.currentSrc) return true;
+  if (el.srcObject) return true;
+  return typeof el.networkState === 'number' && el.networkState !== 0; // NETWORK_EMPTY: nothing loading, nothing loaded
+}
+
 // Is a `load(id, ...)` call an ADOPT (a pure reparent -- no `<video>` src/
 // currentTime touch, no restart) rather than a genuine (re)load? True only
 // when the requested id already matches what's currently loaded AND the
@@ -2251,6 +2266,7 @@ function formatViewportDetail(win) {
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    mediaElementHoldsMedia, // v1.406.1: a teardown resets only an element that holds media
     resolveOfflineLocalSrc, // v1.387.0 offline playback: the phone's copy to play online, or null
     pipRouteDecision, // v1.404.0: which door the picture-in-picture row uses
     formatViewportDetail, // UI pass D7: the viewport line of the ?debugLifecycle=1 log
@@ -3605,6 +3621,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function releaseBackgroundAudioElement() {
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar on a foreground return
     if (!bgAudioEl) return;
+    if (!mediaElementHoldsMedia(bgAudioEl)) return; // v1.406.1: an empty sidecar has nothing to release
     try { bgAudioEl.pause(); } catch (_) {}
     try { bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) {}
   }
@@ -10263,7 +10280,9 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar at EVERY teardown site (gate: enumerate all 4 bgAudioEl-teardowns, not just release*)
     if (bgAudioEl) {
-      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset
+        try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      }
     }
     // FR-2 (T2, v1.21.0): stop the rAF fill loop (docs/RELIABILITY.md: must
     // be cancelled on pause/close -- `mediaPlayer.pause()` below already
@@ -10347,7 +10366,11 @@ if (typeof module !== 'undefined' && module.exports) {
       // `document.visibilityState === 'visible'`, since a new load is
       // itself always user/foreground-initiated) happens to make it safe
       // either way.
-      pauseSuppressingHandoff(mediaPlayer);
+      // v1.406.1 (gate r1 adversary S1): an element that holds nothing and is paused has nothing to pause - a released one after the
+      // dock's [x], whose pause would reach the REAL empty element. Still paused: an element holding media, and one that is NOT paused
+      // although empty (gate r2 adversary S2: play pressed while "Preparing this video" leaves paused false with no src, and the
+      // next src would start on its own); a native-owned element's proxy pause is a no-op here (nativeAudioBeginLoad set the transition)
+      if (mediaElementHoldsMedia(mediaPlayer) || !mediaPlayer.paused) pauseSuppressingHandoff(mediaPlayer);
       // FR-2 (v1.18.0): reset the visible poster/last-decoded frame to
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition
@@ -10365,8 +10388,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // ever called (see `load()`), so playback continuity there is
       // untouched.
       mediaPlayer.removeAttribute('poster');
-      mediaPlayer.removeAttribute('src');
-      mediaPlayer.load();
+      if (mediaElementHoldsMedia(mediaPlayer)) { // v1.406.1: under native the element is a src-less proxy - nothing to drop
+        mediaPlayer.removeAttribute('src');
+        mediaPlayer.load();
+      }
     }
   }
 
@@ -11180,7 +11205,10 @@ if (typeof module !== 'undefined' && module.exports) {
     setCaptionsOn(false);
     hideCaptionOverlay();
     nativeCueList = null; // v1.399.0 (S7): the next item parses its own
-    if (mediaPlayer) {
+    // v1.406.1: nativeAudioRelease() above already handed the element back (native stopped with audio.stop), so an element that
+    // holds nothing is left alone - a pause() on a NETWORK_EMPTY element is not a no-op (it runs the resource selection algorithm,
+    // HTML spec); the same media-element work the switch no longer does
+    if (mediaPlayer && mediaElementHoldsMedia(mediaPlayer)) {
       try {
         // F5 (two-reviewer gate, structural consistency, v1.27.1
         // post-release): routed through `pauseSuppressingHandoff` (not a
@@ -11208,7 +11236,9 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     stopBgKeepAlive(); // v1.161.3: a CLOSE can never leave the keep-alive playing either (all 4 teardown sites)
     if (bgAudioEl) {
-      try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset
+        try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
+      }
     }
     setPlaybackState('none');
     hideDock();

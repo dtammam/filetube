@@ -85,6 +85,11 @@
 
 ### Bugs
 
+- [ ] **v1.406.1 switch-click follow-ups (gate r1, not taken)** _(2026-11-08)_: (1) if DEVICE-CHECKS "Switch click (v1.406.1)" (a) still
+  clicks: make `clearMediaSessionForNative` idempotent (it runs twice per switch, once inside the tap, since v1.406.0) with a binding test;
+  (2) a fixture that reaches the keep-alive so its stop can skip an empty element (adversary S3); (3) build the realm's Music track with music.js's
+  own descriptor builder (adversary S4); (4) wait on the iOS Root's answer to the item-swap relay (plan Evidence); (5) `assertOneHandover` should also assert zero `audio.pause`
+  (gate r3 adversary: since v1.406.1 a native switch reaches the proxy pause, kept silent only by the load transition).
 - [ ] **Reader page is 20-24 px taller than the window** _(v1.402.1 probe, 2026-11-05; present before it, not caused by it)_ - with a book open the
   reader chassis ends exactly at the window bottom, but the document is taller (924 at 1440x900, 864 at 390x844, 414 at 844x390: the
   `.app-container` bottom padding), so the page can scroll a little. Measured identical on 698ae741 (before v1.402.1). Look at it when
@@ -985,6 +990,23 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.406.1 - Switching from a docked video: no media-element work in the tap, and the app's item swap relayed (2026-11-08)
+
+- Dean (2026-11-08, iPhone app, right after v1.406.0): "a weird audio burp that happens consistently" going from a docked, playing video to
+  another; a click, not either item's audio; not noticed before v1.406.0.
+- W1 measured the bridge first (test/integration/switch-click.test.js: the real watch view, player and bridge with a fake host modelled on today's
+  app, server-emitted seeds; the same file run on a v1.405.0 sandbox): every switch (Modern, Classic, Music -> video) sends ONE audio.load, one
+  audio.play, one video.surface, no audio.stop and no second load at hydration on BOTH versions - the plan's three suspects refuted. Dean's device
+  A/B: a click from Search and from a quick Home tap, none while a muted card preview was rolling.
+- What the web change addresses (a hypothesis): a seeded switch runs eight resets (pause, src removal, load) of the src-less shared element
+  and sidecar inside the tap's gesture; v1.406.0 moved Modern (and the home rows) there, while Classic already loaded in the tap on v1.405.0
+  with no click reported - one more case the hypothesis has to explain. `mediaElementHoldsMedia` now
+  skips every such reset on the switch and close paths; a browser element holding the previous video resets as before; the instant start is kept.
+- What it does NOT explain (gate r1, measured): a Search result's seed is partial, so its loads and resets run at hydration op for op as on
+  v1.405.0, yet Dean heard the click there; and the MediaSession clear moved into the tap too and runs twice per switch (untouched). So the app's
+  own item swap (an abrupt AVPlayer replace) is relayed to the iOS Root; DEVICE-CHECKS "Switch click (v1.406.1)" decides which side it was.
+  Evidence: docs/exec-plans/completed/2026-11-08-switch-click.md.
 
 ### v1.406.0 - Smoothness: no black player, no blank Now Playing, no dead taps, a launch that lands on content (2026-11-08)
 
