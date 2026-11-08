@@ -3,10 +3,10 @@ plan: vpm-pill-scroll
 harness: v2 · light
 branch: fix/vpm-pill-scroll
 anchor: outcome
-status: Kickoff done; build not started
+status: Shipped v1.405.0
 next: the builder reads Step 0, then W1
 design: Dean, 2026-11-08 (v1.405.0): "merge now, fix after"; R4 ruling "Scroll inside the pill"
-gate: pending (adversary; test-only diff)
+gate: APPROVED r1 @f731a617 (adversary; test-only diff)
 builder: standard
 ---
 
@@ -85,3 +85,9 @@ M5 (`.bottom-nav{overflow-x:hidden}`) goes red on exactly the 4 pill cells at 32
 survived because script `scrollTo` works on `overflow:hidden`; the overflow-x guard above is the fix (a finger cannot scroll it).
 M6 (a transparent layer over the pill's right end) is red AFTER the scroll: `bottom-bar you: ... (after the pill was scrolled to bring it into view)`.
 
+
+## Gate
+
+Gate: APPROVED r1 @f731a61733577a393c79132fed09dbd6e1bc5482 - adversary. CRITICAL none, WARNING none. The seat re-ran
+VPM (33 ok, 0 FAIL) and the mutants (6 of 6 killed), and mutated the overflow-x guard to `true`: M5 went green (33 ok), so M5 binds the guard.
+Notes (not blocking): the "not scrolled" text covers two causes (the hit target tells them apart); M6's cover also covers unscrolled tabs at wider sizes.
