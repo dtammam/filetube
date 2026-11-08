@@ -232,6 +232,19 @@ const MUTATIONS = {
     check: 'VPM', target: { cells: vpmCells().filter((c) => c.surface.pocket).map((c) => c.id) },
     css: '.ip-center{pointer-events:none!important}',
   },
+  // VPM (v1.405.0 follow-up): the Modern pill scrolls sideways when its tabs do not fit; collectVPM scrolls each tab
+  // into view inside the pill before its hit test. M5: the pill stops scrolling, so a tab parked past its edge is
+  // truly unreachable and must stay red (the scroll-into-view must not paper over it). Red exactly where the
+  // seven tabs overflow: the portrait 320 cells of the surfaces that show the pill (not the iPod skin).
+  'vpm-m5-pill-cannot-scroll': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.w <= 340 && c.portrait && !c.surface.pocket).map((c) => c.id) },
+    css: '[data-theme="2021"] .bottom-nav{overflow-x:hidden!important}',
+  },
+  // M6: a transparent layer over the right end of the pill, where a scrolled-to tab lands: still red AFTER the scroll.
+  'vpm-m6-cover-over-scrolled-tab': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.portrait && !c.surface.pocket).map((c) => c.id) },
+    css: '@media (max-width: 800px){html::before{content:"";position:fixed;right:0;bottom:0;width:90px;height:120px;z-index:2147483647;pointer-events:auto;background:transparent}}',
+  },
 };
 
 module.exports = { MUTATIONS };
