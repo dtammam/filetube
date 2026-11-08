@@ -3911,6 +3911,116 @@ function mediaFetchAllowed() {
 }
 // The one `GET /api/subscriptions/health` call site. A shut gate answers a synthetic 404 (what a server without the module
 // answers), so every consumer takes its existing "module off" path with no request made.
+// ---- v1.406.0 E1 + E3 (plan 2026-11-08-smoothness): the first screen's real content ------------------------------------
+// ONE moment per document load: the first screen shows real content (the home's first cards with their pictures decoded, or
+// its last-known snapshot, its empty or error state; any other view once its init ran). At that moment:
+//  - E1: the web posts `host.ready` to the app (add-only, docs/references/native-bridge.md), which holds its launch screen
+//    until then (no black, no spinner over black), capped by native at about 2 s;
+//  - E3: the chrome's reconcile fetches the first screen does not need (the handoff card, the pinned sidebar, the bell's
+//    count, the queue chip, the History and Liked counts) start - they used to compete with the grid's own requests on the
+//    phone's few connections. Each of those surfaces paints from what it remembered first (the cold-launch crispness work),
+//    so waiting changes when it reconciles, not what shows.
+// FIRST_CONTENT_CAP_MS is the floor's ceiling: whatever happens (a view that never marks, a stalled grid, an error page), the
+// moment comes, host.ready is posted and the deferred fetches run.
+const FIRST_CONTENT_CAP_MS = 1500;
+let firstContentDone = false;
+let firstContentReason = '';
+let firstContentCapTimer = 0;
+const firstContentWaiters = [];
+function postHostReady() {
+  try {
+    const host = typeof window !== 'undefined' && window.FileTube && window.FileTube.host;
+    if (host && host.present && typeof host.post === 'function') host.post('host.ready', {});
+  } catch (_) { /* a host bug never breaks the page */ }
+}
+function markFirstContent(reason) {
+  if (firstContentDone) return false;
+  firstContentDone = true;
+  firstContentReason = String(reason || '');
+  if (firstContentCapTimer) { clearTimeout(firstContentCapTimer); firstContentCapTimer = 0; }
+  postHostReady();
+  const run = firstContentWaiters.splice(0);
+  for (const fn of run) { try { fn(); } catch (_) { /* one waiter never stops the rest */ } }
+  return true;
+}
+function armFirstContentCap() {
+  if (firstContentDone || firstContentCapTimer || typeof setTimeout !== 'function') return;
+  firstContentCapTimer = setTimeout(() => { firstContentCapTimer = 0; markFirstContent('cap'); }, FIRST_CONTENT_CAP_MS);
+}
+function whenFirstContent(fn) {
+  if (typeof fn !== 'function') return;
+  if (firstContentDone) { fn(); return; }
+  firstContentWaiters.push(fn);
+  armFirstContentCap();
+}
+// a fetch that starts at the first-content moment (at once after it)
+function fetchAfterFirstContent(url, init) {
+  return new Promise((resolve) => whenFirstContent(resolve)).then(() => fetch(url, init));
+}
+// ---- v1.406.0 E2 (plan 2026-11-08-smoothness): the last-known home ----------------------------------------------------------
+// The default home's first screen (its first HOME_SNAPSHOT_MAX cards: the fields a card draws, never a path, tags, chapters or a
+// description), remembered on this device under the user it was drawn for and the layout it was drawn in (main.js writes it
+// after every page-0 render of the bare home, and paints it at the next launch instead of skeletons; the real fetch then
+// redraws the grid in place). A snapshot is never shown to anyone else: it carries the user id, a mismatch clears it, and
+// sign-out and the login / welcome shells clear it. A JSON over HOME_SNAPSHOT_MAX_BYTES keeps fewer cards.
+const HOME_SNAPSHOT_KEY = 'ft-home-snapshot-v1';
+const HOME_SNAPSHOT_MAX = 12;
+const HOME_SNAPSHOT_MAX_BYTES = 32 * 1024;
+const HOME_SNAPSHOT_DROP = ['filePath', 'rootFolder', 'name', 'tags', 'chapters', 'chaptersManual', 'description', 'sourceUrl', 'storyboard', 'comments', 'subtitles'];
+function homeSnapshotItem(it) {
+  if (!it || typeof it !== 'object' || typeof it.id !== 'string' || !it.id) return null;
+  const out = {};
+  for (const k of Object.keys(it)) {
+    if (HOME_SNAPSHOT_DROP.indexOf(k) >= 0) continue;
+    const v = it[k];
+    if (v === null || ['string', 'number', 'boolean'].indexOf(typeof v) >= 0) out[k] = typeof v === 'string' ? v.slice(0, 1024) : v;
+  }
+  return out;
+}
+function writeHomeSnapshot(userId, layoutKey, items) {
+  if (userId === null || userId === undefined || userId === '' || typeof layoutKey !== 'string' || !Array.isArray(items)) return false;
+  let list = items.slice(0, HOME_SNAPSHOT_MAX).map(homeSnapshotItem).filter(Boolean);
+  try {
+    let json = '';
+    while (list.length) {
+      json = JSON.stringify({ v: 1, user: String(userId), layout: layoutKey, at: Date.now(), items: list });
+      if (json.length <= HOME_SNAPSHOT_MAX_BYTES) break;
+      list = list.slice(0, list.length - 1);
+    }
+    if (!list.length) { localStorage.removeItem(HOME_SNAPSHOT_KEY); return false; }
+    localStorage.setItem(HOME_SNAPSHOT_KEY, json);
+    return true;
+  } catch (_) { return false; }
+}
+// The snapshot for this layout (any user: the caller checks the user when it is known), or null. Untrusted storage: shape-checked.
+function readHomeSnapshot(layoutKey) {
+  try {
+    const raw = localStorage.getItem(HOME_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (!snap || snap.v !== 1 || typeof snap.user !== 'string' || snap.layout !== layoutKey || !Array.isArray(snap.items)) return null;
+    const items = snap.items.slice(0, HOME_SNAPSHOT_MAX).filter((it) => it && typeof it === 'object' && typeof it.id === 'string' && it.id);
+    return items.length ? { user: snap.user, items } : null;
+  } catch (_) { return null; }
+}
+function clearHomeSnapshot() {
+  try { localStorage.removeItem(HOME_SNAPSHOT_KEY); } catch (_) { /* storage off */ }
+}
+
+// E3: GET /api/config SINGLE-FLIGHT - the chrome's Downloads entry and the home's loadLibrary both ask at boot. Callers in
+// flight share one request (each reads its own clone); cleared when it settles, so a later ask (a rescan, the playlists
+// sheet) is always fresh.
+let configInFlight = null;
+function fetchConfigShared() {
+  if (!configInFlight) {
+    const p = fetch('/api/config');
+    configInFlight = p;
+    const clear = () => { if (configInFlight === p) configInFlight = null; };
+    p.then(clear, clear);
+  }
+  return configInFlight.then((res) => (res && typeof res.clone === 'function' ? res.clone() : res));
+}
+
 // v1.406.0 H / E3 (plan 2026-11-08-smoothness): SINGLE-FLIGHT - the chrome, the home and the watch page each ask at boot, and
 // four identical requests used to compete with the first screen. Callers asking while one is in flight share it; each gets
 // its own clone (a Response body reads once), the shared original is never read. Cleared when it settles, so a later ask
@@ -4383,7 +4493,7 @@ function injectNotificationBellIfEnabled() {
     headerRight.insertBefore(ph, afterQueue());
   }
 
-  fetch('/api/notifications/badge')
+  fetchAfterFirstContent('/api/notifications/badge') // v1.406.0 E3: the bell's reserve holds its place; the probe waits for the first screen
     .then((res) => {
       if (!shouldInjectNotificationBell(res)) {
         try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '0'); } catch (_) { /* private mode */ }
@@ -5062,7 +5172,7 @@ function injectQueueChrome() {
   // v1.339 (L2): the pre-paint reserve (a `[data-ft-reserve="queue"]` placeholder the
   // shell's inline block painted from ft-queue-shown) is dropped on every no-button exit.
   const dropReserve = () => { const r = chromeReserveEl(headerRight, 'queue'); if (r) r.remove(); };
-  fetch('/api/queue')
+  fetchAfterFirstContent('/api/queue') // v1.406.0 E3: the reserve holds the chip's place; the read waits for the first screen
     .then((res) => (res.ok ? res.json() : null))
     .then((queue) => {
       if (!queue) { dropReserve(); return; } // pre-auth / error: fail closed, inject nothing
@@ -5453,7 +5563,7 @@ function injectTvNavLinkIfEnabled() {
 // bar opt-in - the v1.44 rule).
 function injectDownloadsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  fetch('/api/config')
+  fetchConfigShared() // v1.406.0 E3: shared with the home's own config read
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       // v1.391.0 (R2): the Downloads folder entry is the downloader's output root - it follows the mediaFetch gate.
@@ -7116,6 +7226,7 @@ function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
 function accountSignOut() {
   const done = () => {
     try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
+    clearHomeSnapshot(); // v1.406.0 E2: the next person on this browser never sees this user's last home
     // v1.99: the modern avatar-bar last-known count is per-DEVICE (localStorage,
     // shared across users on one browser). Drop it on sign-out so the NEXT user
     // to log in on this browser doesn't reserve THIS user's avatar-strip and see
@@ -13093,6 +13204,11 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     } else if (handlers && typeof handlers.init === 'function') {
       try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
+    // v1.406.0 E1/E3: home marks its own first content (its cards with their pictures, main.js); any other view's first screen
+    // is what its init just put up (a watch page's seeded paint, the Music launch frame) - marked on the next frame
+    if (view !== 'home') {
+      try { requestAnimationFrame(() => markFirstContent('view:' + view)); } catch (_) { markFirstContent('view:' + view); }
+    }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
     // button on the very first, progressive-enhancement load too -- this is
     // the ONLY hook that ever runs for a session that enters directly on
@@ -13121,6 +13237,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
   window.FileTube.stashWatchSeed = stashWatchSeed;
   window.FileTube.stashMusicSeed = stashMusicSeed; // v1.406.0 A3
+  window.FileTube.markFirstContent = markFirstContent; // v1.406.0 E1/E3: the home view marks its first cards
+  window.FileTube.whenFirstContent = whenFirstContent;
+  window.FileTube.firstContent = () => ({ done: firstContentDone, reason: firstContentReason }); // read-only: what marked it (home, view:<name>, cap)
   window.FileTube.consumeMusicSeed = consumeMusicSeed;
   window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
@@ -18506,7 +18625,7 @@ const handoffCard = (() => {
   async function poll() {
     try {
       const deviceId = getDeviceId();
-      const r = await fetch(`/api/handoff?deviceId=${encodeURIComponent(deviceId)}`);
+      const r = await fetchAfterFirstContent(`/api/handoff?deviceId=${encodeURIComponent(deviceId)}`); // v1.406.0 E3: the card never slides in ahead of the first screen
       if (!r.ok) return; // a cold/erroring server is silent, never a visible failure
       const data = await r.json();
       const presence = data && data.presence;
@@ -18567,6 +18686,8 @@ installRotateDebug();
 applyEraFlourish();
 
 document.addEventListener('DOMContentLoaded', () => {
+  armFirstContentCap(); // v1.406.0 E1: host.ready goes out by FIRST_CONTENT_CAP_MS on every boot path, whatever the view does
+  if (/^\/(login|welcome)\/?$/.test(window.location.pathname)) clearHomeSnapshot(); // v1.406.0 E2: signed out (an expired session too)
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
   // v1.43: seed any locally-unchosen display prefs from the signed-in
@@ -18740,7 +18861,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // (fetchAllPins 404s -> [] on a disabled module; a rejection renders nothing).
   if (document.getElementById('sidebar-folders-list')) {
     primePinnedSidebarFromCache(); // v1.53 warm instant-paint from the capability cache
-    fetchAllPins().then((pins) => renderPinnedSidebar(pins)).catch(() => {});
+    whenFirstContent(() => { fetchAllPins().then((pins) => renderPinnedSidebar(pins)).catch(() => {}); }); // v1.406.0 E3: reconcile after the first screen
   }
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
@@ -19150,6 +19271,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
     stashMusicSeed, consumeMusicSeed, // v1.406.0 A3
+    markFirstContent, whenFirstContent, fetchAfterFirstContent, fetchConfigShared, FIRST_CONTENT_CAP_MS, // v1.406.0 E1/E3
+    writeHomeSnapshot, readHomeSnapshot, clearHomeSnapshot, HOME_SNAPSHOT_KEY, HOME_SNAPSHOT_MAX, // v1.406.0 E2
     // v1.54: subscriber-label pure helpers.
     formatCompactCount, resolveSubscriberLabel, formatViewCountCaptureDate,
     // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).

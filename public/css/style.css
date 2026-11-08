@@ -1191,6 +1191,12 @@ html.has-player-dock .select-bar {
   position: relative;
   overflow: hidden;
   background-color: var(--surface-2);
+  animation: skeleton-delay-in var(--dur-fade) var(--ease-std) var(--skeleton-delay) both; /* v1.406.0 F (plan 2026-11-08-smoothness): invisible for --skeleton-delay, then fades in; the box keeps its space from the first frame */
+}
+/* v1.406.0 F: the one placeholder entrance - a load that lands inside --skeleton-delay never shows a shimmer at all */
+@keyframes skeleton-delay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .skeleton-shimmer::after {
@@ -1239,7 +1245,7 @@ img.art-shimmer {
   background-image: linear-gradient(100deg, var(--surface-2) 30%, var(--separator) 50%, var(--surface-2) 70%);
   background-size: 220% 100%;
   background-repeat: no-repeat;
-  animation: art-shimmer-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, matches the shared .skeleton-shimmer sweep timing */
+  animation: art-shimmer-sweep 1.6s ease-in-out infinite, skeleton-delay-in var(--dur-fade) var(--ease-std) var(--skeleton-delay) both; /* token-exempt: choreography, matches the shared .skeleton-shimmer sweep timing. v1.406.0 F: the same delayed entrance (a picture that decodes inside it is shown at once: shimmerArt drops the class) */
 }
 @keyframes art-shimmer-sweep {
   from { background-position: 150% 0; }

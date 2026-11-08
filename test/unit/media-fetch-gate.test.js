@@ -135,6 +135,7 @@ test('the capability cache and the remembered chrome flag read false when the ga
 async function runInjectors(caps) {
   const r = realm(caps);
   try {
+    common.markFirstContent('test'); // v1.406.0 E3: the bell's probe waits for the first screen; this suite drives the injectors, not boot timing
     common.injectSubscriptionsNavLinkIfEnabled();
     common.injectOneOffDownloadButtonIfEnabled();
     common.injectNotificationBellIfEnabled();

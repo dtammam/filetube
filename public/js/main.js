@@ -1770,11 +1770,9 @@ const PreviewCards = (function () {
     async function fetchCardCaps() {
       let canModifyLibrary = false;
       try {
-        const r = await fetch('/api/auth/me');
-        if (r.ok) {
-          const me = await r.json();
-          canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
-        }
+        // v1.406.0 E3: the page's ONE /api/auth/me (common.js fetchCurrentUser, shared with the chrome); null = signed out / failed
+        const me = (typeof fetchCurrentUser === 'function') ? await fetchCurrentUser() : await (await fetch('/api/auth/me')).json();
+        canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
       } catch (_) { /* signed-out shell / network failure -> no capability */ }
       // Reheat rides the latched module-health capability the watch page and the
       // subscriptions nav injector use (common.js capability cache). With no
@@ -1797,6 +1795,64 @@ const PreviewCards = (function () {
       return caps;
     }
 
+    // v1.406.0 E1/E3 (plan 2026-11-08-smoothness): the home's first screen is real once its first cards' pictures have
+    // decoded (at most HOME_FIRST_ART_WAIT_MS more: a slow picture never holds the launch screen), then on the next frame.
+    // Once per document (common.js markFirstContent keeps only the first); the cached-home restore never comes here.
+    const HOME_FIRST_ART_WAIT_MS = 600;
+    const HOME_FIRST_ART_COUNT = 6;
+    function markHomeFirstContent() {
+      const W = window.FileTube;
+      if (!W || typeof W.markFirstContent !== 'function') return;
+      const host = (homeFeedHost && !homeFeedHost.hidden && homeFeedHost.isConnected) ? homeFeedHost : videoGrid;
+      const imgs = host ? Array.from(host.querySelectorAll('img')).slice(0, HOME_FIRST_ART_COUNT) : [];
+      const decodes = imgs.map((img) => (typeof img.decode === 'function' ? img.decode().catch(() => {}) : Promise.resolve()));
+      const wait = new Promise((resolve) => setTimeout(resolve, HOME_FIRST_ART_WAIT_MS));
+      Promise.race([Promise.all(decodes), wait]).then(() => {
+        const mark = () => W.markFirstContent('home');
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(mark); else mark();
+      });
+    }
+
+    // v1.406.0 E2 (plan 2026-11-08-smoothness): the last-known home. Only the BARE default home (no search / folder / root / liked /
+    // watch-later / subs scope, not the feed layout) in the layout it was drawn in: Modern by its chip and sort, Classic by its
+    // sort and format filter. Painted through the same renderers as the real page 0, so the cards are the same cards; the real
+    // fetch then redraws the grid in place (a deleted item goes with it). The user is checked as soon as it is known: another
+    // user's snapshot is cleared and never painted again (sign-out and the login shell clear it first - common.js).
+    function homeSnapshotLayoutKey() {
+      if (!isBareHome || forceGrid || feedMode || isUnifiedSearch) return null;
+      if (modernMode) return 'modern:' + activeModernChip + ':' + activeModernSort;
+      return 'classic:' + currentSort + ':' + (typeof activeFormatFilter === 'function' ? activeFormatFilter() : '');
+    }
+    let homeFirstLoadStarted = false; // the snapshot stands in for this instance's FIRST load only (a retry / rescan refresh is unchanged)
+    function paintHomeSnapshot() {
+      const key = homeSnapshotLayoutKey();
+      const snap = key && typeof readHomeSnapshot === 'function' ? readHomeSnapshot(key) : null;
+      if (!snap) return false;
+      currentItems = snap.items.slice();
+      if (modernMode) putCards(currentItems, false);
+      else renderMediaGridPage(currentItems, { append: false });
+      markHomeFirstContent(); // E1: the snapshot IS the first screen
+      if (typeof fetchCurrentUser === 'function') {
+        fetchCurrentUser().then((me) => {
+          const uid = me && me.user && me.user.id != null ? String(me.user.id) : null;
+          if (uid !== snap.user && typeof clearHomeSnapshot === 'function') clearHomeSnapshot(); // never again for anyone else
+        }).catch(() => {});
+      }
+      return true;
+    }
+    function saveHomeSnapshot(items) {
+      const key = homeSnapshotLayoutKey();
+      if (!key || typeof writeHomeSnapshot !== 'function' || typeof fetchCurrentUser !== 'function') return;
+      const list = Array.isArray(items) ? items.slice(0, 64) : [];
+      fetchCurrentUser().then((me) => {
+        if (signal.aborted) return;
+        const uid = me && me.user && me.user.id != null ? me.user.id : null;
+        if (uid === null) return;
+        if (list.length) writeHomeSnapshot(uid, key, list);
+        else if (typeof clearHomeSnapshot === 'function') clearHomeSnapshot(); // an empty home has nothing to remember
+      }).catch(() => {});
+    }
+
     // Load configuration and files
     async function loadLibrary() {
       // Item 1 (v1.26.3): show skeleton placeholders immediately, before
@@ -1807,7 +1863,11 @@ const PreviewCards = (function () {
       // the Retry button's re-invocation of this same function (see the
       // catch block below) -- a retry gets its own fresh skeleton, not a
       // stale error card sitting there while the retried fetch is in flight.
-      setGridHtml(buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode, typeLine: isUnifiedSearch }));
+      // v1.406.0 E2: the last-known home in place of the skeleton when this device remembers one (first load only: a retry
+      // or a rescan's refresh keeps whatever is on screen until its fetch lands)
+      const firstLoad = !homeFirstLoadStarted;
+      homeFirstLoadStarted = true;
+      if (!firstLoad || !paintHomeSnapshot()) setGridHtml(buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode, typeLine: isUnifiedSearch }));
       // v1.100 (Dean): the toolbar's filters are SYNCHRONOUS (localStorage prefs,
       // the URL's search scope/type), so the chip row renders NOW - before the
       // config/videos fetches - and the toolbar is complete from the first
@@ -1834,8 +1894,15 @@ const PreviewCards = (function () {
         // so it never delays the grid behind a second round-trip; both land
         // BEFORE the first card render below, and the skeleton grid above
         // already covers the wait).
+        // v1.406.0 E3: GET /api/settings starts WITH the config, not after it (it never needed the config to start: only its
+        // ANSWER is read after the folder check below); the config read is shared with the chrome's (fetchConfigShared).
+        const bareLoadEarly = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter && !subsFilter && !forceGrid;
+        const settingsEarly = (bareLoadEarly || !storedSortPick)
+          ? fetch('/api/settings').then((r) => r.json())
+          : null;
+        if (settingsEarly) settingsEarly.catch(() => {}); // read below; an early failure is handled there, never unhandled
         const [configRes, caps] = await Promise.all([
-          fetch('/api/config'),
+          (typeof fetchConfigShared === 'function') ? fetchConfigShared() : fetch('/api/config'),
           fetchCardCaps(),
         ]);
         cardCaps = caps;
@@ -1853,6 +1920,7 @@ const PreviewCards = (function () {
           welcomeMessage.hidden = false;
           libraryContent.hidden = true;
           sidebarFoldersList.innerHTML = SIDEBAR_NONE_HTML;
+          markHomeFirstContent(); // v1.406.0 E1: the welcome box is the first screen
           return;
         }
 
@@ -1876,8 +1944,7 @@ const PreviewCards = (function () {
         const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter && !subsFilter && !forceGrid;
         if (bareLoad || !storedSortPick) {
           try {
-            const settingsRes = await fetch('/api/settings');
-            const settingsData = await settingsRes.json();
+            const settingsData = await (settingsEarly || fetch('/api/settings').then((r) => r.json())); // v1.406.0 E3: started with the config
             if (bareLoad) {
               // v1.32: ?liked=1 is an explicit scope param exactly like the
               // other three -- the configured default view must never
@@ -1938,6 +2005,7 @@ const PreviewCards = (function () {
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
           if (items.length) putCards(items, false);
           else { setGridHtml(buildModernEmptyHtml(filter)); syncSelection(); } // v1.400.0 gate r1 (qa W1 / adversary A2)
+          saveHomeSnapshot(items); // v1.406.0 E2: the next launch's first screen
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -2144,8 +2212,10 @@ const PreviewCards = (function () {
           await fetchLibraryPage0();
           ensureGridSentinel();
         }
+        markHomeFirstContent(); // v1.406.0 E1/E3: the first cards are up - once their pictures decode, the first screen is real
 
       } catch (err) {
+        if (typeof markHomeFirstContent === 'function') markHomeFirstContent(); // v1.406.0 E1: an error state is the first screen too
         console.error('Failed to load library data:', err);
         // Item 3 (v1.26.3): the shared, styled `.error-state` card (replaces
         // the old bare inline-styled red text) with a real Retry affordance
@@ -2253,6 +2323,7 @@ const PreviewCards = (function () {
       currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
       currentTotal = typeof data.total === 'number' ? data.total : currentItems.length;
       renderMediaGridPage(currentItems, { append: false });
+      saveHomeSnapshot(currentItems); // v1.406.0 E2 (the bare default home only: homeSnapshotLayoutKey)
       updateItemCountBadge();
       // v1.161 (Dean): a SUCCESSFUL search clears the box so the next search needs
       // no X-press first; a zero-result search KEEPS the query (its X still resets
