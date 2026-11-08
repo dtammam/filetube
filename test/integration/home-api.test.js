@@ -75,7 +75,11 @@ test('AC1: rows envelope; items carry only server-resolved fields', async () => 
   const it = ra.items[0];
   // v1.236: `type` now rides the row-feed media card (server-fold) so the client can reroute
   // audio downloads to the music player; `chapterCount` is added only for audio (this seed is a video).
-  assert.deepStrictEqual(Object.keys(it).sort(), ['href', 'id', 'kind', 'progressPercent', 'subtitle', 'thumbnailUrl', 'title', 'type'].sort());
+  // v1.406.0 A1: + the watch seed the player starts from at the tap (server.js watchSeedFields: duration, hasThumbnail,
+  // needsTranscode; transcodeStatus / width / height / projection / audioStatus only when the item has them) - never a path.
+  assert.deepStrictEqual(Object.keys(it).sort(), ['duration', 'hasThumbnail', 'href', 'id', 'kind', 'needsTranscode', 'progressPercent', 'subtitle', 'thumbnailUrl', 'title', 'type'].sort());
+  assert.strictEqual(it.filePath, undefined, 'a row card never carries the file path');
+  assert.strictEqual(it.size, undefined);
   assert.strictEqual(it.type, 'video', 'a video carries type:video and NO chapterCount');
   assert.strictEqual(it.title, 'Title a');
   assert.strictEqual(it.thumbnailUrl, '/thumbnail/a');

@@ -51,7 +51,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 // v1.351: `overflowIf(el)` picks WHICH elements the layout-less jsdom reports as overflowing (default: the
 // Now Playing title lines); `remote` boots the REAL controller from remote.js (a fake EventSource, a fetch
 // that answers /api/remote/targets with `remote.targets`) and, with `remote.select`, controls that device.
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote, remoteTarget, cfgSpy }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote, remoteTarget, cfgSpy, fileTubeExtra, beforeInit }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -89,6 +89,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
     player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; }, ensureTheaterButton: () => ensureTheaterButton(dom.window.document) },
   };
+  if (fileTubeExtra) Object.assign(dom.window.FileTube, fileTubeExtra); // v1.406.0 A3: the real common.js seed functions
   if (remoteTarget) dom.window.FileTube.remote = remoteTarget; // v1.354: a stand-in for the PC-side target (the view registers its handlers on it)
   if (remote) {
     delete require.cache[remotePath]; global.module = undefined;
@@ -137,6 +138,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   try {
     delete require.cache[musicPath];
     require(musicPath);
+    if (beforeInit) beforeInit(dom); // v1.406.0 A3: state the page holds BEFORE the view opens (the element of another item)
     mod.init(dom.window.document.getElementById('view-root'));
     if (runSync) await runSync(dom, spy, mod);   // inspect the SYNCHRONOUS post-init state (fetch still pending)
     for (let i = 0; i < 10; i++) await settle();
@@ -637,19 +639,19 @@ test('v1.244 source-lock: a ?play open MOUNTS a full-screen skin cover immediate
   const js = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
   // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
   // for BOTH ?play= arms; lock the helper's mechanics and that both arms call it.
-  const h = /function mountEarlyCover\(\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const h = /function mountEarlyCover\(seed\) \{([\s\S]*?)\n {4}\}/.exec(js); // v1.406.0 A3: + the tapped track's seed
   assert.ok(h, 'mountEarlyCover exists');
   assert.match(h[1], /coverEarly = !!\(SKINS && typeof SKINS\.skinActiveFor === 'function' && SKINS\.skinActiveFor\(\{ isMusic: true \}\)\)/, 'coverEarly gated on the mobile skin surface');
   assert.match(h[1], /if \(coverEarly && nowPlayingPanel\) \{[\s\S]*?classList\.add\('mms-on'\);[\s\S]*?nowPlayingPanel\.className = SKINS\.panelClass\(_sid\);[\s\S]*?nowPlayingPanel\.hidden = false;/, 'mounts a full-screen skin cover immediately (v1.335 gate r1 W1: the registry\'s ONE class builder)');
   // v1.301 (Dean): the cover paints the skin's DEVICE CHROME (renderFull with the no-current
   // ctx) as the launch frame, not a bare empty body that read as a jarring grey slab.
-  assert.match(h[1], /SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)/, 'the cover paints the skin device chrome, not an empty slab');
+  assert.match(h[1], /SKINS\.renderFull\(_sid, seed \? seededSkinCtx\(seed\) : buildSkinCtx\(-1\)\)/, 'the cover paints the skin device chrome (the seeded track when a tap knew it), not an empty slab');
   // v1.301 (slim-gate SUGGESTION): the chrome render is wrapped in try/catch with a blank-cover
   // fallback, so a skin render that ever threw can never break the launch path. Bind the net.
-  assert.match(h[1], /try \{[\s\S]*?SKINS\.renderFull\(_sid, buildSkinCtx\(-1\)\)[\s\S]*?\} catch \(_\) \{ nowPlayingPanel\.innerHTML = ''; \}/, 'the device-chrome render is guarded so a throw falls back to the blank cover');
-  const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  assert.match(h[1], /try \{[\s\S]*?SKINS\.renderFull\(_sid, seed \? seededSkinCtx\(seed\) : buildSkinCtx\(-1\)\)[\s\S]*?\} catch \(_\) \{ nowPlayingPanel\.innerHTML = ''; \}/, 'the device-chrome render is guarded so a throw falls back to the blank cover');
+  const m = /async function playTrackFromContinue\(trackId, bounceOnMiss, seed\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
-  assert.match(m[1], /var coverEarly = mountEarlyCover\(\);/, 'the continue arm rides the shared cover');
+  assert.match(m[1], /var coverEarly = mountEarlyCover\(seed\);/, 'the continue arm rides the shared cover');
   assert.match(js, /async function playListenItem\(mediaId\) \{\s*\n\s*mountEarlyCover\(\);/, 'the listen arm rides the shared cover too');
   // the ONLY path that shows the list (a non-bounce miss -> render) tears the cover down first
   assert.match(m[1], /straightToPlayerPending = false;[\s\S]*?document\.body\.classList\.remove\('mms-on'\);[\s\S]*?nowPlayingPanel\.hidden = true;[\s\S]*?\}\s*\n\s*await render\(\);/, 'the miss->list fallback clears the pending flag + tears the cover down before render()');
@@ -3491,4 +3493,201 @@ test('v1.363.1 gate r1: a text save drops the menu caches and patches the queue 
   assert.ok(body.length > 100, 'non-vacuous');
   const a = body.indexOf('invalidateMenuData();'), b = body.indexOf('applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true });'), c = body.indexOf('render()');
   assert.ok(a !== -1 && b > a && c > b, 'invalidate, then the queue patch, then the re-list');
+});
+
+
+// ---- v1.406.0 A3 (plan docs/exec-plans/active/2026-11-08-smoothness.md): Now Playing is never empty --------------------
+// The REAL common.js seed pair (stashMusicSeed / consumeMusicSeed) and the REAL music.js ?play= init and Jump back in tiles.
+const commonSeeds = require('../../public/js/common.js');
+const SEED_TRACK = { id: 't1', title: 'Seeded Song', artist: 'Seed Artist', album: 'Seed Album', durationSec: 200 };
+const holdAll = () => new Promise(() => {});
+const recorder = (urls, answer) => (u) => { urls.push(String(u)); return answer ? answer(String(u)) : Promise.resolve({ ok: true, json: holdAll }); };
+const PLAYER_IDLE = { currentId: null, getState: () => 'docked', getCurrentMeta: () => null, expand() {}, setTrackNav() {}, load() {}, dock() {} };
+
+test('A3: a ?play= open from a tapped card paints THAT track in the launch frame - title, artist, the card\'s own picture; never "Unknown track"', async () => {
+  commonSeeds.stashMusicSeed(SEED_TRACK, '/albumart/t1?s=256&v=a1');
+  const urls = [];
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', query: '?play=t1', playerOverride: PLAYER_IDLE, fetchImpl: recorder(urls),
+    fileTubeExtra: { consumeMusicSeed: commonSeeds.consumeMusicSeed },
+    runSync: async (dom) => {
+      const p = dom.window.document.getElementById('music-nowplaying-panel');
+      const text = p.textContent;
+      assert.ok(text.indexOf('Seeded Song') >= 0, 'the title from the first frame');
+      assert.ok(text.indexOf('Seed Artist') >= 0, 'the artist too');
+      assert.ok(text.indexOf('Unknown track') < 0, 'never Unknown track');
+      const art = Array.from(p.querySelectorAll('img')).map((i) => i.getAttribute('src'));
+      assert.ok(art.includes('/albumart/t1?s=256&v=a1'), `the tile's decoded picture (got ${art})`);
+      assert.ok(text.indexOf('-3:20') >= 0, 'its own duration');
+    },
+  });
+});
+
+test('A3: a seed of ANOTHER id is never painted (consumed by id) - the plain launch frame shows', async () => {
+  commonSeeds.stashMusicSeed(Object.assign({}, SEED_TRACK, { id: 't2', title: 'Other Song' }), '/albumart/t2');
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', query: '?play=t1', playerOverride: PLAYER_IDLE, fetchImpl: recorder([]),
+    fileTubeExtra: { consumeMusicSeed: commonSeeds.consumeMusicSeed },
+    runSync: async (dom) => {
+      assert.ok(dom.window.document.getElementById('music-nowplaying-panel').textContent.indexOf('Other Song') < 0);
+    },
+  });
+  assert.strictEqual(commonSeeds.consumeMusicSeed('t2'), null, 'and it is gone (single-shot)');
+});
+
+test('A3: a seed with its album key opens the ALBUM directly - the recent-listening lookup is skipped', async () => {
+  commonSeeds.stashMusicSeed(Object.assign({}, SEED_TRACK, { albumKey: 'Seed Artist\u0000Seed Album' }), '/albumart/t1');
+  const urls = [];
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', query: '?play=t1', playerOverride: PLAYER_IDLE, fetchImpl: recorder(urls),
+    fileTubeExtra: { consumeMusicSeed: commonSeeds.consumeMusicSeed },
+    run: async () => {
+      assert.ok(!urls.some((u) => u.indexOf('/api/music?filter=recent-listening&limit=200') === 0), `no recent-listening round trip (asked ${urls.filter((u) => u.indexOf('/api/music') === 0)})`);
+      assert.ok(urls.some((u) => u.indexOf('/api/music') === 0 && u.indexOf('album') >= 0), 'the album is asked');
+    },
+  });
+});
+
+test('A3: the launch frame never shows ANOTHER item\'s time (the element still holds a video: no "0:01 -0:18")', async () => {
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', query: '?play=t1', fetchImpl: recorder([]),
+    playerOverride: Object.assign({}, PLAYER_IDLE, { currentId: 'v9' }),
+    beforeInit: (dom) => {
+      const mp = dom.window.document.getElementById('media-player');
+      Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 1 });
+      Object.defineProperty(mp, 'duration', { configurable: true, get: () => 19 });
+    },
+    runSync: async (dom) => {
+      const text = dom.window.document.getElementById('music-nowplaying-panel').textContent;
+      assert.ok(text.length > 0, 'the frame painted');
+      assert.ok(text.indexOf('0:01') < 0 && text.indexOf('-0:18') < 0, `no foreign time in "${text.replace(/\s+/g, ' ').slice(0, 160)}"`);
+    },
+  });
+});
+
+test('A3 control: the SAME element time IS shown when the player holds this view\'s playing track (the dock-return seam)', async () => {
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', fetchImpl: recorder([]),
+    beforeInit: (dom) => {
+      const mp = dom.window.document.getElementById('media-player');
+      Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 1 });
+      Object.defineProperty(mp, 'duration', { configurable: true, get: () => 19 });
+    },
+    run: async (dom) => {
+      const text = dom.window.document.getElementById('music-nowplaying-panel').textContent;
+      assert.ok(text.indexOf('0:01') >= 0, `the live time of the track it plays ("${text.replace(/\s+/g, ' ').slice(0, 160)}")`);
+    },
+  });
+});
+
+test('A3: a Jump back in tile seeds its own track - the launch frame shows it in the same task as the tap', async () => {
+  const items = [{ id: 'j1', title: 'Jump One', artist: 'JB Artist', album: 'JB Album', durationSec: 61 }, { id: 'j2', title: 'Jump Two', artist: 'JB2', durationSec: 62 }];
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', playerOverride: PLAYER_IDLE,
+    fetchImpl: (u) => (String(u).indexOf('/api/music?filter=recent-listening&limit=12') === 0 ? Promise.resolve({ ok: true, json: async () => ({ items }) }) : Promise.resolve({ ok: true, json: holdAll })),
+    run: async (dom) => {
+      const tile = dom.window.document.querySelector('.music-jump-tile[data-id="j2"]');
+      assert.ok(tile, 'the strip rendered');
+      tile.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      const text = dom.window.document.getElementById('music-nowplaying-panel').textContent;
+      assert.ok(text.indexOf('Jump Two') >= 0, 'the tapped tile\'s title at once');
+      assert.ok(text.indexOf('Unknown track') < 0);
+    },
+  });
+});
+
+test('A3 race: a fast second tile supersedes the first - the first one\'s late answer never plays', async () => {
+  const items = [{ id: 'j1', title: 'Jump One', artist: 'A', durationSec: 61 }, { id: 'j2', title: 'Jump Two', artist: 'B', durationSec: 62 }];
+  let releaseRecent = null;
+  const loads = [];
+  const player = Object.assign({}, PLAYER_IDLE, { load(id) { loads.push(id); return true; } });
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', playerOverride: player,
+    fetchImpl: (u) => {
+      const url = String(u);
+      if (url.indexOf('/api/music?filter=recent-listening&limit=12') === 0) return Promise.resolve({ ok: true, json: async () => ({ items }) });
+      if (url.indexOf('/api/music?filter=recent-listening&limit=200') === 0) return new Promise((res) => { const prev = releaseRecent; releaseRecent = () => { if (prev) prev(); res({ ok: true, json: async () => ({ items }) }); }; });
+      return Promise.resolve({ ok: true, json: holdAll });
+    },
+    run: async (dom) => {
+      const tile = (id) => dom.window.document.querySelector('.music-jump-tile[data-id="' + id + '"]');
+      tile('j1').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      tile('j2').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      releaseRecent();
+      for (let i = 0; i < 20; i++) await settle();
+      assert.ok(!loads.includes('j1'), `the superseded first tap never plays (loads: ${loads})`);
+      assert.ok(loads.includes('j2'), 'the second does');
+    },
+  });
+});
+
+test('A3: while a NEW track\'s frame is up, the engine\'s live reflect never writes the element\'s time of the item before', async () => {
+  const items = [{ id: 'j1', title: 'Jump One', artist: 'A', durationSec: 61 }, { id: 'j2', title: 'Jump Two', artist: 'B', durationSec: 245 }];
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod',
+    fetchImpl: (u) => (String(u).indexOf('/api/music?filter=recent-listening&limit=12') === 0 ? Promise.resolve({ ok: true, json: async () => ({ items }) }) : Promise.resolve({ ok: true, json: holdAll })),
+    beforeInit: (dom) => {
+      const mp = dom.window.document.getElementById('media-player');
+      Object.defineProperty(mp, 'currentTime', { configurable: true, get: () => 1 });
+      Object.defineProperty(mp, 'duration', { configurable: true, get: () => 19 });
+    },
+    run: async (dom) => {
+      const p = dom.window.document.getElementById('music-nowplaying-panel');
+      assert.ok(p.textContent.indexOf('0:01') >= 0, 'the engine is live on the track the player holds (Track A) - anti-vacuity');
+      dom.window.document.querySelector('.music-jump-tile[data-id="j2"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.ok(p.textContent.indexOf('Jump Two') >= 0, 'the new track\'s frame');
+      const mp = dom.window.document.getElementById('media-player');
+      mp.dispatchEvent(new dom.window.Event('timeupdate'));
+      mp.dispatchEvent(new dom.window.Event('durationchange'));
+      for (let i = 0; i < 5; i++) await settle();
+      assert.ok(p.textContent.indexOf('0:01') < 0 && p.textContent.indexOf('-0:18') < 0, `Track A's time never lands on Jump Two's frame ("${p.textContent.replace(/\s+/g, ' ').slice(0, 160)}")`);
+    },
+  });
+});
+
+test('A3 (pure): consumeMusicSeed is bound to the id, single-shot and expires; stashMusicSeed keeps only display strings and a same-origin art path', () => {
+  assert.strictEqual(commonSeeds.stashMusicSeed({ id: 'a', title: 'T', artist: 'R', albumKey: 'K', durationSec: 9, filePath: '/x', artUrl: 'https://evil/x.png' }, '//evil/y.png'), true);
+  assert.strictEqual(commonSeeds.consumeMusicSeed('b'), null, 'another id: refused (and burned)');
+  assert.strictEqual(commonSeeds.consumeMusicSeed('a'), null, 'burned by the mismatch');
+  commonSeeds.stashMusicSeed({ id: 'a', title: 'T', artist: 'R', albumKey: 'K', durationSec: 9, filePath: '/x', artUrl: 'https://evil/x.png' }, '//evil/y.png');
+  const s1 = commonSeeds.consumeMusicSeed('a');
+  assert.deepStrictEqual(s1.item, { id: 'a', title: 'T', artist: 'R', albumKey: 'K', durationSec: 9 }, 'no foreign field, no off-origin art');
+  assert.strictEqual(s1.coverUrl, '', 'a scheme-relative picture is dropped');
+  assert.strictEqual(commonSeeds.consumeMusicSeed('a'), null, 'single-shot');
+  const realNow = Date.now;
+  try {
+    commonSeeds.stashMusicSeed({ id: 'a', title: 'T' }, '/albumart/a');
+    Date.now = () => realNow() + 10 * 1000 + 1;
+    assert.strictEqual(commonSeeds.consumeMusicSeed('a'), null, 'expired after 10 s');
+  } finally { Date.now = realNow; }
+  assert.strictEqual(commonSeeds.stashMusicSeed({ id: '' }), false);
+});
+
+test('A3 race (gate r1 adversary W4): an album-keyed tile, then a plain one at once - the first one\'s late album answer never plays over the second', async () => {
+  const items = [{ id: 'j1', title: 'Jump One', artist: 'A', album: 'AL', albumKey: 'A\u0000AL', durationSec: 61 }, { id: 'j2', title: 'Jump Two', artist: 'B', durationSec: 62 }];
+  let releaseAlbum = null;
+  const loads = [];
+  const player = Object.assign({}, PLAYER_IDLE, { load(id) { loads.push(id); return true; } });
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', playerOverride: player,
+    fetchImpl: (u) => {
+      const url = String(u);
+      if (url.indexOf('/api/music?filter=recent-listening&limit=12') === 0) return Promise.resolve({ ok: true, json: async () => ({ items }) });
+      if (url.indexOf('/api/music?filter=recent-listening&limit=200') === 0) return Promise.resolve({ ok: true, json: async () => ({ items }) });
+      if (url.indexOf('/api/music') === 0 && url.indexOf('album') >= 0) return new Promise((res) => { releaseAlbum = () => res({ ok: true, json: async () => ({ items: [items[0]], tracks: [items[0]] }) }); });
+      return Promise.resolve({ ok: true, json: holdAll });
+    },
+    run: async (dom) => {
+      const tile = (id) => dom.window.document.querySelector('.music-jump-tile[data-id="' + id + '"]');
+      tile('j1').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 5; i++) await settle();
+      assert.ok(typeof releaseAlbum === 'function', 'anti-vacuity: the first tap is waiting on its album');
+      tile('j2').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 10; i++) await settle();
+      releaseAlbum();
+      for (let i = 0; i < 20; i++) await settle();
+      assert.ok(loads.includes('j2'), `the last tap plays (loads: ${loads})`);
+      assert.ok(!loads.includes('j1'), `the superseded album answer never plays (loads: ${loads})`);
+    },
+  });
 });

@@ -66,7 +66,7 @@ fully-offline FileTube-like app, or a NON-media self-hosted sibling).
   toggle-off music tests need a fresh session that never armed a video.
 
 Evidence instrument for every experiment in sections 1-2: the
-?debugLifecycle=1 overlay (Setup -> "Show lifecycle debug log") - since
+?debugLifecycle=1 overlay (Settings -> "Player and timing log") - since
 v1.136 it records ONE `audioSession:declare` line per page load, always
 ('type=playback' | 'already-playback'), so a repro carries proof of
 whether the declaration was live. Since v1.362.2 the log keeps 1000

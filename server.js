@@ -137,6 +137,7 @@ const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only 
 // holds its original routing position.
 const authRoutes = require('./lib/auth/routes');
 const mediaUserRoutes = require('./lib/media/user-routes');
+const mediaProjectionLib = require('./lib/media/projection'); // v1.406.0 A1: the effective projection on a card's watch seed
 // Wave 7b, slice S2: the book library's whole HTTP surface (/api/books, /book,
 // /bookcover) and the book scan's single pass; scanBooks, its overlap/coalescing
 // guard, stays in this file (other callers and the exports still reach it here).
@@ -3503,6 +3504,21 @@ function injectVersionMeta(html) {
   if (/<head\b[^>]*>/i.test(html)) return html.replace(/(<head\b[^>]*>)/i, `$1${tag}`);
   return html; // no <head> (not a shell we template) -- leave untouched
 }
+// v1.406.0 G (plan 2026-11-08-smoothness): the scripts the SPA router loads lazily on an in-app hop (common.js
+// VIEW_SCRIPT_SRC - test/unit/smoothness-view-shell-cache.test.js binds the two lists equal). Each shell names their
+// content hashes in one meta, so the router asks for `<src>?v=<hash>` - an immutable, cached URL - instead of the bare
+// path (no-cache: one revalidation round trip per first use per load). A file this server does not serve from public/
+// (subscriptions.js lives in its module) is left out, and the router keeps the bare URL for it.
+const LAZY_VIEW_SCRIPTS = ['/js/tv.js', '/js/subscriptions.js', '/js/books.js', '/js/read.js', '/js/music.js', '/js/podcasts.js', '/js/history.js', '/js/cleanup.js', '/js/feed.js', '/js/pages.js', '/js/stats.js'];
+function injectViewScriptVersions(html) {
+  if (/<meta\s+name="ft-view-scripts"/i.test(html) || !/<\/head>/i.test(html)) return html;
+  const pairs = [];
+  for (const src of LAZY_VIEW_SCRIPTS) {
+    const v = staticAssets.versionOf(src);
+    if (typeof v === 'string' && /^[0-9a-f]+$/.test(v)) pairs.push(src + '=' + v);
+  }
+  return html.replace(/<\/head>/i, () => `<meta name="ft-view-scripts" content="${pairs.join(' ')}"></head>`);
+}
 // Read a header shell from disk and send it with the custom-logo class injected
 // when one is configured. Returns false (having sent nothing) if the file can't
 // be read, so callers can fall through. Shared by the static-shell middleware
@@ -3528,6 +3544,7 @@ function sendShellHtml(res, absFilePath, transform) {
   html = injectCustomLogoClass(html);
   html = injectVersionMeta(html); // v1.90: expose the running version to the client
   html = staticAssets.rewriteHtml(html); // v1.386.0: content-versioned asset URLs (lib/staticAssets.js)
+  html = injectViewScriptVersions(html); // v1.406.0 G: the lazy view scripts' versioned URLs for the router
   if (isDiagEnabled()) {
     // Perf-diagnostics: ride the collector on EVERY shell from this ONE choke
     // point, so a soft-nav'd view can never land on a shell that lacks it (the
@@ -5347,7 +5364,31 @@ function resolveHomeItem(db, id, kind, progressPercent) {
     thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent,
     ...(item.type ? { type: item.type } : {}),
     ...(isAudio ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
+    // v1.406.0 A1: a row card opens watch too, so it carries the same seed fields as the grid (the player starts at the tap)
+    duration: typeof item.duration === 'number' ? item.duration : 0,
+    ...watchSeedFields(item),
   };
+}
+
+// v1.406.0 A1 (plan 2026-11-08-smoothness): the fields the PLAYER reads to start an item from a card's seed, before the
+// watch page's own fetches return (watch.js canSeedPreload -> player.load -> setupForMedia / native-audio
+// videoItemFromDescriptor): the stream decision (type is on the card already; needsTranscode + transcodeStatus), the poster /
+// audio art (hasThumbnail), the aspect reservation (width / height), the 360 stand-down (the EFFECTIVE projection, the
+// detail route's rule - never the raw file value an owner overrode) and the background-audio status seed. Display and
+// stream-decision facts the role already sees on the Classic list (which spreads the whole item); never a path, never size.
+// Only items the caller resolved under RBAC reach this. Shared by the Modern grid and the home rows.
+function watchSeedFields(item) {
+  const out = {
+    hasThumbnail: item.hasThumbnail === true,
+    needsTranscode: item.needsTranscode === true,
+  };
+  if (typeof item.transcodeStatus === 'string') out.transcodeStatus = item.transcodeStatus;
+  if (typeof item.audioStatus === 'string') out.audioStatus = item.audioStatus;
+  if (typeof item.width === 'number' && item.width > 0) out.width = item.width;
+  if (typeof item.height === 'number' && item.height > 0) out.height = item.height;
+  const projection = mediaProjectionLib.effectiveProjection(item);
+  if (projection) out.projection = projection;
+  return out;
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
@@ -5407,6 +5448,7 @@ function resolveModernGridItem(db, rec, ytView) {
     // field-COMPLETE rule as watchUrl/ext above (a corner needing a field
     // the projection drops renders EMPTY in modern mode - the v1.85 #4 class).
     ...(item.hasSubtitles === true ? { hasSubtitles: true } : {}),
+    ...watchSeedFields(item), // v1.406.0 A1: the card's seed starts the player (no black box until the watch fetches return)
   };
 }
 
@@ -7567,6 +7609,7 @@ if (require.main === module) {
 // Exported for testing (see test/). Importing this module has no side effects
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
+  LAZY_VIEW_SCRIPTS, // v1.406.0 G: bound equal to common.js VIEW_SCRIPT_SRC (smoothness-view-shell-cache test)
   app,
   pages, // v1.395.0 Pages: tests seed items through the real service and capture
   feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)

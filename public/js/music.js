@@ -1193,6 +1193,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // in init's closure) so a warm SPA return re-paints the real tiles synchronously at init
   // - no skeleton flash - and the fetch then replaces them only if the list changed.
   var jumpbackWarmHtml = '';
+  var jumpbackItems = Object.create(null); // v1.406.0 A3: the strip's items by id, kept with the warm strip so a tap on it seeds too
   // v1.339 (L1, M2): the playing track's shared art id, remembered at load. A dock-return /
   // SPA re-init paints the skin before its queue reloads; without this the big art fell back
   // to /albumart/<track id> - a second URL (and a second full-size download) for the cover
@@ -1958,9 +1959,21 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // `popout` = the ctx is for the desktop pop-out window's engine (the artist line's mode
     // differs there - see artistTapMode).
+    // v1.406.0 A3: is the live element ANOTHER item's than the one this view plays? (a video left in the player, the item
+    // before a new open; the remote mirror is never the element). The launch frame and the engine's live reflect read the
+    // element's time only when it is this view's playing track (the dock-return seam: no current row, the player holds it).
+    function liveIsForeign() {
+      if (remoteOn()) return false;
+      var plc = window.FileTube && window.FileTube.player;
+      var heldId = plc ? plc.currentId : null;
+      if (heldId == null) return false; // nothing loaded: the element's zeros are nobody's
+      return !(playingId && sameMusicItem(heldId, playingId)) || straightToPlayerPending;
+    }
     function buildSkinCtx(ci, popout) {
       if (remoteOn()) return remoteSkinCtx();
       var mp = hostCtl('media-player');
+      // v1.406.0 A3: with no current row the element's time is shown only when it is this view's playing track
+      if (ci < 0 && mp && liveIsForeign()) mp = null;
       var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((queue[ci] && Number(queue[ci].durationSec)) || 0);
       var pos = mp ? (Number(mp.currentTime) || 0) : 0;
       function rowOf(j) {
@@ -2065,6 +2078,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSkinId: function () { return SKINS.activeSkinId(); },
         getCtx: function () { return buildSkinCtx(currentSkinIndex(), popout); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
+        liveForeign: liveIsForeign, // v1.406.0 A3: the element holds another item - the engine keeps the painted frame's time
         onSelectIndex: function (i) { if (remoteOn()) { remoteQueuePlay(i); return; } playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onPlayOnBadge: function () { if (RC) { RC.leave(); updateNowPlayingPanel(); } }, // skins without menus: the badge ends remote control
@@ -3149,6 +3163,7 @@ if (typeof module !== 'undefined' && module.exports) {
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
       inTabEngine.paint();
       ensureSkinReflect();
+      if (straightToPlayerPending && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('panel-filled', String(playingId || '')); // v1.406.0 M
       straightToPlayerPending = false; // the REAL skin is painted - the cover has served its purpose
       return true;
     }
@@ -3162,6 +3177,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // warm SPA return re-paints the last strip (jumpbackWarmHtml); a cold load with a
     // remembered count seeds the exact-shape skeleton (buildJumpBackSkeletonHtml). The
     // fetch then fills in place, or collapses a reserve the library no longer backs.
+    var continueOpenGen = 0; // v1.406.0 A3: the latest playTrackFromContinue (a newer open supersedes an older one's late play)
     async function renderJumpBackIn() {
       if (!jumpbackHost) return;
       var seededHtml = '';
@@ -3186,6 +3202,8 @@ if (typeof module !== 'undefined' && module.exports) {
       } catch (_) { items = []; }
       if (signal.aborted) return; // the view was torn down while the fetch was in flight
       writeJumpBackCount(items.length);
+      jumpbackItems = Object.create(null); // v1.406.0 A3: the tiles' items by id (the tap's seed)
+      items.forEach(function (it) { if (it && typeof it.id === 'string') jumpbackItems[it.id] = it; });
       if (!items.length) { jumpbackWarmHtml = ''; jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
       var html = '<h2 class="music-jump-head">Jump back in</h2>' +
         '<div class="music-jump-strip">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
@@ -3204,7 +3222,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // (the straight-to-player cover). If it ever rejected before the skin mounted, that
         // cover would leak -> frozen body scroll on the next view (the v1.227 scar). Reconcile
         // mms-on on a rejection (updateNowPlayingPanel clears it when no skin is expanded).
-        if (id) playTrackFromContinue(id).catch(function () { straightToPlayerPending = false; try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
+        // v1.406.0 A3: the tile's own item and the picture it shows seed the launch frame (no "Unknown track", no blank art)
+        var tItem = id ? jumpbackItems[id] : null;
+        var tImg = tile.querySelector('img');
+        var tSeed = tItem ? { item: tItem, coverUrl: tImg ? (tImg.getAttribute('src') || '') : '' } : null;
+        if (id) playTrackFromContinue(id, false, tSeed).catch(function () { straightToPlayerPending = false; try { updateNowPlayingPanel(); } catch (_) { /* ignore */ } });
       }, { signal: signal });
     }
 
@@ -5299,6 +5321,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (myGen !== playSelectGen) return;
       var ai = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === item.id) { ai = k; break; } }
+      if (ai < 0 && opts && opts.seededOpen) {
+        // v1.406.0 gate r1 (qa S2 = adversary S3): a SEED's album missed the track (a stale album key) - the seed is display
+        // strings only, so the server's own record plays (the stream decision is never the seed's)
+        try {
+          var real = await fetchJson('/api/music/' + encodeURIComponent(item.id));
+          if (signal.aborted || myGen !== playSelectGen) return;
+          if (real && real.id) item = real;
+        } catch (_) { /* unresolvable: the seed's record plays below, as the solo edge always did */ }
+      }
       if (ai < 0) {
         // The album fetch did not include the track (an edge - stale key,
         // filtered). Play it solo so the RIGHT song still starts. renderSongList
@@ -5925,7 +5956,25 @@ if (typeof module !== 'undefined' && module.exports) {
     // first cut left playTrackFromContinue on its own inline copy - now it calls this too,
     // so the arms genuinely cannot drift). Returns whether the cover mounted (the
     // continue-arm's miss path tears it down conditionally).
-    function mountEarlyCover() {
+    // v1.406.0 A3 (plan 2026-11-08-smoothness): the launch frame for a seeded open - the TAPPED track, never an empty "Now
+    // Playing", never another item's time: buildSkinCtx's frame shape with the seed's title, artist, album, its duration and the
+    // picture the tile already showed (decoded, so it paints in this frame; the engine's own paint replaces it with the
+    // full-size cover when the track loads). Nothing here reads the live element.
+    function seededSkinCtx(seed) {
+      var ctx = buildSkinCtx(-1);
+      var it = seed && seed.item ? seed.item : {};
+      var dur = Number(it.durationSec) || 0;
+      ctx.track = {
+        title: it.title || '', artist: it.artist || '', album: it.album || '',
+        artUrl: seed && seed.coverUrl ? seed.coverUrl : musicArtUrl(musicArtId(it), it.artUrl, 0, musicArtV(it)),
+      };
+      ctx.playing = false;
+      ctx.posSec = 0; ctx.durSec = dur;
+      ctx.posLabel = mmssMusic(0); ctx.remLabel = dur > 0 ? ('-' + mmssMusic(dur)) : '';
+      ctx.upNext = []; ctx.fullList = []; ctx.curNum = 1; ctx.total = 1;
+      return ctx;
+    }
+    function mountEarlyCover(seed) {
       var coverEarly = false;
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
       if (coverEarly && nowPlayingPanel) {
@@ -5948,9 +5997,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // blank cover so a skin render can never break the launch path.
         try {
           nowPlayingPanel.innerHTML = (typeof SKINS.renderFull === 'function' && typeof buildSkinCtx === 'function')
-            ? SKINS.renderFull(_sid, buildSkinCtx(-1)) : '';
+            ? SKINS.renderFull(_sid, seed ? seededSkinCtx(seed) : buildSkinCtx(-1)) : '';
         } catch (_) { nowPlayingPanel.innerHTML = ''; }
         nowPlayingPanel.hidden = false;
+        if (window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('music-frame', seed ? 'seeded' : 'plain'); // v1.406.0 M
       }
       return coverEarly;
     }
@@ -5963,7 +6013,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // play it there (the player's music smart-resume applies the saved
     // position). Falls back to a solo queue if the track isn't in the recent
     // list (an edge — e.g. it aged out).
-    async function playTrackFromContinue(trackId, bounceOnMiss) {
+    // v1.406.0 A3: `seed` = { item, coverUrl } for THIS id - by construction (a tile's own item, or the cross-view stash
+    // consumeMusicSeed hands back only for this id):
+    // the launch frame paints it, and a seed that knows its album opens the album directly (one round trip, not the
+    // recent-listening list then the album). A newer open supersedes this one: continueOpenGen after this function's own
+    // awaits, playSelectGen (bumped here) inside playTrackInAlbum's.
+    async function playTrackFromContinue(trackId, bounceOnMiss, seed) {
+      var openGen = ++continueOpenGen;
+      ++playSelectGen; // gate r1 (adversary W4): an older open's late album answer (playTrackInAlbum's own guard) never plays over this one
       // v1.243 (Dean): opening a song from the home feed used to FLASH the /music list before
       // the skin launched ("awkward gap"). v1.243 set body.mms-on early - but that only hid the
       // header/tabs, NOT #music-content, so renderSongList still FLASHED the list before the skin
@@ -5975,18 +6032,23 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.252 (QA gate W3): the cover is the SHARED mountEarlyCover now - one implementation
       // for both ?play= arms, so they genuinely cannot drift.
       askLightingForOpen(); // v1.334: a Jump-back tile's tap, before the fetches spend it
-      var coverEarly = mountEarlyCover();
+      var coverEarly = mountEarlyCover(seed);
       tab = 'songs';
       drill = null;
       search = '';
       queueCtx = { src: 'music', filter: 'recent-listening' };
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
+      if (seed && seed.item.albumKey) {
+        await playTrackInAlbum(Object.assign({ id: trackId }, seed.item), { seededOpen: true }); // its own select generation guards the late play
+        return;
+      }
       try {
         const data = await fetchJson('/api/music?filter=recent-listening&limit=200');
         queue = Array.isArray(data.items) ? data.items : [];
       } catch (_) { queue = []; }
       // v1.339 R1 (T-C5): the view died during the fetch (or its failure) - no late play/paint/nav
       if (signal.aborted) return;
+      if (openGen !== continueOpenGen) return; // v1.406.0 A3: a newer open (a fast second tile) owns the view now
       setActiveTab(); // keep the tab-strip highlight consistent with tab='songs'
       if (crumb) { crumb.hidden = false; crumb.textContent = 'Recently played'; }
       renderSongList();
@@ -6004,6 +6066,7 @@ if (typeof module !== 'undefined' && module.exports) {
       try {
         const t = await fetchJson('/api/music/' + encodeURIComponent(trackId));
         if (signal.aborted) return; // T-C5
+        if (openGen !== continueOpenGen) return; // v1.406.0 A3
         if (t && t.id) {
           if (t.albumKey) { await playTrackInAlbum(t); return; }
           queue = [t]; renderSongList(); playAt(0); return;
@@ -6058,7 +6121,9 @@ if (typeof module !== 'undefined' && module.exports) {
     } else if (playParam) {
       // &ao=1 = the v1.236 reroute origin (an audio download tapped from a video-side tile) -
       // bounce a miss to /watch. A bare ?play= (a continue-listening card) keeps render() on a miss.
-      playTrackFromContinue(playParam, urlParams.get('ao') === '1').catch((err) => {
+      // v1.406.0 A3: the seed a tapped card stashed for THIS id (consumed by id, single-shot, 10 s)
+      var playSeed = (window.FileTube && typeof window.FileTube.consumeMusicSeed === 'function') ? window.FileTube.consumeMusicSeed(playParam) : null;
+      playTrackFromContinue(playParam, urlParams.get('ao') === '1', playSeed).catch((err) => {
         console.error('Music: continue-listening play failed', err);
         straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});

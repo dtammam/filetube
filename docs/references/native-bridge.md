@@ -47,6 +47,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | type | fields | capability | what native does |
 |---|---|---|---|
 | `host.hello` | `web: { version }` (the server's FileTube version) | (always) | logs it; may show "server too old" |
+| `host.ready` | (none) | (always) | v1.406.0, add-only: sent once per document load when the web's first screen of real content is painted (cards with decoded thumbnails, or the last-known home snapshot), also on a full reload and on an error page; native holds its launch screen (no black, no spinner over black) until it arrives, capped at about 2 s by native, then shows the web view. An older app ignores the unknown type |
 | `orientation.lock` | `orientation: 'portrait'` | `orientation` | locks the app to portrait now, whatever the phone's own rotation lock says |
 | `orientation.unlock` | (none) | `orientation` | returns to the app's normal rotation |
 | `haptics.prepare` | (none) | `haptics` | warms the haptic engine (sent at the start of a wheel gesture) |
@@ -89,7 +90,7 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `download` | one ITEM: `kind: 'track' \| 'podcastEpisode' \| 'video' \| 'tvEpisode'`, `id`, `state: 'none' \| 'queued' \| 'downloading' \| 'paused' \| 'waitingForWifi' \| 'done' \| 'failed'` (required); optional `progress` 0..1, `bytes`, `totalBytes`, `error: 'network' \| 'storageFull' \| 'revoked' \| 'notOnServer' \| 'notReady' \| 'notPlayable' \| 'other'` (only with `failed`; `notPlayable` = the server's 409 or the app's own AVURLAsset.isPlayable check, terminal), `localSrc` (only with `done`), `parentKind: 'album' \| 'tvSeason'` + `parentId` (only for a member of an album or season add) | after a subscribe, on every change of an item (v1.387.0) |
 | `downloadsAddFailed` | `kind` (any `downloads.add` kind), `id` (string, 1..512, the id the web sent), `error` (the `download` error enum), all required | once per `downloads.add` that cannot produce any member (an `album` / `tvSeason`) or cannot start (a single item that never reached a `download` event) (v1.387.1) |
 | `downloadsSnapshot` | `items`: an array (at most 10000) of the `download` fields above, one element per item the phone holds or is working on | once, in answer to every `downloads.subscribe` |
-| `audioState` | `rev`, `queue: [Item]` (native's whole queue, radio appends included), `index`, `state: 'idle' \| 'loading' \| 'playing' \| 'paused' \| 'ended' \| 'failed'`, `positionSec`, `durationSec` (both clip-relative for a clip Item; 0 while unknown), optional `bufferedSec`, `rate`, `modes`, `sleep: { mode, endsAt? }`, optional `error` (the `audioError` enum, only with `failed`), optional `videoSize: { w, h }` (v1.399.0, a video Item's presentation size once known) | on subscribe, then on every real change: a new item, play / pause, a seek, the end of the queue, a mode / rate / sleep change, a failure (v1.397.0) |
+| `audioState` | `rev`, `queue: [Item]` (native's whole queue, radio appends included), `index`, `state: 'idle' \| 'loading' \| 'playing' \| 'paused' \| 'ended' \| 'failed'`, `positionSec`, `durationSec` (both clip-relative for a clip Item; 0 while unknown), optional `bufferedSec`, `rate`, `modes`, `sleep: { mode, endsAt? }`, optional `error` (the `audioError` enum, only with `failed`), optional `videoSize: { w, h }` (v1.399.0, a video Item's presentation size once known), optional `pictureReady: boolean` (v1.406.0, add-only: true when the current video Item's `AVPlayerLayer.isReadyForDisplay` is true, false on every item change and teardown; absent = unknown) | on subscribe, then on every real change: a new item, play / pause, a seek, the end of the queue, a mode / rate / sleep change, a failure (v1.397.0) |
 | `audioTick` | `rev`, `positionSec`, optional `bufferedSec` | about once a second while playing; never while paused |
 | `audioError` | `id` (the Item's id), `error: 'network' \| 'notPlayable' \| 'revoked' \| 'notOnServer' \| 'other'` | once per item native could not play (it then skips to the next item, or ends with `state: 'failed'` on the last) |
 | `videoPip` | `active: boolean` | on every picture-in-picture start and stop, whoever caused it (the web's button, automatic picture-in-picture, Apple's own controls), and once at load with `false` (v1.404.0) |
@@ -179,6 +180,14 @@ later. Dean chose a native video SURFACE instead (one native player for sound an
 controls on top): the next plan, designed with the iOS Root first. The `tvEpisode` kind, the `/tvthumb` art and the
 `/api/tv/progress` route stay in the contract (add-only; the server already serves them to the media token) for that plan; no web
 code sends a `tvEpisode` Item today.
+
+**No black before the first frame (v1.406.0, add-only).** While native owns a surface video, the web keeps its hole SHUT and the tapped
+thumbnail (an `<img>` cover over the player box) up until the picture is ready: `audioState.pictureReady === true` for the current
+item, or, from an app that does not send the field, the first `audioTick` while `state` is `'playing'`. `video.surface` still goes
+out with `visible: true` from the claim (native places its layer and draws its first frame under the page), except for the docked
+`layer: 'above'` placement, which posts `visible: false` until the picture is ready (the dock shows the thumbnail). Readiness is
+latched per load and item; when it turns true the hole opens and the cover drops in the same task, so the box is always covered by
+the hole or the cover. Native: post an `audioState` when `pictureReady` flips.
 
 **Native video (v1.399.0; frozen 2026-10-30 as the W1 contract - the surface spike never ran, so the hole, the scroll following, the lock with the layer detached and rotation are the app's first device checks, not facts).**
 With `nativeVideo` announced (always beside `nativeAudio` and `nativeVideoAudio`: the engine accepts the

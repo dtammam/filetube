@@ -5,6 +5,19 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Smoothness (v1.406.0; (h)-(i) after the app build that sends pictureReady and waits for host.ready)
+
+- [ ] v1.406.0 - (a) Modern home -> tap a video: the player box shows the video's thumbnail from the first frame, then the picture - never a black box. Classic home, a Continue watching row and a related card: the same.
+- [ ] v1.406.0 - (b) Tap an audio item (a podcast mp3 on Home): its art is in the player from the first frame.
+- [ ] v1.406.0 - (c) Music: tap a Jump back in tile, then a Continue listening card on Home: the player opens on THAT song's title, artist and art at once - never "Unknown track", never a white art box, never another item's time.
+- [ ] v1.406.0 - (d) Tap a bottom tab you have not opened since launch, then one you have: each answers at once (the tab lights as you tap), and the second visit shows no skeleton.
+- [ ] v1.406.0 - (e) Close the app and open it again: Home shows the cards you last saw at once, then quietly updates. Sign out and in as someone else (or another user on the same phone): never the first person's cards.
+- [ ] v1.406.0 - (f) Modern home on the phone: let a preview clip play, open a video, go Back: the previews play again.
+- [ ] v1.406.0 - (g) On a fast connection, hop between Home, Music and a video: no grey shimmer flashes for a moment; on a slow one the shimmer still appears (after a beat).
+- [ ] v1.406.0 - (h) App build with pictureReady: a 120 fps screen recording of three video taps (Modern home, a related card, autoplay next) shows zero black frames between the thumbnail and the picture. Dock and expand before the picture starts: the thumbnail, never black.
+- [ ] v1.406.0 - (i) App build with host.ready: a recording of a cold launch goes from the launch screen straight to Home's cards - no black screen, no spinner over black.
+- [ ] v1.406.0 - (j) Settings > Troubleshooting: the switch now reads "Player and timing log". With it on, a launch, a tab hop and a video tap, then Export: the file has the `perf:` lines (first-card, host-ready, tap, swap, seed-paint, cover-shown, picture-ready / first-frame).
+
 ## Glass tab pill (v1.405.0; (g)-(k) after the app build that announces nativeTabBar)
 
 - [ ] v1.405.0 - (a) iPhone Safari or the home-screen app, Modern look, light and dark: the bottom bar is a floating rounded pill on every page that had the bar (Home, Watch, History, Music, Podcasts, Books, a book, Stats, TV, Settings, Subscriptions); the page shows through it while you scroll.

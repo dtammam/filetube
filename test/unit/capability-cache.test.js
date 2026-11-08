@@ -100,7 +100,8 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   // moved OUT of main.js/watch.js INTO common.js's shell-level DOMContentLoaded
   // so it runs on EVERY page (pins no longer vanish on Stats/Music/History/etc.).
   // The optimistic prime + the reconciling render now live in common.js.
-  assert.match(common, /primePinnedSidebarFromCache\(\);\s*\n\s*fetchAllPins\(\)\.then\(\(pins\) => renderPinnedSidebar\(pins\)\)/, 'common.js pinned priming+render deleted (moved here in v1.117)');
+  // v1.406.0 E3: the reconciling fetch waits for the first screen (whenFirstContent); the cached prime still paints at once
+  assert.match(common, /primePinnedSidebarFromCache\(\);[^\n]*\n\s*whenFirstContent\(\(\) => \{ fetchAllPins\(\)\.then\(\(pins\) => renderPinnedSidebar\(pins\)\)/, 'common.js pinned priming+render deleted (moved here in v1.117)');
   // The no-service-worker constraint stays load-bearing.
   assert.match(common, /unregisterStaleServiceWorkers/, 'the SW shedding function must survive this wave');
   // Gate QA-W1: the two remaining latches the exec plan promised are wired.

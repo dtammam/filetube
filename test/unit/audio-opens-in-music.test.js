@@ -134,7 +134,7 @@ test('the grid card (buildCardEl) routes an audio tile through musicHrefForItem'
 
 test('the music view BOUNCES a non-resolvable ?play= id to /watch (no dead end) with the ::c suffix stripped', () => {
   const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  const m = /async function playTrackFromContinue\(trackId, bounceOnMiss\) \{([\s\S]*?)\n {4}\}/.exec(js);
+  const m = /async function playTrackFromContinue\(trackId, bounceOnMiss, seed\) \{([\s\S]*?)\n {4}\}/.exec(js);
   assert.ok(m, 'playTrackFromContinue exists');
   const body = m[1];
   assert.match(body, /replace\(\/::c\\d\+\$\/, ''\)/, 'strips the ::c chapter suffix to the base media id');

@@ -72,7 +72,7 @@ const EARLY = { browseCtx: null, readerHref: null, resumeMode: null, autoAdvance
 const CAPS = { capabilities: ['nativeAudio', 'nativeVideoAudio', 'nativeVideo'] };
 const ITEM = { kind: 'video', id: 'v1', src: '/api/offline/file/video/v1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/v1', durationSec: 600, progress: { route: '/api/progress', key: 'v1' } };
 const MODES = { autoplay: true, shuffle: false, loop: 'off' };
-const STATE = (rev, extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 12, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
+const STATE = (rev, extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 12, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' }, pictureReady: true }, extra || {}); // v1.406.0 A2: the app build that reports its picture (the hole opens only over a ready picture; the fallback has its own tests)
 const { videoItemFromDescriptor } = require('../../public/js/native-audio.js');
 
 test('RED FIRST (S1, S2, S4): a host announcing nativeAudio + nativeVideo takes a WATCH-PAGE video into native - ONE audio.load with a video Item, the element has NO src, is never played, and is the proxy (videoWidth too)', async () => {
@@ -324,7 +324,7 @@ test('W2 (gate r1 A5): a MUSIC track claimed after a surface video ends the surf
     r.w.HTMLVideoElement.prototype.getBoundingClientRect = () => { measures.n += 1; return { left: 0, top: 300, width: 393, height: 221, right: 393, bottom: 521, x: 0, y: 300 }; };
     r.player.load('v1', VIDEO, { slot: r.slot });
     await settle(80);
-    r.fake.emit({ v: 1, type: 'audioState', rev: r.fake.of('audio.load')[0].rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 3, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } });
+    r.fake.emit({ v: 1, type: 'audioState', rev: r.fake.of('audio.load')[0].rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 3, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' }, pictureReady: true }); // v1.406.0 A2: the hole opens over a ready picture
     await settle(60);
     assert.strictEqual(r.na.surfaceOwned(), true);
     assert.strictEqual(r.w.document.body.classList.contains('ft-native-video'), true);
