@@ -114,7 +114,7 @@
   // and 'above' only with space 'viewport' (native rejects it with 'document').
   var SURFACE_LAYERS = ['below', 'above'];
   function surfaceRectSpec() { return { is: 'object', req: true, props: { x: { is: 'number', req: true }, y: { is: 'number', req: true }, w: { is: 'number', min: 0, req: true }, h: { is: 'number', min: 0, req: true } } }; }
-  // v1.405.0 nativeTabBar (plan docs/exec-plans/active/2026-11-08-glass-tab-pill.md, the Contract): the app draws Modern's bottom pill
+  // v1.405.0 nativeTabBar (plan docs/exec-plans/completed/2026-11-08-glass-tab-pill.md, the Contract): the app draws Modern's bottom pill
   // natively (Liquid Glass) above the web view. nav.bar = the items in the web bar's visible order (id = a bottom-bar roster id or an
   // injected one such as 'you'; label = the item's accessible name; active = the lit item; imageUrl = the account photo, a same-origin
   // PATH only - a message carrying any other imageUrl is refused whole, never trimmed) and `visible` (common.js nativeTabBarVisible(),

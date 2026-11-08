@@ -1,5 +1,5 @@
 'use strict';
-// glass-pill-probe - the headless instrument for the v1.405.0 glass tab pill (plan docs/exec-plans/active/2026-11-08-glass-tab-pill.md,
+// glass-pill-probe - the headless instrument for the v1.405.0 glass tab pill (plan docs/exec-plans/completed/2026-11-08-glass-tab-pill.md,
 // W1: R1, R2, R4, R5). The CDP pattern of scripts/live-dock-probe.js: boot the real app on a scratch DATA_DIR (a few library rows so the
 // home grid has content to scroll under the pill), emulate an iPhone (touch, mobile, reduced motion), then per look x mode x width:
 // load the home page and MEASURE the bottom bar - its box, every item's box, the computed styles that make up its paint, the resolved

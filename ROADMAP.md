@@ -457,7 +457,10 @@
   getComputedStyle + a stringify per wake) is not bound by a flush-count test (LESSONS 3). (4) Gate r1 adversary N4, suspected and
   not run on WebKit: the keyboard check trusts `document.activeElement`, so a text field hidden without losing focus (the header
   search after a history-row tap runs closeSearch, which only drops html.search-open) may keep `visible: false` (the web pill shows
-  instead of the glass one) until focus moves; count the field only when it is rendered.
+  instead of the glass one) until focus moves; count the field only when it is rendered. (5) Gate r3 notes: public/js/host-adapter.js:122
+  still says the web sets the offset "while native draws" (it is while native OWNS the page since gate r2); and if the adapter ever refuses
+  a nav.bar while native owns the page, the web pill shows with native's offset under it and native keeps its last message (unreachable
+  with today's bounded ids and labels).
 
 - [ ] **Picture-in-picture (v1.404.0) follow-ups** _(gate r2 notes, none user-blocking; take them when a device check or the next touch asks)_: the Adversary's surviving mutants on code it measured correct: `webkitSaysNo` needing `hasWebkitPip` (bound on the pure function only), the Safari exit's `armPipWatchdog(false)`, `startY` and the one-finger scope in the touch reset. QA's label notes: under the Dynamic Island in portrait faux fullscreen (no safe-area inset), and sharing the locked 2x badge's spot. `PIP_START_WATCHDOG_MS` now also covers a stop: rename it when next touched.
 

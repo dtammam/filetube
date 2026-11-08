@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.405.0 nativeTabBar (plan docs/exec-plans/active/2026-11-08-glass-tab-pill.md, W3 + the Contract). The iPhone app draws
+// [UNIT] v1.405.0 nativeTabBar (plan docs/exec-plans/completed/2026-11-08-glass-tab-pill.md, W3 + the Contract). The iPhone app draws
 // Modern's pill natively ABOVE the web view, so the web must (a) never send anything without the capability, (b) send exactly what
 // the web bar shows - items, order, the lit item - on every trigger, (c) say visible:false whenever ANY surface that covers the web
 // bar today is up (one predicate over an enumerated list; the census below derives every candidate family from the stylesheets and

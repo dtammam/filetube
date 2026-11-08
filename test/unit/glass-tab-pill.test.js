@@ -1,6 +1,6 @@
 'use strict';
 
-// v1.405.0 the glass tab pill (plan docs/exec-plans/active/2026-11-08-glass-tab-pill.md). The look itself is measured by
+// v1.405.0 the glass tab pill (plan docs/exec-plans/completed/2026-11-08-glass-tab-pill.md). The look itself is measured by
 // scripts/glass-pill-probe.js (R4 item widths, R5 base-vs-branch identity of every other look and desktop); this file binds
 // the parts a stylesheet census or a jsdom DOM can hold: the pill is Modern-only and phone-only, the label stays the
 // accessible name, the ONE offset var is re-derived from the pill's own tokens, and the lit item is scrolled into view when

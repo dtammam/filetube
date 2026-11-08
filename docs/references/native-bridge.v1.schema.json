@@ -237,7 +237,7 @@
           "required": ["id"]
         },
         {
-          "description": "v1.405.0 nativeTabBar: the pill's height plus its gap above the safe area, CSS px, the safe area excluded. In reply to each page's FIRST nav.bar (the web listens from its boot; one sent earlier is lost), then on every change (rotation, Dynamic Type). The web sets --mobile-bottom-nav-h from it (+ the safe-area inset) while native draws the pill.",
+          "description": "v1.405.0 nativeTabBar: the pill's height plus its gap above the safe area, CSS px, the safe area excluded. In reply to each page's FIRST nav.bar (the web listens from its boot; one sent earlier is lost), then on every change (rotation, Dynamic Type). The web sets --mobile-bottom-nav-h from it (+ the safe-area inset) while native owns the page (Modern phone portrait, metrics in; a sheet covering the pill does not change it).",
           "properties": {
             "type": { "const": "navBarMetrics" },
             "height": { "type": "number", "minimum": 0, "maximum": 400 }
