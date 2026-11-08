@@ -34,6 +34,7 @@
       "properties": { "v": { "const": 1 } },
       "oneOf": [
         { "properties": { "type": { "const": "host.hello" }, "web": { "type": "object", "required": ["version"], "properties": { "version": { "type": "string" } } } }, "required": ["web"] },
+        { "properties": { "type": { "const": "host.ready" } }, "description": "v1.406.0: once per document load, when the web's first content is painted; native hides its launch screen (capped by native)." },
         { "properties": { "type": { "const": "orientation.lock" }, "orientation": { "const": "portrait" } }, "required": ["orientation"] },
         { "properties": { "type": { "const": "orientation.unlock" } } },
         { "properties": { "type": { "const": "haptics.prepare" } } },
@@ -199,7 +200,8 @@
             "modes": { "$ref": "#/$defs/audioModes" },
             "sleep": { "$ref": "#/$defs/audioSleep" },
             "error": { "enum": ["network", "notPlayable", "revoked", "notOnServer", "other"] },
-            "videoSize": { "$ref": "#/$defs/videoSize" }
+            "videoSize": { "$ref": "#/$defs/videoSize" },
+            "pictureReady": { "type": "boolean", "description": "v1.406.0 (nativeVideo): true when the current video Item's AVPlayerLayer isReadyForDisplay; false on every item change and teardown; absent = unknown (the web falls back to playing plus the first audioTick)." }
           },
           "required": ["rev", "queue", "index", "state", "positionSec", "durationSec", "rate", "modes", "sleep"]
         },

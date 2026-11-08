@@ -8308,6 +8308,11 @@ if (typeof module !== 'undefined' && module.exports) {
     ['touchstart', 'mousedown', 'click'].forEach(function (evt) {
       host.addEventListener(evt, function () { lastUserGestureAt = Date.now(); }, { passive: true, capture: true });
     });
+    // v1.406.0 A2: the cover's drop signals (coverOnWebEvent decides per owner), native's picture, and picture-in-picture
+    ['playing', 'seeked', 'error'].forEach(function (evt) { mediaPlayer.addEventListener(evt, coverOnWebEvent); });
+    mediaPlayer.addEventListener('ftpictureready', function () { if (coverNative) coverDrop('picture-ready'); });
+    mediaPlayer.addEventListener('enterpictureinpicture', function () { coverDrop('pip'); });
+    mediaPlayer.addEventListener('webkitpresentationmodechanged', function () { if (mediaPlayer.webkitPresentationMode === 'picture-in-picture') coverDrop('pip'); });
     // v1.27.0 (background-audio-for-video, EXPERIMENTAL): the SAME
     // progress-saver + Media-Session play/pause-state wiring, on the hidden
     // audio element. `attemptBackgroundAudioHandoff` pauses `mediaPlayer`
@@ -10150,8 +10155,73 @@ if (typeof module !== 'undefined' && module.exports) {
   // fullscreen mid-transition; `load()` reconciles it onto the NEW item's own
   // surface right after `setupForMedia`. Absent/falsy (every other path, and
   // every non-continuation load) -> both drops run exactly as before.
+  // ---- v1.406.0 A2 (plan 2026-11-08-smoothness): the tapped thumbnail covers the player box until the first real frame ----
+  // A video's box used to show black between the tap and the first decoded frame: under the app's native video surface the
+  // element has no poster on purpose (it would sit over the hole) and native's layer has nothing to draw until AVPlayer's first
+  // frame, and on the web a poster still has to arrive and decode. The cover is an <img> over #media-player (never a poster set
+  // again: LESSONS 8, v1.401.1), made here once per host, not shell markup. One writer pair: coverShow / coverDrop.
+  //  - web element: dropped on 'playing', 'seeked' (a paused seek shows its frame) and 'error'. The element's own poster is the
+  //    same thumbnail underneath until its first frame, so 'playing' never uncovers black. Never requestVideoFrameCallback: in
+  //    WebKit it attaches a video output to the player (the v1.312 ambient blackout's shape; fullscreen-edge-and-video-state lock);
+  //  - native surface: kept until native-audio says the picture is ready ('ftpictureready' on the proxied element: native's
+  //    audioState.pictureReady, or 'playing' plus the first tick without the field). style.css also hides it whenever the
+  //    hole is open (body.ft-native-video), so the box is covered by the hole or the cover, never neither, in one frame;
+  //  - every stand-down drops it: a new load or teardown, dock, close, picture-in-picture, an error.
+  var coverEl = null;
+  var coverForId = null;
+  var coverNative = false;
+  function coverUrlFor(id, data) {
+    if (!data || data.type === 'audio') return ''; // an audio item's box is its own art layer (#audio-bg-art)
+    if (data.hasThumbnail === true) return '/thumbnail/' + encodeURIComponent(id);
+    if (typeof data.artUrl === 'string' && data.artUrl) return data.artUrl; // a TV episode's show poster (setupForMedia's poster rule)
+    return '';
+  }
+  function coverShow(id, data, native) {
+    if (!mediaPlayer || !host) return false;
+    var url = coverUrlFor(id, data);
+    if (!url) { coverDrop('no-art'); return false; }
+    if (!coverEl) {
+      coverEl = document.createElement('img');
+      coverEl.className = 'player-cover';
+      coverEl.alt = '';
+      coverEl.setAttribute('aria-hidden', 'true');
+      coverEl.decoding = 'sync'; // the card already decoded this URL: paint it in the swap's frame
+      coverEl.addEventListener('error', function () { coverDrop('art-error'); });
+    }
+    if (coverEl.getAttribute('src') !== url) coverEl.setAttribute('src', url);
+    if (coverEl.parentNode !== mediaPlayer.parentNode || coverEl.previousSibling !== mediaPlayer) mediaPlayer.insertAdjacentElement('afterend', coverEl);
+    coverForId = id;
+    coverNative = !!native;
+    recordLifecycleEvent('cover:show', { detail: (native ? 'native ' : 'web ') + id });
+    return true;
+  }
+  function coverDrop(reason) {
+    if (!coverForId) return false;
+    var id = coverForId;
+    coverForId = null;
+    coverNative = false;
+    if (coverEl && coverEl.parentNode) coverEl.parentNode.removeChild(coverEl);
+    recordLifecycleEvent('cover:drop', { detail: reason + ' ' + id });
+    return true;
+  }
+  function coverOnWebEvent(ev) {
+    if (!coverForId) return;
+    if (ev.type === 'error') { coverDrop('error'); return; }
+    if (coverNative) return; // under native the proxy's 'playing' is not a frame: wait for ftpictureready
+    coverDrop(ev.type);
+  }
+  // under native: shown only while native's picture is not ready yet (a follow of a picture already on screen needs none)
+  function coverShowNative() {
+    var n = nativeAudioApi();
+    if (!n || typeof n.surfaceOwned !== 'function' || !n.surfaceOwned()) return false;
+    if (typeof n.pictureReady === 'function' && n.pictureReady()) { coverDrop('picture-ready'); return false; }
+    if (state === STATE_DOCKED) return false; // the dock shows its own thumbnail (native-audio dockArt)
+    return coverShow(currentId, currentData, true);
+  }
+
   function teardownMediaState(opts) {
     var preserveImmersive = !!(opts && opts.preserveImmersive);
+    coverDrop('teardown'); // v1.406.0 A2: a cover never outlives its item
     saveOutgoingPosition(); // v1.339 R1 (T-C3): FIRST - before liveOffset/bgAudioState reset and the pause+empty below
     loadGeneration++; // invalidate any in-flight poll/resume-check tied to the previous media
     setAutoStartRefused(false); // v1.334: a new load starts un-refused (its own autoStart decides)
@@ -10384,6 +10454,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function applyNativeVideoClaim() {
     if (!mediaPlayer) return;
     mediaPlayer.removeAttribute('poster');
+    coverShowNative(); // v1.406.0 A2: the thumbnail covers the box until native's picture is ready (a poster cannot: it would sit over the hole)
     if (ccTrack) ccTrack.src = '';
     bgAudioSettingCached = false;
     if (audioStatusRepollTimer) { clearTimeout(audioStatusRepollTimer); audioStatusRepollTimer = null; }
@@ -10794,6 +10865,8 @@ if (typeof module !== 'undefined' && module.exports) {
       } else {
         mediaPlayer.src = streamUrl;
       }
+      // v1.406.0 A2: the web element's box shows the tapped thumbnail until its first frame (not while "Preparing this video")
+      if (!nativeClaimed && !awaitingTranscode) coverShow(id, data, false);
     }
 
     setupMediaSession(id, data.channelName, data.title);
@@ -10865,6 +10938,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function expand(slotEl) {
     recordLifecycleEvent('player:expand', {}); // v1.362.3 gate r1: a layer restart near an expand is not blamed on a hold
     mountInSlot(slotEl);
+    if (currentId && state !== STATE_DOCKED) coverShowNative(); // v1.406.0 A2: expanded before native's first frame: the thumbnail again, never black
   }
 
   // v1.44.2 (Music "Spotify feel"): mount a FRESH load straight into the
@@ -10883,6 +10957,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!host || !dockEl) return;
     ensureDockChrome(dockEl);
     var wasPlaying = mediaPlayer && !mediaPlayer.paused;
+    coverDrop('dock'); // v1.406.0 A2
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
     setDockShown(dockEl, true);
     state = STATE_DOCKED;
@@ -10987,6 +11062,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (stagedFullscreen) return;
     if (!host || !mediaPlayer || !currentId || state === STATE_CLOSED || state === STATE_DOCKED) return;
     recordLifecycleEvent('player:dock', {}); // v1.362.3 gate r1 (see expand)
+    coverDrop('dock'); // v1.406.0 A2: the docked mini player shows its own thumbnail (the poster / native-audio dockArt)
     var dockEl = document.getElementById('player-dock');
     if (!dockEl) return;
     ensureDockChrome(dockEl);
@@ -11040,6 +11116,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Marked 'paused' like the pause save it replaces: a closed player is not playing.
     saveOutgoingPosition({ presenceState: 'paused' });
     nativeAudioRelease(); // v1.397.0: closing the player ends native playback (audio.stop) and hands the element back
+    coverDrop('close'); // v1.406.0 A2
     placeFloor = null; // v1.382.0: the floor ends with the player (after its last save, which it still guarded)
     // v1.138 gate S1 (both seats, defensive - no reachable trigger was
     // constructed): a close while staged must not leave the browser

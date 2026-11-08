@@ -143,7 +143,7 @@ test('deriveWatchPaintPlan: no id, no plan; empty channel name plans no uploader
 
 // ---- the pre-load gate ------------------------------------------------------
 
-test('isFullWatchSeedItem: only a full list record (type + size + filePath) may drive a player pre-load', () => {
+test('isFullWatchSeedItem: a typed seed with the stream decision (v1.406.0: needsTranscode, the Modern and row cards) or a full list record (type + size + filePath) may drive a player pre-load; a partial seed never', () => {
   assert.equal(isFullWatchSeedItem({ ...FULL_ITEM, type: 'video' }), true);
   assert.equal(isFullWatchSeedItem({ ...FULL_ITEM, type: 'audio' }), true);
   assert.equal(isFullWatchSeedItem(FULL_ITEM), false, 'no type -> no stream decision -> no pre-load');

@@ -3837,12 +3837,15 @@ function deriveWatchPaintPlan(item, channelName) {
 // always carries and a partial (bell-row) seed never does: `type` picks the
 // element/branch, and size+filePath mark a full record (the same marker the
 // paint plan uses). Pure; exported for node:test.
+// v1.406.0 A1 (plan 2026-11-08-smoothness): decided by what the PLAYER reads (setupForMedia, native-audio
+// videoItemFromDescriptor), not by the list record's shape: `type` plus the stream decision (`needsTranscode` as a boolean).
+// The Modern grid and the home rows carry exactly those (server.js watchSeedFields) but never size or filePath, so the old
+// size+filePath test silently dropped every Modern tap to the slow path (the black player box). A full list record (Classic,
+// the related rail) still passes by its size+filePath arm; a bell row (no type, no needsTranscode) still does not.
 function isFullWatchSeedItem(item) {
-  return Boolean(item)
-    && typeof item.id === 'string' && item.id !== ''
-    && typeof item.type === 'string'
-    && typeof item.size === 'number'
-    && typeof item.filePath === 'string';
+  if (!item || typeof item.id !== 'string' || item.id === '' || typeof item.type !== 'string') return false;
+  if (typeof item.needsTranscode === 'boolean') return true;
+  return typeof item.size === 'number' && typeof item.filePath === 'string';
 }
 
 // ---- v1.53: the capability cache (sessionStorage) ---------------------------
@@ -3875,9 +3878,20 @@ function mediaFetchAllowed() {
 }
 // The one `GET /api/subscriptions/health` call site. A shut gate answers a synthetic 404 (what a server without the module
 // answers), so every consumer takes its existing "module off" path with no request made.
+// v1.406.0 H / E3 (plan 2026-11-08-smoothness): SINGLE-FLIGHT - the chrome, the home and the watch page each ask at boot, and
+// four identical requests used to compete with the first screen. Callers asking while one is in flight share it; each gets
+// its own clone (a Response body reads once), the shared original is never read. Cleared when it settles, so a later ask
+// (a capability change, a Retry) always reaches the server.
+let subscriptionsHealthInFlight = null;
 function probeSubscriptionsHealth() {
   if (!mediaFetchAllowed()) return Promise.resolve({ ok: false, status: 404 });
-  return fetch('/api/subscriptions/health');
+  if (!subscriptionsHealthInFlight) {
+    const p = fetch('/api/subscriptions/health');
+    subscriptionsHealthInFlight = p;
+    const clear = () => { if (subscriptionsHealthInFlight === p) subscriptionsHealthInFlight = null; };
+    p.then(clear, clear);
+  }
+  return subscriptionsHealthInFlight.then((res) => (res && typeof res.clone === 'function' ? res.clone() : res));
 }
 // The routes that are downloader-only. A direct visit (a typed or old link) to one with the gate shut renders a plain
 // "Not available in this app" state in place of the view; the view's init() never runs.

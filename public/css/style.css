@@ -1374,6 +1374,22 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   object-fit: contain;
 }
 
+/* v1.406.0 A2 (plan 2026-11-08-smoothness): the tapped item's thumbnail over the player box until the first real frame
+   (player.js coverShow / coverDrop; an <img>, never a re-set poster - LESSONS 8). Never takes a touch. While the native
+   video surface's hole is open the picture is native's, so the cover never paints over it: the hole and the cover swap in
+   one style change (covered by a hole or the cover, never neither). */
+.player-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+body.ft-native-video .player-cover {
+  visibility: hidden;
+}
+
 /* Persistent docked mini-player (FR-1, T2). `#player-dock` is present on
    every shell (index.html/watch.html/setup.html/subscriptions.html) but
    stays `[hidden]` -- and therefore invisible with zero layout impact --

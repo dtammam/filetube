@@ -248,7 +248,17 @@ function buildPodcastRowCardHtml(ep) {
 // books row's progress-bar classes (videos have real percent to show).
 // Deep-links /watch.html?v=<id>; the watch page's own resume ladder picks
 // up the saved position - the row never re-derives it.
+// v1.406.0 A1 (plan 2026-11-08-smoothness): the items a home ROW card renders, by id, so a tap stashes the same watch seed the
+// grid does (the player starts from the card's own record instead of a black box until the watch page's fetches return).
+// Media items only (a track / podcast row opens Music or Podcasts); filled by the two row builders below, read by the home
+// view's row click listener (initHome), and reset at each home init so it never outgrows one render.
+const rowWatchSeeds = new Map();
+function rememberRowWatchSeed(item) {
+  if (item && typeof item.id === 'string' && item.id && (item.kind || 'media') === 'media') rowWatchSeeds.set(item.id, item);
+}
+
 function buildVideoRowCardHtml(item) {
+  rememberRowWatchSeed(item);
   const percent = item && typeof item.progressPercent === 'number'
     ? Math.min(100, Math.max(0, item.progressPercent))
     : 0;
@@ -284,6 +294,7 @@ function buildVideoHomeSectionHtml(items, heading, seeAllHref) {
 // (href/thumbnailUrl carry their own encoding), so nothing is re-derived; the
 // escapes here are the same attribute/text discipline the sibling builders use.
 function buildFeedCardHtml(item) {
+  rememberRowWatchSeed(item);
   const pct = item && typeof item.progressPercent === 'number' ? Math.min(100, Math.max(0, item.progressPercent)) : 0;
   const bar = pct > 0.5
     ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${pct}%"></div></div>`
@@ -1420,6 +1431,21 @@ const PreviewCards = (function () {
       let id = null;
       try { id = new URL(cardLink.href, window.location.origin).searchParams.get('v'); } catch { /* malformed href -- no seed */ }
       const item = id ? currentItems.find((it) => it && it.id === id) : null;
+      if (item && window.FileTube && window.FileTube.stashWatchSeed) {
+        window.FileTube.stashWatchSeed(item, { folderSettings });
+      }
+    }, { signal });
+    // v1.406.0 A1: the home ROW cards (Classic's Continue watching, the feed layout's rows) open watch too: the same seed,
+    // from the item the row rendered (rowWatchSeeds). The grid's own listener above handles grid cards (it stops at the
+    // grid; a row card is never inside it).
+    rowWatchSeeds.clear();
+    root.addEventListener('click', (e) => {
+      // a consumer of the row hrefs (never a producer): only a card whose link opens the watch page
+      const rowLink = e.target && e.target.closest && e.target.closest('a.video-row-card');
+      if (!rowLink) return;
+      let id = null;
+      try { const u = new URL(rowLink.href, window.location.origin); if (u.pathname === '/watch.html') id = u.searchParams.get('v'); } catch { /* malformed href -- no seed */ }
+      const item = id ? rowWatchSeeds.get(id) : null;
       if (item && window.FileTube && window.FileTube.stashWatchSeed) {
         window.FileTube.stashWatchSeed(item, { folderSettings });
       }

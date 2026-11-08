@@ -22,7 +22,7 @@ const CAPS = { capabilities: ['nativeAudio', 'nativeVideoAudio', 'nativeVideo'] 
 const VIDEO = { id: 'v1', type: 'video', title: 'A talk', channelName: 'Ch', folderName: 'Ch', duration: 600, hasThumbnail: true, width: 1920, height: 1080, browseCtx: null, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt: null };
 const MODES = { autoplay: true, shuffle: false, loop: 'off' };
 const ITEM = { kind: 'video', id: 'v1', src: '/api/offline/file/video/v1', title: 'A talk', artist: 'Ch', artworkSrc: '/thumbnail/v1', durationSec: 600, progress: { route: '/api/progress', key: 'v1' } };
-const STATE = (rev, extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 12, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' } }, extra || {});
+const STATE = (rev, extra) => Object.assign({ v: 1, type: 'audioState', rev, queue: [ITEM], index: 0, state: 'playing', positionSec: 12, durationSec: 600, rate: 1, modes: MODES, sleep: { mode: 'off' }, pictureReady: true }, extra || {}); // v1.406.0 A2: the app build that reports its picture (the hole opens only over a ready picture; the fallback has its own tests)
 const BASE = { left: 0, top: 300, width: 393, height: 221 };
 
 function realm(opts) {

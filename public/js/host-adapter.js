@@ -147,6 +147,9 @@
   // { enum: [...] } / { eq: value }. A nested object spec carries its own `props`.
   var MESSAGES = {
     'host.hello': { cap: null, fields: { web: { is: 'object', req: true, props: { version: { is: 'string', req: true } } } } },
+    // v1.406.0 (E1, plan 2026-11-08-smoothness): once per document load, when the first screen's real content is painted.
+    // Native holds its launch screen until it arrives (capped by native). Always allowed: an older app ignores an unknown type.
+    'host.ready': { cap: null, fields: {} },
     'orientation.lock': { cap: 'orientation', fields: { orientation: { eq: 'portrait', req: true } } },
     'orientation.unlock': { cap: 'orientation', fields: {} },
     'haptics.prepare': { cap: 'haptics', fields: {} },
@@ -237,6 +240,7 @@
         sleep: { is: 'object', req: true, props: { mode: { enum: AUDIO_SLEEP_MODES.slice(), req: true }, endsAt: { is: 'number', min: 0 } } },
         error: { enum: AUDIO_ERRORS.slice() },
         videoSize: videoSizeSpec(), // v1.399.0 nativeVideo (S4): only for a video Item; a bad one is dropped, never the snapshot
+        pictureReady: { is: 'boolean' }, // v1.406.0 nativeVideo (A2): the current item's layer has a displayable frame (AVPlayerLayer.isReadyForDisplay); absent = unknown
       },
     },
     audioTick: { fields: { rev: { is: 'number', min: 0, req: true }, positionSec: { is: 'number', min: 0, req: true }, bufferedSec: { is: 'number', min: 0 } } },

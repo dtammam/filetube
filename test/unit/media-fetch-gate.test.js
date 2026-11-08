@@ -428,3 +428,30 @@ test('the Bottom bar editor does not list the downloader tabs under a shut gate'
     } finally { r.restore(); }
   }
 });
+
+// v1.406.0 H / E3 (plan 2026-11-08-smoothness): the probe is SINGLE-FLIGHT - the chrome, the home and the watch page ask at the
+// same boot; callers while one is in flight share it, each reading its OWN clone (a Response body reads once); a later ask
+// after it settled reaches the server again.
+test('probeSubscriptionsHealth(): concurrent callers share one request, each reads its own body; a later call asks again', async () => {
+  const r = realm(NO_HOST);
+  try {
+    let resolve;
+    let reads = 0;
+    const real = () => ({ ok: true, status: 200, bodyUsed: false, clone() { return { ok: true, status: 200, json: async () => { reads += 1; return { enabled: true }; } }; }, json: async () => { throw new Error('the shared original is never read'); } });
+    global.fetch = (u) => { r.fetched.push(String(u)); return new Promise((res) => { resolve = () => res(real()); }); };
+    const a = common.probeSubscriptionsHealth();
+    const b = common.probeSubscriptionsHealth();
+    const c = common.probeSubscriptionsHealth();
+    assert.strictEqual(r.healthFetches(), 1, 'one request for three callers');
+    resolve();
+    const [ra, rb, rc] = await Promise.all([a, b, c]);
+    assert.notStrictEqual(ra, rb, 'each caller its own clone');
+    await ra.json(); await rb.json(); await rc.json();
+    assert.strictEqual(reads, 3);
+    await new Promise((res) => setTimeout(res, 0));
+    const d = common.probeSubscriptionsHealth();
+    assert.strictEqual(r.healthFetches(), 2, 'settled: the next ask is a new request');
+    resolve();
+    await d;
+  } finally { r.restore(); }
+});

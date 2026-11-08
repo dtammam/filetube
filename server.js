@@ -137,6 +137,7 @@ const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only 
 // holds its original routing position.
 const authRoutes = require('./lib/auth/routes');
 const mediaUserRoutes = require('./lib/media/user-routes');
+const mediaProjectionLib = require('./lib/media/projection'); // v1.406.0 A1: the effective projection on a card's watch seed
 // Wave 7b, slice S2: the book library's whole HTTP surface (/api/books, /book,
 // /bookcover) and the book scan's single pass; scanBooks, its overlap/coalescing
 // guard, stays in this file (other callers and the exports still reach it here).
@@ -5347,7 +5348,31 @@ function resolveHomeItem(db, id, kind, progressPercent) {
     thumbnailUrl: `/thumbnail/${enc}`, href: `/watch.html?v=${enc}`, progressPercent,
     ...(item.type ? { type: item.type } : {}),
     ...(isAudio ? { chapterCount: (resolveItemChapters(item).chapters || []).length } : {}),
+    // v1.406.0 A1: a row card opens watch too, so it carries the same seed fields as the grid (the player starts at the tap)
+    duration: typeof item.duration === 'number' ? item.duration : 0,
+    ...watchSeedFields(item),
   };
+}
+
+// v1.406.0 A1 (plan 2026-11-08-smoothness): the fields the PLAYER reads to start an item from a card's seed, before the
+// watch page's own fetches return (watch.js canSeedPreload -> player.load -> setupForMedia / native-audio
+// videoItemFromDescriptor): the stream decision (type is on the card already; needsTranscode + transcodeStatus), the poster /
+// audio art (hasThumbnail), the aspect reservation (width / height), the 360 stand-down (the EFFECTIVE projection, the
+// detail route's rule - never the raw file value an owner overrode) and the background-audio status seed. Display and
+// stream-decision facts the role already sees on the Classic list (which spreads the whole item); never a path, never size.
+// Only items the caller resolved under RBAC reach this. Shared by the Modern grid and the home rows.
+function watchSeedFields(item) {
+  const out = {
+    hasThumbnail: item.hasThumbnail === true,
+    needsTranscode: item.needsTranscode === true,
+  };
+  if (typeof item.transcodeStatus === 'string') out.transcodeStatus = item.transcodeStatus;
+  if (typeof item.audioStatus === 'string') out.audioStatus = item.audioStatus;
+  if (typeof item.width === 'number' && item.width > 0) out.width = item.width;
+  if (typeof item.height === 'number' && item.height > 0) out.height = item.height;
+  const projection = mediaProjectionLib.effectiveProjection(item);
+  if (projection) out.projection = projection;
+  return out;
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
@@ -5407,6 +5432,7 @@ function resolveModernGridItem(db, rec, ytView) {
     // field-COMPLETE rule as watchUrl/ext above (a corner needing a field
     // the projection drops renders EMPTY in modern mode - the v1.85 #4 class).
     ...(item.hasSubtitles === true ? { hasSubtitles: true } : {}),
+    ...watchSeedFields(item), // v1.406.0 A1: the card's seed starts the player (no black box until the watch fetches return)
   };
 }
 
