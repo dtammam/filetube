@@ -178,6 +178,11 @@ module.exports = [
         // v1.81 write-RBAC: the memoized /api/auth/me fetcher (common.js),
         // read by watch.js/player.js to gate the delete/move/edit affordances.
         fetchCurrentUser: 'readonly',
+        // v1.406.0 (plan 2026-11-08-smoothness): the last-known home (E2) and the shared config read (E3), common.js
+        readHomeSnapshot: 'readonly',
+        writeHomeSnapshot: 'readonly',
+        clearHomeSnapshot: 'readonly',
+        fetchConfigShared: 'readonly',
         // v1.82: the shared sign-out (common.js), used by setup.js's button.
         accountSignOut: 'readonly',
         // v1.349: this browser's device name (common.js), used by setup.js's Account field.

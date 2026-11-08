@@ -447,6 +447,17 @@
 
 ### Features
 
+- [ ] **v1.406.0 gate r2 suggestions (none blocks; not taken to keep the close-out bookkeeping-only)** _(2026-11-08)_: (1) security S2,
+  latent: player.js `applyLateDetail` should skip the surface-flavor keys (readerHref, resumeMode, progressEndpoint, autoAdvanceViaTrackNav,
+  browseCtx, startAt, placeFloorSec) - today no media record carries them; (2) adversary S-r2-1: bind the fill loop's "never overrides what the seed
+  set" (an unconditional-assign mutant survives); (3) adversary S-r2-2: bind the album-miss re-fetch in music.js playTrackInAlbum (`item = real`
+  survives); (4) qa: the common.js music-seed comment says "always a server record" - the seed's record plays when GET /api/music/:id fails;
+  (5) adversary r1 S2: the fetchCardCaps auth/me retry is unbound; (6) adversary r1 S4 N6 / P4, S5 M32 / M37: low-harm unbound guards.
+- [ ] **Smoothness, the deferred half (v1.406.0 plan, Dean 2026-11-08: out of that release)** _(2026-11-08)_: (C) intent prefetch -
+  start a card's watch data and its shell on pointerdown (cancel on pointercancel), the residual API wait after the v1.406.0 shell
+  cache; (V) same-document view transitions (`document.startViewTransition` around the router swap) - off while native owns a picture
+  surface (the layer is outside the snapshot), WKWebView support read from the "Player and timing log" export first. Both measured
+  with the v1.406.0 probe (scratchpad sm-probe, the audit's) base vs branch before shipping.
 - [ ] **Glass tab pill (v1.405.0) follow-ups** _(2026-11-08, the build; none blocks the release)_: (1) **Suspected, unverified: the v1.401.0 dock cover scan has
   the same once-bound `#view-root` observer** that v1.405.0 found in its own first draft (public/js/native-audio.js `coverWire` observes the element it finds at
   load; the router `replaceWith`s it on every in-app navigation), so a view-owned fixed panel toggled by `hidden` (the Pocket cover, `.mms-full`) after an in-app
@@ -974,6 +985,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.406.0 - Smoothness: no black player, no blank Now Playing, no dead taps, a launch that lands on content (2026-11-08)
+
+- Dean (2026-11-08): "everything is perfectly functional ... But there's something about, like, the real YouTube app ... that have a level of
+  smoothness and polish that I don't seem to have accomplished." The audit (docs/exec-plans/completed/2026-11-08-smoothness-audit.md) traced the
+  black player to the Modern grid's seed failing the v1.52 predicate (no size / filePath), the "Unknown track" frame to an unseeded Music launch, the
+  dead taps to every hop waiting for its HTML shell, and the staged launch to a serial boot chain behind ~28 calls.
+- A1 the Modern grid and home rows carry the player's seed fields (never a path), the predicate decides by the player's reads, and the detail record
+  fills what a seed lacked; A2 the tapped thumbnail covers the box until the first frame (under the app's native video, until the new
+  `audioState.pictureReady`, falling back to playing + the first tick); H the watch page's two whole-library fetches wait for playback; G a view-shell
+  cache (cloned per hop, keyed by ft-version), lazy view scripts in parallel by their hashed URLs, idle prefetch of the tab shells; P previews
+  restart after Back; A3 a seeded Music launch frame and direct album open; E1 `host.ready` once per document; E2 the last-known home snapshot (per
+  user, cleared on sign-out / login / a mismatch); E3 one config and one auth/me read, settings beside the config, the chrome's reconcile reads after
+  the first screen; F skeletons wait 150 ms; M `perf:` marks in the renamed "Player and timing log".
+- Measured (base 0ece22d6 vs branch, Modern, VPN model, n=1): video tap black box 169 -> 0 ms (Chromium 4x) and 134 -> 0 ms (WebKit); tap dead time
+  137 -> 21 ms; Music tile tap showing the previous song 325 -> 0 ms, its title at 42 ms; Music tab hop 153 -> 78 ms, no skeleton; relaunch first card
+  1416 -> 917 ms with no skeleton. The app's two fields are relayed to the iOS Root (pictureReady, host.ready). Gate APPROVED r2 @a8331cd0 (adversary,
+  qa, security-brief). Evidence: docs/exec-plans/completed/2026-11-08-smoothness.md; device checks: docs/DEVICE-CHECKS.md "Smoothness (v1.406.0)".
 
 ### v1.405.0 - A floating glass pill replaces the bottom bar on Modern, in the browser now and drawn natively in the iPhone app with its next update (2026-11-08)
 

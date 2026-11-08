@@ -33,9 +33,12 @@ const ROUTE_SURFACE = routeSurfaceSource();
 
 // ---- setup.html: the checkbox exists, with a hint ---------------------
 
-test('setup.html: a "Show lifecycle debug log" checkbox exists (#debug-lifecycle-check)', () => {
+test('setup.html: the "Player and timing log" switch exists (#debug-lifecycle-check)', () => {
   assert.match(SETUP_HTML, /<input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-check" \/>/);
-  assert.match(SETUP_HTML, /Show lifecycle debug log/);
+  // v1.406.0 M: renamed from the lying "Show lifecycle debug log" (it shows nothing: it records, and the export reads it; since
+  // v1.406.0 it also records the launch and tab timing marks, so "Player event log" would be untrue as well)
+  assert.match(SETUP_HTML, /<label class="ui-row__title" for="debug-lifecycle-check">Player and timing log<\/label>/);
+  assert.doesNotMatch(SETUP_HTML, /Show lifecycle debug log/);
 });
 
 test('setup.html: the checkbox has an explanatory hint mentioning force-quit survival (matches player.js\'s own documented rationale)', () => {

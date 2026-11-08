@@ -216,6 +216,13 @@
     var adopting = false;    // true while the bound view's adopt() runs (its load's claim is the 'adopt' follow)
     var pendingJump = null;  // { key, left, at } after an audio.jump: snapshots still showing the item LEFT are dropped for a moment (S-A)
     var adoptedRev = -1;     // the snapshot rev the bound view was asked to adopt (once per rev)
+    // v1.406.0 A2 (plan 2026-11-08-smoothness): is the owned surface video's picture on native's layer yet? Latched per load
+    // (rev) and item: native's audioState.pictureReady (AVPlayerLayer.isReadyForDisplay) when the snapshot carries it, else the
+    // first audioTick while playing (today's app). Until then the hole stays shut (the page paints the box, the tapped
+    // thumbnail cover on it) and a docked-above picture is not shown (the dock's thumbnail); once ready the hole opens and
+    // 'ftpictureready' fires on the proxied element in the same task (player.js drops its cover).
+    var pictureLatch = '';   // 'rev|itemKey' whose picture is known ready
+    var pictureShownKey = ''; // the latch the hole and the event last acted on
     var JUMP_FENCE_MS = 3000;
 
     function post(type, fields) { try { return host.post(type, fields); } catch (_) { return false; } }
@@ -368,6 +375,31 @@
     function pipPost(action) {
       if (!pipOn || !ownedSurface || !ownedId) return false;
       return post('video.pip', { action: action });
+    }
+
+    // ---- v1.406.0 A2: the picture is ready ---------------------------------------------------------------------------
+    function pictureKeyNow() {
+      if (!ownedSurface || !ownedId || !snap) return ''; // every load replaces an older snapshot (sendLoad), and the key carries the rev
+      var cur = currentItem();
+      if (!cur || String(cur.id) !== ownedId) return '';
+      return rev + '|' + itemKey(cur);
+    }
+    function pictureReady() { var k = pictureKeyNow(); return !!k && k === pictureLatch; }
+    // called on every snapshot and tick: latch readiness, then open the hole and tell the page in the SAME task (a scheduled
+    // measure would leave one frame with the cover gone and the hole still shut)
+    function pictureNote(fromTick) {
+      var k = pictureKeyNow();
+      if (!k) return;
+      if (k !== pictureLatch) {
+        var yes = typeof snap.pictureReady === 'boolean' ? snap.pictureReady === true : (fromTick === true && snap.state === 'playing');
+        if (!yes) return;
+        pictureLatch = k;
+        try { if (win.FileTube && typeof win.FileTube.perfMark === 'function') win.FileTube.perfMark('picture-ready', (typeof snap.pictureReady === 'boolean' ? 'field ' : 'tick ') + ownedId); } catch (_) { /* a mark never breaks playback */ }
+      }
+      if (pictureShownKey === k) return;
+      pictureShownKey = k;
+      if (surfaceOn) surfaceSync(false);
+      fire('ftpictureready');
     }
 
     // ---- the picture surface (v1.399.0, S3 + S3a + S5 + S8) -----------------------------------------------------------
@@ -545,7 +577,7 @@
       var round = function (v) { return Math.round(v * 100) / 100; };
       var shown = w > 0 && h > 0 && !(cs && cs.display === 'none');
       var pip = pipActive(); // v1.404.0 (R1): the picture is in Apple's window; the box shows the thumbnail wherever it sits
-      var visible = (docked ? (dockLive && shown && !covered) : shown) && !pip; // R4: covered = the layer hides, the thumbnail shows
+      var visible = (docked ? (dockLive && shown && !covered && pictureReady()) : shown) && !pip; // R4: covered = the layer hides, the thumbnail shows. v1.406.0 A2: a docked-above layer with no frame yet would be a black box over the page - the dock shows the thumbnail until the picture is ready
       var m = { pip: pip, live: live, vrect: { x: num(r.left, 0), y: num(r.top, 0), w: w, h: h }, rect: { x: round(x), y: round(y), w: round(w), h: round(h) }, space: viewportSpace ? 'viewport' : 'document', visible: visible, fit: fit, radius: round(radius), docked: docked, fs: fs };
       if (dockOn) m.layer = dockLive ? 'above' : 'below'; // v1.401.0: only under the capability (absent = below on the wire)
       return m;
@@ -580,7 +612,8 @@
       // FIRST, this frame, and the 'below' post waits for the next one; going ABOVE (the fly-in's first frame, a reduced-motion dock)
       // the hole stays open two more frames (harmless under an above layer), then closes and the body paints again.
       var wasAbove = !!(surfaceLast && surfaceLast.layer === 'above');
-      if (wasAbove && msg.layer === 'below' && m.visible && !belowPending) {
+      var ready = pictureReady(); // v1.406.0 A2: the hole opens only over a picture native can draw
+      if (wasAbove && msg.layer === 'below' && m.visible && ready && !belowPending) {
         belowPending = true;
         try { dockArt(false); holeApply(m, el); } catch (_) { /* a paint detail never breaks playback */ } // the poster would paint over the hole: off first
         surfaceSchedule();
@@ -590,11 +623,16 @@
       // R2 (v1.400.1): native's layer lands on the frame AFTER this post, the hole on this one. During live motion the hole opens only where
       // the picture is under either lag: the intersection of this rect and the one posted before it. The final measure is exact.
       var prev = (m.live && surfaceLast && surfaceLast.visible && surfaceLast.space === m.space) ? surfaceLast.rect : null;
-      if (!same && post('video.surface', msg)) { if (msg.layer === 'above' && !wasAbove) aboveHold = 2; surfaceLast = msg; }
+      var wasVisible = !!(surfaceLast && surfaceLast.visible);
+      if (!same && post('video.surface', msg)) {
+        if (msg.layer === 'above' && !wasAbove) aboveHold = 2;
+        surfaceLast = msg;
+        if (msg.visible && !wasVisible) { try { if (win.FileTube && typeof win.FileTube.perfMark === 'function') win.FileTube.perfMark('surface-visible', ownedId); } catch (_) { /* a mark never breaks playback */ } } // v1.406.0 M
+      }
       try {
         var hm = m;
         if (m.live && m.visible && prev) hm = Object.assign({}, m, { rect: rectIntersect(m.rect, prev) });
-        var holeOpen = m.visible && (msg.layer !== 'above' || m.live || aboveHold > 0);
+        var holeOpen = m.visible && ready && (msg.layer !== 'above' || m.live || aboveHold > 0);
         dockArt(m.pip || (m.docked && (!(dockOn && m.live) || !m.visible))); // v1.404.0: the thumbnail while floating, in the slot too. v1.401.0: the LIVE picture flies into the dock; the poster waits for the rest (it sits under the above layer, ready for a covered dock, R4) - unless the dock is covered mid-flight, then the thumbnail flies as in v1.400.1. Without the capability: the v1.400.1 rule, the thumbnail from the fly-in's first frame
         holeApply(holeOpen ? hm : null, el);
         if (m.live) occludeApply(m); else occludeClear();
@@ -785,6 +823,7 @@
       if (prev && num(prev.rate, 1) !== num(s.rate, 1)) fire('ratechange');
       if (s.state === 'failed' && s.error && cur && !erroredIds[cur.id]) toastError(cur.id, s.error);
       fire('timeupdate');
+      pictureNote(false);
       notify();
     }
     function onTick(t) {
@@ -793,6 +832,7 @@
       tick = { pos: num(t.positionSec, 0), at: now() };
       if (typeof t.bufferedSec === 'number') snap.bufferedSec = t.bufferedSec;
       if (ownedId) fire('timeupdate');
+      pictureNote(true);
     }
     function toastError(id, error) {
       erroredIds[id] = true;
@@ -972,7 +1012,7 @@
         return true;
       }
       followed = false; pendingJump = null; queueUids = Object.create(null);
-      ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item);
+      ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item); // v1.406.0 A2: the new load's rev (sendLoad) makes every older latch stale
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;
@@ -1052,7 +1092,7 @@
 
     return {
       enabled: true, videoAudio: videoOn, videoSurface: surfaceOn,
-      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, surfaceOwned: surfaceOwned, wouldClaimVideo: wouldClaimVideo, active: active,
+      claim: claim, release: release, beginLoad: beginLoad, owns: owns, ownedKind: ownedKind, surfaceOwned: surfaceOwned, pictureReady: pictureReady, wouldClaimVideo: wouldClaimVideo, active: active,
       lastClaimFollowed: function () { return followed; },
       snapshot: function () { return snap; }, position: position, currentItem: currentItem,
       bindView: bindView, syncQueue: syncQueue, modesChanged: modesChanged,

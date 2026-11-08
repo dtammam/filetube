@@ -1055,6 +1055,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // library), so this value is intentionally larger than that ceiling rather
   // than trying to mirror it exactly.
   const FULL_LIST_QUERY_LIMIT = 1000000;
+  // v1.406.0 H: the longest the two full-list fetches wait for the first 'playing' (a refused autoplay never plays)
+  const WATCH_LIST_DEFER_CAP_MS = 1500;
 
   // Builds a view-area error message WITHOUT touching the player host's own
   // markup (never `playerWrapper.innerHTML = ...`) -- a fatal load error
@@ -1091,6 +1093,18 @@ if (typeof module !== 'undefined' && module.exports) {
   function init(root) {
     controller = new AbortController();
     const { signal } = controller;
+    // v1.406.0 H (plan 2026-11-08-smoothness): ONE GET /api/settings per watch view (the action bar's attribution flag, the
+    // autoplay toggle and the prev/next sort fallback each read it; three requests used to start while the video did).
+    // Resolves to the parsed settings or null (a failure reads as "no setting", as each caller already treated it).
+    let viewSettingsPromise = null;
+    function viewSettings() {
+      if (!viewSettingsPromise) {
+        viewSettingsPromise = fetch('/api/settings')
+          .then((res) => (res && res.ok ? res.json() : null))
+          .catch(() => null);
+      }
+      return viewSettingsPromise;
+    }
 
     // The persistent player controller (player.js) owns the actual
     // `<video>`/host -- this view only needs the SLOT it mounts into.
@@ -1158,8 +1172,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // typeof-guarded: a minimal harness (or a page that loads watch.js without
     // common.js) leaves fetchCurrentUser undefined - the affordances then simply
     // stay hidden rather than throwing during init (the shared-global scar).
-    fetch('/api/settings')
-      .then((res) => (res && res.ok ? res.json() : null))
+    viewSettings()
       .then((settings) => {
         if (signal.aborted) return;
         attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
@@ -1605,6 +1618,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Gate round 2 (adversarial W-B): whether a full seed will pre-load,
     // decided ONCE -- it changes what the 'reparent' branch below should do.
     const canSeedPreload = Boolean(watchSeed && isFullWatchSeedItem(watchSeed.item));
+    if (watchSeed && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark('seed-paint', (canSeedPreload ? 'full ' : 'partial ') + mediaId); // v1.406.0 M
     if (entryReparentAction === 'adopt') {
       // v1.40.0: carry the CURRENT browse context on the early adopt-mount too,
       // so re-opening a docked video from a new list view refreshes autoplay's
@@ -1812,7 +1826,11 @@ if (typeof module !== 'undefined' && module.exports) {
         }
 
         // 5. Load related sidebar
-        loadRelatedFiles();
+        // v1.406.0 H (plan 2026-11-08-smoothness): the rail and the track-nav context each fetch the WHOLE list (limit
+        // FULL_LIST_QUERY_LIMIT); started at once they competed with the video's own first bytes on the same few
+        // connections. They wait for the first 'playing' (or WATCH_LIST_DEFER_CAP_MS, whichever is first; at once when the
+        // player is already playing, an adopt) - well before a video can end, so prev / next and autoplay are still armed.
+        afterPlaybackStarts(loadRelatedFiles);
 
         // (Comments + star rating render at init() now -- v1.52: they are
         // id-only and belong to frame one, not to the data round trips.)
@@ -1821,7 +1839,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // feed-order neighbors + queue up-next and register them with the player
         // (setTrackNav) - powers the player's own prev/next, media keys, lock
         // screen, and the queue up-next box. The page buttons themselves are gone.
-        setupTrackNavContext();
+        afterPlaybackStarts(setupTrackNavContext); // v1.406.0 H: see step 5
 
         // 9. Cog-menu controls (v1.186): the shared player host template is
         // parity-locked byte-identical across nine shells, so these watch-only
@@ -2084,6 +2102,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // (public/js/player.js) -- they're triggered by the `window.FileTube.player
     // .load(...)` call in initWatch() above, not by this view directly.
 
+    // v1.406.0 H: run `fn` once, after the player's first 'playing' or the cap (at once when it already plays); leaving the
+    // view first cancels both triggers, so it never runs for a view that is gone
+    function afterPlaybackStarts(fn) {
+      const el = document.getElementById('media-player');
+      if (!el || el.paused === false) { fn(); return; } // already playing (an adopt; under native the proxy answers paused)
+      let timer = 0;
+      const stop = () => { clearTimeout(timer); el.removeEventListener('playing', run); };
+      function run() { stop(); fn(); }
+      el.addEventListener('playing', run);
+      timer = setTimeout(run, WATCH_LIST_DEFER_CAP_MS);
+      signal.addEventListener('abort', stop, { once: true });
+    }
+
     // Load related files
     async function loadRelatedFiles() {
       // v1.99 shimmer sweep: reveal the header + seed shimmer rows BEFORE the
@@ -2277,8 +2308,7 @@ if (typeof module !== 'undefined' && module.exports) {
           try { sortKey = localStorage.getItem('filetube_sort'); } catch (_) { /* storage disabled */ }
           if (!sortKey) {
             try {
-              const settingsRes = await fetch('/api/settings');
-              const settingsData = await settingsRes.json();
+              const settingsData = (await viewSettings()) || {};
               if (typeof settingsData.defaultSort === 'string' && settingsData.defaultSort !== '') sortKey = settingsData.defaultSort;
             } catch (_) { /* settings unavailable -- fall through */ }
           }
@@ -2404,8 +2434,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const autoplayCheck = root.querySelector('#watch-autoplay-check');
       if (!autoplayCheck) return;
       try {
-        const res = await fetch('/api/settings');
-        const settings = await res.json();
+        const settings = (await viewSettings()) || {};
         autoplayCheck.checked = !!settings.autoplayNext;
       } catch (e) {
         console.error('Error fetching autoplay setting:', e);

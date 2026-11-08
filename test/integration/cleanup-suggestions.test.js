@@ -119,6 +119,9 @@ test('GET /cleanup serves the shell with the cleanup view root and script (a dee
   // v1.386.0: the shell names each script by the hash of its bytes (lib/staticAssets.js)
   assert.match(html, /<script src="\/js\/cleanup\.js\?v=[0-9a-f]{16}"><\/script>/);
   assert.match(html, /<title>Clean up - FileTube<\/title>/);
-  assert.ok(!/history\.js/.test(html), 'the History view script is not loaded here');
+  // v1.406.0 G: the ft-view-scripts meta NAMES every lazy view script's hash (history.js among them) - the claim is that no
+  // <script> tag loads the History view here
+  assert.ok(!/<script[^>]*history\.js/.test(html), 'the History view script is not loaded here');
+  assert.match(html, /<meta name="ft-view-scripts" content="[^"]*\/js\/history\.js=[0-9a-f]{16}/, 'named for the router only');
   assert.match(html, /<header/, 'the shared header comes along');
 });

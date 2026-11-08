@@ -3793,6 +3793,40 @@ function consumeWatchSeed(mediaId) {
   return s;
 }
 
+// ---- v1.406.0 A3 (plan 2026-11-08-smoothness): the Music player's seed --------------------------------------------------
+// The music twin of the watch seed: the tapped track (title, artist, album, album key, art, duration) and the picture the tile
+// already showed, stashed by a surface that opens /music?play=<id> (the home rows, the Modern grid) and consumed by music.js's
+// ?play= init, which paints it in the launch frame (no "Unknown track", no blank art box) and opens its album directly.
+// Same posture as the watch seed (the TOCTOU class, LESSONS 4): single entry, in memory, consumed on read, refused on an id
+// mismatch and after MUSIC_SEED_MAX_AGE_MS. Only display strings and the art URL are kept. The seed's album key picks which
+// album is fetched; what PLAYS is always a server record (the album's row, or GET /api/music/:id when the album misses it).
+// The id comes from the URL.
+const MUSIC_SEED_MAX_AGE_MS = 10 * 1000;
+const MUSIC_SEED_FIELDS = ['title', 'artist', 'album', 'albumKey', 'artId', 'artV', 'artUrl', 'durationSec'];
+let musicSeedEntry = null;
+function sameOriginArtPath(u) {
+  return typeof u === 'string' && u.length <= 2048 && u.charAt(0) === '/' && u.charAt(1) !== '/' && u.indexOf('\\') < 0 && !/[\s"'<>]/.test(u);
+}
+function stashMusicSeed(item, coverUrl) {
+  if (!item || typeof item.id !== 'string' || item.id === '') return false;
+  const seed = { id: item.id };
+  for (const k of MUSIC_SEED_FIELDS) {
+    const v = item[k];
+    if (k === 'durationSec') { if (typeof v === 'number' && isFinite(v) && v > 0) seed.durationSec = v; }
+    else if (typeof v === 'string' && v !== '') seed[k] = v;
+  }
+  if (seed.artUrl && !sameOriginArtPath(seed.artUrl)) delete seed.artUrl;
+  musicSeedEntry = { item: seed, coverUrl: sameOriginArtPath(coverUrl) ? coverUrl : '', ts: Date.now() };
+  return true;
+}
+function consumeMusicSeed(trackId) {
+  const s = musicSeedEntry;
+  musicSeedEntry = null; // single-shot regardless of outcome
+  if (!s || !trackId || s.item.id !== trackId) return null;
+  if (Date.now() - s.ts > MUSIC_SEED_MAX_AGE_MS) return null;
+  return s;
+}
+
 // v1.52 instant watch: the PURE half of the watch metadata painter -- which
 // fields can render from this item, and as what strings. The DOM applier in
 // watch.js consumes this plan verbatim, so the seed pre-paint and the
@@ -3837,12 +3871,15 @@ function deriveWatchPaintPlan(item, channelName) {
 // always carries and a partial (bell-row) seed never does: `type` picks the
 // element/branch, and size+filePath mark a full record (the same marker the
 // paint plan uses). Pure; exported for node:test.
+// v1.406.0 A1 (plan 2026-11-08-smoothness): decided by what the PLAYER reads (setupForMedia, native-audio
+// videoItemFromDescriptor), not by the list record's shape: `type` plus the stream decision (`needsTranscode` as a boolean).
+// The Modern grid and the home rows carry exactly those (server.js watchSeedFields) but never size or filePath, so the old
+// size+filePath test silently dropped every Modern tap to the slow path (the black player box). A full list record (Classic,
+// the related rail) still passes by its size+filePath arm; a bell row (no type, no needsTranscode) still does not.
 function isFullWatchSeedItem(item) {
-  return Boolean(item)
-    && typeof item.id === 'string' && item.id !== ''
-    && typeof item.type === 'string'
-    && typeof item.size === 'number'
-    && typeof item.filePath === 'string';
+  if (!item || typeof item.id !== 'string' || item.id === '' || typeof item.type !== 'string') return false;
+  if (typeof item.needsTranscode === 'boolean') return true;
+  return typeof item.size === 'number' && typeof item.filePath === 'string';
 }
 
 // ---- v1.53: the capability cache (sessionStorage) ---------------------------
@@ -3875,9 +3912,136 @@ function mediaFetchAllowed() {
 }
 // The one `GET /api/subscriptions/health` call site. A shut gate answers a synthetic 404 (what a server without the module
 // answers), so every consumer takes its existing "module off" path with no request made.
+// ---- v1.406.0 E1 + E3 (plan 2026-11-08-smoothness): the first screen's real content ------------------------------------
+// ONE moment per document load: the first screen shows real content (the home's first cards with their pictures decoded, or
+// its last-known snapshot, its empty or error state; any other view once its init ran). At that moment:
+//  - E1: the web posts `host.ready` to the app (add-only, docs/references/native-bridge.md), which holds its launch screen
+//    until then (no black, no spinner over black), capped by native at about 2 s;
+//  - E3: the chrome's reconcile fetches the first screen does not need (the handoff card, the pinned sidebar, the bell's
+//    count, the queue chip, the History and Liked counts) start - they used to compete with the grid's own requests on the
+//    phone's few connections. Each of those surfaces paints from what it remembered first (the cold-launch crispness work),
+//    so waiting changes when it reconciles, not what shows.
+// FIRST_CONTENT_CAP_MS is the floor's ceiling: whatever happens (a view that never marks, a stalled grid, an error page), the
+// moment comes, host.ready is posted and the deferred fetches run.
+const FIRST_CONTENT_CAP_MS = 1500;
+// v1.406.0 M: a smoothness mark into the lifecycle log (player.js perfMark; a no-op when the page has no player or the log is off)
+function ftPerfMark(name, detail) {
+  try { if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.perfMark === 'function') window.FileTube.perfMark(name, detail); } catch (_) { /* a mark never breaks the page */ }
+}
+let firstContentDone = false;
+let firstContentReason = '';
+let firstContentCapTimer = 0;
+const firstContentWaiters = [];
+function postHostReady() {
+  try {
+    const host = typeof window !== 'undefined' && window.FileTube && window.FileTube.host;
+    if (host && host.present && typeof host.post === 'function') host.post('host.ready', {});
+  } catch (_) { /* a host bug never breaks the page */ }
+}
+function markFirstContent(reason) {
+  if (firstContentDone) return false;
+  firstContentDone = true;
+  firstContentReason = String(reason || '');
+  ftPerfMark('host-ready', firstContentReason);
+  if (firstContentCapTimer) { clearTimeout(firstContentCapTimer); firstContentCapTimer = 0; }
+  postHostReady();
+  const run = firstContentWaiters.splice(0);
+  for (const fn of run) { try { fn(); } catch (_) { /* one waiter never stops the rest */ } }
+  return true;
+}
+function armFirstContentCap() {
+  if (firstContentDone || firstContentCapTimer || typeof setTimeout !== 'function') return;
+  firstContentCapTimer = setTimeout(() => { firstContentCapTimer = 0; markFirstContent('cap'); }, FIRST_CONTENT_CAP_MS);
+}
+function whenFirstContent(fn) {
+  if (typeof fn !== 'function') return;
+  if (firstContentDone) { fn(); return; }
+  firstContentWaiters.push(fn);
+  armFirstContentCap();
+}
+// a fetch that starts at the first-content moment (at once after it)
+function fetchAfterFirstContent(url, init) {
+  return new Promise((resolve) => whenFirstContent(resolve)).then(() => fetch(url, init));
+}
+// ---- v1.406.0 E2 (plan 2026-11-08-smoothness): the last-known home ----------------------------------------------------------
+// The default home's first screen (its first HOME_SNAPSHOT_MAX cards: the fields a card draws, never a path, tags, chapters or a
+// description), remembered on this device under the user it was drawn for and the layout it was drawn in (main.js writes it
+// after every page-0 render of the bare home, and paints it at the next launch instead of skeletons; the real fetch then
+// redraws the grid in place). A snapshot is never shown to anyone else: it carries the user id, a mismatch clears it, and
+// sign-out and the login / welcome shells clear it. A JSON over HOME_SNAPSHOT_MAX_BYTES keeps fewer cards.
+const HOME_SNAPSHOT_KEY = 'ft-home-snapshot-v1';
+const HOME_SNAPSHOT_MAX = 12;
+const HOME_SNAPSHOT_MAX_BYTES = 32 * 1024;
+const HOME_SNAPSHOT_DROP = ['filePath', 'rootFolder', 'name', 'tags', 'chapters', 'chaptersManual', 'description', 'sourceUrl', 'storyboard', 'comments', 'subtitles'];
+function homeSnapshotItem(it) {
+  if (!it || typeof it !== 'object' || typeof it.id !== 'string' || !it.id) return null;
+  const out = {};
+  for (const k of Object.keys(it)) {
+    if (HOME_SNAPSHOT_DROP.indexOf(k) >= 0) continue;
+    const v = it[k];
+    if (v === null || ['string', 'number', 'boolean'].indexOf(typeof v) >= 0) out[k] = typeof v === 'string' ? v.slice(0, 1024) : v;
+  }
+  return out;
+}
+function writeHomeSnapshot(userId, layoutKey, items) {
+  if (userId === null || userId === undefined || userId === '' || typeof layoutKey !== 'string' || !Array.isArray(items)) return false;
+  let list = items.slice(0, HOME_SNAPSHOT_MAX).map(homeSnapshotItem).filter(Boolean);
+  try {
+    let json = '';
+    while (list.length) {
+      json = JSON.stringify({ v: 1, user: String(userId), layout: layoutKey, at: Date.now(), items: list });
+      if (json.length <= HOME_SNAPSHOT_MAX_BYTES) break;
+      list = list.slice(0, list.length - 1);
+    }
+    if (!list.length) { localStorage.removeItem(HOME_SNAPSHOT_KEY); return false; }
+    localStorage.setItem(HOME_SNAPSHOT_KEY, json);
+    return true;
+  } catch (_) { return false; }
+}
+// The snapshot for this layout (any user: the caller checks the user when it is known), or null. Untrusted storage: shape-checked.
+function readHomeSnapshot(layoutKey) {
+  try {
+    const raw = localStorage.getItem(HOME_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snap = JSON.parse(raw);
+    if (!snap || snap.v !== 1 || typeof snap.user !== 'string' || snap.layout !== layoutKey || !Array.isArray(snap.items)) return null;
+    // gate r1 (security S1): the same field rule on READ as on write - a planted nested value or dropped key never reaches a card
+    const items = snap.items.slice(0, HOME_SNAPSHOT_MAX).map(homeSnapshotItem).filter(Boolean);
+    return items.length ? { user: snap.user, items } : null;
+  } catch (_) { return null; }
+}
+function clearHomeSnapshot() {
+  try { localStorage.removeItem(HOME_SNAPSHOT_KEY); } catch (_) { /* storage off */ }
+}
+
+// E3: GET /api/config SINGLE-FLIGHT - the chrome's Downloads entry and the home's loadLibrary both ask at boot. Callers in
+// flight share one request (each reads its own clone); cleared when it settles, so a later ask (a rescan, the playlists
+// sheet) is always fresh.
+let configInFlight = null;
+function fetchConfigShared() {
+  if (!configInFlight) {
+    const p = fetch('/api/config');
+    configInFlight = p;
+    const clear = () => { if (configInFlight === p) configInFlight = null; };
+    p.then(clear, clear);
+  }
+  return configInFlight.then((res) => (res && typeof res.clone === 'function' ? res.clone() : res));
+}
+
+// v1.406.0 H / E3 (plan 2026-11-08-smoothness): SINGLE-FLIGHT - the chrome, the home and the watch page each ask at boot, and
+// four identical requests used to compete with the first screen. Callers asking while one is in flight share it; each gets
+// its own clone (a Response body reads once), the shared original is never read. Cleared when it settles, so a later ask
+// (a capability change, a Retry) always reaches the server.
+let subscriptionsHealthInFlight = null;
 function probeSubscriptionsHealth() {
   if (!mediaFetchAllowed()) return Promise.resolve({ ok: false, status: 404 });
-  return fetch('/api/subscriptions/health');
+  if (!subscriptionsHealthInFlight) {
+    const p = fetch('/api/subscriptions/health');
+    subscriptionsHealthInFlight = p;
+    const clear = () => { if (subscriptionsHealthInFlight === p) subscriptionsHealthInFlight = null; };
+    p.then(clear, clear);
+  }
+  return subscriptionsHealthInFlight.then((res) => (res && typeof res.clone === 'function' ? res.clone() : res));
 }
 // The routes that are downloader-only. A direct visit (a typed or old link) to one with the gate shut renders a plain
 // "Not available in this app" state in place of the view; the view's init() never runs.
@@ -4336,7 +4500,7 @@ function injectNotificationBellIfEnabled() {
     headerRight.insertBefore(ph, afterQueue());
   }
 
-  fetch('/api/notifications/badge')
+  fetchAfterFirstContent('/api/notifications/badge') // v1.406.0 E3: the bell's reserve holds its place; the probe waits for the first screen
     .then((res) => {
       if (!shouldInjectNotificationBell(res)) {
         try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '0'); } catch (_) { /* private mode */ }
@@ -5015,7 +5179,7 @@ function injectQueueChrome() {
   // v1.339 (L2): the pre-paint reserve (a `[data-ft-reserve="queue"]` placeholder the
   // shell's inline block painted from ft-queue-shown) is dropped on every no-button exit.
   const dropReserve = () => { const r = chromeReserveEl(headerRight, 'queue'); if (r) r.remove(); };
-  fetch('/api/queue')
+  fetchAfterFirstContent('/api/queue') // v1.406.0 E3: the reserve holds the chip's place; the read waits for the first screen
     .then((res) => (res.ok ? res.json() : null))
     .then((queue) => {
       if (!queue) { dropReserve(); return; } // pre-auth / error: fail closed, inject nothing
@@ -5406,7 +5570,7 @@ function injectTvNavLinkIfEnabled() {
 // bar opt-in - the v1.44 rule).
 function injectDownloadsNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
-  fetch('/api/config')
+  fetchConfigShared() // v1.406.0 E3: shared with the home's own config read
     .then((res) => (res.ok ? res.json() : null))
     .then((payload) => {
       // v1.391.0 (R2): the Downloads folder entry is the downloader's output root - it follows the mediaFetch gate.
@@ -7069,6 +7233,7 @@ function triggerLibraryRescanAndRefresh(fetchImpl, reloadFn) {
 function accountSignOut() {
   const done = () => {
     try { sessionStorage.removeItem('ft-cap-cache-v1'); } catch (_) { /* storage disabled */ }
+    clearHomeSnapshot(); // v1.406.0 E2: the next person on this browser never sees this user's last home
     // v1.99: the modern avatar-bar last-known count is per-DEVICE (localStorage,
     // shared across users on one browser). Drop it on sign-out so the NEXT user
     // to log in on this browser doesn't reserve THIS user's avatar-strip and see
@@ -12238,7 +12403,8 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       const root = doc.getElementById('view-root');
       if (!root) return null;
-      return { root, title: doc.title || '' };
+      const vm = doc.querySelector('meta[name="ft-version"]'); // v1.406.0 G: the shell cache keeps only the running version's shells
+      return { root, title: doc.title || '', version: vm ? String(vm.getAttribute('content') || '') : '' };
     } catch (_) {
       return null;
     }
@@ -12312,12 +12478,31 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // "generalize rather than fork twice" instruction). A failed load clears
   // its slot so a later navigation can retry instead of wedging forever.
   const viewScriptPromises = {};
+  // v1.406.0 G (plan 2026-11-08-smoothness): the page's own shell names each lazy view script's content hash
+  // (server.js injectViewScriptVersions: <meta name="ft-view-scripts" content="/js/music.js=<hash> ...">), so the script
+  // is asked for by its immutable versioned URL - cached by the browser, never a revalidation round trip. A script the
+  // meta does not name (an older server, a module-served file) keeps its bare URL, as before.
+  let viewScriptVersions = null;
+  function versionedScriptSrc(src) {
+    if (!viewScriptVersions) {
+      viewScriptVersions = Object.create(null);
+      try {
+        const meta = document.querySelector('meta[name="ft-view-scripts"]');
+        const raw = meta ? String(meta.getAttribute('content') || '') : '';
+        raw.split(/\s+/).forEach((pair) => {
+          const m = /^(\/js\/[A-Za-z0-9_-]+\.js)=([0-9a-f]{8,64})$/.exec(pair);
+          if (m) viewScriptVersions[m[1]] = m[2];
+        });
+      } catch (_) { /* no meta: bare URLs */ }
+    }
+    return viewScriptVersions[src] ? src + '?v=' + viewScriptVersions[src] : src;
+  }
   function ensureScriptLoaded(src, registryKey) {
     if (viewRegistry[registryKey]) return Promise.resolve();
     if (viewScriptPromises[src]) return viewScriptPromises[src];
     viewScriptPromises[src] = new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = src;
+      script.src = versionedScriptSrc(src);
       script.addEventListener('load', () => resolve());
       script.addEventListener('error', () => {
         viewScriptPromises[src] = null; // allow a later retry instead of wedging forever
@@ -12354,6 +12539,112 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     const src = VIEW_SCRIPT_SRC[view];
     return src ? ensureScriptLoaded(src, view) : Promise.resolve();
   }
+
+  // ---- v1.406.0 G: the view-shell cache --------------------------------------------------------------------------------
+  // Every hop used to wait for the destination's whole HTML shell (35-44 KB, no-cache) before anything changed on screen
+  // (the audit measured 110-260 ms on the VPN model, 390-930 ms on cell, no feedback). Each shell's #view-root (and its
+  // <title>) is static per PATH - the server sends the same file for every query (server.js shellHtmlForRequestPath; the
+  // /cleanup, /feed and /pages transforms take no request input) and the view's script reads the query - so the parsed
+  // fragment is kept per pathname and a later hop swaps from it at once, in the same task as the tap.
+  //  - Never a reused node (LESSONS 4): the cache holds a parsed copy that is never inserted; every hop imports a deep clone.
+  //  - The cache never pairs a new shell with old JS: a fetched shell is cached only when its ft-version equals the running page's.
+  //    (A release mid-session still swaps the NEW shell, uncached, under the old JS - exactly as before v1.406.0 - until the next
+  //    full load.)
+  //  - Same-route and hash rules are unchanged (navigate's same-location no-op runs before any of this).
+  //  - A signed-out session still lands on the login page: a cache hit asks the shell with HEAD behind the swap, and a
+  //    redirected or refused answer loads the URL for real (the router's existing fallback).
+  //  - The view's lazy script loads IN PARALLEL with its shell (it used to load first, then the shell).
+  //  - At idle after boot the nav destinations' shells are fetched once (and their lazy scripts warmed in the HTTP cache).
+  const SHELL_CACHE_MAX = 24;
+  const shellCache = new Map(); // pathname -> { root: a parsed #view-root never inserted, title }
+  function runningFtVersion() {
+    const m = document.querySelector('meta[name="ft-version"]');
+    return m ? String(m.getAttribute('content') || '') : '';
+  }
+  function shellKeyOf(url) {
+    try { return new URL(url, window.location.href).pathname; } catch (_) { return null; }
+  }
+  function cloneShellEntry(entry) {
+    return { root: document.importNode(entry.root, true), title: entry.title };
+  }
+  function rememberShell(key, root, title) {
+    if (!key) return;
+    if (shellCache.has(key)) shellCache.delete(key);
+    shellCache.set(key, { root: root.cloneNode(true), title });
+    while (shellCache.size > SHELL_CACHE_MAX) shellCache.delete(shellCache.keys().next().value);
+  }
+  function revalidateShellSession(url) {
+    try {
+      fetch(url, { method: 'HEAD', credentials: 'same-origin' })
+        .then((res) => {
+          const want = shellKeyOf(url);
+          const landed = res && res.url ? shellKeyOf(res.url) : want;
+          if ((res && (res.status === 401 || res.status === 403)) || (res && res.redirected && landed !== want)) window.location.assign(url);
+        })
+        .catch(() => { /* offline: the cached shell stands, the view's own fetches report it */ });
+    } catch (_) { /* no fetch */ }
+  }
+  // The fragment for `url`: a clone of the cached shell (sync-resolved), or the fetched one (cached for next time).
+  // Resolves null when the response has no #view-root; rejects on a non-OK answer or a network failure.
+  function loadViewShell(url, opts) {
+    const key = shellKeyOf(url);
+    const hit = key ? shellCache.get(key) : null;
+    if (hit) {
+      if (!(opts && opts.prefetch)) revalidateShellSession(url);
+      return Promise.resolve(cloneShellEntry(hit));
+    }
+    return fetch(url, { credentials: 'same-origin' })
+      .then((res) => {
+        if (!res.ok) throw new Error('view shell: fetch failed with status ' + res.status);
+        return res.text();
+      })
+      .then((html) => {
+        const fragment = extractViewFragment(html);
+        if (!fragment) return null;
+        if (fragment.version === runningFtVersion()) rememberShell(key, fragment.root, fragment.title);
+        return { root: fragment.root, title: fragment.title };
+      });
+  }
+  // A view and its shell together: the lazy script and the shell are asked at once; the swap waits for both.
+  function loadViewAndShell(view, url) {
+    return Promise.all([ensureViewScriptLoaded(view), loadViewShell(url)]).then((both) => both[1]);
+  }
+  // Idle prefetch: each nav destination's shell once (sequentially, never competing with the first screen), and its lazy
+  // script fetched into the HTTP cache by its versioned URL (not executed: a view's script runs when it is first opened).
+  let shellPrefetchStarted = false;
+  function prefetchNavShells() {
+    if (shellPrefetchStarted || typeof document === 'undefined') return;
+    shellPrefetchStarted = true;
+    const urls = [];
+    const seen = new Set();
+    const add = (href) => {
+      let u;
+      try { u = new URL(href, window.location.href); } catch (_) { return; }
+      if (u.origin !== window.location.origin) return;
+      const view = deriveRouteView(u.pathname);
+      if (!view || seen.has(u.pathname) || shellCache.has(u.pathname)) return;
+      seen.add(u.pathname);
+      urls.push({ url: u.pathname, view });
+    };
+    document.querySelectorAll('#bottom-nav a[href]').forEach((a) => add(a.getAttribute('href'))); // the tabs a thumb reaches
+    add('/watch.html');
+    const next = () => {
+      const item = urls.shift();
+      if (!item) return;
+      const src = VIEW_SCRIPT_SRC[item.view];
+      if (src && !viewRegistry[item.view]) { try { fetch(versionedScriptSrc(src), { credentials: 'same-origin' }).catch(() => {}); } catch (_) { /* best-effort */ } }
+      loadViewShell(item.url, { prefetch: true }).catch(() => {}).then(next);
+    };
+    next();
+  }
+  function schedulePrefetchNavShells() {
+    const run = () => { try { prefetchNavShells(); } catch (_) { /* a prefetch never breaks the page */ } };
+    try {
+      if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: SHELL_PREFETCH_DELAY_MS * 2 });
+      else setTimeout(run, SHELL_PREFETCH_DELAY_MS);
+    } catch (_) { /* no timers */ }
+  }
+  const SHELL_PREFETCH_DELAY_MS = 2000;
 
   // The one swap routine every navigation (an in-app click, `popstate`, and
   // the progressive-enhancement boot) funnels through -- exactly one code
@@ -12422,6 +12713,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // hooked here instead of a MutationObserver.
     probeAndReconcileRepullButton();
     scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
+    ftPerfMark('swap', view); // v1.406.0 M: the new view is in the document (its init ran)
   }
 
   // v1.30.0 T8 (B1, AC5.2b): the SAME fetch -> extract `#view-root` -> swap
@@ -12435,15 +12727,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // reconcile opportunity would.
   function loadFreshHomeView(url, scrollY) {
     const gen = ++navGeneration;
-    return ensureViewScriptLoaded('home')
-      .then(() => fetch(url, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('home dirty-reconcile: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    return loadViewAndShell('home', url) // v1.406.0 G
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('home dirty-reconcile: response had no #view-root');
         swapToView('home', fragment.root, fragment.title, scrollY, url);
       })
@@ -12653,15 +12939,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       return Promise.resolve();
     }
 
-    return ensureViewScriptLoaded(view)
-      .then(() => fetch(parsed.href, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('navigate: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    return loadViewAndShell(view, parsed.href) // v1.406.0 G: the cached shell (or its fetch) and the view's script, together
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('navigate: response had no #view-root');
         // Update the URL BEFORE swapping (see the ordering comment above
         // `navigate`) -- the winning (non-stale) navigation pushes/replaces
@@ -12820,7 +13100,14 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // gate r1: REPLACE, never push - the Click player is the same /music page, so Back from it lands where Back
     // from /music would (a push left a dead Back press: the idle Click player stayed up on /music).
     if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
-    navigate(target.href);
+    ftPerfMark('tap', target.pathname + target.search); // v1.406.0 M
+    // v1.406.0 G: the tapped control holds its pressed state ([data-pressed], ui.css) until the swap, so a hop that still
+    // has to fetch (a first visit) answers the tap at once; released however the navigation ends
+    let pressed = false;
+    try { if (!anchor.hasAttribute('data-pressed')) { anchor.setAttribute('data-pressed', ''); pressed = true; } } catch (_) { /* detached */ }
+    const release = () => { if (pressed) { try { anchor.removeAttribute('data-pressed'); } catch (_) { /* gone */ } } };
+    const p = navigate(target.href);
+    if (p && typeof p.then === 'function') p.then(release, release); else release();
   }
 
   // Re-derives the view from `location` (the browser has ALREADY updated it
@@ -12874,15 +13161,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
       return;
     }
 
-    ensureViewScriptLoaded(state.view)
-      .then(() => fetch(state.url, { credentials: 'same-origin' }))
-      .then((res) => {
-        if (!res.ok) throw new Error('popstate: fetch failed with status ' + res.status);
-        return res.text();
-      })
-      .then((html) => {
+    loadViewAndShell(state.view, state.url) // v1.406.0 G
+      .then((fragment) => {
         if (isStaleNavGeneration(gen, navGeneration)) return; // a newer navigation has since started -- discard this stale response
-        const fragment = extractViewFragment(html);
         if (!fragment) throw new Error('popstate: response had no #view-root');
         swapToView(state.view, fragment.root, fragment.title, state.scrollY, targetUrl);
       })
@@ -12909,7 +13190,10 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   function bootRouter() {
     const view = deriveRouteView(window.location.pathname);
     const root = getViewRoot();
-    if (!view || !root) return; // not a known route, or this page has no shell yet
+    if (!view || !root) { // not a known route, or this page has no shell yet (login / welcome): its markup IS the first screen
+      try { requestAnimationFrame(() => markFirstContent('page')); } catch (_) { markFirstContent('page'); } // gate r1 (adversary S1): never the cap
+      return;
+    }
     // v1.160 (Dean): take MANUAL scroll control. Default 'auto' makes the browser
     // restore a remembered scroll position on a pushState in-app nav, which fires
     // AFTER swapToView's synchronous window.scrollTo(0,0) and overrides it - so a
@@ -12933,6 +13217,11 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     } else if (handlers && typeof handlers.init === 'function') {
       try { handlers.init(root); } catch (err) { console.error('View init() failed for', view, err); }
     }
+    // v1.406.0 E1/E3: home marks its own first content (its cards with their pictures, main.js); any other view's first screen
+    // is what its init just put up (a watch page's seeded paint, the Music launch frame) - marked on the next frame
+    if (view !== 'home') {
+      try { requestAnimationFrame(() => markFirstContent('view:' + view)); } catch (_) { markFirstContent('view:' + view); }
+    }
     // B1 fast-follow (v1.24.1): reconcile the "Re-pull this channel now"
     // button on the very first, progressive-enhancement load too -- this is
     // the ONLY hook that ever runs for a session that enters directly on
@@ -12940,6 +13229,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     // those), and it fires again harmlessly if a page IS the home view.
     probeAndReconcileRepullButton();
     scheduleCritterScatter(); // v1.166: Sneaky critter mode re-scatters per navigation
+    schedulePrefetchNavShells(); // v1.406.0 G: the nav destinations' shells at idle, so the first tap swaps at once too
   }
 
   window.FileTube = window.FileTube || {};
@@ -12959,6 +13249,11 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
   window.FileTube.stashWatchSeed = stashWatchSeed;
+  window.FileTube.stashMusicSeed = stashMusicSeed; // v1.406.0 A3
+  window.FileTube.markFirstContent = markFirstContent; // v1.406.0 E1/E3: the home view marks its first cards
+  window.FileTube.whenFirstContent = whenFirstContent;
+  window.FileTube.firstContent = () => ({ done: firstContentDone, reason: firstContentReason }); // read-only: what marked it (home, view:<name>, cap)
+  window.FileTube.consumeMusicSeed = consumeMusicSeed;
   window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
   // v1.78 device handoff: player.js reads these on every progress ping, and
@@ -18343,7 +18638,7 @@ const handoffCard = (() => {
   async function poll() {
     try {
       const deviceId = getDeviceId();
-      const r = await fetch(`/api/handoff?deviceId=${encodeURIComponent(deviceId)}`);
+      const r = await fetchAfterFirstContent(`/api/handoff?deviceId=${encodeURIComponent(deviceId)}`); // v1.406.0 E3: the card never slides in ahead of the first screen
       if (!r.ok) return; // a cold/erroring server is silent, never a visible failure
       const data = await r.json();
       const presence = data && data.presence;
@@ -18404,6 +18699,8 @@ installRotateDebug();
 applyEraFlourish();
 
 document.addEventListener('DOMContentLoaded', () => {
+  armFirstContentCap(); // v1.406.0 E1: host.ready goes out by FIRST_CONTENT_CAP_MS on every boot path, whatever the view does
+  if (/^\/(login|welcome)\/?$/.test(window.location.pathname)) clearHomeSnapshot(); // v1.406.0 E2: signed out (an expired session too)
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
   // v1.43: seed any locally-unchosen display prefs from the signed-in
@@ -18577,7 +18874,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // (fetchAllPins 404s -> [] on a disabled module; a rejection renders nothing).
   if (document.getElementById('sidebar-folders-list')) {
     primePinnedSidebarFromCache(); // v1.53 warm instant-paint from the capability cache
-    fetchAllPins().then((pins) => renderPinnedSidebar(pins)).catch(() => {});
+    whenFirstContent(() => { fetchAllPins().then((pins) => renderPinnedSidebar(pins)).catch(() => {}); }); // v1.406.0 E3: reconcile after the first screen
   }
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
@@ -18986,6 +19283,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
+    stashMusicSeed, consumeMusicSeed, // v1.406.0 A3
+    markFirstContent, whenFirstContent, fetchAfterFirstContent, fetchConfigShared, FIRST_CONTENT_CAP_MS, // v1.406.0 E1/E3
+    writeHomeSnapshot, readHomeSnapshot, clearHomeSnapshot, HOME_SNAPSHOT_KEY, HOME_SNAPSHOT_MAX, // v1.406.0 E2
     // v1.54: subscriber-label pure helpers.
     formatCompactCount, resolveSubscriberLabel, formatViewCountCaptureDate,
     // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).

@@ -51,6 +51,7 @@ function freshCommon() {
   delete global.document; delete global.window;
   delete require.cache[COMMON];
   lastCommon = require(COMMON); // boot is guarded (no document at require time)
+  lastCommon.markFirstContent('test'); // v1.406.0 E3: the queue / bell reads wait for the first screen; this suite drives the injectors, not boot timing
   return lastCommon;
 }
 
