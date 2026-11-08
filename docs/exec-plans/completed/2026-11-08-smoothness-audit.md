@@ -1,3 +1,4 @@
+> Completed: shipped in v1.406.0 (moved 2026-11-08; see ROADMAP.md).
 # Smoothness audit: why FileTube loads in stages (analysis only)
 
 Status: ACTIVE (analysis only, 2026-11-08). No app code changed. Input for Dean's pick of a first wave; not a build plan yet.

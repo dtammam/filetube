@@ -3,10 +3,10 @@ plan: smoothness
 harness: v2 · full
 branch: feat/v1.406.0-smoothness
 anchor: outcome
-status: Approved @0ece22d6
-next: Step 0, then W1 (A1 + A2 + H, the player never shows black)
+status: Shipped v1.406.0
+next: none - shipped; Dean's device checks DEVICE-CHECKS "Smoothness (v1.406.0)"
 design: Dean 2026-11-08 "Let's do all of this!!!" on the smoothness audit's two waves (both waves + P + F + H); single-page rebuild ruled out by Dean
-gate: pending
+gate: APPROVED r2 @a8331cd0 (adversary, qa, security-brief)
 builder: smart
 ---
 
@@ -22,7 +22,7 @@ Dean, 2026-11-08: "everything is perfectly functional ... But there's something 
 that have a level of smoothness and polish that I don't seem to have accomplished." His examples: launch loads in
 stages, tapping a video shows black, the music player shows a blank Now Playing first.
 
-Evidence: `docs/exec-plans/active/2026-11-08-smoothness-audit.md` (read it whole; it is this plan's spec of causes,
+Evidence: `docs/exec-plans/completed/2026-11-08-smoothness-audit.md` (read it whole; it is this plan's spec of causes,
 with file:line traces and measurements) and Dean's iPhone recordings in `/home/coder/smooth-recordings/` (rec1 =
 FileTube, rec2 = the YouTube app). Device numbers: launch 1.9 s black + 1.8 s skeleton; video tap 2.4 s black player;
 music tap 0.5 s "Unknown track" with a white art box. YouTube: never black, the tapped thumbnail sits in the player
@@ -217,6 +217,7 @@ tile tap). Modern home, 390x844 touch, VPN model (80 ms RTT, 20 Mbps), n = 1 per
 | Outcome | Flow | Chromium 4x CPU base -> branch | WebKit 1x base -> branch |
 |---|---|---|---|
 | O1 | video tap: swap -> picture source on screen (black box) | view 199, poster 368 (169 ms black) -> view 146, cover 146 (0) | view 156, poster 290 (134 ms black) -> view 96, cover 96 (0) |
+| O1 note | (gate r2 adversary S-r2-3) | after the r1 native-controls rule the phone browser's default (custom player off) shows the POSTER, not the cover, from the swap: the adversary's re-run at a8331cd0 read `black: 0, covered: null, view 457, poster 457` (box under load: only black / covered meaningful) | |
 | O1 | video tap: first frame | 624 -> 408 | 694 -> 557 |
 | O2 | Music tile tap with another song loaded: the OTHER song shown | 325 ms -> 0 | (Chromium only) |
 | O2 | ... tapped title on screen | 359 -> 42 | (Chromium only) |
@@ -275,3 +276,22 @@ Findings taken, each with its binding test and a mutant that goes red (all 10 KI
 Not taken (stated): qa S4 (an allowlist for the snapshot) - the read-side rule (security S1) plus the drop list hold the "no path"
 rule today; an allowlist risks a card drawn from the snapshot differing from its fresh redraw. adversary S4 N6 / P4 and S5 M32 / M37:
 low harm, left as they are.
+
+### Gate r2 - security-brief
+
+Gate: APPROVED r2 @a8331cd0 - security-brief (CRITICAL 0, WARNING 0, SUGGESTION 1 new; r1 S1 fixed as prescribed)
+
+### Gate r2 - qa
+
+Gate: APPROVED r2 @a8331cd0 - qa (CRITICAL 0, WARNING 0, SUGGESTION 1 new; r1 W1 W2 S1 S2 S3 fixed, S4 declined with reason)
+
+### Gate r2 - adversary
+
+Gate: APPROVED r2 @a8331cd0 - adversary (CRITICAL 0, WARNING 0, SUGGESTION 3 new; r1 W1 W2 W3 W4 fixed as prescribed, S1 S3 S6 fixed, S2 taken unbound, S4 partly, S5 declined)
+
+### Close-out (builder)
+
+Gate APPROVED r2 @a8331cd0 by all three seats (verdict lines above). The close-out after it is bookkeeping only - the version field,
+docs/releases.json, ROADMAP.md (Shipped + the r2 suggestions under Planned), this plan's evidence and its move to completed with the audit;
+`git diff --name-only a8331cd0..HEAD` is recorded in the release commit's message as the binding. No seat re-check (the brief's rule).
+Device checks Dean owes: docs/DEVICE-CHECKS.md "Smoothness (v1.406.0)" (a)-(g) and (j) now; (h)-(i) on the app build with the two fields.
