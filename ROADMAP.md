@@ -88,7 +88,8 @@
 - [ ] **v1.406.1 switch-click follow-ups (gate r1, not taken)** _(2026-11-08)_: (1) if DEVICE-CHECKS "Switch click (v1.406.1)" (a) still
   clicks: make `clearMediaSessionForNative` idempotent (it runs twice per switch, once inside the tap, since v1.406.0) with a binding test;
   (2) a fixture that reaches the keep-alive so its stop can skip an empty element (adversary S3); (3) build the realm's Music track with music.js's
-  own descriptor builder (adversary S4); (4) wait on the iOS Root's answer to the item-swap relay (plan Evidence).
+  own descriptor builder (adversary S4); (4) wait on the iOS Root's answer to the item-swap relay (plan Evidence); (5) `assertOneHandover` should also assert zero `audio.pause`
+  (gate r3 adversary: since v1.406.1 a native switch reaches the proxy pause, kept silent only by the load transition).
 - [ ] **Reader page is 20-24 px taller than the window** _(v1.402.1 probe, 2026-11-05; present before it, not caused by it)_ - with a book open the
   reader chassis ends exactly at the window bottom, but the document is taller (924 at 1440x900, 864 at 390x844, 414 at 844x390: the
   `.app-container` bottom padding), so the page can scroll a little. Measured identical on 698ae741 (before v1.402.1). Look at it when

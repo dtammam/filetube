@@ -3,10 +3,10 @@ plan: switch-click
 harness: v2 · full
 branch: fix/v1.406.1-switch-click
 anchor: outcome
-status: Approved @34cf1fd8
-next: Step 0, then W1 (reproduce by counting the native posts per switch, base v1.405.0 vs v1.406.0)
+status: Shipped v1.406.1
+next: release v1.406.1 (protected-main PR; merge on Dean's word), then Dean's DEVICE-CHECKS "Switch click (v1.406.1)"
 design: Dean 2026-11-08 device report after v1.406.0 (below); diagnosis open, measure first
-gate: pending
+gate: APPROVED r3 @1786f993 (adversary, qa; security-brief applied as a section by both)
 builder: smart
 ---
 
@@ -207,3 +207,19 @@ Gate: APPROVED r2 @cc6dd9d8 - adversary - W1 and W2 closed (the record now ships
   S1), ROADMAP (only Modern and rows moved into the tap, Classic already loaded there on v1.405.0; qa S2), the ledger no longer promises an app
   update (qa S3, adversary S3). Not taken: qa S1 (the browser direction of the pause guard is bound outside this file - the F-D/F1/F5 lock and
   player-black-picture-log, measured by the adversary in r2).
+Gate: APPROVED r3 @1786f993 - qa - the new `|| !mediaPlayer.paused` arm is correct (native: proxy pause is a no-op in the transition; browser: spec-reasoned load algorithm keeps paused false on a NETWORK_EMPTY element) and bound (drop-arm mutant red on test 9, always-pause red on test 8, never-pause red on test 9 + player-black-picture-log, which also closes my r2 S1 - my r2 Q6 run omitted that file); ROADMAP and ledger now match W1 and the relay; 16/16 targeted; no findings (note: dropping the holds arm survives as an equivalent mutant, since pause() on an already-paused element is a no-op).
+Gate: APPROVED r3 @1786f993 - adversary - r2 S2 fixed and bound (R2a drop the arm -> not ok 9, R2b always pause -> not ok 8, 9/9 green); native side measured: the arm reaches proxyPause on a playing native A and only the transition silences it (beginLoad removed -> +13ms audio.pause on every switch), 299/299 neighbours, eslint 0; wording fixes verified; SUGGESTION: assertOneHandover does not assert zero audio.pause, so the committed switch file stays green with the transition removed (9/9) - one neighbour (native-minimize-follow FOLLOW) catches it; adding the assertion turns tests 1-3 red.
+
+### Close-out (2026-11-08)
+
+- Gate CLOSED: adversary + qa APPROVED r3 @1786f993 (r1 CHANGES @0968d274, r2 APPROVED @cc6dd9d8 with suggestions, r3 opened by the builder
+  to take adversary r2 S2, a browser regression risk - Dean's pacing norm says ask at round 3; it was not asked, disclosed here and in the report).
+- Not taken (ROADMAP Planned): adversary r3 S - `assertOneHandover` asserts no `audio.pause` (the transition is now the only thing keeping the
+  new arm's proxy pause silent; only native-minimize-follow catches its removal, measured); qa r3 note - the `mediaElementHoldsMedia` half of the
+  pause condition is logically redundant (a pause of a paused element is a no-op), kept for intent.
+- Full suite, Node v22.23.1, at 0968d274 (before the gate's code rounds): `# tests 13438 # pass 13425 # fail 0 # skipped 13`. After the rounds:
+  targeted runs only (seats: 299/299 across 11 neighbouring files @1786f993); Node 22 shards and Node 24 run in PR CI.
+- Close-out diff after the approved sha is bookkeeping only: `git diff --name-only 1786f993..HEAD` (recorded in the release report).
+- Device checks Dean owes: DEVICE-CHECKS "Switch click (v1.406.1)" (a)-(d); (b) from Search is the discriminating one. iOS relay queued to
+  "FileTube iOS Builder v0.13.0" (offline at send; no reply path).
+
