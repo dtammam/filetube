@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip', 'nativeTabBar'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -75,6 +75,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `audio.unsubscribe` | (none) | `nativeAudio` | stops them (playback goes on) |
 | `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0, optional `layer: 'below' \| 'above'` (v1.401.0; sent only when `nativeVideoDock` is announced; `'above'` only with `space: 'viewport'`) | `nativeVideo` (+ `nativeVideoDock` for `layer`) | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0); `layer: 'above'` moves the picture view above the web view for the docked mini player, touches passing through (v1.401.0) |
 | `video.pip` | `action: 'start' \| 'stop'` | `nativeVideoPip` | `start` begins `AVPictureInPictureController` on the native player's layer (a user-initiated start: the web sends it from the button's click); `stop` ends it; a `start` while already in picture-in-picture, or a `stop` while not, is a no-op (v1.404.0) |
+| `nav.bar` | `items: [{ id, label, active, imageUrl? }]` (at most 32; `id` 1..64, `label` 1..128, `imageUrl` a same-origin PATH), `visible: boolean` | `nativeTabBar` | draws the icon-only glass tab pill (`UIGlassEffect`) above the web view with the items in this order, the `active` one selected, each `id` mapped to an SF Symbol pair from a table native owns (an unknown id = a generic symbol, never nothing; `imageUrl` = the account photo); `label` is the accessibility label and the long-press name; `visible: false` hides it at once (v1.405.0) |
 
 ## 3. Native to web events
 
@@ -92,6 +93,8 @@ Native calls `window.dispatchEvent(new CustomEvent('filetube-host', { detail }))
 | `audioTick` | `rev`, `positionSec`, optional `bufferedSec` | about once a second while playing; never while paused |
 | `audioError` | `id` (the Item's id), `error: 'network' \| 'notPlayable' \| 'revoked' \| 'notOnServer' \| 'other'` | once per item native could not play (it then skips to the next item, or ends with `state: 'failed'` on the last) |
 | `videoPip` | `active: boolean` | on every picture-in-picture start and stop, whoever caused it (the web's button, automatic picture-in-picture, Apple's own controls), and once at load with `false` (v1.404.0) |
+| `navTap` | `id` (string, 1..64) | a tap on a native pill item; nothing else is sent and the selection does not move until the next `nav.bar` says so (v1.405.0) |
+| `navBarMetrics` | `height` (CSS px, 0..400: the pill's height plus its gap above the safe area, the safe area excluded) | once after the announce, then on every change (rotation, Dynamic Type) (v1.405.0) |
 
 The connection kind is `connection`, not `type`: the envelope's own `type` is `'network'`. The web reads a connection value it
 does not know as `'other'`.
@@ -248,6 +251,24 @@ page:** `public/js/native-audio.js` answers `webkitPresentationMode` on the prox
 `nativeVideoPip`** (app v0.16, v0.17): the row is hidden while native owns a video and `video.pip` is never sent. A video on the web element in the app (the Feed,
 previews, 360) uses the browser's own PiP if WebKit allows it, else the row is hidden. Safari, the PWA and desktop never send it.
 
+**Glass tab pill (v1.405.0, `nativeTabBar`).** On the Modern look at phone width the web's bottom bar is a floating pill; a host
+that announces `nativeTabBar` draws that pill natively (Liquid Glass) as a view ABOVE the web view, touches outside it passing through.
+The web stays the source of truth: `public/js/common.js` builds `nav.bar` from the live `#bottom-nav` (the items the customizer
+resolver left visible, in its order: the same items, order, active item and injected items - Download, Subs, You - the web bar shows)
+and sends it coalesced, only when it changes, after the announce, every customization, every navigation, every visibility change and
+a back-forward-cache restore. **`visible` is ONE predicate, `nativeTabBarVisible()`**: true only on the Modern look, at the phone
+breakpoint in portrait, with nothing open that covers the bar today. The covering surfaces are enumerated from the stylesheets (every
+`position: fixed` family above `--z-nav`, classified by `test/unit/native-tab-bar.test.js`, which fails a new family until it is
+classified): an open ui.js sheet, dialog, menu or popover (`.ui-scrim` / `.ui-sheet` `is-open`), faux fullscreen
+(`body.ft-css-fullscreen`), native fullscreen, the expanded audio player, the speed sheet, the watch-history calendar, the reader's
+now-playing bar, the phone music skin (`.mms-full`), and the on-screen keyboard (a focused text field). While native draws (announced
+and `visible`), the web pill is `[hidden]` but stays in the DOM: it is the item source and the `navTap` target (`.click()` on the live
+`[data-nav=id]` element, so links go through the SPA router and Playlists opens its sheet; a hidden or missing id is ignored). The
+offset follows the renderer: the web pill's CSS defines `--mobile-bottom-nav-h` (pill + gap + safe area); while native draws it is
+`navBarMetrics.height` + the safe area (the web writes only `--native-tab-bar-h`, CSS derives the var), so the content's last row,
+the docked mini player and the reader clear the pill with either renderer. **Without `nativeTabBar`** (Safari, the PWA, an app build
+without it) no `nav.bar` is ever sent and the web pill shows.
+
 ## 4. Server side: `/api/host-info`
 
 A public `GET /api/host-info` (no login) answers
@@ -269,6 +290,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | nativeVideo | native owns the video's playback AND its picture layer (sound, picture, the audio session, the lock screen, backgrounding, progress posts); the web owns WHERE the picture goes (the hole it paints and the `video.surface` rect), the controls, captions and skins on top | public/js/native-audio.js claims a watch-page video at the player's choke point, proxies the element (videoWidth / videoHeight from `audioState.videoSize`) and sends the ONE coalesced `video.surface` per layout change; the docked mini player sends `visible: false` without `nativeVideoDock` (v1.399.0; with it the dock is live, next row) |
 | nativeVideoDock | native owns the picture view's side of the web view (`layer`), the touch passthrough and the rounded corners; the web decides WHEN the docked picture is live (`layer: 'above'`, `visible` false while a web surface covers the dock) | public/js/native-audio.js sends `layer` only under this capability; the dock's bar, X and caption strip stay web (v1.401.0) |
 | nativeVideoPip | native owns picture-in-picture (the controller, automatic start, its own controls, ending it); the web asks with the button and displays what `videoPip` says | public/js/native-audio.js sends `video.pip` only while it owns the video and answers the proxy's `webkitPresentationMode` from `videoPip` (v1.404.0) |
+| nativeTabBar | the web owns WHAT the pill holds and WHEN it shows (items, order, active, `visible`) and what a tap does; native owns the drawing (Liquid Glass, SF Symbols, the long-press name, accessibility) and the metrics | public/js/common.js sends the ONE coalesced `nav.bar`, clicks the live item on `navTap` and derives the offset from `navBarMetrics` (v1.405.0) |
 | nativeVideoAudio | a pure widening of nativeAudio: the engine also accepts a video or a TV episode as SOUND; in v1.398.0 the web sends only a Listen row (a video played as audio from the watch page) | a Listen row is proxied like a track; the background handoff of a playing video was NOT built (the spike failed; a native video surface is the next plan) (v1.398.0) |
 
 ## 6. Release of held capabilities
@@ -286,4 +308,6 @@ SURFACE (v1.399.0) is released the same way: the host hides the picture layer on
 web view goes away (the sound plays on, as for `nativeAudio`), and the page that next shows the item sends a fresh `video.surface`
 (a persisted `pageshow` re-sends the current one). The same release covers a `layer: 'above'` surface (v1.401.0): the host hides the
 picture view on the navigation commit whichever side of the web view it is on, and the next page's `video.surface` places it again. Picture-in-picture (v1.404.0) ends with them: the host ends PiP on the navigation commit and when
-the web view goes away, and the next page's `{ active: false }` at load says so; a page restored from the back-forward cache clears its own pressed state on a persisted `pageshow`.
+the web view goes away, and the next page's `{ active: false }` at load says so; a page restored from the back-forward cache clears its own pressed state on a persisted `pageshow`. The native tab pill (v1.405.0)
+hides on the navigation commit and when the web view goes away, and stays hidden until the next page's first `nav.bar`; a page
+restored from the back-forward cache re-sends its current `nav.bar` on a persisted `pageshow`.

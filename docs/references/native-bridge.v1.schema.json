@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo", "nativeVideoDock", "nativeVideoPip"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network", "downloads", "mediaFetch", "nativeAudio", "nativeVideoAudio", "nativeVideo", "nativeVideoDock", "nativeVideoPip", "nativeTabBar"] }
         }
       }
     },
@@ -63,7 +63,8 @@
         { "properties": { "type": { "const": "audio.subscribe" } } },
         { "properties": { "type": { "const": "audio.unsubscribe" } } },
         { "properties": { "type": { "const": "video.surface" }, "rect": { "$ref": "#/$defs/surfaceRect" }, "space": { "enum": ["document", "viewport"] }, "visible": { "type": "boolean" }, "fit": { "enum": ["contain", "cover"] }, "radius": { "type": "number", "minimum": 0 }, "layer": { "$ref": "#/$defs/surfaceLayer" } }, "required": ["rect", "space", "visible", "fit", "radius"] },
-        { "description": "v1.404.0 nativeVideoPip (announced only beside nativeVideo): start or stop AVPictureInPictureController on the native player's layer. Sent from the web button's click, only under the capability and only while native owns the current video. A start while already in picture-in-picture, or a stop while not, is a no-op.", "properties": { "type": { "const": "video.pip" }, "action": { "enum": ["start", "stop"] } }, "required": ["action"] }
+        { "description": "v1.404.0 nativeVideoPip (announced only beside nativeVideo): start or stop AVPictureInPictureController on the native player's layer. Sent from the web button's click, only under the capability and only while native owns the current video. A start while already in picture-in-picture, or a stop while not, is a no-op.", "properties": { "type": { "const": "video.pip" }, "action": { "enum": ["start", "stop"] } }, "required": ["action"] },
+        { "description": "v1.405.0 nativeTabBar: the native glass tab pill's items in the web bar's visible order and whether it shows. id = a bottom-bar roster id (home, liked, feed, playlists, history, podcasts, music, books, pages, downloads, theme, oneoff-download, subscriptions, settings) or an injected one (you = the account); native maps it to an SF Symbol pair (outline, .fill when active) and an unknown id to a generic symbol, never nothing. label = the accessible name (accessibility label + the long-press name). imageUrl = the account photo, a same-origin PATH only (the web refuses anything else). visible = the web's ONE predicate (Modern look, phone width, nothing covering the bar: a sheet, menu, dialog, the keyboard, fullscreen, the music skin, the reader's now-playing bar); false hides the pill at once. Sent coalesced, only when it changes: after the announce, every customization, every navigation, every visibility change.", "properties": { "type": { "const": "nav.bar" }, "items": { "type": "array", "maxItems": 32, "items": { "type": "object", "properties": { "id": { "type": "string", "minLength": 1, "maxLength": 64 }, "label": { "type": "string", "minLength": 1, "maxLength": 128 }, "active": { "type": "boolean" }, "imageUrl": { "type": "string", "minLength": 1, "maxLength": 2048 } }, "required": ["id", "label", "active"] } }, "visible": { "type": "boolean" } }, "required": ["items", "visible"] }
       ]
     },
     "audioItem": {
@@ -226,6 +227,22 @@
             "active": { "type": "boolean" }
           },
           "required": ["active"]
+        },
+        {
+          "description": "v1.405.0 nativeTabBar: a tap on a native pill item. Native sends this and nothing else (it does not move the selection until the next nav.bar says so); the web clicks that item's live element (links go through the SPA router, Playlists opens its sheet); an id with no live element is ignored.",
+          "properties": {
+            "type": { "const": "navTap" },
+            "id": { "type": "string", "minLength": 1, "maxLength": 64 }
+          },
+          "required": ["id"]
+        },
+        {
+          "description": "v1.405.0 nativeTabBar: the pill's height plus its gap above the safe area, CSS px, the safe area excluded. Once after the announce and on every change (rotation, Dynamic Type). The web sets --mobile-bottom-nav-h from it (+ the safe-area inset) while native draws the pill.",
+          "properties": {
+            "type": { "const": "navBarMetrics" },
+            "height": { "type": "number", "minimum": 0, "maximum": 400 }
+          },
+          "required": ["height"]
         }
       ]
     },

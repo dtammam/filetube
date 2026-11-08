@@ -61,7 +61,7 @@ test('videoPip is validated as data: only a boolean active reaches the listener'
 
 test('the docs carry the contract: section 1, the intent and event tables, the owners table, the release note; and audio.stop, never a video.stop that does not exist', () => {
   const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'references', 'native-bridge.md'), 'utf8');
-  assert.ok(doc.includes("'nativeVideoDock', 'nativeVideoPip']"), 'section 1 announces it');
+  assert.ok(doc.includes("'nativeVideoDock', 'nativeVideoPip'"), 'section 1 announces it'); // v1.405.0: the add-only list grew past it (nativeTabBar)
   assert.ok(/^\| `video\.pip` \|/m.test(doc), 'section 2');
   assert.ok(/^\| `videoPip` \|/m.test(doc), 'section 3');
   assert.ok(/^\| nativeVideoPip \|/m.test(doc), 'section 5');

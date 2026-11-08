@@ -5706,8 +5706,10 @@ function bottomNavItemAt(target) {
 function bottomNavReservePx() {
   if (typeof document === 'undefined' || typeof window === 'undefined') return 0;
   const nav = document.getElementById('bottom-nav');
-  if (!nav || window.getComputedStyle(nav).display === 'none') return 0;
-  if (!bottomNavIsPill()) return nav.offsetHeight;
+  if (!nav) return 0;
+  const native = nativeTabBarDrawing(); // the web pill is [hidden] while the app draws it: the var (navBarMetrics + inset) is the reserve
+  if (!native && window.getComputedStyle(nav).display === 'none') return 0;
+  if (!native && !bottomNavIsPill()) return nav.offsetHeight;
   const probe = document.createElement('div');
   probe.className = 'bottom-nav-reserve-probe';
   document.body.appendChild(probe);
@@ -5753,6 +5755,177 @@ function bindBottomNavLongPress() {
     document.addEventListener('pointerup', release, true);
     document.addEventListener('pointercancel', release, true);
   }, { ms: BOTTOM_NAV_NAME_MS, enabled: (e) => bottomNavIsPill() && !!bottomNavItemAt(e.target) });
+}
+
+// ---- v1.405.0 nativeTabBar: the iPhone app draws the pill (plan 2026-11-08-glass-tab-pill, the Contract) --------------
+//
+// A host that announces `nativeTabBar` draws Modern's pill natively (Liquid Glass) as a view ABOVE the web view. The web
+// stays the source of truth: the items, their order, the lit item and whether the pill shows all come from here, in ONE
+// coalesced `nav.bar` sent only when it changes. Because native's view sits above the page, nothing the page opens can
+// paint over it - so `visible` must be false whenever anything that covers the web bar today is up. That is ONE
+// predicate, nativeTabBarVisible(), over an ENUMERATED list: test/unit/native-tab-bar.test.js derives every
+// position:fixed family above --z-nav from the stylesheets and fails a new one until it is classified here (covers) or
+// there (clear: header, chip, dock, handoff card, remote pill, select bar, toasts, the tip). Cap off (Safari, the PWA,
+// an app build without it): no host listener, no nav.bar ever, the web pill shows.
+const NATIVE_TAB_BAR_COVERS = [
+  // [name, selector, fixedOnly]: a match that is rendered (not [hidden], not display:none / visibility:hidden) covers the bar.
+  // Every family here is position:fixed by its CSS (the census binds that); fixedOnly re-checks it where the SAME class is
+  // an in-flow panel off the phone (.mms-full outside html.is-phone / .mms-popout).
+  ['sheet', '.ui-scrim.is-open, .ui-sheet.is-open'], // every ui.js sheet, dialog, menu and popover (the account menu, Playlists, confirms)
+  ['faux-fullscreen', '#player-wrapper.css-fullscreen'],
+  ['audio-expanded', '#player-wrapper.audio-mode.audio-expanded'],
+  ['speed-sheet', '.speed-sheet-backdrop'],
+  ['watch-calendar', '.whcal-overlay'],
+  ['reader-nowplaying', '.reader-nowplaying'], // fixed at bottom 0, over the bar (the reader's narration bar)
+  ['music-skin', '.mms-full', true], // the phone music skin takeover (fixed, inset 0)
+];
+// Inputs that raise no keyboard; every other focused input, textarea, select (iOS's picker) or editable raises one.
+const NO_KEYBOARD_INPUTS = ['button', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'reset', 'submit', 'hidden'];
+function bottomNavKeyboardUp() {
+  const a = document.activeElement;
+  if (!a || a === document.body) return false;
+  if (a.isContentEditable) return true;
+  const tag = a.tagName;
+  if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  return tag === 'INPUT' && NO_KEYBOARD_INPUTS.indexOf(String(a.type || 'text').toLowerCase()) < 0;
+}
+// (a [hidden] surface computes display:none through ui.css's global [hidden] rule, so display is the one test)
+function coverRendered(el, fixedOnly) {
+  if (!el) return false;
+  try {
+    const cs = window.getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && (!fixedOnly || cs.position === 'fixed');
+  } catch (_) { return false; }
+}
+// What covers the bar right now, by name (null = nothing). Exported for the tests and the probe.
+function bottomNavCoveredBy() {
+  if (typeof document === 'undefined') return null;
+  for (let i = 0; i < NATIVE_TAB_BAR_COVERS.length; i++) {
+    const els = document.querySelectorAll(NATIVE_TAB_BAR_COVERS[i][1]);
+    for (let j = 0; j < els.length; j++) if (coverRendered(els[j], NATIVE_TAB_BAR_COVERS[i][2] === true)) return NATIVE_TAB_BAR_COVERS[i][0];
+  }
+  if (document.body && document.body.classList.contains('ft-css-fullscreen')) return 'faux-fullscreen';
+  if (document.fullscreenElement || document.webkitFullscreenElement) return 'fullscreen';
+  if (bottomNavKeyboardUp()) return 'keyboard';
+  return null;
+}
+// THE predicate: the Modern look, the phone breakpoint in portrait (the landscape rule hides the web bar), nothing covering.
+function nativeTabBarVisible() {
+  if (!bottomNavIsPill()) return false;
+  try { if (window.matchMedia('(orientation: landscape)').matches) return false; } catch (_) { /* no media queries */ }
+  return bottomNavCoveredBy() === null;
+}
+
+const ntb = { host: null, last: null, timer: null, height: null, drawing: false, mo: null, viewRoot: null };
+function nativeTabBarDrawing() { return ntb.drawing; }
+// The payload, from the live bar: the items applyBottomNavCustomization left visible, in its (DOM) order.
+function nativeTabBarPayload() {
+  const nav = document.getElementById('bottom-nav');
+  if (!nav) return null;
+  const items = [];
+  const els = nav.querySelectorAll('.bottom-nav-item[data-nav]');
+  for (let i = 0; i < els.length && items.length < 32; i++) {
+    const el = els[i];
+    if (el.hidden || el.parentNode !== nav) continue;
+    const id = el.getAttribute('data-nav');
+    const it = { id, label: bottomNavItemName(el) || id, active: el.classList.contains('active') };
+    const img = el.querySelector('img.ui-avatar__img');
+    const src = img ? img.getAttribute('src') : null;
+    if (src && ntb.host && ntb.host.sameOriginPath(src)) it.imageUrl = src; // the account photo; the monogram sends none
+    items.push(it);
+  }
+  return { items, visible: nativeTabBarVisible() };
+}
+function nativeTabBarSetDrawing(on) {
+  ntb.drawing = on;
+  const nav = document.getElementById('bottom-nav');
+  if (nav && nav.hidden !== on) nav.hidden = on; // [hidden] (ui.css's global rule): out of sight, still the item source + the navTap target
+  const root = document.documentElement;
+  const metered = on && ntb.height !== null;
+  if (root.hasAttribute('data-native-tab-bar') !== metered) {
+    if (metered) root.setAttribute('data-native-tab-bar', ''); else root.removeAttribute('data-native-tab-bar');
+  }
+}
+function nativeTabBarFlush() {
+  ntb.timer = null;
+  if (!ntb.host) return;
+  watchViewRoot(); // a navigation swapped #view-root since the last look
+  const p = nativeTabBarPayload();
+  if (!p) return;
+  const key = JSON.stringify(p);
+  if (key === ntb.last) { nativeTabBarSetDrawing(p.visible); return; }
+  // the web pill hides only once native has the message: a refused one (it never left the page) keeps the web pill up
+  if (ntb.host.post('nav.bar', p)) { ntb.last = key; nativeTabBarSetDrawing(p.visible); } else nativeTabBarSetDrawing(false);
+}
+// Coalesced: every trigger in one task is one evaluation, and an unchanged payload is never re-sent.
+function nativeTabBarSchedule() {
+  if (!ntb.host || ntb.timer !== null) return;
+  ntb.timer = window.setTimeout(nativeTabBarFlush, 0);
+}
+// The reader bar and the skin are toggled by `hidden` deep inside #view-root. The SPA router REPLACES that element on every
+// navigation (oldRoot.replaceWith), so it is re-found and re-observed whenever it changes (at every flush, which every trigger reaches): an
+// observer bound once would sit on the detached old root after the first navigation.
+function watchViewRoot() {
+  const vr = document.getElementById('view-root');
+  if (!vr || vr === ntb.viewRoot || !ntb.mo) return;
+  ntb.viewRoot = vr;
+  ntb.mo.observe(vr, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+}
+function nativeTabBarWatch() {
+  if (typeof window.MutationObserver !== 'function' || !document.body) return;
+  const watchKids = () => {
+    const kids = document.body.children;
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i];
+      if (k.id === 'player-dock' || k.id === 'ft-video-hole' || k.id === 'view-root' || k.id === 'bottom-nav') continue; // per-frame writers / observed below
+      ntb.mo.observe(k, { attributes: true, attributeFilter: ['class', 'hidden'] });
+    }
+    const wrapper = document.getElementById('player-wrapper');
+    if (wrapper) ntb.mo.observe(wrapper, { attributes: true, attributeFilter: ['class'] }); // css-fullscreen, audio-expanded
+    watchItems(); // an injected item (Download, Subs, You) is watched for its own hidden flips too
+  };
+  ntb.mo = new window.MutationObserver(() => { watchKids(); nativeTabBarSchedule(); });
+  const watchItems = () => {
+    const bar = document.getElementById('bottom-nav');
+    if (bar) for (let i = 0; i < bar.children.length; i++) ntb.mo.observe(bar.children[i], { attributes: true, attributeFilter: ['hidden'] });
+  };
+  ntb.mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] }); // the look; is-phone
+  ntb.mo.observe(document.body, { attributes: true, attributeFilter: ['class'], childList: true }); // every ui.js surface is a body child
+  // the bar itself: applyBottomNavCustomization re-appends (childList) and hides (hidden) items, applyNavHighlight moves the
+  // lit item (class), the theme item renames itself (text), the You avatar lands or fails over (src): every customization and
+  // every navigation reaches the pill through this one observer. The bar's OWN hidden attribute (ours) is not watched.
+  const nav = document.getElementById('bottom-nav');
+  if (nav) {
+    ntb.mo.observe(nav, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'src', 'aria-label'] });
+    watchItems();
+  }
+  watchKids();
+  watchViewRoot();
+  ['focusin', 'focusout', 'fullscreenchange', 'webkitfullscreenchange'].forEach((t) => document.addEventListener(t, nativeTabBarSchedule, true));
+  ['resize', 'orientationchange'].forEach((t) => window.addEventListener(t, nativeTabBarSchedule));
+}
+// Boot (once per page). Without the capability this returns before touching anything.
+function initNativeTabBar() {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || ntb.host) return;
+  const host = window.FileTube && window.FileTube.host;
+  if (!host || typeof host.has !== 'function' || !host.has('nativeTabBar')) return;
+  ntb.host = host;
+  host.on('navTap', (d) => {
+    if (!ntb.drawing) return; // a tap from a pill the web has already told to hide (a sheet or the keyboard came up): stale
+    const nav = document.getElementById('bottom-nav');
+    const els = nav ? nav.querySelectorAll('.bottom-nav-item[data-nav]') : [];
+    for (let i = 0; i < els.length; i++) {
+      if (els[i].getAttribute('data-nav') === d.id) { if (!els[i].hidden) els[i].click(); return; } // never a selector built from native's string
+    }
+  });
+  host.on('navBarMetrics', (d) => {
+    ntb.height = d.height;
+    document.documentElement.style.setProperty('--native-tab-bar-h', d.height + 'px');
+    nativeTabBarSetDrawing(ntb.drawing);
+  });
+  window.addEventListener('pageshow', (e) => { if (e && e.persisted) { ntb.last = null; nativeTabBarSchedule(); } }); // native released it on the commit
+  nativeTabBarWatch();
+  nativeTabBarSchedule();
 }
 
 // ---- v1.15.0 item 3: one-off download header button + compact modal -------
@@ -18392,6 +18565,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // async injectors (subscriptions/download) re-apply after inserting theirs.
   applyBottomNavCustomization();
   bindBottomNavLongPress(); // v1.405.0 (R3): the pill's long-press name tip
+  initNativeTabBar(); // v1.405.0: the app's glass pill (nativeTabBar); a no-op without the capability
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -18591,7 +18765,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver
     // test alone would only prove the decision, never its use.
     applyBottomNavCustomization, readBottomNavConfig, writeBottomNavConfig,
-    bottomNavIsPill, bottomNavItemName, bindBottomNavLongPress, bottomNavReservePx, BOTTOM_NAV_NAME_MS, BOTTOM_NAV_TIP_LINGER_MS, // v1.405.0 the glass tab pill (R3)
+    bottomNavIsPill, bottomNavItemName, bindBottomNavLongPress, bottomNavReservePx, nativeTabBarVisible, bottomNavCoveredBy, nativeTabBarPayload, initNativeTabBar, nativeTabBarDrawing, NATIVE_TAB_BAR_COVERS, // v1.405.0 nativeTabBar (W3)
+    BOTTOM_NAV_NAME_MS, BOTTOM_NAV_TIP_LINGER_MS, // v1.405.0 the glass tab pill (R3)
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

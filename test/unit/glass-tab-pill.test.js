@@ -75,9 +75,10 @@ test('R4: every item keeps a 44px target and the row scrolls inside the pill ins
   assert.match(TOKENS, /--hit:\s*44px;/);
 });
 
-test('R2: --mobile-bottom-nav-h stays the ONE source; on Modern it is the pill + its gap + the safe area', () => {
+test('R2: --mobile-bottom-nav-h stays the ONE source; on Modern it is the pill + its gap + the safe area (or native\'s, while the app draws it)', () => {
   const defs = STYLE_RULES.filter((r) => /--mobile-bottom-nav-h\s*:/.test(r.body));
-  assert.deepEqual(defs.map((r) => r.selector), [':root', ':root[data-theme="2021"]'], 'exactly two definitions: the strip and the pill');
+  assert.deepEqual(defs.map((r) => r.selector), [':root', ':root[data-theme="2021"]', ':root[data-theme="2021"][data-native-tab-bar]'],
+    'exactly one definition per renderer: the strip, the web pill, the app\'s native pill (W3, native-tab-bar.test.js)');
   assert.match(defs[0].body, /--mobile-bottom-nav-h:\s*calc\(72px \+ env\(safe-area-inset-bottom\)\)/, 'the other looks keep the 72px strip');
   assert.match(defs[1].body, /--mobile-bottom-nav-h:\s*calc\(var\(--pill-h\) \+ var\(--pill-gap\) \+ env\(safe-area-inset-bottom\)\)/);
   const pill = PILL();

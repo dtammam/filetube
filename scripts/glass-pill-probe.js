@@ -10,7 +10,8 @@
 //     R5: every non-Modern phone run and every desktop run must be identical between a (base) and b (branch); prints the diffs.
 //     SUMMARY compared=<n> differ=<n> ok|FAIL (exit 1 on a difference)
 //   Env: FT_ROOT=<tree> (default: this tree), CHROME=<binary>, FT_PILL_FULL=1 (R4: opt every roster item in, the maximum bar),
-//        FT_PILL_SWEEP=1 (W2: the R6 surface sweep + a real-touch R3 long press; SUMMARY checks=<n> failed=<n>, exit 1 on a failure).
+//        FT_PILL_SWEEP=1 (W2: the R6 surface sweep + a real-touch R3 long press; SUMMARY checks=<n> failed=<n>, exit 1 on a failure),
+//        FT_PILL_NATIVE=1 (W3: a fake host announcing nativeTabBar, and one not announcing it; SUMMARY native-checks=<n> failed=<n>).
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -127,6 +128,7 @@ async function measureTree(OUT) {
   await send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', platform: 'iPhone' });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   if (process.env.FT_PILL_SWEEP === '1') return sweep({ send, ev, waitFor, sleep, base });
+  if (process.env.FT_PILL_NATIVE === '1') return nativeChecks({ send, ev, waitFor, sleep, base });
   const full = process.env.FT_PILL_FULL === '1';
   const runs = [];
   const cases = [];
@@ -275,6 +277,76 @@ async function sweep({ send, ev, waitFor, sleep, base }) {
   }
   const failed = checks.filter((c) => !c.ok).length;
   console.log(`SUMMARY checks=${checks.length} failed=${failed} ${failed ? 'FAIL' : 'ok'}`);
+  process.exit(failed ? 1 : 0);
+}
+
+// W3 (the Contract) in the real browser: a FAKE host injected before any page script (the app's document-start script), announcing
+// nativeTabBar (and, as the control, not announcing it). Checks the real shells send nav.bar, hide the web pill, follow navTap /
+// navBarMetrics, and flip visible for a sheet, the keyboard and a retro look. CHECK native-<n> ok|FAIL <detail>.
+const FAKE_HOST = (cap) => `(function () {
+  window.__posts = [];
+  window.FileTubeHost = { bridge: 1, app: { name: 'filetube-ios', version: '0.18.0', build: '1' }, platform: 'ios',
+    capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network'${cap ? ", 'nativeTabBar'" : ''}],
+    post: function (msg) { window.__posts.push(JSON.parse(JSON.stringify(msg))); } };
+})()`;
+async function nativeChecks({ send, ev, waitFor, sleep, base }) {
+  const checks = [];
+  const check = (name, ok, detail) => { checks.push(ok); console.log(`CHECK native-${name} ${ok ? 'ok' : 'FAIL'} ${detail}`); };
+  const LAST = '(function () { var b = window.__posts.filter(function (m) { return m.type === "nav.bar"; }); return b.length ? b[b.length - 1] : null; })()';
+  const COUNT = 'window.__posts.filter(function (m) { return m.type === "nav.bar"; }).length';
+  const IDS = 'Array.prototype.filter.call(document.querySelectorAll("#bottom-nav .bottom-nav-item[data-nav]"), function (e) { return !e.hidden; }).map(function (e) { return e.getAttribute("data-nav"); })';
+  const emit = (d) => ev(`window.dispatchEvent(new CustomEvent('filetube-host', { detail: ${JSON.stringify(Object.assign({ v: 1 }, d))} })); true`);
+  await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true }); // a headless page has no window focus: no focusin / focusout without this
+  for (const cap of [true, false]) {
+    const inj = await send('Page.addScriptToEvaluateOnNewDocument', { source: FAKE_HOST(cap) });
+    await send('Page.navigate', { url: base + '/' });
+    await waitFor('document.readyState === "complete"');
+    await ev("localStorage.setItem('ft-era', '2021'); localStorage.setItem('ft-mode', 'light'); localStorage.removeItem('ft-bottomnav'); true");
+    await send('Page.navigate', { url: base + '/' });
+    await waitFor('document.readyState === "complete" && !!document.getElementById("bottom-nav")');
+    await sleep(900);
+    if (!cap) {
+      const n = await ev(COUNT); const hid = await ev('document.getElementById("bottom-nav").hidden');
+      check('cap-off-silent', n === 0 && hid === false, `nav.bar=${n} web-pill-hidden=${hid}`);
+      await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
+      continue;
+    }
+    const m = await ev(LAST); const ids = await ev(IDS);
+    check('first-payload', !!m && m.visible === true && JSON.stringify(m.items.map((i) => i.id)) === JSON.stringify(ids), `items=${m && m.items.map((i) => i.id + (i.active ? '*' : '')).join(',')} dom=${ids.join(',')} visible=${m && m.visible}`);
+    check('web-pill-hidden', await ev('document.getElementById("bottom-nav").hidden === true && getComputedStyle(document.getElementById("bottom-nav")).display === "none"'), 'the web pill is [hidden] + display:none');
+    const youImg = m && m.items.find((i) => i.id === 'you');
+    check('you-item', !!youImg, `you=${JSON.stringify(youImg)}`);
+    await emit({ type: 'navBarMetrics', height: 62 });
+    await sleep(100);
+    const off = await ev('(function () { var p = document.createElement("div"); p.className = "bottom-nav-reserve-probe"; document.body.appendChild(p); var h = p.getBoundingClientRect().height; p.remove(); return { h: h, attr: document.documentElement.hasAttribute("data-native-tab-bar"), dock: getComputedStyle(document.getElementById("player-dock")).bottom }; })()');
+    check('metrics-offset', off.h === 62 && off.attr, JSON.stringify(off));
+    const before = await ev(COUNT);
+    await emit({ type: 'navTap', id: 'playlists' });
+    await sleep(800);
+    const ms = await ev(LAST);
+    check('tap-opens-sheet-and-hides', ms.visible === false && await ev('!!document.querySelector(".ui-sheet.is-open") && document.getElementById("bottom-nav").hidden === false'), `visible=${ms.visible} sent=${(await ev(COUNT)) - before}`);
+    await ev('document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); true');
+    await sleep(900);
+    check('sheet-closed-shows', (await ev(LAST)).visible === true && await ev('document.getElementById("bottom-nav").hidden === true'), `visible=${(await ev(LAST)).visible}`);
+    await emit({ type: 'navTap', id: 'history' });
+    const went = await waitFor('location.pathname === "/history"', 5000);
+    await sleep(500);
+    const mh = await ev(LAST);
+    check('tap-navigates-and-selects', went && mh.items.filter((i) => i.active).map((i) => i.id).join() === 'history', `path=${await ev('location.pathname')} active=${mh.items.filter((i) => i.active).map((i) => i.id)}`);
+    await ev('(function () { var i = document.createElement("input"); i.type = "search"; i.id = "probe-field"; document.getElementById("view-root").appendChild(i); i.focus(); return true; })()');
+    await sleep(300);
+    check('keyboard-hides', (await ev(LAST)).visible === false, `visible=${(await ev(LAST)).visible} focused=${await ev('document.activeElement && document.activeElement.id')} coveredBy=${await ev('typeof bottomNavCoveredBy === "function" ? bottomNavCoveredBy() : "n/a"')} sent=${await ev(COUNT)}`);
+    await ev('document.getElementById("probe-field").blur(); true');
+    await sleep(300);
+    check('keyboard-gone-shows', (await ev(LAST)).visible === true, `visible=${(await ev(LAST)).visible}`);
+    await ev("document.documentElement.setAttribute('data-theme', '2005'); true");
+    await sleep(300);
+    check('retro-hides', (await ev(LAST)).visible === false && await ev('document.getElementById("bottom-nav").hidden === false'), `visible=${(await ev(LAST)).visible}`);
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
+  }
+  const failed = checks.filter((c) => !c).length;
+  console.log(`SUMMARY native-checks=${checks.length} failed=${failed} ${failed ? 'FAIL' : 'ok'}`);
   process.exit(failed ? 1 : 0);
 }
 
