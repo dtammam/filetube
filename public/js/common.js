@@ -3798,8 +3798,9 @@ function consumeWatchSeed(mediaId) {
 // already showed, stashed by a surface that opens /music?play=<id> (the home rows, the Modern grid) and consumed by music.js's
 // ?play= init, which paints it in the launch frame (no "Unknown track", no blank art box) and opens its album directly.
 // Same posture as the watch seed (the TOCTOU class, LESSONS 4): single entry, in memory, consumed on read, refused on an id
-// mismatch and after MUSIC_SEED_MAX_AGE_MS. Only display strings and the art URL are kept - a seed never decides what plays
-// (music.js resolves the album or the track from the server as before; the id comes from the URL).
+// mismatch and after MUSIC_SEED_MAX_AGE_MS. Only display strings and the art URL are kept. The seed's album key picks which
+// album is fetched; what PLAYS is always a server record (the album's row, or GET /api/music/:id when the album misses it).
+// The id comes from the URL.
 const MUSIC_SEED_MAX_AGE_MS = 10 * 1000;
 const MUSIC_SEED_FIELDS = ['title', 'artist', 'album', 'albumKey', 'artId', 'artV', 'artUrl', 'durationSec'];
 let musicSeedEntry = null;
@@ -4004,7 +4005,8 @@ function readHomeSnapshot(layoutKey) {
     if (!raw) return null;
     const snap = JSON.parse(raw);
     if (!snap || snap.v !== 1 || typeof snap.user !== 'string' || snap.layout !== layoutKey || !Array.isArray(snap.items)) return null;
-    const items = snap.items.slice(0, HOME_SNAPSHOT_MAX).filter((it) => it && typeof it === 'object' && typeof it.id === 'string' && it.id);
+    // gate r1 (security S1): the same field rule on READ as on write - a planted nested value or dropped key never reaches a card
+    const items = snap.items.slice(0, HOME_SNAPSHOT_MAX).map(homeSnapshotItem).filter(Boolean);
     return items.length ? { user: snap.user, items } : null;
   } catch (_) { return null; }
 }
@@ -12545,8 +12547,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // /cleanup, /feed and /pages transforms take no request input) and the view's script reads the query - so the parsed
   // fragment is kept per pathname and a later hop swaps from it at once, in the same task as the tap.
   //  - Never a reused node (LESSONS 4): the cache holds a parsed copy that is never inserted; every hop imports a deep clone.
-  //  - Never a new shell with old JS: a fetched shell is cached only when its ft-version equals the running page's (a release
-  //    mid-session keeps swapping as before, uncached, until the next full load).
+  //  - The cache never pairs a new shell with old JS: a fetched shell is cached only when its ft-version equals the running page's.
+  //    (A release mid-session still swaps the NEW shell, uncached, under the old JS - exactly as before v1.406.0 - until the next
+  //    full load.)
   //  - Same-route and hash rules are unchanged (navigate's same-location no-op runs before any of this).
   //  - A signed-out session still lands on the login page: a cache hit asks the shell with HEAD behind the swap, and a
   //    redirected or refused answer loads the URL for real (the router's existing fallback).
@@ -13187,7 +13190,10 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   function bootRouter() {
     const view = deriveRouteView(window.location.pathname);
     const root = getViewRoot();
-    if (!view || !root) return; // not a known route, or this page has no shell yet
+    if (!view || !root) { // not a known route, or this page has no shell yet (login / welcome): its markup IS the first screen
+      try { requestAnimationFrame(() => markFirstContent('page')); } catch (_) { markFirstContent('page'); } // gate r1 (adversary S1): never the cap
+      return;
+    }
     // v1.160 (Dean): take MANUAL scroll control. Default 'auto' makes the browser
     // restore a remembered scroll position on a pushState in-app nav, which fires
     // AFTER swapToView's synchronous window.scrollTo(0,0) and overrides it - so a

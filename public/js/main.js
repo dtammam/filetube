@@ -1771,7 +1771,8 @@ const PreviewCards = (function () {
       let canModifyLibrary = false;
       try {
         // v1.406.0 E3: the page's ONE /api/auth/me (common.js fetchCurrentUser, shared with the chrome); null = signed out / failed
-        const me = (typeof fetchCurrentUser === 'function') ? await fetchCurrentUser() : await (await fetch('/api/auth/me')).json();
+        let me = (typeof fetchCurrentUser === 'function') ? await fetchCurrentUser() : null;
+        if (!me) { const r = await fetch('/api/auth/me'); me = r.ok ? await r.json() : null; } // gate r1 (adversary S2): a remembered failure is asked again, as each home init did
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
       } catch (_) { /* signed-out shell / network failure -> no capability */ }
       // Reheat rides the latched module-health capability the watch page and the
@@ -1822,7 +1823,8 @@ const PreviewCards = (function () {
     function homeSnapshotLayoutKey() {
       if (!isBareHome || forceGrid || feedMode || isUnifiedSearch) return null;
       if (modernMode) return 'modern:' + activeModernChip + ':' + activeModernSort;
-      return 'classic:' + currentSort + ':' + (typeof activeFormatFilter === 'function' ? activeFormatFilter() : '');
+      // gate r1 (adversary S6): keyed by the device's own sort pick (or 'default'), known at init - the server's defaultSort lands later
+      return 'classic:' + (storedSortPick || 'default') + ':' + (typeof activeFormatFilter === 'function' ? activeFormatFilter() : '');
     }
     let homeFirstLoadStarted = false; // the snapshot stands in for this instance's FIRST load only (a retry / rescan refresh is unchanged)
     function paintHomeSnapshot() {

@@ -1392,7 +1392,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   object-fit: contain;
   pointer-events: none;
 }
-body.ft-native-video .player-cover {
+body.ft-native-video .player-cover,
+#player-wrapper.native-controls .player-cover { /* gate r1: the browser's own control strip draws inside the <video> box - a cover would paint over it; the element's poster (the same thumbnail) shows under the strip */
   visibility: hidden;
 }
 

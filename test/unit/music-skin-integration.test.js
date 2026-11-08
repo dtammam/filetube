@@ -3662,3 +3662,32 @@ test('A3 (pure): consumeMusicSeed is bound to the id, single-shot and expires; s
   } finally { Date.now = realNow; }
   assert.strictEqual(commonSeeds.stashMusicSeed({ id: '' }), false);
 });
+
+test('A3 race (gate r1 adversary W4): an album-keyed tile, then a plain one at once - the first one\'s late album answer never plays over the second', async () => {
+  const items = [{ id: 'j1', title: 'Jump One', artist: 'A', album: 'AL', albumKey: 'A\u0000AL', durationSec: 61 }, { id: 'j2', title: 'Jump Two', artist: 'B', durationSec: 62 }];
+  let releaseAlbum = null;
+  const loads = [];
+  const player = Object.assign({}, PLAYER_IDLE, { load(id) { loads.push(id); return true; } });
+  await boot({
+    mobile: true, isMusic: true, skin: 'ipod', playerOverride: player,
+    fetchImpl: (u) => {
+      const url = String(u);
+      if (url.indexOf('/api/music?filter=recent-listening&limit=12') === 0) return Promise.resolve({ ok: true, json: async () => ({ items }) });
+      if (url.indexOf('/api/music?filter=recent-listening&limit=200') === 0) return Promise.resolve({ ok: true, json: async () => ({ items }) });
+      if (url.indexOf('/api/music') === 0 && url.indexOf('album') >= 0) return new Promise((res) => { releaseAlbum = () => res({ ok: true, json: async () => ({ items: [items[0]], tracks: [items[0]] }) }); });
+      return Promise.resolve({ ok: true, json: holdAll });
+    },
+    run: async (dom) => {
+      const tile = (id) => dom.window.document.querySelector('.music-jump-tile[data-id="' + id + '"]');
+      tile('j1').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 5; i++) await settle();
+      assert.ok(typeof releaseAlbum === 'function', 'anti-vacuity: the first tap is waiting on its album');
+      tile('j2').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 10; i++) await settle();
+      releaseAlbum();
+      for (let i = 0; i < 20; i++) await settle();
+      assert.ok(loads.includes('j2'), `the last tap plays (loads: ${loads})`);
+      assert.ok(!loads.includes('j1'), `the superseded album answer never plays (loads: ${loads})`);
+    },
+  });
+});

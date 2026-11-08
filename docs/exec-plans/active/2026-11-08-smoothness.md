@@ -201,7 +201,8 @@ Decisions and deviations, stated:
   watch-href check); H's per-view settings + the old `done` flag were removed as redundant.
 
 Mutation (each restored from a backup copy, never git checkout): W1 A2 19 + 3 + 1 re-run, A1 10, rows 5, H 8 + 3, health 3; W2 G 12 + 2,
-P 2; W3 A3 15 + 6 + 2; W4 19 + 8 + 2. Every survivor is fixed, removed as dead code, or listed as masked above.
+P 2; W3 A3 15 + 6 + 2; W4 19 + 8 + 2. Every survivor of MY mutants was fixed, removed as dead code, or listed as masked above. (Gate r1
+corrected this: the adversary's own mutants found four more guards no test bound - M3, M9, M27, M38 - fixed in the r1 round below.)
 
 Suites (the merged tree a0acbd8b + the W5 commit): `npm test` on Node 22.23.1: tests 13424, pass 13411, fail 0, skipped 13; on Node
 24.20.0: tests 13424, pass 13411, fail 0, skipped 13. `npm run lint:ui`: OK (the live debt equals docs/ui-exceptions.json).
@@ -235,3 +236,42 @@ Filmstrips sent to Dean (SendUserFile): video tap and Music tile tap, base over 
 
 Relay: the iOS Root relay (pictureReady + host.ready, as frozen above) sent to "SANDYJAR iOS Dev Root" 2026-11-08 (Remote Control,
 no reply path).
+
+### Gate r1 - security-brief
+
+Gate: APPROVED r1 @4bfc61fc - security-brief (CRITICAL 0, WARNING 0, SUGGESTION 1, INFO 2)
+
+### Gate r1 - qa
+
+Gate: CHANGES REQUESTED r1 @4bfc61fc - qa (CRITICAL 0, WARNING 2, SUGGESTION 4)
+
+### Gate r1 - adversary
+
+Gate: CHANGES REQUESTED r1 @4bfc61fc - adversary (CRITICAL 0, WARNING 4, SUGGESTION 6)
+
+### Gate r1 fix round (builder)
+
+Findings taken, each with its binding test and a mutant that goes red (all 10 KILLED by name):
+- qa W1: `applyLateDetail` fills every field the seed lacked from the detail record (never one the seed set) - the row shape now
+  walks the item's folder on autoplay (`/api/videos?root=%2Fmedia%2FShow&limit=1000000`, the qa probe's control), and storyboard /
+  size reach `currentData`. Test: smoothness-player-cover "gate r1 (qa W1)". Mutant R1-1.
+- qa W2 = adversary W1: a refused autostart drops the web cover (setAutoStartRefused), and style.css hides the cover under
+  `#player-wrapper.native-controls` (the browser's own strip draws inside the video box). A `pause` drop was tried and REVERTED: the
+  outgoing item's queued pause event lands after the new cover and would uncover black. Tests: refused autostart (anti-vacuity: the
+  refusal reached), the CSS rule. Mutants R1-2, R1-3.
+- adversary W2: the HEAD re-check's real production answer (401, not redirected - fetch sends Accept */*, the adversary measured it)
+  now has its own test. Mutant R1-9 (the adversary's M9).
+- adversary W3: the empty-home clear (M38), the layout-key check (M3) and the config clone against a REAL Response (M27) are bound.
+  Mutants R1-5, R1-6, R1-7.
+- adversary W4: every Music open bumps `playSelectGen`, so an older album-keyed open's late answer never plays over a newer one
+  (also true at base, now closed); test drives the adversary's repro. Mutant R1-4.
+- adversary S1: a shell with no view (login / welcome) marks its first content on the next frame (reason 'page'), never the cap.
+  Mutant R1-8. S2: a remembered /api/auth/me failure is asked again in fetchCardCaps (not separately bound - a suggestion). S3 = qa S2:
+  a seed whose album misses the track plays the server's GET /api/music/:id record. S4: the redundant `pictureShownKey` reset in
+  claimVideo removed; a test title that claimed "close drops it" now says what it measures. S6: the Classic snapshot key uses the
+  device's own sort pick (or 'default'), so a server defaultSort no longer splits save and read keys.
+- security S1: readHomeSnapshot applies the write-side field rule on read. Test: a planted nested / path / storyboard item. Mutant R1-10.
+- qa S1 / S2: the two comments now say exactly what holds.
+Not taken (stated): qa S4 (an allowlist for the snapshot) - the read-side rule (security S1) plus the drop list hold the "no path"
+rule today; an allowlist risks a card drawn from the snapshot differing from its fresh redraw. adversary S4 N6 / P4 and S5 M32 / M37:
+low harm, left as they are.

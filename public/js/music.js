@@ -5321,6 +5321,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (myGen !== playSelectGen) return;
       var ai = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === item.id) { ai = k; break; } }
+      if (ai < 0 && opts && opts.seededOpen) {
+        // v1.406.0 gate r1 (qa S2 = adversary S3): a SEED's album missed the track (a stale album key) - the seed is display
+        // strings only, so the server's own record plays (the stream decision is never the seed's)
+        try {
+          var real = await fetchJson('/api/music/' + encodeURIComponent(item.id));
+          if (signal.aborted || myGen !== playSelectGen) return;
+          if (real && real.id) item = real;
+        } catch (_) { /* unresolvable: the seed's record plays below, as the solo edge always did */ }
+      }
       if (ai < 0) {
         // The album fetch did not include the track (an edge - stale key,
         // filtered). Play it solo so the RIGHT song still starts. renderSongList
@@ -6007,9 +6016,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.406.0 A3: `seed` = { item, coverUrl } for THIS id - by construction (a tile's own item, or the cross-view stash
     // consumeMusicSeed hands back only for this id):
     // the launch frame paints it, and a seed that knows its album opens the album directly (one round trip, not the
-    // recent-listening list then the album). A newer open supersedes this one after every await (the wrong-item class).
+    // recent-listening list then the album). A newer open supersedes this one: continueOpenGen after this function's own
+    // awaits, playSelectGen (bumped here) inside playTrackInAlbum's.
     async function playTrackFromContinue(trackId, bounceOnMiss, seed) {
       var openGen = ++continueOpenGen;
+      ++playSelectGen; // gate r1 (adversary W4): an older open's late album answer (playTrackInAlbum's own guard) never plays over this one
       // v1.243 (Dean): opening a song from the home feed used to FLASH the /music list before
       // the skin launched ("awkward gap"). v1.243 set body.mms-on early - but that only hid the
       // header/tabs, NOT #music-content, so renderSongList still FLASHED the list before the skin
@@ -6028,7 +6039,7 @@ if (typeof module !== 'undefined' && module.exports) {
       queueCtx = { src: 'music', filter: 'recent-listening' };
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
       if (seed && seed.item.albumKey) {
-        await playTrackInAlbum(Object.assign({ id: trackId }, seed.item)); // its own select generation guards the late play
+        await playTrackInAlbum(Object.assign({ id: trackId }, seed.item), { seededOpen: true }); // its own select generation guards the late play
         return;
       }
       try {

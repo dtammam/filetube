@@ -1012,8 +1012,7 @@
         return true;
       }
       followed = false; pendingJump = null; queueUids = Object.create(null);
-      ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item);
-      pictureShownKey = ''; // v1.406.0 A2: the new load's rev makes every older latch stale; the hole waits for this item's picture
+      ownedId = String(id); ownedItem = item; ownedSurface = true; preloadArt(item); // v1.406.0 A2: the new load's rev (sendLoad) makes every older latch stale
       attach(target);
       subscribe();
       playIntent = false; pauseIntent = false;

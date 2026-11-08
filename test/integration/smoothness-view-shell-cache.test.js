@@ -48,6 +48,7 @@ function makeFetch(opts) {
     let pathname = url;
     try { pathname = new URL(url, 'http://localhost').pathname; } catch (_) { /* as is */ }
     if (method === 'HEAD') {
+      if (opts && opts.head401) return Promise.resolve({ ok: false, status: 401, url: 'http://localhost' + pathname, redirected: false, text: async () => '' }); // what the real gate answers fetch's default Accept (adversary r1 W2, measured)
       if (opts && opts.headRedirect) return Promise.resolve({ ok: true, status: 200, url: 'http://localhost/login?next=' + encodeURIComponent(pathname), redirected: true, text: async () => '' });
       return Promise.resolve({ ok: true, status: 200, url: 'http://localhost' + pathname, redirected: false, text: async () => '' });
     }
@@ -241,4 +242,17 @@ test('G server: every shell names the lazy view scripts\' content hashes; the se
     srv.closeAllConnections?.();
     await new Promise((resolve) => srv.close(resolve));
   }
+});
+
+test('G (gate r1 adversary W2): the answer the real server gives a signed-out HEAD from fetch (401, no redirect: fetch sends Accept */*) also loads the URL for real', async () => {
+  const f = makeFetch({ head401: true });
+  const { dom, errors } = await loadIndex(f.fetchImpl);
+  const w = dom.window;
+  try {
+    await w.FileTube.navigate('/history');
+    await w.FileTube.navigate('/books');
+    const before = errors.filter((e) => /navigation/i.test(e)).length;
+    await w.FileTube.navigate('/history');
+    assert.ok(await until(() => errors.filter((e) => /navigation/i.test(e)).length > before), 'a real page load was asked');
+  } finally { w.close(); }
 });

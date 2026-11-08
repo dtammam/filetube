@@ -6553,6 +6553,7 @@ if (typeof module !== 'undefined' && module.exports) {
     on = !!on;
     if (autoStartRefused === on) return;
     autoStartRefused = on;
+    if (on) coverDrop('autostart-refused'); // v1.406.0 gate r1 (adversary W1 = qa W2): the element's own poster + play button show, never a still cover
     try { document.dispatchEvent(new CustomEvent('filetube:autostart', { detail: { refused: on } })); } catch (_) { /* no CustomEvent: the next paint reads the flag */ }
   }
   function autoStartCtx() {
@@ -11477,6 +11478,15 @@ if (typeof module !== 'undefined' && module.exports) {
     applyLateDetail: function (id, data) {
       if (!id || id !== currentId || !data) return false;
       if (Array.isArray(data.chapters)) applyChaptersForMedia(data);
+      // v1.406.0 gate r1 (qa W1): a card's seed (a home row, the Modern grid, the last-known home) carries only what the player
+      // needs to START - the detail record fills every field the seed lacked (filePath for autoplay's folder walk, storyboard for
+      // the seek previews, size, tags...), never one the seed already decided (the stream decision, the browse context).
+      if (currentData && typeof data === 'object') {
+        for (var k in data) {
+          if (!Object.prototype.hasOwnProperty.call(data, k) || k === 'chapters' || k === 'chaptersManual') continue;
+          if (currentData[k] === undefined) currentData[k] = data[k];
+        }
+      }
       return true;
     },
     // v1.104: the /music expanded now-playing panel is re-init'd fresh on a

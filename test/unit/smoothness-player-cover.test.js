@@ -181,7 +181,7 @@ test('A2 native docked above (nativeVideoDock): a picture not ready yet is NOT s
   } finally { r.close(); }
 });
 
-test('A2 native: expanded again before the first frame, the cover comes back (never a black box in the slot); close drops it', async () => {
+test('A2 native: expanded again before the first frame, the cover comes back (never a black box in the slot); after close it is out of the document', async () => {
   const r = realm({ caps: DOCK_CAPS, reduced: true });
   try {
     const rev = await claimed(r);
@@ -223,7 +223,7 @@ test('A2 CSS belt: the cover never paints while the hole is open', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(css, /body\.ft-native-video \.player-cover \{\s*visibility: hidden;\s*\}/);
+  assert.match(css, /body\.ft-native-video \.player-cover,\s*#player-wrapper\.native-controls \.player-cover \{\s*visibility: hidden;\s*\}/);
   assert.match(css, /\.player-cover \{[^}]*pointer-events: none;[^}]*\}/, 'a cover never takes a touch');
 });
 
@@ -236,5 +236,59 @@ test('M: the native picture marks its moments in the lifecycle log - cover shown
     r.fake.emit(STATE(rev));
     const types = JSON.parse(r.w.localStorage.getItem('ft-lifecycle-log') || '[]').map((e) => e.type).filter((t) => /^perf:/.test(t));
     assert.deepStrictEqual(types, ['perf:cover-shown', 'perf:surface-visible', 'perf:picture-ready', 'perf:first-frame'], 'in this order');
+  } finally { r.close(); }
+});
+
+// ---- gate r1 fixes ------------------------------------------------------------------------------------------------------------
+
+test('gate r1 (adversary W1 = qa W2): a refused autostart drops the web cover - the element\'s own poster and play button show, never a still picture with no controls', async () => {
+  const r = realm({ noHost: true, beforeScripts: (w) => {
+    w.HTMLMediaElement.prototype.play = function () { const e = new Error('refused'); e.name = 'NotAllowedError'; return Promise.reject(e); };
+  } });
+  try {
+    r.player.load('v1', VIDEO, { slot: r.slot });
+    assert.ok(cover(r), 'populated at the load');
+    r.el().dispatchEvent(new r.w.Event('loadedmetadata'));
+    r.el().dispatchEvent(new r.w.Event('canplay'));
+    await settle(200);
+    assert.strictEqual(r.player.autoStartRefused(), true, 'anti-vacuity: the refusal was reached');
+    assert.strictEqual(cover(r), null, 'dropped with the refusal');
+    assert.strictEqual(r.poster(), '/thumbnail/v1', 'the poster (the same picture) is what shows');
+  } finally { r.close(); }
+});
+
+test('gate r1: the browser\'s own control strip (native-controls) is never painted over - style.css hides the cover there', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /body\.ft-native-video \.player-cover,\s*#player-wrapper\.native-controls \.player-cover \{\s*visibility: hidden;\s*\}/);
+});
+
+test('gate r1 (qa W1): a seeded start from a lean card record (the server row shape: no filePath, no storyboard) gets them from the detail record - autoplay walks the item\'s FOLDER, not the whole library', async () => {
+  // the chain watch.js runs: the seeded pre-load, the same-id full load (the adopt path), then applyLateDetail(id, detail);
+  // the qa seat's probe (scratchpad qa/advance-probe.js) measured the whole-library walk before this fix
+  const urls = [];
+  const r = realm({ noHost: true, desktop: true, beforeScripts: (w) => {
+    const orig = w.fetch;
+    w.fetch = (u, i) => { urls.push(String(u)); if (String(u) === '/api/settings') return Promise.resolve({ ok: true, status: 200, json: async () => ({ autoplayNext: true }) }); if (String(u).indexOf('/api/videos') === 0) return Promise.resolve({ ok: true, status: 200, json: async () => ({ items: [], total: 0 }) }); return orig(u, i); };
+    w.parentFolder = (fp) => { if (!fp || typeof fp !== 'string') return ''; const f = fp.replace(/[\\/][^\\/]*$/, ''); return f === fp ? '' : f; };
+    w.decodeListContext = () => null;
+    w.deriveOrderedIds = (v) => v.map((x) => x.id);
+    w.computeNeighbors = () => ({ nextId: null });
+    w.resolveAutoplayAdvanceTarget = () => null;
+  } });
+  try {
+    const ROW = { id: 'f1', type: 'video', title: 'Row title', duration: 200, hasThumbnail: true, needsTranscode: false, browseCtx: '', progressEndpoint: null, startAt: null };
+    const DETAIL = Object.assign({}, ROW, { title: 'Detail title', filePath: '/media/Show/f1.mp4', size: 1, storyboard: { cols: 5 }, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, chapters: [] });
+    r.player.load('f1', ROW, { slot: r.slot });
+    await settle(30);
+    r.player.load('f1', DETAIL, { slot: r.slot }); // the adopt: only refreshes the browse context
+    assert.strictEqual(r.player.applyLateDetail('f1', DETAIL), true);
+    assert.strictEqual(r.player.applyLateDetail('other', DETAIL), false, 'id-guarded');
+    await settle(30);
+    r.el().dispatchEvent(new r.w.Event('ended'));
+    await settle(150);
+    const walks = urls.filter((u) => u.indexOf('/api/videos') === 0);
+    assert.deepStrictEqual(walks, ['/api/videos?root=%2Fmedia%2FShow&limit=1000000'], `the folder walk (got ${walks})`);
   } finally { r.close(); }
 });

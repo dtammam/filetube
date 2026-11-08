@@ -165,7 +165,8 @@ test('E1: an error page, a non-home deep link and a stalled grid (the cap) all s
     const f = makeFetch();
     const { dom, posts } = loadShell('login.html', f.fetchImpl, { app: true, path: '/login' });
     try {
-      assert.ok(await until(() => readyPosts(posts).length === 1, 250), 'the login shell (no view, no chrome) gets it from the boot cap');
+      assert.ok(await until(() => readyPosts(posts).length === 1, 60), 'the login shell (no view) sends it at once');
+      assert.strictEqual(dom.window.FileTube.firstContent().reason, 'page', 'its markup is the first screen - never the cap (gate r1 adversary S1)');
     } finally { dom.window.close(); }
   }
 });
@@ -223,7 +224,7 @@ test('E2: another user\'s snapshot is cleared as soon as the user is known; the 
 });
 
 test('E2: a scoped home (a folder) never paints the snapshot; the bare Classic home does (the control)', async () => {
-  const saved = JSON.stringify({ v: 1, user: '1', layout: 'classic:release-date:both', at: 1, items: GRID(['x']) });
+  const saved = JSON.stringify({ v: 1, user: '1', layout: 'classic:default:both', at: 1, items: GRID(['x']) });
   {
     const f = makeFetch({ holdGrid: true });
     const { dom } = loadShell('index.html', f.fetchImpl, { storage: { 'ft-home-snapshot-v1': saved } });
@@ -292,4 +293,52 @@ test('M: with the "Player and timing log" on, a launch and a hop leave their mar
     assert.ok(await until(() => readyPosts(off.posts).length === 1, 300));
     assert.strictEqual(log(off.dom.window).length, 0, 'the switch off: no marks');
   } finally { off.dom.window.close(); }
+});
+
+test('E2 (gate r1 adversary W3): a home that became EMPTY forgets its snapshot; a snapshot drawn in another layout (another chip) is never painted', async () => {
+  const saved = JSON.stringify({ v: 1, user: '1', layout: 'modern:all:newest', at: 1, items: GRID(['gone']) });
+  {
+    const f = makeFetch({ grid: [] });
+    const { dom } = loadShell('index.html', f.fetchImpl, { modern: true, storage: { 'ft-home-snapshot-v1': saved } });
+    try {
+      assert.ok(await until(() => dom.window.localStorage.getItem('ft-home-snapshot-v1') === null), 'cleared once the home answered empty');
+    } finally { dom.window.close(); }
+  }
+  {
+    const other = JSON.stringify({ v: 1, user: '1', layout: 'modern:audio:newest', at: 1, items: GRID(['aud']) });
+    const f = makeFetch({ holdGrid: true });
+    const { dom } = loadShell('index.html', f.fetchImpl, { modern: true, storage: { 'ft-home-snapshot-v1': other } });
+    try {
+      await sleep(400);
+      assert.ok(!cards(dom.window.document).includes('aud'), 'the Audio chip\'s snapshot never paints under All');
+    } finally { dom.window.close(); }
+  }
+});
+
+test('E3 (gate r1 adversary W3): the shared config read gives every caller its OWN body - with a real Response, both the chrome and the home read it', async () => {
+  const common = require('../../public/js/common.js');
+  const saved = global.fetch;
+  let n = 0;
+  global.fetch = () => { n += 1; return Promise.resolve(new Response(JSON.stringify({ folders: ['/m'] }), { status: 200, headers: { 'Content-Type': 'application/json' } })); };
+  try {
+    const a = common.fetchConfigShared();
+    const b = common.fetchConfigShared();
+    const [ra, rb] = await Promise.all([a, b]);
+    const [ja, jb] = await Promise.all([ra.json(), rb.json()]);
+    assert.strictEqual(n, 1, 'one request');
+    assert.deepStrictEqual(ja.folders, ['/m']);
+    assert.deepStrictEqual(jb.folders, ['/m'], 'the second reader is not "Body has already been read"');
+  } finally { global.fetch = saved; }
+});
+
+test('E2 (gate r1 security S1): a planted snapshot (nested values, a path, a storyboard) is cut to the card fields on READ too', () => {
+  const common = require('../../public/js/common.js');
+  const store = new Map();
+  const saved = global.localStorage;
+  global.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: (k) => store.delete(k) };
+  try {
+    store.set(common.HOME_SNAPSHOT_KEY, JSON.stringify({ v: 1, user: '1', layout: 'modern:all:newest', at: 1, items: [{ id: 'a', title: 'A', filePath: '/secret/a.mp4', storyboard: { url: 'https://evil.example/x' }, channelAvatarUrl: { toString: 1 }, tags: ['x'] }] }));
+    const snap = common.readHomeSnapshot('modern:all:newest');
+    assert.deepStrictEqual(snap.items, [{ id: 'a', title: 'A' }]);
+  } finally { global.localStorage = saved; }
 });
