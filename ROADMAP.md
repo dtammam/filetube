@@ -986,6 +986,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.406.1 - No click when switching from a docked video to another (2026-11-08)
+
+- Dean (2026-11-08, iPhone app, right after v1.406.0): "a weird audio burp that happens consistently" going from a docked, playing video to
+  another; a click, not either item's audio; not seen before v1.406.0.
+- W1 measured the bridge first (test/integration/switch-click.test.js: the real watch view, player and bridge with a fake host modelled on today's
+  app, server-emitted seeds; the same file run on a v1.405.0 sandbox): every switch (Modern, Classic, Music -> video) sends ONE audio.load, one
+  audio.play, one video.surface, no audio.stop and no second load at hydration on BOTH versions - the plan's three suspects refuted. Dean's device
+  A/B then placed the click on the tap with no web media active (Search, a quick Home tap) and not while a muted card preview was rolling; the
+  probe found the one web-side change on that axis: a switch's eleven resets (pause, removeAttribute src, load) of the src-less shared element and
+  background-audio sidecar moved from hydration (~2.4 s after the tap on v1.405.0 Modern) into the tap's gesture.
+- W2: `mediaElementHoldsMedia` gates every reset on the switch and close paths (teardownMediaState, releaseBackgroundAudioElement, close); a
+  browser element holding the previous video resets as before; v1.406.0's instant seed start is kept. Six guards bound by mutants; the keep-alive
+  guard was reverted (never runs under native; its mutant survived). Unproven on the device until DEVICE-CHECKS "Switch click (v1.406.1)": a click
+  still heard there means the diagnosis was wrong - re-root-cause, with the iOS Root relay next. Evidence:
+  docs/exec-plans/completed/2026-11-08-switch-click.md.
+
 ### v1.406.0 - Smoothness: no black player, no blank Now Playing, no dead taps, a launch that lands on content (2026-11-08)
 
 - Dean (2026-11-08): "everything is perfectly functional ... But there's something about, like, the real YouTube app ... that have a level of

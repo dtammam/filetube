@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Switch click (v1.406.1; in the iPhone app)
+
+- [ ] v1.406.1 - (a) A video docked and playing, Home, tap another video right away (within a second): no click or glitch in the sound.
+- [ ] v1.406.1 - (b) The same from Classic home, and from a Search result.
+- [ ] v1.406.1 - (c) Music playing (docked) -> tap a video on Home: no click.
+- [ ] v1.406.1 - (d) The new video still shows its thumbnail in the player from the first frame (v1.406.0's instant start is kept). A click still heard in (a)-(c) means the diagnosis was wrong: re-root-cause (the iOS Root relay is the next step), never re-patch.
+
 ## Smoothness (v1.406.0; (h)-(i) after the app build that sends pictureReady and waits for host.ready)
 
 - [ ] v1.406.0 - (a) Modern home -> tap a video: the player box shows the video's thumbnail from the first frame, then the picture - never a black box. Classic home, a Continue watching row and a related card: the same.
