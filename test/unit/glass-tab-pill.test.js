@@ -144,3 +144,155 @@ test('R4: a bar that fits (every other look, the default bar) is never scrolled'
     assert.equal(nav.scrollLeft, 0);
   });
 });
+
+// ---- R3: a long press shows the name (the REAL common.js binder over the REAL FTInteraction engine) ----------------
+
+const FTInteraction = require('../../public/js/interaction.js');
+function withTipBar(t, { theme = '2021', phone = true } = {}, fn) {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const html = `<html data-theme="${theme}"><body><nav class="bottom-nav" id="bottom-nav">`
+    + '<a href="/" class="bottom-nav-item" data-nav="home"><span class="bottom-nav-label">Home</span></a>'
+    + '<button type="button" class="bottom-nav-item" data-nav="oneoff-download" aria-label="Download a video"><span class="bottom-nav-label">Download</span></button>'
+    + '<a href="/music" class="bottom-nav-item" data-nav="music" hidden><span class="bottom-nav-label">Music</span></a>'
+    + '</nav><div id="away">x</div></body></html>';
+  const dom = new JSDOM(html, { url: 'http://localhost/' });
+  const w = dom.window;
+  // the engine and the tip's timers resolve through the jsdom window: route them to the mockable globals
+  w.setTimeout = (f, ms) => setTimeout(f, ms);
+  w.clearTimeout = (id) => clearTimeout(id);
+  w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? phone : false });
+  w.FTInteraction = FTInteraction;
+  global.document = w.document; global.window = w; global.localStorage = w.localStorage;
+  const common = require('../../public/js/common.js');
+  const pe = (type, el, o = {}) => el.dispatchEvent(new w.PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'touch', isPrimary: true, button: 0, clientX: o.x ?? 20, clientY: o.y ?? 800 }));
+  const click = (el) => { const e = new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }); el.dispatchEvent(e); return e; };
+  const tip = () => w.document.querySelector('.bottom-nav-tip');
+  const $ = (id) => w.document.querySelector(`[data-nav="${id}"]`);
+  try { common.bindBottomNavLongPress(); return fn({ w, common, pe, click, tip, $, tick: (ms) => t.mock.timers.tick(ms) }); } finally {
+    delete global.document; delete global.window; delete global.localStorage; dom.window.close();
+  }
+}
+
+test('R3: a 500ms hold on an item shows its name above the pill, and the release does NOT activate the item', (t) => {
+  withTipBar(t, {}, ({ pe, click, tip, $, tick, common }) => {
+    let activated = 0;
+    $('home').addEventListener('click', () => { activated++; });
+    pe('pointerdown', $('home'));
+    tick(common.BOTTOM_NAV_NAME_MS - 1);
+    assert.equal(tip(), null, 'nothing before the hold completes');
+    tick(1);
+    assert.ok(tip() && !tip().hidden, 'the tip shows at the hold');
+    assert.equal(tip().textContent, 'Home');
+    assert.equal(tip().getAttribute('role'), 'tooltip');
+    pe('pointerup', $('home'));
+    const ev = click($('home'));
+    assert.equal(activated, 0, 'the click after a fired hold is swallowed - no navigation');
+    assert.ok(ev.defaultPrevented, 'a link default (navigation) is prevented too');
+    assert.ok(!tip().hidden, 'the tip lingers briefly after the release');
+    tick(common.BOTTOM_NAV_TIP_LINGER_MS);
+    assert.ok(tip().hidden, 'then hides');
+  });
+});
+
+test('R3: the name is the accessible name - an aria-label wins over the caption', (t) => {
+  withTipBar(t, {}, ({ pe, tip, $, tick, common }) => {
+    pe('pointerdown', $('oneoff-download'));
+    tick(common.BOTTOM_NAV_NAME_MS);
+    assert.equal(tip().textContent, 'Download a video');
+  });
+});
+
+test('R3: a normal tap is unchanged - it activates, no tip, nothing prevented', (t) => {
+  withTipBar(t, {}, ({ pe, click, tip, $, tick }) => {
+    let activated = 0;
+    $('home').addEventListener('click', () => { activated++; });
+    pe('pointerdown', $('home'));
+    tick(120);
+    pe('pointerup', $('home'));
+    const ev = click($('home'));
+    assert.equal(activated, 1);
+    assert.equal(ev.defaultPrevented, false);
+    assert.equal(tip(), null);
+  });
+});
+
+test('R3: every other look, and desktop width, never arm the hold - a long touch then a release activates as before', (t) => {
+  for (const opts of [{ theme: '2005' }, { theme: '2009' }, { theme: '2014' }, { theme: '2021', phone: false }]) {
+    withTipBar(t, opts, ({ pe, click, tip, $, tick }) => {
+      let activated = 0;
+      $('home').addEventListener('click', () => { activated++; });
+      pe('pointerdown', $('home'));
+      tick(2000);
+      pe('pointerup', $('home'));
+      click($('home'));
+      assert.equal(tip(), null, `${JSON.stringify(opts)}: no tip`);
+      assert.equal(activated, 1, `${JSON.stringify(opts)}: the release still activates`);
+    });
+    t.mock.timers.reset();
+  }
+});
+
+test('R3 reachability: the page boot binds the tip once per shell (the DOMContentLoaded block every bar shell runs)', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
+  const boot = src.indexOf("document.addEventListener('DOMContentLoaded', () => {");
+  assert.ok(boot > 0);
+  const body = src.slice(boot, src.indexOf('\n});', boot));
+  assert.match(body, /\n {2}applyBottomNavCustomization\(\);\n {2}bindBottomNavLongPress\(\);/, 'bound right after the static layout applies');
+  // every shell that draws the bar loads the engine BEFORE common.js (no engine = no tip, silently)
+  const shells = fs.readdirSync(path.join(ROOT, 'public')).filter((f) => f.endsWith('.html')).map((f) => path.join(ROOT, 'public', f))
+    .concat([path.join(ROOT, 'lib', 'ytdlp', 'views', 'subscriptions.html')]);
+  const withBar = shells.filter((f) => fs.readFileSync(f, 'utf8').includes('id="bottom-nav"'));
+  assert.ok(withBar.length >= 11, `the bar shells (${withBar.length})`);
+  for (const f of withBar) {
+    const html = fs.readFileSync(f, 'utf8');
+    const eng = html.indexOf('/js/interaction.js');
+    const main = html.indexOf('<script src="/js/common.js');
+    assert.ok(eng > 0 && main > 0 && eng < main, `${path.basename(f)} loads interaction.js before common.js`);
+  }
+});
+
+// ---- R6: the reader sizes itself against the bar's REAL reserve -----------------------------------------------------
+
+function withReserveBar({ theme, phone = true, display = 'flex' }, fn) {
+  const dom = new JSDOM(`<html data-theme="${theme}"><body><nav class="bottom-nav" id="bottom-nav"></nav></body></html>`, { url: 'http://localhost/' });
+  const w = dom.window;
+  w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? phone : false });
+  const nav = w.document.getElementById('bottom-nav');
+  Object.defineProperty(nav, 'offsetHeight', { configurable: true, get: () => 52 });
+  const realGCS = w.getComputedStyle.bind(w);
+  w.getComputedStyle = (el) => (el === nav ? { display } : realGCS(el));
+  // jsdom has no layout: the probe element answers the resolved var the way style.css's .bottom-nav-reserve-probe would
+  const seen = [];
+  w.HTMLElement.prototype.getBoundingClientRect = function () {
+    seen.push(this.className);
+    return { height: this.className === 'bottom-nav-reserve-probe' ? 98 : 0, top: 0, bottom: 0, left: 0, right: 0, width: 0 };
+  };
+  global.document = w.document; global.window = w;
+  try { return fn(require('../../public/js/common.js'), seen, w); } finally { delete global.document; delete global.window; dom.window.close(); }
+}
+
+test('R6: bottomNavReservePx - the strip height on every other look, the ONE var on the pill, 0 when the bar is not drawn', () => {
+  for (const theme of ['2005', '2009', '2014']) {
+    withReserveBar({ theme }, (c, seen) => { assert.equal(c.bottomNavReservePx(), 52, theme + ': the strip height, as read.js measured it before'); assert.deepEqual(seen, []); });
+  }
+  withReserveBar({ theme: '2021', phone: false }, (c) => assert.equal(c.bottomNavReservePx(), 52, 'Modern above the phone breakpoint is not the pill'));
+  withReserveBar({ theme: '2021' }, (c, seen, w) => {
+    assert.equal(c.bottomNavReservePx(), 98, 'the pill: the resolved --mobile-bottom-nav-h (pill + gap + safe area), never its own 56px');
+    assert.deepEqual(seen, ['bottom-nav-reserve-probe']);
+    assert.equal(w.document.querySelector('.bottom-nav-reserve-probe'), null, 'the probe element is removed again');
+  });
+  withReserveBar({ theme: '2021', display: 'none' }, (c) => assert.equal(c.bottomNavReservePx(), 0, 'landscape: the pill is display:none'));
+  withReserveBar({ theme: '2005', display: 'none' }, (c) => assert.equal(c.bottomNavReservePx(), 0));
+  const css = STYLE_RULES.find((r) => r.selector === '.bottom-nav-reserve-probe');
+  assert.match(css.body, /height:\s*var\(--mobile-bottom-nav-h, 0px\)/, 'the probe resolves the ONE var');
+});
+
+test('R6 reachability: read.js sizes the reader with bottomNavReservePx, and the shell exposes it', () => {
+  const read = fs.readFileSync(path.join(ROOT, 'public', 'js', 'read.js'), 'utf8');
+  const fnStart = read.indexOf('function sizeReader()');
+  const body = read.slice(fnStart, read.indexOf('\n    }', fnStart));
+  assert.match(body, /const navH = ft && typeof ft\.bottomNavReservePx === 'function' \? ft\.bottomNavReservePx\(\) : 0;/);
+  assert.doesNotMatch(body, /bottomNav\.offsetHeight|getElementById\('bottom-nav'\)/, 'no private copy of the bar height left in the reader');
+  const common = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
+  assert.match(common, /window\.FileTube\.bottomNavReservePx = bottomNavReservePx;/);
+});

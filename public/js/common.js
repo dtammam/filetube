@@ -5669,6 +5669,92 @@ function applyBottomNavCustomization() {
   rememberBottomNavLayout(layout.visible); // v1.339 (L2): the next launch's pre-paint layout
 }
 
+// ---- v1.405.0 the glass tab pill: long press shows the name (plan 2026-11-08-glass-tab-pill R3) ----
+//
+// On Modern at phone width the bar is an icon-only pill (style.css), so an item's name is only its accessible
+// name. A press held still on an item for BOTTOM_NAV_NAME_MS shows that name in a small tip above the pill; the
+// release after it does NOT activate the item (FTInteraction's long press swallows the one click that follows a
+// fired press), and a normal tap is untouched (no preventDefault on pointerdown). The callout and selection are
+// already off app-wide (ui.css body rule). Every other look and desktop: `enabled` says no at pointerdown, so
+// the engine never even arms - a long touch there behaves exactly as it did before.
+const BOTTOM_NAV_NAME_MS = 500;
+const BOTTOM_NAV_TIP_LINGER_MS = 800; // the tip stays this long after the finger lifts, then hides
+// The web draws the glass pill: the Modern look at the phone breakpoint (style.css scopes the pill to exactly this).
+function bottomNavIsPill() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  try {
+    return document.documentElement.getAttribute('data-theme') === '2021'
+      && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches;
+  } catch (_) { return false; }
+}
+// An item's name: its aria-label when it has one (Download, You), else its label text - what a screen reader reads.
+function bottomNavItemName(item) {
+  const aria = item.getAttribute('aria-label');
+  if (aria && aria.trim()) return aria.trim();
+  const lab = item.querySelector('.bottom-nav-label');
+  return lab ? lab.textContent.trim() : '';
+}
+function bottomNavItemAt(target) {
+  const item = target && typeof target.closest === 'function' ? target.closest('#bottom-nav .bottom-nav-item') : null;
+  return item && !item.hidden ? item : null;
+}
+// How much of the viewport bottom the bar takes, in px - for a surface that sizes itself in JS (the reader, read.js
+// sizeReader) rather than reading --mobile-bottom-nav-h in CSS. 0 when the bar is not drawn (desktop, landscape).
+// Every look but the pill: the strip's own height, exactly as read.js measured it before v1.405.0. The pill floats
+// a gap above the safe area, so its own height under-reserves; there the answer is the ONE offset var itself,
+// resolved through a probe element styled by .bottom-nav-reserve-probe (style.css).
+function bottomNavReservePx() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return 0;
+  const nav = document.getElementById('bottom-nav');
+  if (!nav || window.getComputedStyle(nav).display === 'none') return 0;
+  if (!bottomNavIsPill()) return nav.offsetHeight;
+  const probe = document.createElement('div');
+  probe.className = 'bottom-nav-reserve-probe';
+  document.body.appendChild(probe);
+  const h = probe.getBoundingClientRect().height;
+  probe.remove();
+  return h;
+}
+// Binds once per page (the bar lives outside #view-root, so it survives SPA navigation). Delegated on the bar, so
+// the async injected items (Download, Subs, You) are covered without a re-bind.
+function bindBottomNavLongPress() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  const nav = document.getElementById('bottom-nav');
+  const FI = window.FTInteraction;
+  if (!nav || !FI || typeof FI.onLongPress !== 'function' || nav.__ftNameTip) return;
+  nav.__ftNameTip = true;
+  let tip = null;
+  let hideTimer = null;
+  FI.onLongPress(nav, (e) => {
+    const item = bottomNavItemAt(e && e.target);
+    const name = item ? bottomNavItemName(item) : '';
+    if (!name) return;
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.className = 'bottom-nav-tip';
+      tip.setAttribute('role', 'tooltip');
+      tip.hidden = true;
+      document.body.appendChild(tip);
+    }
+    tip.textContent = name;
+    tip.hidden = false;
+    // centred over the item, clamped so a tip over an edge item stays on screen
+    const r = item.getBoundingClientRect();
+    const half = tip.offsetWidth / 2;
+    const margin = 8;
+    const x = Math.min(Math.max(r.left + r.width / 2, half + margin), window.innerWidth - half - margin);
+    tip.style.setProperty('--tip-x', Math.round(x) + 'px');
+    if (hideTimer !== null) { window.clearTimeout(hideTimer); hideTimer = null; }
+    const release = () => {
+      document.removeEventListener('pointerup', release, true);
+      document.removeEventListener('pointercancel', release, true);
+      hideTimer = window.setTimeout(() => { hideTimer = null; tip.hidden = true; }, BOTTOM_NAV_TIP_LINGER_MS);
+    };
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+  }, { ms: BOTTOM_NAV_NAME_MS, enabled: (e) => bottomNavIsPill() && !!bottomNavItemAt(e.target) });
+}
+
 // ---- v1.15.0 item 3: one-off download header button + compact modal -------
 //
 // A small header download button + compact modal for one-off yt-dlp
@@ -12697,6 +12783,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // trigger the same wait-then-place scatter the router hooks use.
   window.FileTube.scheduleCritterScatter = scheduleCritterScatter;
   window.FileTube.applyBottomNavCustomization = applyBottomNavCustomization;
+  window.FileTube.bottomNavReservePx = bottomNavReservePx; // v1.405.0: the reader sizes itself against the bar (read.js)
   window.FileTube.readBottomNavConfig = readBottomNavConfig;
   window.FileTube.writeBottomNavConfig = writeBottomNavConfig;
   window.FileTube.BOTTOM_NAV_OPTIONAL = BOTTOM_NAV_OPTIONAL;
@@ -18304,6 +18391,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // v1.44 T12: apply the user's bottom-bar layout to the STATIC items now; the
   // async injectors (subscriptions/download) re-apply after inserting theirs.
   applyBottomNavCustomization();
+  bindBottomNavLongPress(); // v1.405.0 (R3): the pill's long-press name tip
 
   // v1.15.0 item 3: one-off download header button + modal, gated by the
   // SAME capability probe pattern -- runs on every page for the same reason
@@ -18503,6 +18591,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the DOM by test/unit/bottom-nav-order-authority.test.js - a resolver
     // test alone would only prove the decision, never its use.
     applyBottomNavCustomization, readBottomNavConfig, writeBottomNavConfig,
+    bottomNavIsPill, bottomNavItemName, bindBottomNavLongPress, bottomNavReservePx, BOTTOM_NAV_NAME_MS, BOTTOM_NAV_TIP_LINGER_MS, // v1.405.0 the glass tab pill (R3)
     pinDeleteEndpoint,
     fisherYatesShuffle, sortItems, shouldShowShuffleButton,
     deriveOrderedIds, computeNeighbors, parentFolder,

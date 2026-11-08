@@ -9,7 +9,8 @@
 //   node scripts/glass-pill-probe.js --compare <a.json> <b.json>
 //     R5: every non-Modern phone run and every desktop run must be identical between a (base) and b (branch); prints the diffs.
 //     SUMMARY compared=<n> differ=<n> ok|FAIL (exit 1 on a difference)
-//   Env: FT_ROOT=<tree> (default: this tree), CHROME=<binary>, FT_PILL_FULL=1 (R4: opt every roster item in, the maximum bar).
+//   Env: FT_ROOT=<tree> (default: this tree), CHROME=<binary>, FT_PILL_FULL=1 (R4: opt every roster item in, the maximum bar),
+//        FT_PILL_SWEEP=1 (W2: the R6 surface sweep + a real-touch R3 long press; SUMMARY checks=<n> failed=<n>, exit 1 on a failure).
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -125,6 +126,7 @@ async function measureTree(OUT) {
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   await send('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1', platform: 'iPhone' });
   await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  if (process.env.FT_PILL_SWEEP === '1') return sweep({ send, ev, waitFor, sleep, base });
   const full = process.env.FT_PILL_FULL === '1';
   const runs = [];
   const cases = [];
@@ -172,6 +174,108 @@ async function measureTree(OUT) {
   }
   console.log(`SUMMARY runs=${runs.length} shots=${fs.readdirSync(OUT).filter((f) => f.endsWith('.png')).length} ok`);
   process.exit(0);
+}
+
+// W2 (R3 + R6): the sweep. Per look (Modern and Original as the control) at 390x844: does every surface that cleared or covered
+// the bar still do so - the reader's reserve, the last row, a toast, the downloads chip, the dock, the Playlists sheet, faux
+// fullscreen, the Feed, landscape - and does a REAL touch held on an item show the name without navigating (R3, reachability in
+// the browser, not jsdom). Each check prints CHECK <look> <name> ok|FAIL <detail>.
+async function sweep({ send, ev, waitFor, sleep, base }) {
+  const checks = [];
+  const check = (look, name, ok, detail) => { checks.push({ look, name, ok }); console.log(`CHECK ${look} ${name} ${ok ? 'ok' : 'FAIL'} ${detail}`); };
+  const load = async (look, url) => {
+    await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await send('Page.navigate', { url: base + '/' });
+    await waitFor('document.readyState === "complete"');
+    await ev(`localStorage.setItem('ft-era', '${look}'); localStorage.setItem('ft-mode', 'light'); localStorage.removeItem('ft-bottomnav'); true`);
+    await send('Page.navigate', { url: base + url });
+    await waitFor('document.readyState === "complete" && !!document.getElementById("bottom-nav")');
+    await sleep(700);
+  };
+  const NAVTOP = 'document.getElementById("bottom-nav").getBoundingClientRect().top';
+  const touch = async (type, x, y) => send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+  for (const look of ['2021', '2005']) {
+    await load(look, '/');
+    // 1. the reserve a JS-sized surface (the reader) keeps clear: at least the bar's distance from the viewport bottom
+    const r1 = await ev(`(function () { var nav = document.getElementById('bottom-nav'); var used = innerHeight - nav.getBoundingClientRect().top;
+      var res = window.FileTube.bottomNavReservePx ? window.FileTube.bottomNavReservePx() : nav.offsetHeight; return { used: used, res: res }; })()`);
+    check(look, 'reader-reserve', r1.res >= r1.used - 0.5, `reserve=${r1.res} bar-takes=${r1.used}`);
+    // 2. the last row of a long list scrolls clear of the bar
+    const r2 = await ev(`(function () { window.scrollTo(0, document.documentElement.scrollHeight); var cards = document.querySelectorAll('#video-grid > *');
+      var last = cards[cards.length - 1]; return last ? { b: last.getBoundingClientRect().bottom, top: ${NAVTOP}, n: cards.length } : null; })()`);
+    await sleep(200);
+    const r2b = await ev(`(function () { var cards = document.querySelectorAll('#video-grid > *'); var last = cards[cards.length - 1];
+      return { b: last.getBoundingClientRect().bottom, top: ${NAVTOP}, n: cards.length }; })()`);
+    check(look, 'last-row', !!r2 && r2b.b <= r2b.top + 0.5, `rows=${r2b.n} last-bottom=${r2b.b} bar-top=${r2b.top}`);
+    // 3. a toast sits above the bar
+    await ev('window.ui.toast("Probe toast"); true');
+    await sleep(300);
+    const r3 = await ev(`(function () { var h = document.querySelector('.ui-toast-host'); var t = h && h.lastElementChild; return t ? { b: t.getBoundingClientRect().bottom, top: ${NAVTOP} } : null; })()`);
+    check(look, 'toast', !!r3 && r3.b <= r3.top + 0.5, JSON.stringify(r3));
+    // 4. the downloads chip (left) and 5. the dock (right) sit above the bar
+    const r4 = await ev(`(function () { var c = document.getElementById('dl-status-chip'); var made = !c; if (!c) { c = document.createElement('div'); c.id = 'dl-status-chip'; c.textContent = 'chip'; document.body.appendChild(c); }
+      var b = c.getBoundingClientRect().bottom; if (made) c.remove(); var dock = document.getElementById('player-dock');
+      return { chip: b, top: ${NAVTOP}, dock: dock ? parseFloat(getComputedStyle(dock).bottom) : null, used: innerHeight - ${NAVTOP} }; })()`);
+    check(look, 'chip', r4.chip <= r4.top + 0.5, `chip-bottom=${r4.chip} bar-top=${r4.top}`);
+    check(look, 'dock', r4.dock !== null && r4.dock >= r4.used, `dock-bottom=${r4.dock}px bar-takes=${r4.used}px`);
+    // 6. the Playlists sheet covers the bar
+    await ev('document.getElementById("nav-playlists-btn").click(); true');
+    await sleep(700);
+    const r6 = await ev(`(function () { var nav = document.getElementById('bottom-nav'); var r = nav.getBoundingClientRect(); var el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { covered: !!el && !nav.contains(el), at: el ? (el.id || el.className || el.tagName) : null }; })()`);
+    check(look, 'sheet-covers', r6.covered, `top-element=${r6.at}`);
+    await load(look, '/');
+    // 7. faux fullscreen hides the bar
+    const r7 = await ev(`(function () { document.body.classList.add('ft-css-fullscreen'); var v = getComputedStyle(document.getElementById('bottom-nav')).visibility; document.body.classList.remove('ft-css-fullscreen'); return v; })()`);
+    check(look, 'faux-fullscreen', r7 === 'hidden', `visibility=${r7}`);
+    // 8. R3: a real touch held on History shows its name and the release does not navigate; a tap navigates
+    const pt = await ev(`(function () { var el = document.querySelector('#bottom-nav [data-nav="history"]'); var r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await touch('touchStart', pt.x, pt.y);
+    await sleep(750);
+    const tip = await ev('(function () { var t = document.querySelector(".bottom-nav-tip"); return t && !t.hidden ? t.textContent : null; })()');
+    await touch('touchEnd');
+    await sleep(500);
+    const after = await ev('location.pathname');
+    if (look === '2021') {
+      check(look, 'long-press-name', tip === 'History', `tip=${JSON.stringify(tip)}`);
+      check(look, 'long-press-no-nav', after === '/', `path-after-release=${after}`);
+    } else {
+      check(look, 'long-press-retro-no-tip', tip === null, `tip=${JSON.stringify(tip)}`);
+    }
+    if (look === '2021') {
+      // the tip clears a showing mini player (the dock sits at the same height on the right; player.js's signal is
+      // html.has-player-dock + --player-dock-h): fake the signal, hold the right-most item, compare against the dock's row
+      await load(look, '/');
+      const ptR = await ev(`(function () { document.documentElement.classList.add('has-player-dock'); document.documentElement.style.setProperty('--player-dock-h', '90px');
+        var items = document.querySelectorAll('#bottom-nav .bottom-nav-item:not([hidden])'); var r = items[items.length - 1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+      await touch('touchStart', ptR.x, ptR.y);
+      await sleep(750);
+      const rd = await ev(`(function () { var t = document.querySelector('.bottom-nav-tip'); var dock = document.getElementById('player-dock');
+        var dockTop = innerHeight - parseFloat(getComputedStyle(dock).bottom) - 90; return t && !t.hidden ? { tipBottom: t.getBoundingClientRect().bottom, dockTop: dockTop } : null; })()`);
+      await touch('touchEnd');
+      check(look, 'tip-clears-dock', !!rd && rd.tipBottom <= rd.dockTop + 0.5, JSON.stringify(rd));
+    }
+    await load(look, '/');
+    await touch('touchStart', pt.x, pt.y);
+    await sleep(60);
+    await touch('touchEnd');
+    const navd = await waitFor('location.pathname === "/history"', 5000);
+    check(look, 'tap-navigates', navd, `path=${await ev('location.pathname')}`);
+    // 9. the Feed's card stack ends above the bar
+    await load(look, '/feed');
+    // (the stack's height is CSS-only: 100dvh - header - the ONE var; with no feed items it is not laid out, and the check says n/a, never ok)
+    const r9 = await ev(`(function () { var s = document.querySelector('.feed-stack'); if (!s) return null; var r = s.getBoundingClientRect(); return { b: r.bottom, h: r.height, top: ${NAVTOP} }; })()`);
+    if (!r9 || r9.h === 0) console.log(`CHECK ${look} feed n/a the stack is not laid out (no feed items in the probe library)`);
+    else check(look, 'feed', r9.b <= r9.top + 0.5, `stack-bottom=${r9.b} bar-top=${r9.top}`);
+    // 10. landscape hides the bar and the reserve is 0
+    await send('Emulation.setDeviceMetricsOverride', { width: 844, height: 390, deviceScaleFactor: 1, mobile: true, screenOrientation: { type: 'landscapePrimary', angle: 90 } });
+    await sleep(400);
+    const r10 = await ev(`(function () { var nav = document.getElementById('bottom-nav'); return { d: getComputedStyle(nav).display, res: window.FileTube.bottomNavReservePx ? window.FileTube.bottomNavReservePx() : 0 }; })()`);
+    check(look, 'landscape', r10.d === 'none' && r10.res === 0, JSON.stringify(r10));
+  }
+  const failed = checks.filter((c) => !c.ok).length;
+  console.log(`SUMMARY checks=${checks.length} failed=${failed} ${failed ? 'FAIL' : 'ok'}`);
+  process.exit(failed ? 1 : 0);
 }
 
 function compare(aPath, bPath) {

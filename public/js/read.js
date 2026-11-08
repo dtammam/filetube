@@ -1318,9 +1318,10 @@ if (typeof module !== 'undefined' && module.exports) {
     function sizeReader() {
       if (!chassis) return;
       const top = chassis.getBoundingClientRect().top + window.scrollY;
-      const bottomNav = document.getElementById('bottom-nav');
-      const navVisible = bottomNav && getComputedStyle(bottomNav).display !== 'none';
-      const navH = navVisible ? bottomNav.offsetHeight : 0;
+      // v1.405.0: the bar's reserve comes from common.js (the strip's height on every look but Modern; the ONE
+      // offset var on Modern's floating pill, whose own height would leave the reader's bottom under it).
+      const ft = window.FileTube;
+      const navH = ft && typeof ft.bottomNavReservePx === 'function' ? ft.bottomNavReservePx() : 0;
       // v1.39.3 (Dean's report: the narration bar covers the reading-% bar on
       // BOTH form factors). The now-playing bar is a fixed element sitting just
       // above the nav -- reserve its REAL rendered height (not a guessed px or

@@ -3573,6 +3573,39 @@ select {
   display: none;
 }
 
+/* v1.405.0 the glass tab pill (R3): a long press on an item shows its name here, just above the pill. Built only
+   on Modern at phone width (common.js bindBottomNavLongPress); hidden with [hidden]; never takes a touch. Its rung
+   stays BELOW the dock (native-dock-covered's census: nothing new above --z-dock), so while the mini player shows
+   it stacks above the dock instead (html.has-player-dock + --player-dock-h, player.js's one signal - the
+   #remote-pill pattern). */
+.bottom-nav-tip {
+  position: fixed;
+  left: var(--tip-x, 50%);
+  bottom: calc(var(--mobile-bottom-nav-h, 0px) + var(--space-4));
+  transform: translateX(-50%);
+  z-index: calc(var(--z-dock) - 1);
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--r-sm);
+  background: var(--toast-ground);
+  color: var(--toast-ink);
+  font: var(--t-footnote);
+  white-space: nowrap;
+  box-shadow: var(--shadow-overlay);
+  pointer-events: none;
+}
+html.has-player-dock .bottom-nav-tip {
+  bottom: calc(var(--mobile-bottom-nav-h, 0px) + var(--space-4) + var(--player-dock-h, 0px) + var(--space-4));
+}
+
+/* v1.405.0: common.js bottomNavReservePx resolves the ONE bar offset through this throwaway element (a custom
+   property cannot be read resolved from JS). Out of flow and invisible for the one synchronous read. */
+.bottom-nav-reserve-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  height: var(--mobile-bottom-nav-h, 0px);
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .watch-container {
