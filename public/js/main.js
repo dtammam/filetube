@@ -185,6 +185,7 @@ function musicArtSrc(id, size, v) {
   return '/albumart/' + encodeURIComponent(id == null ? '' : id) + (q.length ? '?' + q.join('&') : '');
 }
 function buildMusicRowCardHtml(item) {
+  rememberRowMusicSeed(item); // v1.406.0 A3
   // Deep-link to the specific track so /music resumes it (consuming the
   // per-user resume pointer), mirroring the books row's /read.html?b=<id>.
   const artId = (typeof item.artId === 'string' && item.artId) ? item.artId : item.id;
@@ -256,6 +257,26 @@ const rowWatchSeeds = new Map();
 function rememberRowWatchSeed(item) {
   if (item && typeof item.id === 'string' && item.id && (item.kind || 'media') === 'media') rowWatchSeeds.set(item.id, item);
 }
+// v1.406.0 A3: the same for a row card that opens the Music player (/music?play=<id>): the track as the row knows it. A feed
+// row carries only the title and the artist line (`subtitle`); a Continue listening card the whole /api/music item.
+const rowMusicSeeds = new Map();
+function rememberRowMusicSeed(item) {
+  if (!item || typeof item.id !== 'string' || !item.id) return;
+  rowMusicSeeds.set(item.id, item.kind === 'track' && typeof item.subtitle === 'string' && !item.artist ? Object.assign({}, item, { artist: item.subtitle }) : item);
+}
+// The seed for a tapped link that opens /music?play=<id> (an anchor), from the item it was drawn from (looked up by that
+// same play id, so a chaptered download opening ::c0 finds no item and seeds nothing), with the picture the card shows
+// (already decoded: the launch frame paints it at once).
+function stashMusicSeedForLink(anchor, item) {
+  if (!anchor || !item || !(window.FileTube && typeof window.FileTube.stashMusicSeed === 'function')) return false;
+  let play = null;
+  try { const u = new URL(anchor.href, window.location.origin); if (u.pathname === '/music') play = u.searchParams.get('play'); } catch { return false; }
+  if (!play) return false;
+  const img = anchor.querySelector('img');
+  const cover = img ? (img.getAttribute('src') || '') : '';
+  const seed = Object.assign({}, item, { artist: item.artist || item.channelName || item.subtitle || '' });
+  return window.FileTube.stashMusicSeed(seed, cover);
+}
 
 function buildVideoRowCardHtml(item) {
   rememberRowWatchSeed(item);
@@ -295,6 +316,7 @@ function buildVideoHomeSectionHtml(items, heading, seeAllHref) {
 // escapes here are the same attribute/text discipline the sibling builders use.
 function buildFeedCardHtml(item) {
   rememberRowWatchSeed(item);
+  rememberRowMusicSeed(item); // v1.406.0 A3: a track row (or an audio download rerouted to Music) opens the Music player
   const pct = item && typeof item.progressPercent === 'number' ? Math.min(100, Math.max(0, item.progressPercent)) : 0;
   const bar = pct > 0.5
     ? `<div class="book-row-progress"><div class="book-row-progress-fill" style="width: ${pct}%"></div></div>`
@@ -1428,6 +1450,14 @@ const PreviewCards = (function () {
     // binds, so no isConnected belt is needed here (gate QA S4: a guard
     // with no reachable false branch is the v1.49 dead-guard class).
     videoGrid.addEventListener('click', (e) => {
+      // v1.406.0 A3: a grid card that opens the Music player (a track, an audio download) seeds it the same way
+      const musicLink = e.target && e.target.closest && e.target.closest('a[href]');
+      if (musicLink) {
+        let mp = null;
+        try { const mu = new URL(musicLink.href, window.location.origin); if (mu.pathname === '/music') mp = mu.searchParams.get('play'); } catch { mp = null; }
+        const mItem = mp ? currentItems.find((it) => it && it.id === mp) : null;
+        if (mItem) stashMusicSeedForLink(musicLink, mItem);
+      }
       const cardLink = e.target && e.target.closest && e.target.closest('a[href*="/watch.html?v="]');
       if (!cardLink) return;
       let id = null;
@@ -1441,7 +1471,15 @@ const PreviewCards = (function () {
     // from the item the row rendered (rowWatchSeeds). The grid's own listener above handles grid cards (it stops at the
     // grid; a row card is never inside it).
     rowWatchSeeds.clear();
+    rowMusicSeeds.clear();
     root.addEventListener('click', (e) => {
+      // v1.406.0 A3: a row card that opens the Music player
+      const musicRow = e.target && e.target.closest && e.target.closest('a.music-row-card, a.video-row-card');
+      if (musicRow) {
+        let mp = null;
+        try { const u = new URL(musicRow.href, window.location.origin); if (u.pathname === '/music') mp = u.searchParams.get('play'); } catch { mp = null; }
+        if (mp && rowMusicSeeds.has(mp)) stashMusicSeedForLink(musicRow, rowMusicSeeds.get(mp));
+      }
       // a consumer of the row hrefs (never a producer): only a card whose link opens the watch page
       const rowLink = e.target && e.target.closest && e.target.closest('a.video-row-card');
       if (!rowLink) return;

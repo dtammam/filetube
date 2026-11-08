@@ -2317,6 +2317,10 @@
       hostSync(); // v1.384.0: the same structural check for the host's rotation lock and battery (a no-op without a host)
       if (!panel || !panel.classList.contains('mms-full')) return;
       var mp = hostCtl('media-player'); if (!mp) return;
+      // v1.406.0 A3 (plan 2026-11-08-smoothness): the element can still hold ANOTHER item while this frame is up (the launch
+      // frame of a new track, a video left in the player): its time and play state are not this frame's. The view says so
+      // (config.liveForeign); the painted frame then stays as painted, never "0:01 -0:18" of the item before.
+      if (typeof config.liveForeign === 'function') { var foreign = false; try { foreign = !!config.liveForeign(); } catch (_) { foreign = false; } if (foreign) return; }
       // SWAP the play-button GLYPH (not just a class) - byte-for-behaviour with music.js
       // reflectSkin: the default Apple/Spotify skins render a real .mms-play SVG button, so a
       // class toggle alone would leave the wrong icon after an in-place pause (adversarial W1).

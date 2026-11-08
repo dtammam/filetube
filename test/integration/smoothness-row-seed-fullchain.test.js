@@ -28,6 +28,12 @@ const ROW_ITEM = { id: 'r1', title: 'Row video', type: 'video', ext: '.mp4', dur
 // the server-emitted feed row shape (server.js resolveHomeItem + watchSeedFields): no size, no filePath
 const FEED_ITEM = { id: 'f1', kind: 'media', title: 'Feed video', subtitle: 'folder', thumbnailUrl: '/thumbnail/f1', href: '/watch.html?v=f1', progressPercent: 0, type: 'video', duration: 200, hasThumbnail: true, needsTranscode: false };
 
+// a Continue listening track as /api/music returns it
+const MUSIC_ITEM = { id: 'm1', title: 'Row song', artist: 'Row artist', album: 'Row album', albumKey: 'Row artist\u0000Row album', durationSec: 180, artV: 'x1', progress: { updatedAt: '2026-11-08T10:00:00Z' } };
+
+// a Modern grid TRACK card (the mixed grid: kind 'track' opens /music?play=<id>)
+const GRID_TRACK = { id: 'g1', kind: 'track', title: 'Grid song', artist: 'Grid artist', album: 'Grid album', albumKey: 'Grid artist\u0000Grid album', duration: 200, addedAt: 1 };
+
 function makeFetchStub() {
   const calls = [];
   const fetchImpl = (input, init) => {
@@ -39,6 +45,9 @@ function makeFetchStub() {
     if (url === '/api/settings') return ok({ defaultView: '' });
     if (url === '/api/auth/me') return ok({ user: { id: 1, username: 'u', role: 'member', canModifyLibrary: true }, settings: {} });
     if (url === '/api/home') return ok({ rows: [{ id: 'continue-watching', title: 'Continue watching', items: [FEED_ITEM, { id: 't9', kind: 'track', title: 'A song', subtitle: 'Artist', thumbnailUrl: '/albumart/t9', href: '/music?play=t9', progressPercent: 0 }] }] });
+    if (url.indexOf('/api/home?view=grid') === 0) return ok({ items: [GRID_TRACK], total: 1, offset: 0, limit: 60, seed: 1 });
+    if (url.indexOf('/api/music?filter=recent-listening') === 0) return ok({ items: [MUSIC_ITEM] });
+    if (url.indexOf('/api/podcasts/episodes?filter=recent-listening') === 0) return ok({ episodes: [] });
     if (url.indexOf('/api/videos?filter=recent-watching') === 0) return ok({ items: [ROW_ITEM], total: 1, offset: 0, limit: 5 });
     if (url.indexOf('/api/videos?') === 0) return ok({ items: [], total: 0, offset: 0, limit: 60 });
     return new Promise(() => {}); // everything else (the watch shell after the tap) never answers here
@@ -123,5 +132,40 @@ test('A1: a feed-layout ROW card (GET /api/home) stashes the full watch seed; a 
     assert.ok(track, 'the track card is there');
     track.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
     assert.strictEqual(dom.window.consumeWatchSeed('t9'), null, 'a track never primes a watch page');
+  } finally { dom.window.close(); }
+});
+
+test('A3: a Continue listening ROW card stashes the Music seed on tap - the track as the row knows it, with the picture it shows', async () => {
+  const stub = makeFetchStub();
+  const dom = await loadIndex(stub.fetchImpl);
+  try {
+    const doc = dom.window.document;
+    let row = null;
+    for (let i = 0; i < 100 && !row; i++) { await sleep(20); row = doc.querySelector('a.music-row-card[href*="/music?play=m1"]'); }
+    assert.ok(row, 'the Continue listening row rendered its track card');
+    const shown = row.querySelector('img').getAttribute('src');
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    const seed = dom.window.consumeMusicSeed('m1');
+    assert.ok(seed, 'the tap stashed a seed for this id');
+    assert.strictEqual(seed.item.title, 'Row song');
+    assert.strictEqual(seed.item.artist, 'Row artist');
+    assert.strictEqual(seed.item.albumKey, 'Row artist\u0000Row album', 'the album opens directly');
+    assert.strictEqual(seed.coverUrl, shown, 'the picture the card already shows');
+  } finally { dom.window.close(); }
+});
+
+test('A3: a Modern grid card that opens the Music player stashes its track as the seed', async () => {
+  const stub = makeFetchStub();
+  const dom = await loadIndex(stub.fetchImpl, null, (w) => { w.localStorage.setItem('ft-modern-mode', 'on'); });
+  try {
+    const doc = dom.window.document;
+    let link = null;
+    for (let i = 0; i < 100 && !link; i++) { await sleep(20); link = doc.querySelector('#video-grid a[href*="/music?play=g1"]'); }
+    assert.ok(link, 'the grid rendered the track card');
+    link.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+    const seed = dom.window.consumeMusicSeed('g1');
+    assert.ok(seed, 'stashed');
+    assert.strictEqual(seed.item.title, 'Grid song');
+    assert.strictEqual(seed.item.albumKey, 'Grid artist\u0000Grid album');
   } finally { dom.window.close(); }
 });

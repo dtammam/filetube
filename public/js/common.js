@@ -3793,6 +3793,39 @@ function consumeWatchSeed(mediaId) {
   return s;
 }
 
+// ---- v1.406.0 A3 (plan 2026-11-08-smoothness): the Music player's seed --------------------------------------------------
+// The music twin of the watch seed: the tapped track (title, artist, album, album key, art, duration) and the picture the tile
+// already showed, stashed by a surface that opens /music?play=<id> (the home rows, the Modern grid) and consumed by music.js's
+// ?play= init, which paints it in the launch frame (no "Unknown track", no blank art box) and opens its album directly.
+// Same posture as the watch seed (the TOCTOU class, LESSONS 4): single entry, in memory, consumed on read, refused on an id
+// mismatch and after MUSIC_SEED_MAX_AGE_MS. Only display strings and the art URL are kept - a seed never decides what plays
+// (music.js resolves the album or the track from the server as before; the id comes from the URL).
+const MUSIC_SEED_MAX_AGE_MS = 10 * 1000;
+const MUSIC_SEED_FIELDS = ['title', 'artist', 'album', 'albumKey', 'artId', 'artV', 'artUrl', 'durationSec'];
+let musicSeedEntry = null;
+function sameOriginArtPath(u) {
+  return typeof u === 'string' && u.length <= 2048 && u.charAt(0) === '/' && u.charAt(1) !== '/' && u.indexOf('\\') < 0 && !/[\s"'<>]/.test(u);
+}
+function stashMusicSeed(item, coverUrl) {
+  if (!item || typeof item.id !== 'string' || item.id === '') return false;
+  const seed = { id: item.id };
+  for (const k of MUSIC_SEED_FIELDS) {
+    const v = item[k];
+    if (k === 'durationSec') { if (typeof v === 'number' && isFinite(v) && v > 0) seed.durationSec = v; }
+    else if (typeof v === 'string' && v !== '') seed[k] = v;
+  }
+  if (seed.artUrl && !sameOriginArtPath(seed.artUrl)) delete seed.artUrl;
+  musicSeedEntry = { item: seed, coverUrl: sameOriginArtPath(coverUrl) ? coverUrl : '', ts: Date.now() };
+  return true;
+}
+function consumeMusicSeed(trackId) {
+  const s = musicSeedEntry;
+  musicSeedEntry = null; // single-shot regardless of outcome
+  if (!s || !trackId || s.item.id !== trackId) return null;
+  if (Date.now() - s.ts > MUSIC_SEED_MAX_AGE_MS) return null;
+  return s;
+}
+
 // v1.52 instant watch: the PURE half of the watch metadata painter -- which
 // fields can render from this item, and as what strings. The DOM applier in
 // watch.js consumes this plan verbatim, so the seed pre-paint and the
@@ -13087,6 +13120,8 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
   window.FileTube.stashWatchSeed = stashWatchSeed;
+  window.FileTube.stashMusicSeed = stashMusicSeed; // v1.406.0 A3
+  window.FileTube.consumeMusicSeed = consumeMusicSeed;
   window.FileTube.consumeWatchSeed = consumeWatchSeed;
   // v1.44 T12: the Settings bottom-bar editor drives these.
   // v1.78 device handoff: player.js reads these on every progress ping, and
@@ -19114,6 +19149,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.52: the instant-watch seed stash (single-entry, id-matched, aged) +
     // the pure paint-plan builder the watch painter applies verbatim.
     stashWatchSeed, consumeWatchSeed, deriveWatchPaintPlan, isFullWatchSeedItem,
+    stashMusicSeed, consumeMusicSeed, // v1.406.0 A3
     // v1.54: subscriber-label pure helpers.
     formatCompactCount, resolveSubscriberLabel, formatViewCountCaptureDate,
     // v1.53: the shared attribution picker (DOM thin-shell; wiring-locked).
