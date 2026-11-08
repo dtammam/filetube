@@ -80,8 +80,9 @@ function realm(opts) {
   const srcDesc = Object.getOwnPropertyDescriptor(w.HTMLMediaElement.prototype, 'src');
   Object.defineProperty(w.HTMLMediaElement.prototype, 'src', { configurable: true, get: srcDesc.get, set(v) { webMedia.push({ t: Date.now(), ev: 'src= ' + tag(this) + ' ' + v }); srcDesc.set.call(this, v); } });
   // v1.406.1 (W2): the REAL element resets too - load(), pause() and removeAttribute('src') on any media element (native-audio
-  // proxies play / pause on the shared element while it owns it, so a proxied pause never reaches the prototype). Dean's device
-  // test: a media load() inside the tap's gesture with no web media active clicked the audio native was playing.
+  // proxies play / pause on the shared element while it owns it, so a proxied pause never reaches the prototype). Poster
+  // removals are not recorded (the switch still clears the poster at the tap). Why: since v1.406.0 a seeded switch ran these
+  // resets of src-less elements inside the tap; the suspected (unproven) source of Dean's click - see the plan's Evidence.
   const realLoad = w.HTMLMediaElement.prototype.load;
   w.HTMLMediaElement.prototype.load = function () { webMedia.push({ t: Date.now(), ev: 'load() ' + tag(this) }); return realLoad.call(this); };
   const realPause = w.HTMLMediaElement.prototype.pause;
@@ -186,8 +187,8 @@ function trace(fake) {
 }
 
 // The switch's contract: ONE audio.load for the new item, no audio.stop, no second load at hydration, one audio.play (v1.405.0's
-// shape, measured on both trees); and no web media element is touched at all - no play, src, load(), pause() or src removal
-// (v1.406.1: native owns the sound, and an element reset inside the tap clicked native's audio on the phone).
+// shape, measured on both trees); and no play(), src set, load(), real pause() or src removal on any media element (v1.406.1:
+// native owns the sound and the elements hold nothing; poster removals are outside this assertion).
 function assertOneHandover(fake, webMedia, id) {
   const t = trace(fake);
   const loads = fake.of('audio.load');
@@ -195,7 +196,7 @@ function assertOneHandover(fake, webMedia, id) {
   assert.strictEqual(loads[0].queue[loads[0].index].id, id, 'the load names the tapped item');
   assert.strictEqual(fake.of('audio.stop').length, 0, 'never stop-then-load:\n' + t.join('\n'));
   assert.strictEqual(fake.of('audio.play').length, 1, 'one play:\n' + t.join('\n'));
-  assert.deepStrictEqual(webMedia, [], 'no web media element plays, loads, pauses or drops a src during the switch (v1.406.1)');
+  assert.deepStrictEqual(webMedia, [], 'no media element plays, takes or drops a src, loads or really pauses during the switch (v1.406.1)');
 }
 
 async function switchFromDocked(seedFor) {
@@ -283,4 +284,51 @@ test('W2: mediaElementHoldsMedia reads each way an element can hold media', () =
   assert.strictEqual(mediaElementHoldsMedia(el({ srcObject: {} })), true, 'a stream');
   assert.strictEqual(mediaElementHoldsMedia(el({ networkState: 2 })), true, 'still loading (NETWORK_LOADING)');
   assert.strictEqual(mediaElementHoldsMedia(el({ networkState: 1 })), true, 'loaded and idle (NETWORK_IDLE)');
+});
+
+// gate r1 (qa S2): the browser direction of the sidecar and close() guards - a sidecar that HOLDS audio (a backgrounded handoff
+// left it a src) is still stopped and emptied by a new load and by the dock's [x], and so is the element holding a video.
+test('W2 (gate r1): without a native host a sidecar holding audio is still reset by a switch and by close()', async () => {
+  const r = realm({ caps: ['orientation'] });
+  await r.openWatch('va', null);
+  await r.settle(600);
+  const sidecar = r.w.document.getElementById('bg-audio-sidecar');
+  assert.ok(sidecar, 'the player built its background-audio sidecar');
+  sidecar.setAttribute('src', '/api/videos/va/audio'); // what a background handoff leaves (attemptBackgroundAudioHandoff)
+  r.leaveToHome();
+  await r.settle(100);
+  r.resetClock();
+  await r.openWatch('vb', shapes.grid.vb);
+  await r.settle(600);
+  let ops = r.webMedia();
+  for (const op of ['pause() audio#bg-audio-sidecar', 'removeAttribute(src) audio#bg-audio-sidecar', 'load() audio#bg-audio-sidecar']) {
+    assert.ok(ops.some((e) => e.endsWith(op)), 'the switch runs ' + op + ':\n' + ops.join('\n'));
+  }
+  sidecar.setAttribute('src', '/api/videos/vb/audio');
+  r.resetClock();
+  r.player().close();
+  await r.settle(50);
+  ops = r.webMedia();
+  for (const op of ['pause() audio#bg-audio-sidecar', 'removeAttribute(src) audio#bg-audio-sidecar', 'load() audio#bg-audio-sidecar', 'pause() video#media-player', 'removeAttribute(src) video#media-player', 'load() video#media-player']) {
+    assert.ok(ops.some((e) => e.endsWith(op)), 'close() runs ' + op + ':\n' + ops.join('\n'));
+  }
+  teardown(r);
+});
+
+// gate r1 (adversary S1): after the dock's [x] native has let go of the element; opening another video must not pause the empty,
+// released element (teardownMediaState's pause reaches the REAL element once no native proxy owns it)
+test('W2 (gate r1): close the docked native video, then open another - no media element operation', async () => {
+  const r = realm();
+  await r.openWatch('va', null);
+  await r.settle(1600);
+  r.leaveToHome();
+  await r.settle(150);
+  r.player().close();
+  await r.settle(100);
+  r.fake.clear();
+  await r.openWatch('vb', shapes.grid.vb);
+  await r.settle(1600);
+  assert.strictEqual(r.player().currentId, 'vb', 'B loaded');
+  assertOneHandover(r.fake, r.webMedia(), 'vb');
+  teardown(r);
 });

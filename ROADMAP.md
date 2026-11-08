@@ -85,6 +85,10 @@
 
 ### Bugs
 
+- [ ] **v1.406.1 switch-click follow-ups (gate r1, not taken)** _(2026-11-08)_: (1) if DEVICE-CHECKS "Switch click (v1.406.1)" (a) still
+  clicks: make `clearMediaSessionForNative` idempotent (it runs twice per switch, once inside the tap, since v1.406.0) with a binding test;
+  (2) a fixture that reaches the keep-alive so its stop can skip an empty element (adversary S3); (3) build the realm's Music track with music.js's
+  own descriptor builder (adversary S4); (4) wait on the iOS Root's answer to the item-swap relay (plan Evidence).
 - [ ] **Reader page is 20-24 px taller than the window** _(v1.402.1 probe, 2026-11-05; present before it, not caused by it)_ - with a book open the
   reader chassis ends exactly at the window bottom, but the document is taller (924 at 1440x900, 864 at 390x844, 414 at 844x390: the
   `.app-container` bottom padding), so the page can scroll a little. Measured identical on 698ae741 (before v1.402.1). Look at it when
@@ -986,21 +990,21 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.406.1 - No click when switching from a docked video to another (2026-11-08)
+### v1.406.1 - Switching from a docked video: no media-element work in the tap, and the app's item swap relayed (2026-11-08)
 
 - Dean (2026-11-08, iPhone app, right after v1.406.0): "a weird audio burp that happens consistently" going from a docked, playing video to
-  another; a click, not either item's audio; not seen before v1.406.0.
+  another; a click, not either item's audio; not noticed before v1.406.0.
 - W1 measured the bridge first (test/integration/switch-click.test.js: the real watch view, player and bridge with a fake host modelled on today's
   app, server-emitted seeds; the same file run on a v1.405.0 sandbox): every switch (Modern, Classic, Music -> video) sends ONE audio.load, one
   audio.play, one video.surface, no audio.stop and no second load at hydration on BOTH versions - the plan's three suspects refuted. Dean's device
-  A/B then placed the click on the tap with no web media active (Search, a quick Home tap) and not while a muted card preview was rolling; the
-  probe found the one web-side change on that axis: a switch's eleven resets (pause, removeAttribute src, load) of the src-less shared element and
-  background-audio sidecar moved from hydration (~2.4 s after the tap on v1.405.0 Modern) into the tap's gesture.
-- W2: `mediaElementHoldsMedia` gates every reset on the switch and close paths (teardownMediaState, releaseBackgroundAudioElement, close); a
-  browser element holding the previous video resets as before; v1.406.0's instant seed start is kept. Six guards bound by mutants; the keep-alive
-  guard was reverted (never runs under native; its mutant survived). Unproven on the device until DEVICE-CHECKS "Switch click (v1.406.1)": a click
-  still heard there means the diagnosis was wrong - re-root-cause, with the iOS Root relay next. Evidence:
-  docs/exec-plans/completed/2026-11-08-switch-click.md.
+  A/B: a click from Search and from a quick Home tap, none while a muted card preview was rolling.
+- What the web change addresses (a hypothesis): since v1.406.0 a seeded switch (Modern, Classic, rows) runs eight resets (pause, src removal,
+  load) of the src-less shared element and sidecar inside the tap's gesture; v1.405.0 Modern ran them at hydration. `mediaElementHoldsMedia` now
+  skips every such reset on the switch and close paths; a browser element holding the previous video resets as before; the instant start is kept.
+- What it does NOT explain (gate r1, measured): a Search result's seed is partial, so its loads and resets run at hydration op for op as on
+  v1.405.0, yet Dean heard the click there; and the MediaSession clear moved into the tap too and runs twice per switch (untouched). So the app's
+  own item swap (an abrupt AVPlayer replace) is relayed to the iOS Root; DEVICE-CHECKS "Switch click (v1.406.1)" decides which side it was.
+  Evidence: docs/exec-plans/completed/2026-11-08-switch-click.md.
 
 ### v1.406.0 - Smoothness: no black player, no blank Now Playing, no dead taps, a launch that lands on content (2026-11-08)
 

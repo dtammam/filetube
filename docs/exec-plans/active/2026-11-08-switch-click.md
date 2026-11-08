@@ -155,3 +155,41 @@ Every post to native recorded with its ms since the tap (`item=...` = the Item, 
   failure `v1.161.3 (gate WARNING): stopBgKeepAlive is mirrored at ALL FOUR bgAudioEl-teardown sites` (a source lock pinning
   `if (bgAudioEl) {` after the keep-alive stop): the guard moved INSIDE that block, the lock unchanged; then
   `node --test test/unit/player-background-audio.test.js test/integration/switch-click.test.js`: `# tests 125 # pass 125 # fail 0`.
+Gate: CHANGES r1 @0968d274 - qa - code correct in browsers and native and lints/targeted tests green, but WARNING: "eleven resets" in player.js:118, ROADMAP:997 and the test comment at switch-click.test.js:189 claim every measured tap-task op is gone while 3 removeAttribute(poster) still run at the tap (measured); WARNING: the unverified cause is written as fact (LESSONS-rules section 8 "Platform facts" line, switch-click.test.js:84/:190, player.js:11205); SUGGESTION: the isAdoptLoad doc comment is now orphaned above mediaElementHoldsMedia (player.js:111-116); SUGGESTION: the browser direction of the teardown/close sidecar guards and the close element guard is unbound (mutants Q1/Q2/Q4 survive).
+Gate: CHANGES r1 @0968d274 - adversary - code binds (6/6 green, mutants red, browser reset bound twice, O1 kept) but the record is wrong: WARNING W1 the Search case Dean heard is NOT in the tap (measured: docked -> /api/search seed loads and resets at hydration, op-for-op identical on v1.405.0 and v1.406.0), so Evidence/ROADMAP/LESSONS 8 "platform fact"/player.js comment overstate H3; WARNING W2 the MediaSession clear (metadata, playbackState, 8 handlers) also moved into the tap and now runs twice per switch, uninstrumented and unrecorded as a suspect; SUGGESTIONS: teardown pause() still real when the proxy is detached (close-then-open in the tap, cold deep link), isAdoptLoad doc comment now heads the new helper, keep-alive guard left unbound.
+
+### Gate r1 fix round (2026-11-08)
+
+- Both seats CHANGES r1 @0968d274, the code bound, the RECORD wrong. Adversary W1 (measured): a Search result's seed (`/api/search`, partial)
+  loads and resets at hydration, op for op identical on v1.405.0 and v1.406.0 - no `[TAP]` op - yet Dean heard the click there, so H3 cannot
+  explain case (1); the falsifier named above came true for it. The only unmeasured difference on that path is hydration timing (v1.406.0 H
+  deferred two list fetches). Adversary W2 (measured): `clearMediaSessionForNative` (metadata null, playbackState none, 8 action handlers null)
+  also moved into the tap on v1.406.0 and runs twice per switch (`[TAP] +24` and `+278`); v1.405.0 ran it once at hydration. QA W1: three
+  `removeAttribute(poster)` remain at the tap ("eleven" overclaimed; the fix removes eight). QA W2: the cause was written as fact.
+- Dean's ruling (AskUserQuestion 2026-11-08, after the lock-screen discriminator was offered): "Skip test, ship + relay" - ship the web change
+  as a hypothesis with an honest record AND relay the app's item swap to the iOS Root; the device checks decide.
+- Changes: the record (player.js comments, the test's comments, ROADMAP, the ledger entry, DEVICE-CHECKS (d) naming (b)-Search as the
+  discriminating check and the MediaSession double clear as the next web suspect); the LESSONS line moved out of section 8 "Platform facts" into
+  section 1 as a diagnosis rule; the helper moved above `isAdoptLoad`'s doc comment (both seats' S); adversary S1: teardown's pause skips an
+  element that holds nothing (after the dock's [x] it reached the real empty element; a native-owned element's proxy pause is a no-op there
+  because nativeAudioBeginLoad set the transition - the proxy arm was tried and its mutant S1b survived, so it was dropped); QA S2: a browser
+  test where the sidecar holds audio binds the sidecar and close() resets.
+- Mutants (sandbox): Q1 teardown sidecar guard false, Q2 close sidecar false, Q4 close element false -> each `# pass 7 # fail 1` (the
+  browser sidecar test); S1 teardown pause guard off -> `# pass 7 # fail 1` (close then open); S1b proxy arm dropped -> `# pass 8 # fail 0`
+  (dropped from the code); restored `# pass 8 # fail 0`. Neighbours: `node --test test/integration/switch-click.test.js
+  test/unit/player-background-audio.test.js test/unit/r1-player-races.test.js test/unit/native-audio-web.test.js test/unit/player-controls.test.js`
+  -> `# tests 210 # pass 210 # fail 0`.
+- Not taken (ROADMAP Planned): an idempotent MediaSession clear (W2's optional fix: no binding test yet, and Dean ruled ship + relay);
+  the keep-alive fixture (adversary S3); a music.js-built track in the realm (adversary S4).
+
+### iOS Root relay (sent 2026-11-08 to "FileTube iOS Builder v0.13.0")
+
+> FileTube v1.406.1 (web). Dean hears a short click in the app when switching from a docked, playing video to another (since v1.406.0). The
+> web sends the same bridge messages as v1.405.0 on every switch (one `audio.load` replacing the queue while the previous item plays, autoplay
+> false, then `audio.play`; no `audio.stop`). Dean's A/B: a click opening from Search and from a quick Home tap; NO click while a muted card
+> preview <video> was playing in the web view. Please check the native side: (1) does `audio.load` while playing replace the AVPlayer item
+> abruptly (no volume ramp)? A ~30-50 ms fade out before the replace and in after would remove a waveform cut; (2) does a WKWebView
+> `navigator.mediaSession` write (metadata null, playbackState none, action handlers null - the web does these at every switch, now inside the
+> tap) or a media-element `load()` in the web view change the app's AVAudioSession category/activation while native plays? The "no click with a
+> preview playing" result suggests WebKit's own media session state matters. A 30-second check: lock-screen Next in a Music queue (pure native,
+> no web work) - a click there is the item swap.

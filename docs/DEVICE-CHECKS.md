@@ -10,7 +10,7 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 - [ ] v1.406.1 - (a) A video docked and playing, Home, tap another video right away (within a second): no click or glitch in the sound.
 - [ ] v1.406.1 - (b) The same from Classic home, and from a Search result.
 - [ ] v1.406.1 - (c) Music playing (docked) -> tap a video on Home: no click.
-- [ ] v1.406.1 - (d) The new video still shows its thumbnail in the player from the first frame (v1.406.0's instant start is kept). A click still heard in (a)-(c) means the diagnosis was wrong: re-root-cause (the iOS Root relay is the next step), never re-patch.
+- [ ] v1.406.1 - (d) The new video still shows its thumbnail in the player from the first frame (v1.406.0's instant start is kept). (b) from a Search result is the discriminating one: its web work is the same as v1.405.0's, so a click there with none in (a) points at the app's own item swap (relayed to the iOS Root). A click still heard in (a) means the web diagnosis was wrong too: the next web suspect is the lock-screen info the page clears twice per switch, once inside the tap; re-root-cause, never re-patch.
 
 ## Smoothness (v1.406.0; (h)-(i) after the app build that sends pictureReady and waits for host.ready)
 

@@ -108,18 +108,13 @@
 // the actual FULL/DOCKED/CLOSED decisions are verifiable without a DOM/
 // browser harness (this codebase has none; see CONTRIBUTING.md).
 
-// Is a `load(id, ...)` call an ADOPT (a pure reparent -- no `<video>` src/
-// currentTime touch, no restart) rather than a genuine (re)load? True only
-// when the requested id already matches what's currently loaded AND the
-// controller isn't CLOSED (a CLOSED controller has released its source, so
-// even a matching id always needs a fresh load).
 // v1.406.1 switch-click (plan docs/exec-plans/active/2026-11-08-switch-click.md): does a media element hold anything a reset would
-// drop? A reset (pause, removeAttribute('src') + load()) of an element that holds nothing changes nothing on the page. Since
-// v1.406.0 a card's seed starts the next video INSIDE the tap, so a switch's eleven resets of the src-less shared element and
-// sidecar (native owns the sound) moved into the tap's user gesture - the only web-side change at a switch the measurement found
-// (native's posts are identical to v1.405.0). Dean's device test (2026-11-08) fits it: a click opening from Search or a quick Home
-// tap, none while a card preview (web media already active) was rolling. So a reset skips an element that holds nothing; a
-// browser's element (a src) resets as before. The device check "Switch click (v1.406.1)" is the arbiter.
+// drop? A reset (pause, removeAttribute('src') + load()) of an element that holds nothing changes nothing on the page, so it is
+// skipped; a browser's element (a src) resets as before. Why it matters on the iPhone app (a HYPOTHESIS, not proven): native owns
+// the sound there and the shared element and the sidecar are src-less, yet a switch from a seeded card (v1.406.0) ran their eight
+// pause / src-removal / load() calls inside the tap's user gesture, and Dean heard a click on such a switch. The same click from a
+// Search result, whose resets run at hydration exactly as on v1.405.0, is NOT explained by this; the app's own item swap is the
+// other suspect (relayed to the iOS Root). The device check "Switch click (v1.406.1)" is the arbiter.
 function mediaElementHoldsMedia(el) {
   if (!el) return false;
   if (typeof el.hasAttribute === 'function' && el.hasAttribute('src')) return true;
@@ -127,6 +122,12 @@ function mediaElementHoldsMedia(el) {
   if (el.srcObject) return true;
   return typeof el.networkState === 'number' && el.networkState !== 0; // NETWORK_EMPTY: nothing loading, nothing loaded
 }
+
+// Is a `load(id, ...)` call an ADOPT (a pure reparent -- no `<video>` src/
+// currentTime touch, no restart) rather than a genuine (re)load? True only
+// when the requested id already matches what's currently loaded AND the
+// controller isn't CLOSED (a CLOSED controller has released its source, so
+// even a matching id always needs a fresh load).
 function isAdoptLoad(currentId, requestedId, state) {
   return currentId != null && currentId === requestedId && state !== 'closed';
 }
@@ -3620,7 +3621,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function releaseBackgroundAudioElement() {
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar on a foreground return
     if (!bgAudioEl) return;
-    if (!mediaElementHoldsMedia(bgAudioEl)) return; // v1.406.1: nothing to release (never a load() in the tap's gesture)
+    if (!mediaElementHoldsMedia(bgAudioEl)) return; // v1.406.1: an empty sidecar has nothing to release
     try { bgAudioEl.pause(); } catch (_) {}
     try { bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) {}
   }
@@ -10279,7 +10280,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive into a genuinely new load
     stopBgKeepAlive(); // v1.161.3: the keep-alive dies with the sidecar at EVERY teardown site (gate: enumerate all 4 bgAudioEl-teardowns, not just release*)
     if (bgAudioEl) {
-      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset - no load() in the tap
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset
         try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
       }
     }
@@ -10365,7 +10366,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // `document.visibilityState === 'visible'`, since a new load is
       // itself always user/foreground-initiated) happens to make it safe
       // either way.
-      pauseSuppressingHandoff(mediaPlayer);
+      // v1.406.1 (gate r1 adversary S1): an element that holds nothing has nothing to pause - a native-owned one (its proxy's pause
+      // is a no-op here: nativeAudioBeginLoad set the transition) and a released one after the dock's [x], whose pause would reach
+      // the REAL empty element
+      if (mediaElementHoldsMedia(mediaPlayer)) pauseSuppressingHandoff(mediaPlayer);
       // FR-2 (v1.18.0): reset the visible poster/last-decoded frame to
       // neutral BEFORE setupForMedia assigns the new source, so the
       // OUTGOING item's image never lingers/flashes during the transition
@@ -10383,7 +10387,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // ever called (see `load()`), so playback continuity there is
       // untouched.
       mediaPlayer.removeAttribute('poster');
-      if (mediaElementHoldsMedia(mediaPlayer)) { // v1.406.1: under native the element is a src-less proxy - no load() in the tap
+      if (mediaElementHoldsMedia(mediaPlayer)) { // v1.406.1: under native the element is a src-less proxy - nothing to drop
         mediaPlayer.removeAttribute('src');
         mediaPlayer.load();
       }
@@ -11201,8 +11205,8 @@ if (typeof module !== 'undefined' && module.exports) {
     hideCaptionOverlay();
     nativeCueList = null; // v1.399.0 (S7): the next item parses its own
     // v1.406.1: nativeAudioRelease() above already handed the element back (native stopped with audio.stop), so an element that
-    // holds nothing is left alone - a pause() on a NETWORK_EMPTY element runs the resource selection algorithm (HTML spec), the
-    // same media work in the [x] tap that clicked native's audio at a switch
+    // holds nothing is left alone - a pause() on a NETWORK_EMPTY element is not a no-op (it runs the resource selection algorithm,
+    // HTML spec); the same media-element work the switch no longer does
     if (mediaPlayer && mediaElementHoldsMedia(mediaPlayer)) {
       try {
         // F5 (two-reviewer gate, structural consistency, v1.27.1
@@ -11231,7 +11235,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pendingAutoplayNextOnForeground = false; // F2: never let a deferred advance survive a CLOSE either
     stopBgKeepAlive(); // v1.161.3: a CLOSE can never leave the keep-alive playing either (all 4 teardown sites)
     if (bgAudioEl) {
-      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset - no load() in the tap
+      if (mediaElementHoldsMedia(bgAudioEl)) { // v1.406.1: an empty sidecar (under native it holds no src) is not reset
         try { bgAudioEl.pause(); bgAudioEl.removeAttribute('src'); bgAudioEl.load(); } catch (_) { /* best-effort only */ }
       }
     }
