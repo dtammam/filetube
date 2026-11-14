@@ -4645,6 +4645,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // typeof-guarded (the shared-global scar): the formatters are common.js
       // page globals, absent in a minimal harness - degrade to blank, not throw.
       if (addedDateText) { addedDateText.textContent = (ep.addedAtMs && typeof formatRelativeTime === 'function') ? formatRelativeTime(ep.addedAtMs) : ''; addedDateText.classList.remove('skeleton-shimmer', 'skel-w60'); }
+      // Dean 2026-11-14: an episode carries no view count, so the markup's #views-count
+      // skeleton was never cleared on the TV path (a forever-shimmering bar). Hidden, not
+      // blanked: an empty span would leave a gap in the meta row.
+      if (viewsCount) { viewsCount.textContent = ''; viewsCount.classList.remove('skeleton-shimmer', 'skel-w120'); viewsCount.hidden = true; }
       if (fileSizeText) { fileSizeText.textContent = (ep.sizeBytes && typeof formatFileSize === 'function') ? formatFileSize(ep.sizeBytes) : ''; fileSizeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       if (fileTypeText) { fileTypeText.textContent = (ep.ext || '').replace('.', '').toUpperCase() || 'Video'; fileTypeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       // v1.198 (Dean): the file NAME lands in the "File Path:" row (the basename

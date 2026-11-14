@@ -54,3 +54,12 @@ test('Settings: the switch exists, is a ui-switch, and sits in the Comments grou
   const group = SETUP_HTML.slice(SETUP_HTML.lastIndexOf('<h3 class="setup-heading">Comments</h3>', m.index), m.index);
   assert.ok(group.includes('comments-mode-select'), 'it sits under the Comments heading');
 });
+
+test('TV episode panel clears the views-count skeleton (an episode has no view count, the bar never filled)', () => {
+  const start = WATCH_SRC.indexOf('function paintTvEpisodePanel(');
+  const end = WATCH_SRC.indexOf('\n    function ', start + 10);
+  assert.ok(start > 0 && end > start, 'paintTvEpisodePanel found');
+  const body = WATCH_SRC.slice(start, end);
+  assert.match(body, /viewsCount\.classList\.remove\('skeleton-shimmer'/);
+  assert.match(body, /viewsCount\.hidden = true/);
+});
