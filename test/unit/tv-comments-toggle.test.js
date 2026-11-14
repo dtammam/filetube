@@ -63,3 +63,19 @@ test('TV episode panel clears the views-count skeleton (an episode has no view c
   assert.match(body, /viewsCount\.classList\.remove\('skeleton-shimmer'/);
   assert.match(body, /viewsCount\.hidden = true/);
 });
+
+test('wiring: the off branch of initTvWatch hides the whole comments section (form and header too)', () => {
+  const start = WATCH_SRC.indexOf('async function initTvWatch(');
+  const body = WATCH_SRC.slice(start);
+  const gate = body.indexOf('commentsShownForItem(');
+  assert.ok(gate > 0, 'gate found');
+  assert.match(body.slice(gate, gate + 700), /else if \(commentsSection\) \{\s*commentsSection\.hidden = true/);
+});
+
+test('wiring: the Settings switch starts on unless stored off, and writes on/off back to ft-tv-comments', () => {
+  const src = fs.readFileSync(path.join(REPO, 'public/js/setup.js'), 'utf8');
+  const start = src.indexOf('function wireTvCommentsControl(');
+  const body = src.slice(start, src.indexOf('\n}\n', start));
+  assert.match(body, /check\.checked = stored !== 'off'/);
+  assert.match(body, /setItem\('ft-tv-comments', check\.checked \? 'on' : 'off'\)/);
+});
