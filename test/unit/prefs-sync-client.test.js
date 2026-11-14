@@ -30,6 +30,7 @@ const PLAN_KEYS = [
   'ft-comments', // v1.394.0: the watch page's comments setting
   'ft-feed-settings', 'ft-feed-fewer',
   'ft-pages-view', // v1.395.0 Pages: Reader or Original
+  'ft-tv-comments', // Settings > Show comments on TV shows: 'off' hides the comments on TV episode pages
 ];
 
 function boot({ fetchImpl } = {}) {

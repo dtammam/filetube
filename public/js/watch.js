@@ -698,6 +698,13 @@ function commentsModeShows(mode) {
   return { real: m === 'both' || m === 'real', fun: m === 'both' || m === 'fun', mine: m !== 'off', section: m !== 'off' };
 }
 
+// The TV-episode comments switch (Settings > Show comments on TV shows; synced pref ft-tv-comments).
+// Pure: does this item's watch page show its comments? Every non-TV item keeps them; a TV episode
+// keeps them unless the pref is 'off' (nothing stored = on, the default).
+function commentsShownForItem(isTv, storedTvComments) {
+  return !isTv || storedTvComments !== 'off';
+}
+
 // R6: the source only gives relative time, and yt-dlp's timestamp is an ESTIMATE made at fetch
 // time - so it is shown as relative time from NOW with a leading "~" (it ages correctly), never as
 // an exact date. Seconds (yt-dlp's unit) in, '' for no usable estimate.
@@ -978,7 +985,7 @@ if (typeof module !== 'undefined' && module.exports) {
     parseStartTime, // v1.352 L1
     VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, nativePresentationKind, VR_NATIVE_SETTLE_MS, vrNativeNotice, VR_NATIVE_NOTE, VR_PIP_NOTE, vrMotionSupported, VR_MOTION_DENIED_NOTE, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
     resolveDisplayDescription,
-    COMMENTS_MODES, resolveCommentsMode, commentsModeShows, formatEstimatedAgo, sourceCommentsHeading, // v1.394.0 (real comments)
+    COMMENTS_MODES, resolveCommentsMode, commentsModeShows, commentsShownForItem, formatEstimatedAgo, sourceCommentsHeading, // v1.394.0 (real comments)
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
     buildWatchMoreItems,
@@ -4793,8 +4800,17 @@ if (typeof module !== 'undefined' && module.exports) {
         commentScopeId = episodeId; // v1.198: the comments bucket + mock seed
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
-        loadComments();      // v1.198 (Dean): the same fake retro comments as videos
-        wireCommentForm();   // and the same posting form (episode-id-scoped bucket)
+        // The TV-episode comments switch: off skips the comments entirely (no load, no posting form)
+        // and hides the section; on is the v1.198 path unchanged (the same fake retro comments as videos,
+        // and the same posting form on the episode-id-scoped bucket).
+        let storedTvComments = null;
+        try { storedTvComments = localStorage.getItem('ft-tv-comments'); } catch (_) { /* storage off */ }
+        if (commentsShownForItem(true, storedTvComments)) {
+          loadComments();
+          wireCommentForm();
+        } else if (commentsSection) {
+          commentsSection.hidden = true;
+        }
         // v1.197 (W1): the FULL cog sequence initWatch runs. ensureCogControls-
         // Injected is what INJECTS the autoplay/loop/theatre/ambient rows into
         // the mounted host's cog menu - without it every setup below bailed on a

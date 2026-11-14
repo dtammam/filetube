@@ -1048,6 +1048,20 @@ function wireCommentsModeControl(signal) {
   }, { signal });
 }
 
+// The TV-episode comments switch: a synced pref (prefs-sync mirrors the write). Stored 'off' hides the
+// comments on TV episode pages; anything else (including nothing stored) shows them. watch.js owns the rule
+// (commentsShownForItem); this mirrors its one-line truth for the checkbox's starting state.
+function wireTvCommentsControl(signal) {
+  const check = document.getElementById('tv-comments-check');
+  if (!check) return;
+  let stored = null;
+  try { stored = localStorage.getItem('ft-tv-comments'); } catch (_) { /* storage off */ }
+  check.checked = stored !== 'off';
+  check.addEventListener('change', () => {
+    try { localStorage.setItem('ft-tv-comments', check.checked ? 'on' : 'off'); } catch (_) { /* storage off */ }
+  }, { signal });
+}
+
 // v1.166 (Dean): Sneaky critter mode. Per-device (localStorage); common.js owns
 // the engine (applyCritterMode re-scatters or clears immediately) - these
 // controls just reflect and fire it, the hide-stars posture.
@@ -5567,6 +5581,7 @@ function init(root) {
   renderStickerPicker();   // v1.238: the player-sticker icon picker (logo / emoji / custom upload)
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCommentsModeControl(controller.signal); // v1.394.0: which comments the watch page shows
+  wireTvCommentsControl(controller.signal); // the TV-episode comments switch (ft-tv-comments)
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
   wireVoiceCheck(controller.signal); // v1.181: the Critters page's sound check (a diagnostic)
   wireBgTimingLog(controller.signal); // lock-to-audio phase 1: the Experimental background-audio timing log

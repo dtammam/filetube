@@ -1,0 +1,56 @@
+'use strict';
+
+// [UNIT] Settings > Comments > Show comments on TV shows (synced pref ft-tv-comments). The gate is
+// watch.js commentsShownForItem(isTv, stored): a TV episode (?tv=) hides its comments only when the
+// pref is 'off'; every other item keeps them whatever the pref says. The gate's caller (initTvWatch)
+// is checked for wiring: the gate must sit in front of loadComments() on the TV path.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const W = require('../../public/js/watch.js');
+
+const REPO = path.join(__dirname, '..', '..');
+const WATCH_SRC = fs.readFileSync(path.join(REPO, 'public/js/watch.js'), 'utf8');
+const SETUP_HTML = fs.readFileSync(path.join(REPO, 'public/setup.html'), 'utf8');
+
+test('TV episode + off: the comments are hidden', () => {
+  assert.strictEqual(W.commentsShownForItem(true, 'off'), false);
+});
+
+test('TV episode + on: the comments show', () => {
+  assert.strictEqual(W.commentsShownForItem(true, 'on'), true);
+});
+
+test('TV episode + nothing stored: the comments show (default on)', () => {
+  assert.strictEqual(W.commentsShownForItem(true, null), true);
+});
+
+test('non-TV item + off: the comments still show (videos and other media keep comments)', () => {
+  assert.strictEqual(W.commentsShownForItem(false, 'off'), true);
+});
+
+test('non-TV item + on or nothing stored: the comments show', () => {
+  assert.strictEqual(W.commentsShownForItem(false, 'on'), true);
+  assert.strictEqual(W.commentsShownForItem(false, null), true);
+});
+
+test('wiring: initTvWatch consults the gate before loadComments() and the posting form', () => {
+  const start = WATCH_SRC.indexOf('async function initTvWatch(');
+  assert.ok(start > -1, 'initTvWatch exists');
+  const body = WATCH_SRC.slice(start);
+  const gate = body.indexOf('commentsShownForItem(true, storedTvComments)');
+  const load = body.indexOf('loadComments();');
+  assert.ok(gate > -1, 'initTvWatch calls the gate with isTv=true and the stored pref');
+  assert.ok(load > gate, 'the gate sits before loadComments()');
+  assert.ok(body.indexOf('wireCommentForm();') > gate, 'the gate sits before wireCommentForm()');
+  assert.ok(body.indexOf("localStorage.getItem('ft-tv-comments')") > -1, 'the gate reads the synced pref key');
+});
+
+test('Settings: the switch exists, is a ui-switch, and sits in the Comments group', () => {
+  const m = SETUP_HTML.match(/<input type="checkbox" role="switch" class="ui-switch" id="tv-comments-check" \/>/);
+  assert.ok(m, '#tv-comments-check is a role=switch checkbox');
+  const group = SETUP_HTML.slice(SETUP_HTML.lastIndexOf('<h3 class="setup-heading">Comments</h3>', m.index), m.index);
+  assert.ok(group.includes('comments-mode-select'), 'it sits under the Comments heading');
+});

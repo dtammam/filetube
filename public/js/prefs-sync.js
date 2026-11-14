@@ -31,6 +31,7 @@
     'ft-comments', // v1.394.0: which comments the watch page shows (both / real / fun / off)
     'ft-feed-settings', 'ft-feed-fewer', // v1.382.0: the Feed's settings and "Fewer from" (public/js/feed-settings.js)
     'ft-pages-view', // v1.395.0: Pages opens in Reader or Original (public/js/pages.js)
+    'ft-tv-comments', // the TV-episode watch pages show comments ('on' default, 'off' hides them; watch.js commentsShownForItem)
   ];
   var META_KEY = 'ft-prefs-meta'; // {key: updatedAtMs} - written via the RAW setter only (never recurses into the mirror)
   var DEBOUNCE_MS = 1000;

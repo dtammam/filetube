@@ -25,6 +25,7 @@ const P = '/api/prefs (synced) + ' + D; // v1.382.0: a synced pref (prefs-sync.j
 const SAVE = {
   'hide-stars-check': [U + ' + ' + D, 'all'],
   'comments-mode-select': [P, 'all'], // v1.394.0: ft-comments, which comments the watch page shows
+  'tv-comments-check': [P, 'all'], // ft-tv-comments: hide the comments on TV show episode pages
   'logo-file-input': ['/api/settings/logo', 'all'], 'logo-upload-btn': ['/api/settings/logo', 'all'], 'logo-reset-btn': ['/api/settings/logo', 'all'],
   'logo-file-input-dark': ['/api/settings/logo', 'all'], 'logo-upload-btn-dark': ['/api/settings/logo', 'all'], 'logo-reset-btn-dark': ['/api/settings/logo', 'all'],
   'sticker-file-input': ['/api/me/sticker', 'all'],

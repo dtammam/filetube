@@ -366,7 +366,8 @@ test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 
   // v1.383.0 DELIBERATE bump (39 -> 40): Settings > Feed > Moving on > Auto-advance (#feed-advance, K1).
   // v1.383.0 DELIBERATE bump (40 -> 41): Settings > Feed > Music while reading (#feed-music, K6).
   // v1.394.0 DELIBERATE bump (41 -> 42): Downloads > Save top comments (#save-comments-check, R7).
-  assert.strictEqual(boxes.length, 42, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch, Keep Pocket upright, the five Feed kinds, Auto-advance and Music while reading');
+  // DELIBERATE bump (42 -> 43): Comments > Show comments on TV shows (#tv-comments-check, synced ft-tv-comments).
+  assert.strictEqual(boxes.length, 43, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch, Keep Pocket upright, the five Feed kinds, Auto-advance and Music while reading, the TV-episode comments switch');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);
