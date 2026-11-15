@@ -1515,8 +1515,10 @@
       // the drift pauses under it and restarts when the takeover is released.
       var held = false;
       try { held = !!(typeof o.takeoverLive === 'function' && o.takeoverLive()); } catch (_) { held = false; }
+      var frozen = false; // v1.408.0: Hold's dimmed stage (nothing moves under it)
+      try { frozen = !!(typeof o.frozen === 'function' && o.frozen()); } catch (_) { frozen = false; }
       return !!(!destroyed && style() === 'click' && screen === 'menu' && !trayUp() && p && !SK.menuIsItemLevel(p.node) &&
-        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden && !held);
+        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden && !held && !frozen);
     }
     function stopSlides() {
       slide.timer = cancel(slide.timer);
@@ -1976,6 +1978,17 @@
   // a click that follows a pointer release by less than this is that press's own click (already decided); a click with no
   // press before it is the keyboard's or an assistive technology's activation, and flips the switch
   var HOLD_CLICK_DEDUP_MS = 700;
+  // The stages while Hold is on (W3; Dean's R4, "C"): (1) awake, full brightness; (2) after HOLD_DIM_MS with no touch, the dimmed,
+  // frozen look (no motion, the clock and the progress written once a HOLD_TICK_MS from the engine's own state); (3) after
+  // HOLD_SLEEP_MS with no touch, the app stops keeping the phone awake and lets it lock (iOS's own always-on lock screen takes
+  // over). A touch anywhere wakes back to (1) and restarts the clock; music never stops. One named constant each (R4: Dean may
+  // move the stage-3 time).
+  var HOLD_DIM_MS = 30 * 1000;
+  var HOLD_SLEEP_MS = 5 * 60 * 1000;
+  var HOLD_TICK_MS = 1000;
+  // Pure: how long a stage lasts with no touch before the next one (each wake starts stage 1 again, so a timer only ever moves
+  // one stage on): stage 1 for HOLD_DIM_MS, stage 2 for the rest of HOLD_SLEEP_MS, stage 3 until a touch (null).
+  function holdStageWait(stage) { return stage === 1 ? HOLD_DIM_MS : (stage === 2 ? HOLD_SLEEP_MS - HOLD_DIM_MS : null); }
 
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
@@ -2122,7 +2135,66 @@
     // Per player session, never stored (R8: a reload can never trap anyone in a locked page); released when the full player
     // closes (the panel hides or loses mms-full - observed, since a view can clear it with no engine call), when the page goes
     // away for good (pagehide, not persisted) and when the surface is destroyed.
-    var hold = { on: false, gesture: null, armed: false, watch: null, lastPointerToggle: -Infinity };
+    var hold = { on: false, gesture: null, armed: false, watch: null, lastPointerToggle: -Infinity,
+      stage: 0, timer: null, ticker: null, ticking: false };
+    // the web half of keeping the phone awake (W3): the Screen Wake Lock where it exists (an iOS 16.4+ home-screen app, Safari 18.4+,
+    // Chromium); absent, nothing happens. The browser releases it whenever the page hides; the return re-asks (onHoldVisible).
+    var wake = { sentinel: null, pending: false, want: false };
+    function keepAwake(want) {
+      wake.want = !!want;
+      if (!wake.want) {
+        if (wake.sentinel) { var held = wake.sentinel; wake.sentinel = null; try { held.release(); } catch (_) { /* already gone */ } }
+        return;
+      }
+      if (wake.sentinel || wake.pending || doc.hidden) return;
+      var api = null;
+      try { api = win.navigator && win.navigator.wakeLock; } catch (_) { api = null; }
+      if (!api || typeof api.request !== 'function') return;
+      var asked;
+      try { asked = api.request('screen'); } catch (_) { return; }
+      wake.pending = true;
+      Promise.resolve(asked).then(function (sentinel) {
+        wake.pending = false;
+        if (!sentinel) return;
+        // let go while the request was in flight (Hold off, stage 3, the surface gone): release what just arrived
+        if (!wake.want) { try { sentinel.release(); } catch (_) { /* gone */ } return; }
+        wake.sentinel = sentinel;
+        try { sentinel.addEventListener('release', function () { if (wake.sentinel === sentinel) wake.sentinel = null; }); } catch (_) { /* no events */ }
+      }, function () { wake.pending = false; });
+    }
+    function holdTimers() {
+      if (hold.timer != null) { try { win.clearTimeout(hold.timer); } catch (_) { /* gone */ } hold.timer = null; }
+    }
+    function holdTicker(on) {
+      if (!on) { if (hold.ticker != null) { try { win.clearInterval(hold.ticker); } catch (_) { /* gone */ } hold.ticker = null; } return; }
+      if (hold.ticker != null) return;
+      hold.ticker = win.setInterval(function () { hold.ticking = true; try { reflect(); } finally { hold.ticking = false; } }, HOLD_TICK_MS);
+    }
+    // Enter a stage: the dim layer and the freezes from 2, the keep-awake until 3 (0 = Hold off: everything back).
+    function holdStage(n) {
+      var was = hold.stage;
+      hold.stage = n;
+      var dim = n >= 2;
+      if (panel.classList.contains('mms-hold-dim') !== dim) panel.classList.toggle('mms-hold-dim', dim);
+      holdTicker(dim);
+      keepAwake(n === 1 || n === 2);
+      if ((was >= 2) !== dim) {
+        if (pocket) pocket.onVisibility(); // the cover drift stops under the dim and comes back after it
+        if (!dim && lighting) lighting.sync(); // the light follows the phone again (its next sample re-arms the loop)
+        if (!dim) reflect(); // the screen catches up at once
+      }
+    }
+    function holdSchedule() {
+      holdTimers();
+      var wait = hold.on ? holdStageWait(hold.stage) : null;
+      if (wait == null) return;
+      hold.timer = win.setTimeout(function () {
+        hold.timer = null;
+        if (!hold.on) return;
+        holdStage(hold.stage + 1);
+        holdSchedule();
+      }, wait);
+    }
     function holdNow() { try { return (win.performance && typeof win.performance.now === 'function') ? win.performance.now() : Date.now(); } catch (_) { return Date.now(); } }
     function holdSwitchEl() { return panel.querySelector('[data-skin-hold]'); }
     function onHoldSwitch(t) { var sw = holdSwitchEl(); return !!(sw && t && t.nodeType === 1 && sw.contains(t)); }
@@ -2131,7 +2203,15 @@
       var sw = holdSwitchEl(); var want = hold.on ? 'true' : 'false';
       if (sw && sw.getAttribute('aria-checked') !== want) sw.setAttribute('aria-checked', want);
     }
-    function holdWake() { /* W3: the stage clock */ }
+    // A touch (or a key, a scroll, the page coming back) while Hold is on: full brightness, the clock restarts. It does nothing else.
+    function holdWake() {
+      if (!hold.on) return;
+      // stage 1, and keep awake again even when already there: a touch while the page was hidden reached stage 1 without its
+      // wake lock (a hidden page may not ask), so the return must ask (test: the page hidden and back)
+      if (hold.stage !== 1) holdStage(1); else keepAwake(true);
+      holdSchedule();
+    }
+    function onHoldVisible() { if (!doc.hidden) holdWake(); }
     function holdBlock(e) {
       if (!hold.on) return;
       var g = hold.gesture;
@@ -2147,6 +2227,7 @@
       hold.armed = true;
       HOLD_EVENTS.forEach(function (t) { win.addEventListener(t, holdBlock, { capture: true, passive: false }); });
       try { win.addEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      try { doc.addEventListener('visibilitychange', onHoldVisible); } catch (_) { /* a detached fixture */ }
       var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
       if (MO) {
         hold.watch = new MO(function () { if (hold.on && !fullPlayerShowing()) setHold(false); });
@@ -2158,6 +2239,7 @@
       hold.armed = false;
       HOLD_EVENTS.forEach(function (t) { win.removeEventListener(t, holdBlock, { capture: true }); });
       try { win.removeEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      try { doc.removeEventListener('visibilitychange', onHoldVisible); } catch (_) { /* a detached fixture */ }
       if (hold.watch) { try { hold.watch.disconnect(); } catch (_) { /* gone */ } hold.watch = null; }
     }
     // The one writer of Hold. ON only while the full player is on the glass (nobody can be locked out of a player they cannot
@@ -2178,6 +2260,7 @@
         disarmHold();
       }
       holdSync();
+      if (on) { hold.stage = 0; holdWake(); } else { holdTimers(); holdStage(0); }
       return hold.on;
     }
     // The switch's own press, bound with the engine (Hold on or off): a press that starts on the switch is the switch's until it
@@ -2231,10 +2314,12 @@
     var lighting = (LIT && typeof LIT.create === 'function')
       ? LIT.create({ panel: panel, win: win, doc: doc, store: config.lightingStore || null, now: config.lightingNow || null,
         onLight: function (x, y) { onStickerLight(x, y); }, // v1.334: the sticker catches the light
-        isPocket: function () { try { return SKINS.menuStyle(getSkinId()) === 'click'; } catch (_) { return false; } } })
+        isPocket: function () { try { return SKINS.menuStyle(getSkinId()) === 'click'; } catch (_) { return false; } },
+        frozen: function () { return hold.stage >= 2; } }) // v1.408.0: Hold's dim freezes the light
       : null;
     var pocket = (config.menu && typeof config.menu.load === 'function')
       ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames, lighting: lighting,
+        frozen: function () { return hold.stage >= 2; }, // v1.408.0: Hold's dim stops the cover drift
         skinsAvailable: function () { return !!(stickerCfg && typeof stickerCfg.onSkinChange === 'function'); },
         onPreview: function (id) {
           var next = (id && SKINS.menuStyle(id) === 'click') ? id : null;
@@ -2454,6 +2539,7 @@
       healGhostLock(); // v1.256: the lock must never outlive its ghost (the v1.227 leak class)
       hostSync(); // v1.384.0: the same structural check for the host's rotation lock and battery (a no-op without a host)
       if (!panel || !panel.classList.contains('mms-full')) return;
+      if (hold.stage >= 2 && !hold.ticking) return; // v1.408.0: under Hold's dim the screen is written once a second, by its own tick
       var mp = hostCtl('media-player'); if (!mp) return;
       // v1.406.0 A3 (plan 2026-11-08-smoothness): the element can still hold ANOTHER item while this frame is up (the launch
       // frame of a new track, a video left in the player): its time and play state are not this frame's. The view says so
@@ -4391,6 +4477,7 @@
       landPlayOn: function (hasTrack) { return pocket ? pocket.landPlayOn(hasTrack) : false; },
       // v1.408.0: Hold (the switch is the user's only way; these are the read and the one writer, for the view and the tests)
       isHold: function () { return hold.on; },
+      holdStage: function () { return hold.stage; },
       setHold: setHold,
     };
   }
@@ -4615,7 +4702,8 @@
   }
 
   var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu,
-    HOLD_EVENTS: HOLD_EVENTS, HOLD_SLIDE_PX: HOLD_SLIDE_PX, HOLD_CLICK_DEDUP_MS: HOLD_CLICK_DEDUP_MS, holdEventDecision: holdEventDecision, holdToggleDecision: holdToggleDecision };
+    HOLD_EVENTS: HOLD_EVENTS, HOLD_SLIDE_PX: HOLD_SLIDE_PX, HOLD_CLICK_DEDUP_MS: HOLD_CLICK_DEDUP_MS, holdEventDecision: holdEventDecision, holdToggleDecision: holdToggleDecision,
+    HOLD_DIM_MS: HOLD_DIM_MS, HOLD_SLEEP_MS: HOLD_SLEEP_MS, HOLD_TICK_MS: HOLD_TICK_MS, holdStageWait: holdStageWait };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

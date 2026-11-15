@@ -3,8 +3,8 @@ plan: ipod-hold-switch
 harness: v2 · full
 branch: feat/v1.408.0-ipod-hold
 anchor: outcome
-status: W0-W2 done (W1 539e9232; W2 committed on this branch), W3 (stages) in progress
-next: W3 stages (wake lock, dim, release), then W4 host contract
+status: W0-W3 done (W1 539e9232, W2 c04e80e4 + 172d6666, W3 on this branch), W4 (host contract) in progress
+next: W4 the idleDisplay host capability and the iOS relay, then W5 gate and release
 design: Dean, 2026-11-15 (intake, rulings R1-R9 below)
 gate: pending (adversary floor + qa per .harness/scrutiny.toml)
 builder: smart
@@ -194,6 +194,32 @@ drawn in; not committed).
   (read by the probe, not from the element): `TOTAL: 35 rows, 0 failed`; a mutant moving the slot: `TOTAL: 1 rows, 1 failed`.
 - Old locks updated in place with their intent: skin-status-bar (the bar now opens with the lock mark; the title keeps its box,
   `visibility:hidden`, never a display change), pocket-kb-search R9 (Hold's blocker classified).
+
+### W3 - stages
+
+- Constants (skin-surface.js, exported): `HOLD_DIM_MS = 30000`, `HOLD_SLEEP_MS = 300000` (R4's default, Dean may move it),
+  `HOLD_TICK_MS = 1000`; `holdStageWait(stage)`: each timer moves ONE stage (stage 1 lasts 30 s, stage 2 the rest of 5 min,
+  stage 3 waits for a touch), and every wake (a swallowed touch, a key, a press on the switch, the page coming back) starts
+  stage 1 again and re-asserts the keep-awake.
+- Keep-awake (web): the Screen Wake Lock, asked only on a visible page, held in stages 1-2, let go at 3 and on Hold off; a grant
+  that lands after the let-go is released at once (the request is a promise). Found by the stage tests: a touch while the page
+  was hidden reached stage 1 without its wake lock, and the return never asked again (the phone would lock under Hold) - a wake
+  now always re-asserts.
+- The dimmed stage: `.ip-dim` (the renderer's last element, local z 41 from tokens.css - over the sticker at 40, which is injected
+  after it; a census derives every numeric z of the player's rules) fades in by opacity; every animation and transition under it
+  pauses; the light's loop is frozen (pocket-lighting.js `frozen`: no frame is scheduled; the tilt sensor is not an input Hold
+  swallows, so this is what stops it); the cover drift stops (`slidesWanted`); the screen is written by the engine's own 1 s tick
+  and the view's faster reflects write nothing; a wake catches up at once.
+- Tests: test/unit/pocket-hold-stages.test.js (10, the real engine + lighting + Pocket menus on a fake clock, a spec-shaped wake
+  lock stub), the drift through the real music view (pocket-idle-art.test.js, +1). Mutants (22): wake not re-asserted, the clock not
+  restarted, a blocked touch not waking, stage 3 keeping awake, the dim releasing early, no dim at 2, both constants, a late grant
+  kept, no wake on return, asking while hidden, no 1 s throttle, a tick that writes nothing, no catch-up, the light not frozen, the
+  lighting arm ignoring it, the drift not frozen, no drift re-sync, timers surviving Hold off, the dim z at 40 - each red. Two
+  redundant guards REMOVED rather than kept unbound (destroy's extra keep-awake release; the lighting tick's own freeze check:
+  the frame reschedules through arm()).
+- Chromium, the real 30 s (`DIM=1`, 393x852 and 320x568, three skins): the dim covers the player at opacity 1, the wake lock was
+  asked once, the progress bar's style was written 5 times in 5 s under the dim vs 19 awake (the control), a touch woke it with
+  Hold still on: `TOTAL: 6 rows, 0 failed`. The sticker under the dim: pixel (193,33,34) at z 40 -> (54,9,9) at 41.
 
 ## Gate
 

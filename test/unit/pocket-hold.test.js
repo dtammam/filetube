@@ -157,8 +157,8 @@ test('the renderer: every Click colorway draws ONE role="switch" (the ui-switch 
   const ctx = { track: { title: 'T' } };
   for (const id of SK.clickColorways()) {
     const off = SK.renderFull(id, ctx); const on = SK.renderFull(id, Object.assign({ hold: true }, ctx));
-    const m = /<div class="ip-top"[^>]*>([\s\S]*)<\/div>$/.exec(off);
-    assert.ok(m, id + ': the top edge closes the markup');
+    const m = /<div class="ip-top"[^>]*>([\s\S]*)<\/div><span class="ip-dim" aria-hidden="true"><\/span>$/.exec(off);
+    assert.ok(m, id + ': the top edge, then the dim layer, close the markup');
     assert.strictEqual((off.match(/data-skin-hold/g) || []).length, 1, id);
     assert.match(m[1], /^<span class="ip-edge" aria-hidden="true"><\/span><button type="button" class="ip-hold ui-switch" data-skin-hold role="switch" aria-checked="false" aria-label="Hold"><\/button><span class="ip-hold-slot" aria-hidden="true"><span class="ip-hold-knob"><\/span><\/span>$/, id);
     assert.ok(on.includes('aria-checked="true"') && !on.includes('aria-checked="false"'), id + ' drawn checked under Hold');
@@ -176,7 +176,7 @@ test('CSS: the knob slides by transform only (none under reduced motion), follow
   const knob = one('.ip-hold-knob');
   assert.match(knob, /transform:translateX\(var\(--hs-off\)\)/); assert.match(knob, /transition:transform var\(--dur-slow\) var\(--ease-ui\)/);
   assert.match(one('.ip-hold.ui-switch[aria-checked="true"] + .ip-hold-slot .ip-hold-knob'), /transform:translateX\(var\(--hs-on\)\)/);
-  const rm = rules.filter((x) => x.sel.trim() === P + '.ip-hold-knob' && /prefers-reduced-motion: reduce/.test(x.at));
+  const rm = rules.filter((x) => /prefers-reduced-motion: reduce/.test(x.at) && x.sel.split(',').map((q) => q.trim()).includes(P + '.ip-hold-knob'));
   assert.strictEqual(rm.length, 1); assert.match(rm[0].body, /transition:none/);
   const btn = one('.ip-hold.ui-switch');
   for (const p of ['margin:0', 'padding:0', 'border:0', 'border-radius:0', 'background-color:transparent', 'height:auto', 'pointer-events:auto', 'position:absolute']) assert.ok(btn.includes(p), p);

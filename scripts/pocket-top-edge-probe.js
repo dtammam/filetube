@@ -15,7 +15,10 @@
 // setting: a landscape row then expects the cut from env() - 0 in headless - so the strip minimum, whatever the turn property says),
 // HOLD=1 (W2: per row, REAL touches through CDP Input.dispatchTouchEvent: a tap at the hit area's outer corner - not on the
 // knob - turns Hold on; with Hold on a tap on MENU opens nothing; the knob's travel is measured after the slide; a second tap
-// at the opposite corner turns it off and MENU opens the menus again).
+// at the opposite corner turns it off and MENU opens the menus again),
+// DIM=1 (W3: per row, Hold on by a real touch, then the REAL 30 s: the dim layer covers the player at full opacity, the wake lock
+// was asked for, and the progress bar's style is written about once a second, not per timeupdate; a touch wakes; SHOTS=<dir>
+// saves the dimmed frame).
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -149,8 +152,36 @@ async function main(skins) {
         if (!holdOk) failed++;
         hold.ok = holdOk;
       }
+      let dim = null;
+      if (process.env.DIM === '1' && click) {
+        await ev(`(function () { window.__wl = 0; try { var wl = navigator.wakeLock; if (wl) { var r = wl.request.bind(wl); wl.request = function (t) { window.__wl += 1; return r(t); }; } } catch (_) {} return true; })()`);
+        await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.max(1, m.hit.x + 2), y: m.hit.y + 2 }] });
+        await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await sleep(500);
+        // count the progress bar's style writes from here on (a MutationObserver: the engine's own writes, whatever their source)
+        await ev(`(function () { window.__fw = []; var f = document.querySelector('#music-nowplaying-panel .mms-fill'); new MutationObserver(function () { window.__fw.push(performance.now()); }).observe(f, { attributes: true, attributeFilter: ['style'] }); return true; })()`);
+        await ev(`(function () { var m = document.getElementById('media-player'); try { m.play(); } catch (_) {} return true; })()`);
+        await sleep(1000);
+        await ev('window.__fw = []; true');
+        await sleep(5000);
+        const awakeWrites = await ev('window.__fw.length'); // the control: awake, the view's own rate (timeupdate)
+        await sleep(31000 - 6000 + 1500); // the rest of the real 30 s, then the 1.2 s fade
+        const d = await ev(`(function () { var p = document.getElementById('music-nowplaying-panel'); var l = p.querySelector('.ip-dim'); var cs = getComputedStyle(l); var r = l.getBoundingClientRect(); var pr = p.getBoundingClientRect();
+          return { dimClass: p.classList.contains('mms-hold-dim'), opacity: cs.opacity, visibility: cs.visibility, covers: r.left <= pr.left && r.top <= pr.top && r.right >= pr.right && r.bottom >= pr.bottom, wl: window.__wl, wlApi: !!navigator.wakeLock }; })()`);
+        await ev('window.__fw = []; true');
+        await sleep(5000);
+        const writes = await ev('window.__fw.length');
+        if (process.env.SHOTS) { fs.mkdirSync(process.env.SHOTS, { recursive: true }); const shot = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(process.env.SHOTS, `${skin}-${row.w}x${row.h}-dim.png`), Buffer.from(shot.data, 'base64')); }
+        await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: row.w / 2, y: row.h * 0.7 }] });
+        await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await sleep(300);
+        const woke = await ev(`!document.getElementById('music-nowplaying-panel').classList.contains('mms-hold-dim') && document.getElementById('music-nowplaying-panel').classList.contains('mms-hold')`);
+        dim = Object.assign(d, { awakeWritesIn5s: awakeWrites, writesIn5s: writes, woke });
+        dim.ok = awakeWrites > writes && d.dimClass && d.opacity === '1' && d.visibility === 'visible' && d.covers && (!d.wlApi || d.wl >= 1) && writes <= 6 && woke;
+        if (!dim.ok) failed++;
+      }
       if (!ok) failed++;
-      console.log(JSON.stringify({ row: `${row.w}x${row.h}`, inset: row.inset, skin, bodyTop: click ? m.strip.h : null, edge: m.edge, lcdTop: m.lcd && m.lcd.y, padTop: m.padTop, knob: m.knob, hit: m.hit, ok, hold }));
+      console.log(JSON.stringify({ row: `${row.w}x${row.h}`, inset: row.inset, skin, dim, bodyTop: click ? m.strip.h : null, edge: m.edge, lcdTop: m.lcd && m.lcd.y, padTop: m.padTop, knob: m.knob, hit: m.hit, ok, hold }));
     }
   }
   console.log(`TOTAL: ${ROWS.length * skins.length} rows, ${failed} failed`);

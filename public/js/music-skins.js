@@ -332,7 +332,9 @@
       '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">' + ipFfwdGlyph() + '</button>' +
       '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">' + ipPlayPauseGlyph() + '</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
-      '</div></div>' + ipTop(skin, ctx.hold === true);
+      '</div></div>' + ipTop(skin, ctx.hold === true) +
+      // v1.408.0 W3: Hold's dimmed stage - a layer over the whole player, last so it covers everything (style.css shows it)
+      '<span class="ip-dim" aria-hidden="true"></span>';
   }
 
   // Labels: every Click colorway reads "<line> <generation> <colour>" in our own words ("Slim 4 Orange"; v1.391.0, R7-R9:

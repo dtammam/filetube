@@ -11793,7 +11793,17 @@ a.tv-continue-card { text-decoration: none; }
 :where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-status{ position:relative; }
 :where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-lock{ display:inline-flex; position:absolute; left:var(--space-4); top:50%; transform:translateY(-50%); }
 :where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-np{ visibility:hidden; }
-@media (prefers-reduced-motion: reduce){ :where(html.is-phone) .mms-full.mms-ipod .ip-hold-knob{ transition:none; } }
+/* THE DIMMED STAGE (W3, R4): Hold on and ~30 s with no touch. A dark layer over the whole player (.ip-dim, the renderer's last
+   element, local to the panel's stacking context: over every local layer the player draws) fades in (opacity only), every
+   animation and transition under it stops where it is (the marquee, the cover drift, the knob), the light is frozen by the
+   engine and the clock and the progress are written once a second (skin-surface.js). The layer takes no touch: Hold's blocker
+   already holds every touch, and a touch only wakes the screen. */
+.mms-ipod .ip-dim{ display:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-dim{ display:block; position:absolute; inset:0; background:var(--pk-hold-dim); z-index:var(--pk-hold-dim-z); pointer-events:none;
+  opacity:0; visibility:hidden; transition:opacity var(--pk-hold-dim-fade) var(--ease-ui), visibility 0s linear var(--pk-hold-dim-fade); }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim .ip-dim{ opacity:1; visibility:visible; transition:opacity var(--pk-hold-dim-fade) var(--ease-ui); }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim :not(.ip-dim), :where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim *::before, :where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim *::after{ animation-play-state:paused; transition:none; }
+@media (prefers-reduced-motion: reduce){ :where(html.is-phone) .mms-full.mms-ipod .ip-hold-knob, :where(html.is-phone) .mms-full.mms-ipod .ip-dim{ transition:none; } }
 
 /* ===================== v1.388.0: the STICKER SHEET (plan 2026-10-12-sticker-sheet) =====================
    The sticker opens a ui.sheet bottom sheet on <body> (skin-surface.js): FileTube's grab bar, header, scrim and rows, the

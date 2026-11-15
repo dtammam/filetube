@@ -853,4 +853,10 @@
   --pk-hold-c-slim3: 16%; --pk-hold-w-slim3: 9%;  --pk-hold-k-slim3: .55;
   --pk-hold-c-slim4: 12%; --pk-hold-w-slim4: 16%; --pk-hold-k-slim4: .4;
   --pk-hold-c-slim5: 17%; --pk-hold-w-slim5: 12%; --pk-hold-k-slim5: .45;
+  /* W3: the dimmed stage (Hold on, ~30 s with no touch) - a dark layer over the whole player, faded in slowly the way the
+     phone's own always-on screen dims; local to the player, above every local layer it draws (the sticker is 40 and injected
+     after it, the Tap to play cue 39: test/unit/pocket-hold-stages.test.js derives them all) */
+  --pk-hold-dim: rgba(0,0,0,.72);
+  --pk-hold-dim-z: 41;
+  --pk-hold-dim-fade: 1.2s;
 }
