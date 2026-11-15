@@ -25,7 +25,7 @@ window.FileTubeHost = {
   bridge: 1,                       // the contract major version
   app: { name: 'filetube-ios', version: '0.1.0', build: '1' },
   platform: 'ios',                 // informational only; the web never branches on it
-  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip', 'nativeTabBar'],
+  capabilities: ['orientation', 'haptics', 'battery', 'serverSettings', 'statusBar', 'network', 'downloads', 'mediaFetch', 'nativeAudio', 'nativeVideoAudio', 'nativeVideo', 'nativeVideoDock', 'nativeVideoPip', 'nativeTabBar', 'idleDisplay'],
   post: function (msg) { window.webkit.messageHandlers.filetube.postMessage(msg); }
 };
 ```
@@ -77,6 +77,8 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `video.surface` | `rect: { x, y, w, h }` (CSS px), `space: 'document' \| 'viewport'`, `visible: boolean`, `fit: 'contain' \| 'cover'`, `radius` >= 0, optional `layer: 'below' \| 'above'` (v1.401.0; sent only when `nativeVideoDock` is announced; `'above'` only with `space: 'viewport'`) | `nativeVideo` (+ `nativeVideoDock` for `layer`) | places (or hides) the picture layer where the web's player box is; a new rect only moves the layer, never the player (v1.399.0); `layer: 'above'` moves the picture view above the web view for the docked mini player, touches passing through (v1.401.0) |
 | `video.pip` | `action: 'start' \| 'stop'` | `nativeVideoPip` | `start` begins `AVPictureInPictureController` on the native player's layer (a user-initiated start: the web sends it from the button's click); `stop` ends it; a `start` while already in picture-in-picture, or a `stop` while not, is a no-op (v1.404.0) |
 | `nav.bar` | `items: [{ id, label, active, imageUrl? }]` (at most 32; `id` 1..64, `label` 1..128, `imageUrl` a same-origin PATH), `visible: boolean` | `nativeTabBar` | draws the icon-only glass tab pill (`UIGlassEffect`) above the web view with the items in this order, the `active` one selected, each `id` mapped to an SF Symbol pair from a table native owns (an unknown id = a generic symbol, never nothing; `imageUrl` = the account photo: native accepts only a value that starts with `/` and a non-`/` character, resolves it against the configured server origin without percent-decoding first, refuses it when the result's origin differs, and fetches it with the web view's own session cookie, never the device token); `label` is the accessibility label and the long-press name; `visible: false` hides it at once (v1.405.0) |
+| `display.hold` | `on: boolean` | `idleDisplay` | v1.408.0, add-only: Hold on the Click full player. `true` while Hold keeps the phone awake (stages 1 and 2: Hold on, and up to 5 min with no touch); `false` at stage 3 (let iOS lock), at Hold off and when the full player closes. Native sets `UIApplication.isIdleTimerDisabled` to `on`. Sent only on a change |
+| `display.dim` | `on: boolean` | `idleDisplay` | v1.408.0, add-only: Hold's dimmed stage. `true` entering stage 2 (30 s with no touch; it stays `true` in stage 3); `false` on a wake, at Hold off and when the full player closes. Native remembers the brightness and ramps it down, asks for the lowest frame rate it can, and restores the brightness on `false`. Sent only on a change |
 
 ## 3. Native to web events
 
@@ -306,6 +308,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | nativeVideoPip | native owns picture-in-picture (the controller, automatic start, its own controls, ending it); the web asks with the button and displays what `videoPip` says | public/js/native-audio.js sends `video.pip` only while it owns the video and answers the proxy's `webkitPresentationMode` from `videoPip` (v1.404.0) |
 | nativeTabBar | the web owns WHAT the pill holds and WHEN it shows (items, order, active, `visible`) and what a tap does; native owns the drawing (Liquid Glass, SF Symbols, the long-press name, accessibility) and the metrics | public/js/common.js sends the ONE coalesced `nav.bar`, clicks the live item on `navTap` and derives the offset from `navBarMetrics` (v1.405.0) |
 | nativeVideoAudio | a pure widening of nativeAudio: the engine also accepts a video or a TV episode as SOUND; in v1.398.0 the web sends only a Listen row (a video played as audio from the watch page) | a Listen row is proxied like a track; the background handoff of a playing video was NOT built (the spike failed; a native video surface is the next plan) (v1.398.0) |
+| idleDisplay | the web owns Hold and its stage clock (skin-surface.js: 30 s to the dim, 5 min to letting the phone lock, a touch wakes); native owns the idle timer, the brightness and the frame rate, and never times anything | a host with `idleDisplay` really keeps the phone awake and really dims it; without it the web's Screen Wake Lock and dim layer do what they can (v1.408.0) |
 
 ## 6. Release of held capabilities
 
@@ -324,4 +327,7 @@ web view goes away (the sound plays on, as for `nativeAudio`), and the page that
 picture view on the navigation commit whichever side of the web view it is on, and the next page's `video.surface` places it again. Picture-in-picture (v1.404.0) ends with them: the host ends PiP on the navigation commit and when
 the web view goes away, and the next page's `{ active: false }` at load says so; a page restored from the back-forward cache clears its own pressed state on a persisted `pageshow`. The native tab pill (v1.405.0)
 hides on the navigation commit and when the web view goes away, and stays hidden until the next page's first `nav.bar`; a page
-restored from the back-forward cache re-sends its current `nav.bar` on a persisted `pageshow`.
+restored from the back-forward cache re-sends its current `nav.bar` on a persisted `pageshow`. Hold's `idleDisplay` (v1.408.0) is released the
+same way: on every main-frame navigation commit, when the web view goes away, and on `willResignActive` / `didEnterBackground`, the
+host turns the idle timer back on and restores the brightness it remembered; the web posts `display.hold` / `display.dim` false on
+`pagehide` and re-sends what Hold still wants on a persisted `pageshow` (the engine's registry, beside the status bar's).

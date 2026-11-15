@@ -3,8 +3,8 @@ plan: ipod-hold-switch
 harness: v2 · full
 branch: feat/v1.408.0-ipod-hold
 anchor: outcome
-status: W0-W3 done (W1 539e9232, W2 c04e80e4 + 172d6666, W3 on this branch), W4 (host contract) in progress
-next: W4 the idleDisplay host capability and the iOS relay, then W5 gate and release
+status: W0-W4 done (W1 539e9232, W2 c04e80e4 + 172d6666, W3 0ddf01cf, W4 on this branch), W5 (gate) next
+next: W5 the gate (adversary + qa), then the release
 design: Dean, 2026-11-15 (intake, rulings R1-R9 below)
 gate: pending (adversary floor + qa per .harness/scrutiny.toml)
 builder: smart
@@ -220,6 +220,49 @@ drawn in; not committed).
 - Chromium, the real 30 s (`DIM=1`, 393x852 and 320x568, three skins): the dim covers the player at opacity 1, the wake lock was
   asked once, the progress bar's style was written 5 times in 5 s under the dim vs 19 awake (the control), a touch woke it with
   Hold still on: `TOTAL: 6 rows, 0 failed`. The sticker under the dim: pixel (193,33,34) at z 40 -> (54,9,9) at 41.
+
+### W4 - the host contract (idleDisplay)
+
+- Capability `idleDisplay` (name confirmed), messages `display.hold { on }` and `display.dim { on }`: the schema (authority), the
+  adapter's tables (`test/unit/native-bridge-contract.test.js` conformance green), native-bridge.md sections 1, 2, 5 and 6. Add-only.
+- The engine's half is a registry beside the status bar's (module-level owners, posts only on a change, the 1 s self-heal poll,
+  released on pagehide, re-sent on a persisted pageshow); the stage clock stays the web's.
+- Tests: test/unit/native-bridge-idle-display.test.js (6, the real engine + the real adapter + a fake host). Mutants (9), each red:
+  no host wiring, stage 3 keeping the host awake, stage 3 undimming, a post on every apply, pagehide keeping the host, no pageshow
+  re-send, no self-heal, an owner that ignores its panel, the adapter's capability gate removed.
+
+#### The relay for the iOS Root (Dean pastes it, or the Root sends it on Dean's word)
+
+**Relay for the iOS Root (filetube-ios) - FileTube v1.408.0, capability `idleDisplay` (bridge v1, add-only)**
+
+What the web does (shipped in v1.408.0, works with no host): the Click (iPod) full player has a real Hold switch. With Hold on,
+the screen ignores every touch except the switch, and the web runs a stage clock it owns: (1) awake; (2) after 30 s with no touch,
+a dimmed, frozen look (the web stops every animation, the gyro light and the cover drift, and writes the clock and progress once
+a second); (3) after 5 min with no touch, it stops keeping the phone awake so iOS locks it and the lock screen's always-on Now
+Playing takes over. A touch anywhere wakes back to (1). Music never stops; the lock screen and the volume buttons are untouched.
+The web keeps the phone awake itself with the Screen Wake Lock, which WKWebView may not honour - that is what this capability is for.
+
+Announce `idleDisplay` in `window.FileTubeHost.capabilities` once the build implements the two messages below. Both are fire and
+forget, sent only on a change, both `{ v: 1, type, on: boolean }`:
+
+| type | sent | what native does |
+|---|---|---|
+| `display.hold` | `on: true` when Hold goes on and on every wake (stages 1-2); `on: false` at stage 3, at Hold off and when the full player closes | `true`: `UIApplication.shared.isIdleTimerDisabled = true`. `false`: back to `false` (the phone may auto-lock again) |
+| `display.dim` | `on: true` entering stage 2 (it stays true in stage 3); `on: false` on a wake, at Hold off and when the full player closes | `true`: remember `UIScreen.main.brightness`, ramp it down (suggested: to max(0.05, saved x 0.3) over ~1 s, matching the web's 1.2 s fade) and ask for the lowest frame rate the app can (any `CADisplayLink` the app owns: `preferredFrameRateRange` at its minimum; ProMotion idles the web view's compositor by itself once nothing on the page moves, which the web guarantees in stage 2). `false`: restore the remembered brightness |
+
+Native must also:
+- Restore the brightness and re-enable the idle timer on `willResignActive` / `didEnterBackground` (never leave the system dimmed
+  or awake behind the app), on every main-frame navigation commit, and when the web view goes away - like every other held
+  capability (native-bridge.md section 6). A page restored from the back-forward cache re-posts what it still wants on `pageshow`.
+- Never time anything: the stage clock is the web's. On return to the foreground the web wakes (stage 1) and posts
+  `display.dim { on: false }` / `display.hold { on: true }` itself.
+- Not select an always-on or 1 Hz mode for the unlocked app (iOS gives apps no API for it); stage 3 is exactly "let iOS lock and
+  show its own always-on lock screen".
+
+Schema: docs/references/native-bridge.v1.schema.json (the two webToNative branches, the capability in host.capabilities).
+Device check for the app build (DEVICE-CHECKS "Hold switch (v1.408.0)" (g)): with Hold on, the phone does not auto-lock in the
+first 5 min; at ~30 s the screen really dims (not only the web's layer); a touch brings the brightness back; after 5 min the phone
+locks by itself and the lock screen shows Now Playing; leaving the player or the app restores brightness.
 
 ## Gate
 

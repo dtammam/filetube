@@ -741,10 +741,40 @@
   }
   function barClaim(owner) { hostBindPage(); if (barOwners.indexOf(owner) < 0) barOwners.push(owner); barApply(); }
   function barRelease(owner) { var i = barOwners.indexOf(owner); if (i >= 0) barOwners.splice(i, 1); barApply(); }
+  // v1.408.0 idleDisplay (plan 2026-11-15-ipod-hold-switch, W4): Hold's stages, for a host that can really keep the phone awake
+  // and really dim it (WKWebView may not honour the web's Screen Wake Lock). The web owns the clock (the engine's Hold block);
+  // the host is told two booleans, each only on a change: display.hold (keep awake: stages 1-2) and display.dim (stages 2-3).
+  // The orientation registry's shape: module-level (one phone, two engines can exist), owners { showing(), want() } dropped
+  // by the same 1 s self-heal poll when their panel leaves with no engine call, released on pagehide and re-asserted on a
+  // persisted pageshow.
+  var dispOwners = [];
+  var dispHold = false;
+  var dispDim = false;
+  function displayHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('idleDisplay')) ? h : null;
+  }
+  function dispDrop(h) {
+    if (!h) return;
+    if (dispHold) { dispHold = false; h.post('display.hold', { on: false }); }
+    if (dispDim) { dispDim = false; h.post('display.dim', { on: false }); }
+  }
+  function dispApply() {
+    var h = displayHost();
+    if (!h) return;
+    dispOwners = dispOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    var wantHold = false, wantDim = false;
+    dispOwners.forEach(function (o) { var w = {}; try { w = o.want() || {}; } catch (_) { w = {}; } if (w.hold) wantHold = true; if (w.dim) wantDim = true; });
+    if (wantHold !== dispHold) { dispHold = wantHold; h.post('display.hold', { on: wantHold }); }
+    if (wantDim !== dispDim) { dispDim = wantDim; h.post('display.dim', { on: wantDim }); }
+    hostPollSync();
+  }
+  function dispClaim(owner) { hostBindPage(); if (dispOwners.indexOf(owner) < 0) dispOwners.push(owner); dispApply(); }
+  function dispRelease(owner) { var i = dispOwners.indexOf(owner); if (i >= 0) dispOwners.splice(i, 1); dispApply(); }
   // ONE 1 s self-heal poll for every registry, running only while any holds something or has an owner
   function hostPollSync() {
-    var need = orientOwners.length > 0 || battOwners.length > 0 || barOwners.length > 0 || orientLocked || sbHidden || battSubbed || barSubbed;
-    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); barApply(); }, 1000);
+    var need = orientOwners.length > 0 || battOwners.length > 0 || barOwners.length > 0 || dispOwners.length > 0 || orientLocked || sbHidden || battSubbed || barSubbed || dispHold || dispDim;
+    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); barApply(); dispApply(); }, 1000);
     else if (!need && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
   // pagehide: release EVERYTHING held. pageshow (a bfcache restore runs no script, the host released all on the commit):
@@ -754,10 +784,11 @@
     var sh = statusHost(); if (sh) sbShow(sh);
     var bh = batteryHost(); if (bh) battDrop(bh);
     barDrop(networkHost());
+    dispDrop(displayHost());
     barClockStop();
     if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
-  function hostReassert() { orientApply(); battApply(); barApply(); }
+  function hostReassert() { orientApply(); battApply(); barApply(); dispApply(); }
   function hostBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
     orientPageBound = true;
@@ -2170,6 +2201,9 @@
       if (hold.ticker != null) return;
       hold.ticker = win.setInterval(function () { hold.ticking = true; try { reflect(); } finally { hold.ticking = false; } }, HOLD_TICK_MS);
     }
+    // the host's half (idleDisplay, W4): this engine is an owner while Hold is on and its full player shows
+    var dispOwner = { showing: function () { return hold.on && fullPlayerShowing(); },
+      want: function () { return { hold: hold.stage === 1 || hold.stage === 2, dim: hold.stage >= 2 }; } };
     // Enter a stage: the dim layer and the freezes from 2, the keep-awake until 3 (0 = Hold off: everything back).
     function holdStage(n) {
       var was = hold.stage;
@@ -2178,6 +2212,7 @@
       if (panel.classList.contains('mms-hold-dim') !== dim) panel.classList.toggle('mms-hold-dim', dim);
       holdTicker(dim);
       keepAwake(n === 1 || n === 2);
+      if (inMainDoc) { if (n > 0) dispClaim(dispOwner); else dispRelease(dispOwner); } // the host's real keep-awake and dim
       if ((was >= 2) !== dim) {
         if (pocket) pocket.onVisibility(); // the cover drift stops under the dim and comes back after it
         if (!dim && lighting) lighting.sync(); // the light follows the phone again (its next sample re-arms the loop)
