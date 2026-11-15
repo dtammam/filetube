@@ -3034,6 +3034,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // (its bar is a reserved strip below the video, not an overlay - the early
     // `!inImmersiveMode()` return above already keeps it always-visible).
     if (!mediaPlayer || mediaPlayer.paused || mediaPlayer.ended) return;
+    // Dean 2026-11-15: a second sooner on a phone, where the bar covers more of the picture; 3 s elsewhere.
+    var hideAfterMs = (document.documentElement && document.documentElement.classList.contains('is-phone')) ? 2000 : 3000;
     controlsAutoHideTimer = setTimeout(function () {
       controlsAutoHideTimer = null;
       // v1.119 gate fix (adversarial WARNING): NEVER hide mid-scrub. A seek drag
@@ -3044,7 +3046,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (inImmersiveMode() && mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended && !isScrubbing) {
         if (host) host.classList.add('controls-autohidden');
       }
-    }, 3000);
+    }, hideAfterMs);
   }
   // v1.311.2 (Dean): the tap-reveal GRACE. A touch that wakes the HIDDEN bar in an
   // immersive view keeps it pointer-events:none (.controls-reveal-grace, style.css)
