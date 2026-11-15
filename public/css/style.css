@@ -1005,7 +1005,8 @@ a.sidebar-item {
   margin-bottom: calc(var(--space-16) * 4);
 }
 html.has-player-dock .video-grid.is-select-mode {
-  /* the bar is lifted by the dock's height, so the clearance is too (gate r1 qa W3, measured by the probe) */
+  /* the dock's footprint is reserved too: on desktop the bar is lifted by the dock's height, on a phone the dock
+     rides above the bar, so either way the last row needs bar + dock of clearance (gate r1 qa W3, measured by the probe) */
   margin-bottom: calc(var(--space-16) * 4 + var(--player-dock-h, 0px));
 }
 .select-bar {
@@ -1049,12 +1050,17 @@ html.has-player-dock .select-bar {
     right: calc(var(--space-4) + var(--scroll-lock-gap, 0px));
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
   }
-  /* Native dock only: it is a native layer CSS cannot lift, so the bar stays above it. The web dock rides
-     above the bar instead (#player-dock, below). */
+  /* The top-level `html.has-player-dock .select-bar` lift (specificity 0,2,1) would still beat the plain rule
+     above, so the web dock case names itself: the bar keeps the bottom slot and the dock rides above it
+     (#player-dock, below). Gate r1 adversary CRITICAL, measured in headless Chrome. */
+  html.has-player-dock:not(.ft-native-dock) .select-bar {
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
+  }
+  /* Native dock only: it is a native layer CSS cannot lift, so the bar stays above it. */
   html.has-player-dock.ft-native-dock .select-bar {
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h, 0px) + var(--space-4));
   }
-  html.has-select-bar {
+  html.has-select-bar:not(.ft-native-dock) {
     --select-bar-lift: calc(var(--select-bar-h, 0px) + var(--space-4));
   }
   .select-bar__verbs {

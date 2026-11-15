@@ -16,11 +16,15 @@ const CSS = read('public/css/style.css');
 const PLAYER = read('public/js/player.js');
 const MAIN = read('public/js/main.js');
 
+// The function's text, closed by the first line that returns to the header's own indent.
 function fnBody(src, header) {
   const start = src.indexOf(header);
   assert.ok(start > 0, header + ' found');
-  const end = src.indexOf('\n  }\n', start);
-  return src.slice(start, end > 0 ? end : undefined);
+  const lineStart = src.lastIndexOf('\n', start) + 1;
+  const indent = src.slice(lineStart, start).match(/^ */)[0];
+  const end = src.indexOf('\n' + indent + '}\n', start);
+  assert.ok(end > start, header + ' closes');
+  return src.slice(start, end);
 }
 
 test('controls fade: 2 s on a phone (html.is-phone), 3 s elsewhere', () => {
@@ -38,7 +42,13 @@ test('select bar: the phone dock rides above the bar by --select-bar-lift', () =
   const phoneDock = CSS.match(/#player-dock \{\s*width: var\(--player-dock-w\);[\s\S]*?\n {2}\}/);
   assert.ok(phoneDock, 'phone #player-dock rule found');
   assert.match(phoneDock[0], /var\(--select-bar-lift\)/);
-  assert.match(CSS, /html\.has-select-bar \{\s*--select-bar-lift: calc\(var\(--select-bar-h, 0px\) \+ var\(--space-4\)\);/);
+  assert.match(CSS, /html\.has-select-bar:not\(\.ft-native-dock\) \{\s*--select-bar-lift: calc\(var\(--select-bar-h, 0px\) \+ var\(--space-4\)\);/);
+});
+
+test('select bar: the web dock case names itself, so the top-level desktop lift (0,2,1) cannot win on a phone', () => {
+  // Measured in headless Chrome with the real tokens.css + style.css at 400 px: without this rule the bar stayed
+  // lifted (bottom 158 px above the floor, over the dock) while the dock ALSO rode above it.
+  assert.match(CSS, /html\.has-player-dock:not\(\.ft-native-dock\) \.select-bar \{\s*bottom: calc\(var\(--mobile-bottom-nav-h\) \+ var\(--space-4\)\);/);
 });
 
 test('select bar: the phone bar is lifted by the dock ONLY for the native dock (CSS cannot lift a native layer)', () => {
