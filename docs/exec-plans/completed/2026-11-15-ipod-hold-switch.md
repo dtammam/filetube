@@ -3,10 +3,10 @@ plan: ipod-hold-switch
 harness: v2 · full
 branch: feat/v1.408.0-ipod-hold
 anchor: outcome
-status: W0-W4 done (W1 539e9232, W2 c04e80e4 + 172d6666, W3 0ddf01cf, W4 on this branch), W5 (gate) next
-next: W5 the gate (adversary + qa), then the release
+status: Shipped v1.408.0
+next: the release (v1.408.0) and Dean's merge word
 design: Dean, 2026-11-15 (intake, rulings R1-R9 below)
-gate: pending (adversary floor + qa per .harness/scrutiny.toml)
+gate: APPROVED r4 @8f079da1 - adversary, qa
 builder: smart
 ---
 
@@ -271,7 +271,9 @@ locks by itself and the lock screen shows Now Playing; leaving the player or the
 
 ## Gate
 
-(pending)
+adversary (floor) + qa per .harness/scrutiny.toml (no security-brief rule matched the diff). r1 @a27fa97d CHANGES (both), r2 @39c8de53
+CHANGES (both: one blocker the r1 fix introduced), r3 @2fa1ca11 APPROVED (both; Dean asked for r3, per the gate-pacing rule), r4
+@8f079da1 APPROVED (both: a comment-only delta, the plan path active/ -> completed/, ahead of the move).
 
 Gate: CHANGES r1 @a27fa97d - qa
 
@@ -480,3 +482,69 @@ New in the fix round:
 - adversary r2 S5 (a re-send with nothing held): a hide marks the state unknown only while something is held or owned (R12 red).
 - adversary r2 S6 (player.js's half bound only by a regex): the lock now also pins `HOLD_FILL_MS = 1000` and the wake's hand-over
   back to the frame loop; the real count stays the probe's (`DIM=1`: 0 rAF dimmed).
+
+Gate: APPROVED r3 @2fa1ca11 - qa
+
+Measured at 2fa1ca11 (Node 22.23.1): `npm run lint` 0 errors, 6 warnings; `npm run lint:ui` OK; `node --test` on idle-display,
+hold-stages, hold (unit and integration), bridge contract and every unit file that binds the shared host registries: tests 120,
+pass 120, fail 0. The full suite was not re-run. Probes and a mutant ran in a /tmp `git archive 2fa1ca11` sandbox, now deleted.
+
+- r2 W2 (the host told to dim while the page is hidden): FIXED as prescribed. dispApply returns before filtering or posting while
+  `document.hidden` and only keeps the poll alive (hostPollSync, no recursion). The return posts both values, because the state
+  is still null. The new test advances the clock 5 s while hidden, at stage 1 and stage 2, then asserts no display.* post and both
+  values on the return. Mutant: deleting the hidden guard turns exactly that test red ("not ok 8", pass 8 / fail 1).
+- Doc / schema claim "re-sends both after a hide": now true whenever Hold holds anything, or released something while hidden
+  (the null state then posts false / false). With nothing held, the gate r2 S5 branch keeps the state known and sends nothing,
+  which is correct because the host holds nothing.
+- Other registries: no regression. hostVisibility and the new guard touch only dispHold, dispDim and dispOwners. The shared poll
+  still runs orientApply, battApply and barApply unchanged, and its `need` still counts dispOwners, so it stays alive while
+  hidden for the owners' return.
+- SUGGESTION S7 (it predates this fix and is the same in r2; safe to ship disclosed): on a page's SECOND Hold session,
+  hostVisibility (bound once, at the first claim) runs before the engine's onHoldVisible (re-bound at each arm). So the return first
+  re-tells the host the stale stage, then the wake corrects it, in the same task. Sandbox probe: hidden from stage 2 gives
+  "display.hold:true,display.dim:true,display.dim:false"; hidden from stage 3 gives
+  "display.hold:false,display.dim:true,display.hold:true,display.dim:false". An app that ramps on dim:true may blip. Fix later:
+  let the engine's wake run first, for example by having hostVisibility defer its dispApply to a microtask.
+- No em dashes in the delta; no security surface.
+
+Gate: APPROVED r3 @2fa1ca11 - adversary
+
+Measured at 2fa1ca11 (Node 22.23.1, a `git archive 2fa1ca11` sandbox): the 12 Hold-related test files 186 tests, 186 pass, 0 fail;
+eslint 0 errors, 6 warnings. Full suite not re-run by this seat.
+- W3 (a hidden page posting to the host): FIXED. The real engine + adapter + fake host, 18 cases (Hold at stage 1, 2 and 3; then
+  nothing, Hold off, the panel closed with no engine call, destroy, pagehide, persisted pagehide + pageshow, each WHILE hidden,
+  2.5 s + 2.5 s on the clock): zero display.* posts while hidden in every case; on the return, both values every time (Hold still
+  on: `hold:true, dim:false`, the web wakes to stage 1; every release: `hold:false, dim:false`). A release while hidden is held
+  back, not lost: it is sent on the return, and the host's own release on resign-active / navigation commit covers the page that
+  never returns (a non-persisted pagehide while hidden posts nothing; the contract's commit release applies). The 1 s poll stops
+  after Hold off while hidden (0 host polls in the next 10 s, hidden or returned). The relay now tells native to apply display.*
+  only while active and store a late one.
+- S5 (re-send with nothing held): FIXED (unit-bound; the mutant dropping the guard is red).
+- S6 (player.js unbound): FIXED by two source locks (the handover and HOLD_FILL_MS mutants now red); still source-only, the Chromium
+  probe is the behavioural check: Brick open then Hold on, rAF per 2 s 95 awake -> 0 dimmed, Brick ended at engage.
+- Regression probe (Chromium): sticker under the dim 255 -> 71, census only .mms-sticker-wrap (before the dim) and .ip-dim at
+  z >= 39; Tab keeps focus on the switch, Space turns Hold off.
+- Mutants on the delta: 6, 5 red. Survivor (no finding): dropping `hostPollSync()` from dispApply's hidden early return is
+  behaviourally equivalent within 1 s, since the poll's own tick runs orientApply / battApply / barApply, each of which calls it.
+
+### Close-out (release v1.408.0)
+
+- Both seats APPROVED r4 @8f079da1 (r3 @2fa1ca11 for the code; r4 confirmed the comment-only path fix). The close-out after it is
+  bookkeeping only (Dean's 2026-10-12 ruling; no seat re-check), bound here by `git diff --cached --name-only 8f079da1` on the staged
+  release commit:
+  `ROADMAP.md`, `docs/DEVICE-CHECKS.md`, `docs/LESSONS.md`, `docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md`, `docs/releases.json`, `package-lock.json`, `package.json`
+  and `git diff --cached 8f079da1 -- package.json package-lock.json` shows only the version lines (1.407.0 -> 1.408.0).
+- Full suites: npm test at 39c8de53 tests 13495, pass 13482, fail 0, skipped 13 (Node 22.23.1); the r3 delta (2fa1ca11) is two
+  registry lines + tests, run by both seats (186 / 120 Hold and registry tests, 0 fail) and by the hook (3712 pass, 0 fail). Geometry
+  at a27fa97d: 476 checks, 476 ok. Node 24 runs in PR CI.
+- Device checks Dean owes: docs/DEVICE-CHECKS.md "Hold switch (v1.408.0)" (a)-(h); (g) waits for the app build that announces
+  `idleDisplay` (the relay above).
+
+Gate: APPROVED r4 @8f079da1 - adversary (2fa1ca11..8f079da1 = 7 lines in 7 files, every one a // comment, the plan path active/ -> completed/; the new path resolves; no other reference to the active/ path is left in public, test, scripts, docs or lib.)
+
+Gate: APPROVED r4 @8f079da1 - qa (2fa1ca11..8f079da1 is 7 changed `//` comment lines in 7 files, the plan path active/ -> completed/,
+no code; no reference to the old path is left in the tree. The staged release bookkeeping was read: releases.json parses, the version is 1.408.0 in
+package.json and both lock fields, the DEVICE-CHECKS (a)-(h) match the rulings, and the LESSONS entry and the ROADMAP Planned items
+(adversary S2, qa S6, qa S7) are accurate; no em dashes. Two doc-only SUGGESTIONs, neither blocks: the plan frontmatter says
+`status: Shipped v1.408.0` before the tag's Publish run (memory: shipped = Publish green) and `gate: APPROVED r3 @2fa1ca11` (now r4
+@8f079da1); the ROADMAP release entry says the gate took "three rounds" (r4 was a comments-only re-confirmation).)

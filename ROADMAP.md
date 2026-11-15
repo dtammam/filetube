@@ -457,6 +457,9 @@
   loaded under Hold in "ask" mode might never start; decide whether untrusted events pass (the jsdom suites dispatch untrusted events, so
   the binding needs a real-browser proof); (2) qa S6: the Sideways layout now shows the 8 px strip and the knob (the look was approved on
   portrait mocks) - DEVICE-CHECKS "Hold switch (v1.408.0)" (h) asks Dean.
+  (3) qa r3 S7: on a return the app can be told the OLD stage and corrected in the same moment (the shared visibility handler runs
+  before the engine's wake on a second Hold session) - an app that starts dimming on `dim:true` may flicker; let the engine's wake run
+  first (a microtask) before the registry re-tells the host.
 - [ ] **v1.406.0 gate r2 suggestions (none blocks; not taken to keep the close-out bookkeeping-only)** _(2026-11-08)_: (1) security S2,
   latent: player.js `applyLateDetail` should skip the surface-flavor keys (readerHref, resumeMode, progressEndpoint, autoAdvanceViaTrackNav,
   browseCtx, startAt, placeFloorSec) - today no media record carries them; (2) adversary S-r2-1: bind the fill loop's "never overrides what the seed
@@ -995,6 +998,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.408.0 - The Click players stop under the island, get a real Hold switch, and dim to a low-power look (2026-11-15)
+
+- Dean (intake 2026-11-15, R1-R9; the look R10-R13 after two mocks): on the phone the Click full player ran under the Dynamic Island
+  as a full-bleed page; he wanted it to stop under the island, a Hold switch exactly where the real model had one, Hold to make the
+  screen ignore every touch, and a dimmed, frozen stage that ends with the phone locking so iOS's own always-on lock screen takes over.
+- W0: reference photos per model (Apple guides, iFixit, Wikimedia; the plan's Evidence): Hold ON slides toward the centre on every
+  model; the first iPod and the 4G have it top right, everything else top left; nano 3G on the bottom (drawn on top, R11); no switch
+  on nano 6G/7G, shuffle, touch (they take the shared one, R10). The first mock "looked cheap, forced"; the approved one is a straight-on
+  front view: the top edge as a thin band, the knob a raised sliver above it, a generous touch area (R13).
+- W1: the body stops at the phone's top safe area (R12; a web page cannot read the island's bottom), the SAME effective inset as the
+  padding so a turn cannot jump it, never under 8 px (a Safari tab); phone only, Cider and Nordic untouched.
+- W2: the switch is the ui-switch primitive repainted as the knob; one window capture listener per input type, only while Hold is on;
+  a press that starts on the switch is the switch's; released when the player closes, the page goes for good, or the view dies; never
+  stored (R8); the lock-screen controls and the volume buttons are untouched (R6).
+- W3: Hold keeps the phone awake (Screen Wake Lock), dims and freezes after 30 s (no animation, light, drift or frame loop: 0
+  animation frames in 5 s in Chromium, the screen written once a second), lets the phone lock after 5 min; a touch wakes.
+- W4: `idleDisplay` (bridge v1, add-only): `display.hold` / `display.dim`, so the app can really keep the phone awake and dim it;
+  the iOS relay is in the completed plan.
+- Gate (adversary + qa, four rounds: Dean asked for r3; r4 re-confirmed a comment-only path fix): a repaint dropped the dim; the host was never re-told after a hide, then
+  (the first fix) told the stage while hidden; Brick and the player's own position loop still ran every frame under the dim; a
+  vertical swipe flipped Hold; Tab could move the focus off the switch. All fixed and mutation-bound.
+- Not taken (ROADMAP Planned): untrusted script clicks under Hold (a suspicion), the Sideways look (a device check).
 
 ### v1.407.0 - Podcast WAV/FLAC in the app, TV pages without comments, phone chrome polish (2026-11-15)
 
