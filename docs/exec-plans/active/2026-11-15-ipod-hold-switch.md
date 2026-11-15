@@ -267,3 +267,100 @@ locks by itself and the lock screen shows Now Playing; leaving the player or the
 ## Gate
 
 (pending)
+
+Gate: CHANGES r1 @a27fa97d - qa
+
+Measured at a27fa97d (Node 22.23.1): `npm run lint` 0 errors, 6 warnings (exit 0); `npm run lint:ui` OK (live debt equals
+docs/ui-exceptions.json); `overlay-containment-lint --enforce` clean (0 violations); the 12 touched/new test files
+(`node --test`) tests 178, pass 178, fail 0; `npm run test:geometry` 476 checks - 476 ok, 0 FAIL (224 scenes). Full `npm test` not re-run.
+Probes ran in a /tmp `git archive a27fa97d` sandbox, never in this tree.
+
+- WARNING W1 - public/js/skin-surface.js:3665-3666 (paint): `panel.className = SKINS.panelClass(id)` wipes `mms-hold-dim`, and
+  only `mms-hold` is put back. The engine stays at stage 2 (the light frozen, the drift stopped, reflect cut to 1 s, host
+  `display.dim` still on), but the web's dim layer is gone and the CSS freeze (`.mms-hold-dim :not(.ip-dim)`) no longer applies,
+  so the marquee runs again, until the stage-3 timer happens to add the class back up to 4.5 min later. In the real view a track
+  change repaints (updateNowPlayingPanel -> renderNowPlayingSkin -> paint), and so does an autoplay append or a chapter cross.
+  With 3-4 min songs, the PWA / Safari stage 2 is lost at almost every track boundary. Evidence: sandbox unit probe (the stage-test
+  harness): Hold on, 30 s -> stage 2 dimmed; `engine.paint()` -> "stage 2 mms-hold-dim false"; +60 s -> still false (test red).
+  Sandbox integration probe (the real music.js view, pocket-menu-harness): Hold on, class `mms-hold-dim` set, `nav.onNext()` ->
+  "repainted true dimclass false ... hold true". pocket-hold.test.js "a repaint keeps Hold" binds only `mms-hold`. Fix: put
+  `mms-hold-dim` back in paint when `hold.stage >= 2` (beside the `mms-hold` line), plus a test that repaints under the dim.
+- SUGGESTION S1 - public/js/host-adapter.js:192: the `// v1.405.0 nativeTabBar: ...` comment is now above the new display.*
+  block, and `'nav.bar'` sits under the idleDisplay comment. That is a misplaced (lying) comment: move the new entries above it or
+  below `nav.bar`.
+- SUGGESTION S2 - public/css/style.css:11779: "one class more than .ui-switch[aria-checked="true"]" is wrong. The rule is (0,4,0)
+  and the primitive is (0,2,0), so it is two classes more. It still wins in both states; fix the number.
+- SUGGESTION S3 - public/css/tokens.css (--pk-hold-dim-z: 41) / style.css:11802: CONTRIBUTING's z rule keeps local stacking in
+  the 0-40 band, and tokens.css says "new raw numbers above the local 0-40 band are never added". 41 sits outside that band, and
+  ui-lint does not see it because it reads a var on an absolute (not fixed) element. It works (it is local to the panel's
+  stacking context; --reader-z-top is a precedent for a local token), but the band rule should be amended to allow it, or the
+  dim should sit at 40 and come after the sticker in the DOM.
+- SUGGESTION S4 - public/js/skin-surface.js:1990-1991 (HOLD_SWITCH_OK keydown): keyboard users. A hardware-keyboard user turns
+  Hold on with Space, then presses Tab. Tab is aimed at the switch, so it passes, and focus moves off the switch. From then on
+  every key is blocked (its target is not the switch), so no key can reach the switch again, and only a touch can release Hold.
+  Keys aimed at the switch other than Space and Enter (Escape, the arrows) also reach the document listeners. Rare on a phone.
+  Suggest: let only Space and Enter pass on the switch, and on a blocked Tab keep focus on the switch. Safe to ship disclosed.
+- SUGGESTION S5 - test/unit/pocket-turn-inset.test.js:193: `const sideCut = uses.length && css.split(...)` - the `uses.length &&`
+  guard does nothing (an empty `uses` already fails above). Drop it.
+- SUGGESTION S6 - style.css:11755 (the Sideways --ip-cut): on a landscape iPhone env(top) is 0, so the Sideways layout now shows an
+  8 px black strip with the knob, and its row is 8 px shorter. Dean's R13 look was approved on portrait mocks only. Add a
+  DEVICE-CHECKS line (or ask him) for Sideways.
+
+Verified with no finding: the Hold block's arm and disarm balance (capture flags match), the pagehide (not persisted) and
+destroy release, and the observer release; the click dedup; the wake-lock late-grant release; that the stage timer moves one
+stage per timer; the reflect throttle sits after the structural heals; the pocket menus' `frozen` drift gate; pocket-lighting's
+`arm()` predicate (write() runs only from tick); renderFull's new second argument (renderApple and renderSpotify take one
+parameter); the pop-out (`inMainDoc` refuses Hold; html.mms-popout gets no --ip-cut, so its padding falls back to the unchanged
+chain); the tray (pop-out only); Cider and Nordic draw no strip; the shared .mms-ipod padding is unchanged where --ip-cut is
+unset. Old tests (Matte, skin-status-bar, pocket-upright, pocket-turn-inset, kb-search R9) were updated with their intent kept.
+Media Session handlers call the players directly, never a synthetic click, so R6 holds. No em dashes in the diff. Accessibility:
+role="switch", aria-checked kept in step by holdSync and on repaint, aria-label "Hold", the ui.css focus ring kept, no knob or dim
+transition under reduced motion.
+Security: idleDisplay is web-to-native only (two fire-and-forget booleans; the adapter's `is: 'boolean', req: true` and the
+capability gate, contract test green). No native input flows into the DOM. holdSpec writes constant strings into attributes
+(no injection). The probe script spawns Chromium with an argument array (no shell) and uses mkdtemp. No new secret, network,
+auth or storage surface (Hold is never stored, R8).
+
+Gate: CHANGES r1 @a27fa97d - adversary
+
+Measured at a27fa97d (Node 22.23.1), mutants and probes in a `git archive a27fa97d` sandbox outside this tree: the 12 touched/new
+test files 178 tests, 178 pass, 0 fail; `eslint .` 0 errors, 6 warnings (all in common.js, untouched); overlay-containment clean
+(0 violations); ui-lint OK. Geometry suite not re-run by this seat. 22 own mutants: 21 red, 1 survived (S4). Real CDP touches
+(headless Chromium): the switch's hit area resolves to the switch at 100% of a 4 px grid, Hold on and off and under the dim
+(ipod, Original, Transparent, Nano 4, 2004; 393x852, 320x568, Sideways 852x393, Upright rot 90); a tap on the switch in the dimmed
+stage turns Hold off; FileTube.navigate and history.back with Hold on release it (page input works after, wake lock released);
+long touch, right click, mouse wheel, MENU and a second finger do nothing under Hold.
+
+- WARNING W1 - idleDisplay contract cannot keep the phone awake after a background (skin-surface.js:742-775 the display registry;
+  the relay in this plan "Native must also"; native-bridge.md section 6). The relay tells native to turn the idle timer back on at
+  willResignActive / didEnterBackground and says the web "posts display.dim false / display.hold true itself" on return. It does
+  not: the registry posts only on a change and has no visibilitychange path, so its cache still says hold=true. Measured (the real
+  engine + adapter + fake host, Hold on, visibilitychange hidden then visible): stage 1 posts after return `[]`; stage 2 posts
+  `["display.dim:false"]` only. An app built to the relay re-enables auto-lock on any lock/unlock, app switch or Control Center
+  pull (the R6 volume path; resign-active gives the web no event at all) and Hold never keeps the phone awake again - the very case
+  the capability exists for (WKWebView may not honour the Wake Lock). Fix: forget the host's state on visibilitychange hidden
+  (as pagehide does) and re-apply on visible, and tell native in the relay to re-apply its last received state on didBecomeActive
+  (resign-active without a background is invisible to the web); a test that hides and shows the page with a host.
+- WARNING W2 - stage 2 is not frame-idle, contrary to W3 ("nothing that repaints per frame") and the relay ("ProMotion idles ... once
+  nothing on the page moves, which the web guarantees in stage 2"). Measured (Chromium, real music view, Hold on, the real 30 s,
+  requestAnimationFrame calls per 2 s): 95 awake -> 60 dimmed, every one from player.js:7711 fillTick (the hidden player's seek-bar
+  loop, which runs every frame while media plays - always, under Hold; its seek bar is 0x0, checkVisibility false). With Brick
+  running (Extras > Games > Brick): 240 awake -> 240 dimmed: the canvas repaints every frame under the dim, and the game keeps
+  playing with the wheel dead (the ball is lost unattended). Fix: stop or pause Brick when Hold engages (or at stage 2), stop
+  fillTick while its seek bar is not rendered or under the dim, and re-measure; or correct the relay and the plan's claim.
+- Concur with qa W1 (paint() at skin-surface.js:3665-3666 drops mms-hold-dim; only mms-hold is put back): read, not re-measured.
+- SUGGESTION S1 - a vertical swipe flips Hold (skin-surface.js holdToggleDecision reads only dx; its comment says "under
+  HOLD_SLIDE_PX of travel"). Measured: a 160 px straight-down drag starting on the hit area turned Hold on (ipod, Original,
+  Transparent; portrait and Sideways). The hit area reaches 18 px over the body. Fix: a press with |dy| over the slide distance
+  and |dx| under it changes nothing.
+- SUGGESTION S2 - holdBlock does not check e.isTrusted, so a script's own .click() is swallowed under Hold. Measured: `#pp-btn`.click()
+  pauses with Hold off (control) and does nothing with Hold on. Known consumer: the Resume countdown's auto-fire (player.js:8087
+  `fireBtn.click()`); a podcast loaded under Hold in "ask" resume mode would then never start - suspicion, not built end to end.
+  Fix: return early for untrusted events.
+- SUGGESTION S3 - keys aimed at the focused switch reach document listeners (HOLD_SWITCH_OK allows keydown and nothing stops its
+  propagation). Measured: Brick running, Hold on, switch focused, Escape -> Brick closed with Hold still on. Tab from the switch
+  moves focus to the sticker (measured), after which no key can return to the switch. Hardware keyboard only. Fix: let only
+  Space / Enter through on the switch, or stop propagation of the switch's keys.
+- SUGGESTION S4 - presence-not-binding: integration "the switch itself: ... a press there never reaches the wheel": removing
+  `e.stopPropagation()` from onHoldDown leaves 178/178 green; the press does reach onDown, whose clearCenterHold() runs before its
+  wheel check. Bind it (a pending center hold survives a press on the switch) or drop the claim.
