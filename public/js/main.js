@@ -4046,7 +4046,7 @@ const PreviewCards = (function () {
     // cards, M3), and one pill per applicable verb (buildBulkActions). While a run is in flight
     // every verb is disabled and the running one is busy (M9: a second tap does nothing).
     function paintSelectBar() {
-      if (!selectMode) { if (selectBar) selectBar.hidden = true; return; }
+      if (!selectMode) { if (selectBar) selectBar.hidden = true; publishSelectBarLift(0); return; }
       const bar = ensureSelectBar();
       if (!bar) return;
       const u = cardUi();
@@ -4069,6 +4069,24 @@ const PreviewCards = (function () {
         b.addEventListener('click', () => runBulk(a.id), { signal });
         verbs.appendChild(b);
       });
+      publishSelectBarLift(bar.offsetHeight);
+    }
+
+    // Phone: the Select bar sits at the bottom edge and the mini player rides ABOVE it (Dean 2026-11-15: the
+    // bar over the mini player was just bad). CSS cannot know the bar's height, so the one writer publishes it:
+    // html.has-select-bar + --select-bar-h (style.css derives --select-bar-lift from both). Cleared with the
+    // bar (exitSelectMode and the view's abort both end in paintSelectBar's hide branch). The native dock is a
+    // native layer CSS cannot lift, so it keeps the old stacking (the bar above it) and never gets the signal.
+    function publishSelectBarLift(h) {
+      const el = document.documentElement;
+      if (!el) return;
+      if (h > 0 && !el.classList.contains('ft-native-dock')) {
+        el.style.setProperty('--select-bar-h', Math.ceil(h) + 'px');
+        el.classList.add('has-select-bar');
+      } else {
+        el.style.removeProperty('--select-bar-h');
+        el.classList.remove('has-select-bar');
+      }
     }
 
     // Enters select mode (idempotent); `seedId` ticks that card (the card menu's Select row, M2).

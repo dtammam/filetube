@@ -54,6 +54,7 @@
      live value on the root element while the dock shows and removes it on every exit; the phone's handoff
      card sits beside the dock at this height (v1.377.0) and the narrow remote pill stacks above the dock by it. */
   --player-dock-h: 0px;
+  --select-bar-lift: 0px; /* phone: how far the mini player rides above the Select bar (html.has-select-bar, below) */
   /* Click wheel test (Settings › Experimental): a self-contained
      dark instrument surface, one visual world in every era/theme. These are
      token DEFINITIONS (census-exempt); every .whcal-* rule consumes them. */
@@ -1048,8 +1049,13 @@ html.has-player-dock .select-bar {
     right: calc(var(--space-4) + var(--scroll-lock-gap, 0px));
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
   }
-  html.has-player-dock .select-bar {
+  /* Native dock only: it is a native layer CSS cannot lift, so the bar stays above it. The web dock rides
+     above the bar instead (#player-dock, below). */
+  html.has-player-dock.ft-native-dock .select-bar {
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h, 0px) + var(--space-4));
+  }
+  html.has-select-bar {
+    --select-bar-lift: calc(var(--select-bar-h, 0px) + var(--space-4));
   }
   .select-bar__verbs {
     flex-wrap: nowrap;
@@ -1495,7 +1501,7 @@ body.ft-native-video .player-cover,
        `.main-content`'s padding-bottom so both stay in lockstep across the
        iOS address-bar/home-indicator collapse animation instead of each
        independently re-resolving env(safe-area-inset-bottom). */
-    bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
+    bottom: calc(var(--mobile-bottom-nav-h) + 8px + var(--select-bar-lift)); /* token-exempt: positional geometry (Stop A Batch A); the Select bar sits below the mini player */
   }
 }
 
@@ -3168,7 +3174,7 @@ select {
      the dock. While the dock shows it stacks above it (player.js setDockShown's signal, the one the handoff
      card's phone rule keys on). */
   html.has-player-dock #remote-pill {
-    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4));
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--select-bar-lift) + var(--player-dock-h) + var(--space-4));
   }
 }
 
@@ -3617,7 +3623,7 @@ select {
   pointer-events: none;
 }
 html.has-player-dock .bottom-nav-tip {
-  bottom: calc(var(--mobile-bottom-nav-h, 0px) + var(--space-4) + var(--player-dock-h, 0px) + var(--space-4));
+  bottom: calc(var(--mobile-bottom-nav-h, 0px) + var(--space-4) + var(--select-bar-lift, 0px) + var(--player-dock-h, 0px) + var(--space-4));
 }
 
 /* v1.405.0: common.js bottomNavReservePx resolves the ONE bar offset through this throwaway element (a custom
@@ -6983,6 +6989,12 @@ html.ft-native-dock #player-dock .cc-overlay-text {
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-start;
+}
+
+/* Dean 2026-11-15: in fullscreen the chip floats over the picture. The faux fullscreen (every phone) puts
+   body.ft-css-fullscreen on; a real fullscreen element already covers the page. */
+body.ft-css-fullscreen #dl-status-chip {
+  display: none;
 }
 
 #dl-status-chip .dl-status-chip-summary {
