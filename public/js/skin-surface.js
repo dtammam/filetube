@@ -1939,6 +1939,44 @@
     };
   }
 
+  // ---- v1.408.0 HOLD (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, W2; Dean's R3 / R6 / R8) ----------------
+  // The real player's Hold switch on the phone's Click full player. While Hold is on, ONE capture-phase listener per event type
+  // on the WINDOW (the first stop of every event's path; registered only while Hold is on, so no global non-passive touch
+  // listener lives otherwise) swallows every way a finger, a mouse, a trackpad or a keyboard reaches the page - except the
+  // Hold switch itself. A touch anywhere else only WAKES the screen (W3). The lock-screen / Control Center controls (the Media
+  // Session's action handlers) and the hardware volume buttons are not DOM events, so nothing here can reach them (R6). A
+  // long press needs no listener of its own: every long-press menu (interaction.js, the one home of the menu event, D6) starts
+  // from a press this swallows, and the swallowed touchstart is what keeps the browser's own press-and-hold menu shut.
+  var HOLD_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel',
+    'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'auxclick', 'wheel', 'keydown', 'keypress', 'keyup',
+    'gesturestart', 'gesturechange', 'gestureend', 'selectstart', 'dragstart'];
+  // the presses that wake the screen (a touch, a click, a key, a scroll)
+  var HOLD_WAKE = { pointerdown: 1, touchstart: 1, mousedown: 1, keydown: 1, wheel: 1 };
+  // what reaches the switch: its own presses, releases and moves, its click (the keyboard's Space / Enter) and keys aimed at it;
+  // never a long-press menu, a scroll, a pinch, a selection or a drag, even on the switch
+  var HOLD_SWITCH_OK = { pointerdown: 1, pointermove: 1, pointerup: 1, pointercancel: 1, touchstart: 1, touchmove: 1, touchend: 1, touchcancel: 1,
+    mousedown: 1, mousemove: 1, mouseup: 1, click: 1, keydown: 1, keypress: 1, keyup: 1 };
+  // Pure: what Hold does with one event. `onSwitch` = its target is inside the switch; `switchGesture` = a pointer event of a
+  // press that STARTED on the switch (a slide that ends off it is still the switch's). 'allow' | 'block' | 'wake' (block + wake).
+  function holdEventDecision(e) {
+    var type = e && e.type;
+    if (e && e.onSwitch && HOLD_SWITCH_OK[type]) return 'allow';
+    if (e && e.switchGesture && (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')) return 'allow';
+    return HOLD_WAKE[type] ? 'wake' : 'block';
+  }
+  // Pure: the switch's state after a press. A tap (under HOLD_SLIDE_PX of travel) flips it; a slide toward the CENTRE of the edge
+  // turns Hold on and one toward the end turns it off, as the real switch does (`side` = which end the switch sits at; dx is
+  // the travel in the player's own frame, so the Upright turn is undone first).
+  var HOLD_SLIDE_PX = 8;
+  function holdToggleDecision(o) {
+    var dx = Number(o && o.dx) || 0;
+    if (Math.abs(dx) < HOLD_SLIDE_PX) return !(o && o.on);
+    return (o && o.side === 'right') ? dx < 0 : dx > 0;
+  }
+  // a click that follows a pointer release by less than this is that press's own click (already decided); a click with no
+  // press before it is the keyboard's or an assistive technology's activation, and flips the switch
+  var HOLD_CLICK_DEDUP_MS = 700;
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -2079,6 +2117,106 @@
       if (!MO || !(orientHost() || statusHost() || batteryHost())) return;
       hostWatch = new MO(function () { hostSync(); });
       try { hostWatch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hostWatch = null; }
+    }
+    // ---- v1.408.0 HOLD: the instance (the pure half is above create()) ----
+    // Per player session, never stored (R8: a reload can never trap anyone in a locked page); released when the full player
+    // closes (the panel hides or loses mms-full - observed, since a view can clear it with no engine call), when the page goes
+    // away for good (pagehide, not persisted) and when the surface is destroyed.
+    var hold = { on: false, gesture: null, armed: false, watch: null, lastPointerToggle: -Infinity };
+    function holdNow() { try { return (win.performance && typeof win.performance.now === 'function') ? win.performance.now() : Date.now(); } catch (_) { return Date.now(); } }
+    function holdSwitchEl() { return panel.querySelector('[data-skin-hold]'); }
+    function onHoldSwitch(t) { var sw = holdSwitchEl(); return !!(sw && t && t.nodeType === 1 && sw.contains(t)); }
+    function holdSync() {
+      if (panel.classList.contains('mms-hold') !== hold.on) panel.classList.toggle('mms-hold', hold.on);
+      var sw = holdSwitchEl(); var want = hold.on ? 'true' : 'false';
+      if (sw && sw.getAttribute('aria-checked') !== want) sw.setAttribute('aria-checked', want);
+    }
+    function holdWake() { /* W3: the stage clock */ }
+    function holdBlock(e) {
+      if (!hold.on) return;
+      var g = hold.gesture;
+      var d = holdEventDecision({ type: e.type, onSwitch: onHoldSwitch(e.target), switchGesture: !!(g && e.pointerId != null && e.pointerId === g.id) });
+      if (d === 'allow') return;
+      if (e.cancelable) e.preventDefault();
+      e.stopImmediatePropagation();
+      if (d === 'wake') holdWake();
+    }
+    function onHoldPageHide(e) { if (!(e && e.persisted)) setHold(false); }
+    function armHold() {
+      if (hold.armed) return;
+      hold.armed = true;
+      HOLD_EVENTS.forEach(function (t) { win.addEventListener(t, holdBlock, { capture: true, passive: false }); });
+      try { win.addEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+      if (MO) {
+        hold.watch = new MO(function () { if (hold.on && !fullPlayerShowing()) setHold(false); });
+        try { hold.watch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hold.watch = null; }
+      }
+    }
+    function disarmHold() {
+      if (!hold.armed) return;
+      hold.armed = false;
+      HOLD_EVENTS.forEach(function (t) { win.removeEventListener(t, holdBlock, { capture: true }); });
+      try { win.removeEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      if (hold.watch) { try { hold.watch.disconnect(); } catch (_) { /* gone */ } hold.watch = null; }
+    }
+    // The one writer of Hold. ON only while the full player is on the glass (nobody can be locked out of a player they cannot
+    // see); a live wheel spin ends first, so no gesture outlives the lock.
+    function setHold(on) {
+      on = !!on;
+      if (on === hold.on) return hold.on;
+      if (on && !fullPlayerShowing()) return false;
+      hold.on = on;
+      if (on) {
+        if (wheelSpin) { try { endWheel(wheelSpin, true); } catch (_) { /* the wheel is gone */ } }
+        // a focused control in the player (the Pocket's keyboard-search input, with the phone's keyboard up) lets go: Hold takes
+        // every key, so a keyboard left up could type nothing and nothing could close it
+        var focused = doc.activeElement;
+        if (focused && focused !== doc.body && panel.contains(focused) && !onHoldSwitch(focused) && typeof focused.blur === 'function') { try { focused.blur(); } catch (_) { /* gone */ } }
+        armHold();
+      } else {
+        disarmHold();
+      }
+      holdSync();
+      return hold.on;
+    }
+    // The switch's own press, bound with the engine (Hold on or off): a press that starts on the switch is the switch's until it
+    // lifts, wherever it lifts; the engine's own handlers (the wheel, the ghost, the delegated click) never see it.
+    // The release listeners live only while a press on the switch is down (the wheel's own pattern): this press binds them and
+    // endHoldGesture is their one remover, on every arm (the release, a cancel, a second press, the surface dying).
+    function endHoldGesture() {
+      if (!hold.gesture) return;
+      hold.gesture = null;
+      doc.removeEventListener('pointerup', onHoldUp, true);
+      doc.removeEventListener('pointercancel', onHoldUp, true);
+    }
+    function onHoldDown(e) {
+      if (!onHoldSwitch(e.target) || (e.button != null && e.button > 0)) return;
+      endHoldGesture();
+      hold.gesture = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      doc.addEventListener('pointerup', onHoldUp, true);
+      doc.addEventListener('pointercancel', onHoldUp, true);
+      e.stopPropagation();
+      holdWake();
+    }
+    function onHoldUp(e) {
+      var g = hold.gesture;
+      if (!g || e.pointerId !== g.id) return;
+      endHoldGesture();
+      e.stopPropagation();
+      if (e.type !== 'pointerup') return; // a cancelled press (iOS took the touch) changes nothing
+      var deg = SKINS.turnOf ? SKINS.turnOf(panel, win) : 0;
+      var d = (deg && SKINS.unturnDelta) ? SKINS.unturnDelta(e.clientX - g.x, e.clientY - g.y, deg) : { x: e.clientX - g.x, y: e.clientY - g.y };
+      var top = panel.querySelector('.ip-top');
+      hold.lastPointerToggle = holdNow();
+      setHold(holdToggleDecision({ on: hold.on, dx: d.x, side: top ? top.getAttribute('data-hs-side') : 'left' }));
+    }
+    function onHoldClick(e) {
+      if (!onHoldSwitch(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (holdNow() - hold.lastPointerToggle < HOLD_CLICK_DEDUP_MS) return;
+      setHold(!hold.on);
     }
     // Addendum C: the menus' Extras > Games > Brick rides the view's Brick hook (the sticker's own
     // Brick row was removed in v1.333, so this is now its only entry), under the SAME gate (main document only - v1.270 slim W4: the game mounts on the
@@ -3404,6 +3542,7 @@
       // v1.335: the classes come from the registry's ONE builder (a skin's base, and its LOOK - the
       // Original's structure class; music.js's launch cover calls the same builder, gate r1 W1).
       panel.className = SKINS.panelClass(id);
+      if (hold.on) panel.classList.add('mms-hold'); // v1.408.0: Hold survives every repaint (the renderer draws the switch checked)
       paintedSkinId = id;
       // a skin without a look starts the wheel at rest (the turn itself lives on the wheel, below)
       if (!skinLook()) wheelTurn = 0;
@@ -3416,7 +3555,7 @@
       // pop-out shell instantiates this same engine, so it follows) - and the view may veto it
       // per track with ctx.artistTap === false (music: a listen video with no channel).
       var ctx = getCtx() || {};
-      panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false }));
+      panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false, hold: hold.on }));
       panel.hidden = false;
       // UI pass D7 (F23 guard): a repaint whose cover is the SAME image the last paint showed is
       // not a reveal - the image is on screen already (and cached), so it is born revealed: no
@@ -3457,6 +3596,9 @@
       if (bound) return; bound = true;
       panel.addEventListener('click', onClick);
       panel.addEventListener('pointerdown', onDown);
+      // v1.408.0: the Hold switch's press, ahead of the engine's own (capture on the panel; its release arms per press)
+      panel.addEventListener('pointerdown', onHoldDown, true);
+      panel.addEventListener('click', onHoldClick, true);
       if (pocket) {
         // pocket menus: the menu list's scroll re-windows its rows (scroll does not bubble - capture).
         panel.addEventListener('scroll', onMenuScroll, true);
@@ -4189,9 +4331,13 @@
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       closeStickerMenu();     // v1.388.0: and an open sticker sheet (it lives on <body>, outside the panel)
       surfaceGone = true;     // v1.386.0: a pick still waiting on its photos saves, but never repaints a dead surface
+      setHold(false);         // v1.408.0: Hold dies with the surface (R8): its window listeners and its observer
+      endHoldGesture();       // ...and a press on the switch still down
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
+        panel.removeEventListener('pointerdown', onHoldDown, true);
+        panel.removeEventListener('click', onHoldClick, true);
         if (pocket) {
           panel.removeEventListener('scroll', onMenuScroll, true);
           try { doc.removeEventListener('visibilitychange', onDocVisibility); } catch (_) { /* ignore */ }
@@ -4243,6 +4389,9 @@
       isVolumeOpen: function () { return volOpen; },
       // v1.356: the resume on launch lands the pocket menu as a Speakers pick would (false: no menus here)
       landPlayOn: function (hasTrack) { return pocket ? pocket.landPlayOn(hasTrack) : false; },
+      // v1.408.0: Hold (the switch is the user's only way; these are the read and the one writer, for the view and the tests)
+      isHold: function () { return hold.on; },
+      setHold: setHold,
     };
   }
 
@@ -4465,7 +4614,8 @@
     };
   }
 
-  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu };
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu,
+    HOLD_EVENTS: HOLD_EVENTS, HOLD_SLIDE_PX: HOLD_SLIDE_PX, HOLD_CLICK_DEDUP_MS: HOLD_CLICK_DEDUP_MS, holdEventDecision: holdEventDecision, holdToggleDecision: holdToggleDecision };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

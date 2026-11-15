@@ -835,4 +835,22 @@
   --pk-hold-knob-line: inset 0 .5px 0 rgba(255,255,255,.9), inset 0 0 0 .5px rgba(0,0,0,.25);
   --pk-hold-ridge: rgba(0,0,0,.18);
   --pk-hold-ridge-w: 1.5px;
+  --pk-hold-knob-round: 3px;
+  --pk-hold-ridge-x: 62%;
+  --pk-hold-hit-floor: 0px;
+  /* the hit area around the knob (Dean: "a generous touch area"): this much to each side of the slot, this far
+     up into the black strip, and this far down over the body */
+  --pk-hold-hit-pad: 16px;
+  --pk-hold-hit-up: 34px;
+  --pk-hold-hit-down: 18px;
+  /* per model: the slot's centre (from the left edge) and length (fractions of the body's width) and the knob's
+     share of the slot (unitless) - the plan's Evidence, W0 */
+  --pk-hold-c-orig: 77%;  --pk-hold-w-orig: 24%;  --pk-hold-k-orig: .8;
+  --pk-hold-c-c4: 79%;    --pk-hold-w-c4: 21%;    --pk-hold-k-c4: .8;
+  --pk-hold-c-std: 22%;   --pk-hold-w-std: 21%;   --pk-hold-k-std: .82;
+  --pk-hold-c-mini: 22%;  --pk-hold-w-mini: 24%;  --pk-hold-k-mini: .8;
+  --pk-hold-c-slim2: 17%; --pk-hold-w-slim2: 25%; --pk-hold-k-slim2: .8;
+  --pk-hold-c-slim3: 16%; --pk-hold-w-slim3: 9%;  --pk-hold-k-slim3: .55;
+  --pk-hold-c-slim4: 12%; --pk-hold-w-slim4: 16%; --pk-hold-k-slim4: .4;
+  --pk-hold-c-slim5: 17%; --pk-hold-w-slim5: 12%; --pk-hold-k-slim5: .45;
 }

@@ -3,8 +3,8 @@ plan: ipod-hold-switch
 harness: v2 · full
 branch: feat/v1.408.0-ipod-hold
 anchor: outcome
-status: W0 done (look approved by Dean 2026-11-15, v2), W1 (island cut) in progress
-next: W1 island cut, then W2 Hold switch and touch blocking
+status: W0-W2 done (W1 539e9232; W2 committed on this branch), W3 (stages) in progress
+next: W3 stages (wake lock, dim, release), then W4 host contract
 design: Dean, 2026-11-15 (intake, rulings R1-R9 below)
 gate: pending (adversary floor + qa per .harness/scrutiny.toml)
 builder: smart
@@ -156,6 +156,44 @@ Dean's rulings (AskUserQuestion, 2026-11-15):
 
 Mock: scratchpad ipod-hold-look-v2.html (rendered from the real app CSS by a scratch CDP shooter, the island and status bar
 drawn in; not committed).
+
+### W1 - the island cut (539e9232)
+
+- The cut is the effective top inset (R12), the SAME chain the chassis padding reads (Upright turn, turn window, env()), never
+  under --pk-hold-strip-min (8 px: a Safari tab has no inset); the Sideways layout cuts by env() like its D7 block. Phone only
+  (its own section after the takeover block; the pop-out keeps the full-bleed body). Non-Click skins: no strip.
+- Measured (scripts/pocket-top-edge-probe.js, headless Chromium, the inset set through the turn property since headless has no
+  safe area): `TOTAL: 35 rows, 0 failed` - body top 59 / 59 / 50 / 20 at 393x852, 430x932, 375x812, 320x568, 8 with no
+  inset; LCD top unchanged from main (75 at 393x852). `SIDEWAYS=1` 852x393 with the turn property at 59: body top 8 (env),
+  `TOTAL: 4 rows, 0 failed`. The island's own bottom is not readable by a web page (R12), so it is not a column.
+- Geometry suite (before the CSS moved to its own section): `geometry: 476 checks - 476 ok, 0 FAIL`.
+- Seam re-verified: `data-skin-*` hooks are routed by the ENGINE (skin-surface.js onClick), not music.js; Hold lives in the engine,
+  so music, podcasts and the pop-out share one writer.
+
+### W2 - the Hold switch and touch blocking
+
+- The switch is the app's `ui-switch` primitive (role="switch", aria-checked), repainted by the skin (every property the
+  primitive paints is reset); the knob is drawn on the strip after it (its place is a fraction of the body's width), the button
+  under it is the hit area: 16 px past the slot each side, 34 px up into the strip, 18 px down over the body, clamped to the glass
+  (found by the probe at 320 px: the Slim 4 area started at x = -3.19).
+- One capture listener per input type on the WINDOW, only while Hold is on (`HOLD_EVENTS`; contextmenu stays in
+  interaction.js, D6: every long press starts from a swallowed press). A press that starts on the switch is the switch's until it
+  lifts; a tap flips, a slide toward the centre is on, back is off, read in the player's own frame (Upright turn undone). Engaging
+  Hold ends a live wheel spin and blurs a focused control in the player (the keyboard-search input), never the switch.
+- R8: released when the full player hides or loses mms-full (an observer: a view can clear it with no engine call), on pagehide
+  not persisted, and on destroy; nothing stored (a localStorage spy).
+- R6: Hold registers and clears no Media Session handler; a handler called the way the OS calls it runs with Hold on.
+- Tests: test/unit/pocket-hold.test.js (10), test/integration/pocket-hold.test.js (7, the real music.js view + engine + menus +
+  a real server, each "Hold blocks X" with its Hold-off control). 21 mutants, each red by name (blocker inert, no
+  preventDefault, no stopImmediatePropagation, the switch gesture refused, no close / pagehide / destroy release, persisted
+  ignored, no click dedup, the right side ignored, paint drops the class, the renderer ignores Hold, disarm leaks, a spin
+  survives, no unturn, arms with no player, a cancel toggles, the switch allows all, a press stacks listeners, no blur, blurs
+  the switch).
+- Real touches in Chromium (CDP Input.dispatchTouchEvent, `HOLD=1`): a tap at the hit area's corner turns Hold on, MENU then
+  opens nothing, the opposite corner turns it off, MENU opens again; the knob's place and length checked against tokens.css
+  (read by the probe, not from the element): `TOTAL: 35 rows, 0 failed`; a mutant moving the slot: `TOTAL: 1 rows, 1 failed`.
+- Old locks updated in place with their intent: skin-status-bar (the bar now opens with the lock mark; the title keeps its box,
+  `visibility:hidden`, never a display change), pocket-kb-search R9 (Hold's blocker classified).
 
 ## Gate
 

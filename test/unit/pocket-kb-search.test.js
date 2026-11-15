@@ -696,6 +696,9 @@ const CLASSIFIED = [
   ['public/js/player.js', "document.addEventListener('keydown', resumeCountdownCancelKey, true);", 'capture: observes only, any key just cancels the Resume prompt countdown (it never reads the key or acts on it), live only while that prompt shows'],
   ['public/js/player.js', "document.removeEventListener('keydown', resumeCountdownCancelKey, true);", 'capture: the removal of the one above'],
   ['public/js/remote.js', "var ACTIVATION_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'click'];", 'capture: marks user activation on a speaker; observes only'],
+  // v1.408.0: Hold's blocker (window, capture) swallows every key while Hold is on - by design (R3); engaging Hold blurs the
+  // keyboard-search input first (bound in test/unit/pocket-hold.test.js), so no key is ever typed into it under Hold
+  ['public/js/skin-surface.js', "'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'auxclick', 'wheel', 'keydown', 'keypress', 'keyup',", 'capture: only while Hold is on (every input but the Hold switch is ignored, R3); Hold blurs the keyboard-search input as it engages'],
 ];
 test('R9 census: every key listener a player shell can load is classified (element / the input / bubble / capture with a reason)', () => {
   const found = [];

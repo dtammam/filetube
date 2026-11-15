@@ -12,7 +12,10 @@
 // the body's top equals max(inset, the strip minimum) and the LCD sits below the edge band. A web page cannot read where the
 // Dynamic Island ends (R12: the cut is the safe-area line), so the island is not a column.
 // Env: VIEWPORTS=393x852:59,430x932:59,375x812:50,320x568:20,375x667:0 (w x h : inset), CHROME=<binary>, SIDEWAYS=1 (the Sideways
-// setting: a landscape row then expects the cut from env() - 0 in headless - so the strip minimum, whatever the turn property says).
+// setting: a landscape row then expects the cut from env() - 0 in headless - so the strip minimum, whatever the turn property says),
+// HOLD=1 (W2: per row, REAL touches through CDP Input.dispatchTouchEvent: a tap at the hit area's outer corner - not on the
+// knob - turns Hold on; with Hold on a tap on MENU opens nothing; the knob's travel is measured after the slide; a second tap
+// at the opposite corner turns it off and MENU opens the menus again).
 
 const os = require('node:os');
 const fs = require('node:fs');
@@ -24,6 +27,7 @@ const ROWS = (process.env.VIEWPORTS || '393x852:59,430x932:59,375x812:50,320x568
   const [wh, inset] = s.split(':'); const [w, h] = wh.split('x').map(Number); return { w, h, inset: Number(inset) };
 });
 const PORT = 9333 + Math.floor(Math.random() * 400);
+const TOKENS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'tokens.css'), 'utf8');
 
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -59,7 +63,8 @@ const MEASURE = `(function () {
   var p = document.getElementById('music-nowplaying-panel'); if (!p) return null;
   var box = function (el) { if (!el) return null; var r = el.getBoundingClientRect(); return r.width || r.height ? { x: +r.left.toFixed(2), y: +r.top.toFixed(2), w: +r.width.toFixed(2), h: +r.height.toFixed(2) } : null; };
   var cs = getComputedStyle(p);
-  return { cls: p.className, padTop: parseFloat(cs.paddingTop), strip: box(p.querySelector('.ip-top')), edge: box(p.querySelector('.ip-edge')),
+  var top = p.querySelector('.ip-top');
+  return { cls: p.className, pos: top && top.getAttribute('data-hs-pos'), side: top && top.getAttribute('data-hs-side'), panelW: p.getBoundingClientRect().width, padTop: parseFloat(cs.paddingTop), strip: box(p.querySelector('.ip-top')), edge: box(p.querySelector('.ip-edge')),
     lcd: box(p.querySelector('.ip-lcd')), knob: box(p.querySelector('.ip-hold-knob')), hit: box(p.querySelector('[data-skin-hold]')) };
 })()`;
 
@@ -105,9 +110,47 @@ async function main(skins) {
       const m = await ev(MEASURE);
       const click = !!(m && m.strip);
       const want = process.env.SIDEWAYS === '1' && row.w > row.h ? min : Math.max(row.inset, min);
-      const ok = !click ? !/mms-ipod/.test(m.cls) : (Math.abs(m.strip.h - want) < 0.01 && Math.abs(m.edge.y - want) < 0.01 && m.lcd.y > m.edge.y + m.edge.h);
+      // the knob's place and length, from tokens.css read here (never from the element under test): the slot is the token's
+      // fraction of the body's width, the knob its share of the slot, OFF at the slot's outer end, its bottom on the edge
+      let knobOk = true;
+      if (click) {
+        const tok = (n) => { const r = new RegExp('--pk-hold-' + n + '-' + m.pos + ':\\s*([0-9.]+)%?;').exec(TOKENS); return r ? Number(r[1]) : NaN; };
+        const c = tok('c') / 100 * m.panelW, w = tok('w') / 100 * m.panelW, k = tok('k');
+        const x = m.side === 'right' ? c + w / 2 - k * w : c - w / 2;
+        knobOk = Math.abs(m.knob.w - k * w) < 0.1 && Math.abs(m.knob.x - x) < 0.1 && Math.abs(m.knob.y + m.knob.h - want) < 0.01;
+        if (!knobOk) console.log(JSON.stringify({ knobWant: { x, w: k * w }, knob: m.knob, pos: m.pos }));
+      }
+      const ok = !click ? !/mms-ipod/.test(m.cls) : (knobOk && Math.abs(m.strip.h - want) < 0.01 && Math.abs(m.edge.y - want) < 0.01 && m.lcd.y > m.edge.y + m.edge.h);
+      let hold = null;
+      if (process.env.HOLD === '1' && click) {
+        const touch = async (x, y) => {
+          await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+          await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await sleep(450); // past the slide (--dur-slow) and the click window
+        };
+        const state = () => ev(`(function () { var p = document.getElementById('music-nowplaying-panel'); var k = p.querySelector('.ip-hold-knob').getBoundingClientRect();
+          return { hold: p.classList.contains('mms-hold'), checked: p.querySelector('[data-skin-hold]').getAttribute('aria-checked'), menu: p.classList.contains('mms-menumode'), knobX: +k.left.toFixed(2),
+            lock: getComputedStyle(p.querySelector('.ip-lock')).display, title: getComputedStyle(p.querySelector('.ip-np')).display }; })()`);
+        const menuBox = await ev(`(function () { var r = document.querySelector('#music-nowplaying-panel [data-skin-menu]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+        const s0 = await state();
+        await touch(Math.max(1, m.hit.x + 2), m.hit.y + 2); // the hit area's top-left corner on the glass, well off the sliver
+        const s1 = await state();
+        await touch(menuBox.x, menuBox.y);
+        const s2 = await state();
+        await touch(Math.min(row.w - 1, m.hit.x + m.hit.w - 2), m.hit.y + m.hit.h - 2); // the opposite corner (over the body, under the edge)
+        const s3 = await state();
+        await touch(menuBox.x, menuBox.y);
+        const s4 = await state();
+        const travel = +(s1.knobX - s0.knobX).toFixed(2);
+        const right = /mms-ipod-original|mms-ipod-2004|mms-ipod-encore/.test(m.cls);
+        const onGlass = m.hit.x >= 0 && m.hit.x + m.hit.w <= row.w;
+        hold = { onGlass, off: s0, on: s1, menuWithHold: s2.menu, offAgain: s3.hold, menuAfter: s4.menu, travel };
+        const holdOk = onGlass && !s0.hold && s1.hold && s1.checked === 'true' && s1.lock !== 'none' && s1.title === 'none' && !s2.menu && !s3.hold && s4.menu && (right ? travel < 0 : travel > 0);
+        if (!holdOk) failed++;
+        hold.ok = holdOk;
+      }
       if (!ok) failed++;
-      console.log(JSON.stringify({ row: `${row.w}x${row.h}`, inset: row.inset, skin, bodyTop: click ? m.strip.h : null, edge: m.edge, lcdTop: m.lcd && m.lcd.y, padTop: m.padTop, knob: m.knob, hit: m.hit, ok }));
+      console.log(JSON.stringify({ row: `${row.w}x${row.h}`, inset: row.inset, skin, bodyTop: click ? m.strip.h : null, edge: m.edge, lcdTop: m.lcd && m.lcd.y, padTop: m.padTop, knob: m.knob, hit: m.hit, ok, hold }));
     }
   }
   console.log(`TOTAL: ${ROWS.length * skins.length} rows, ${failed} failed`);
