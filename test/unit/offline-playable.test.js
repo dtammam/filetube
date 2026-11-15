@@ -45,6 +45,8 @@ test('the table: the original is served for every iOS-native container + codec r
     ['library audio ogg vorbis', libraryAudio({ ext: '.ogg', audioCodec: 'vorbis' })],
     ['podcast ogg', podcast({ ext: '.ogg' })],
     ['podcast opus', podcast({ ext: '.opus' })],
+    ['podcast wav (a feed publishing raw PCM WAV enclosures)', podcast({ ext: '.wav' })],
+    ['podcast flac', podcast({ ext: '.flac' })],
   ];
   for (const [name, d] of rows) assert.deepStrictEqual(d, { mode: 'original' }, name);
 });
@@ -74,7 +76,7 @@ test('not offerable (terminal 409): audio that fails the rule, no ffmpeg, a fail
   assert.deepStrictEqual(video({ ext: '.mkv', transcodeFailed: true }), { mode: 'none', reason: 'transcodeFailed' });
   assert.deepStrictEqual(video({ transcodeFailed: true }), { mode: 'original' }, 'a failed transcode is irrelevant when the original plays');
   assert.deepStrictEqual(podcast({ ext: '.wma' }), { mode: 'none', reason: 'container' });
-  assert.deepStrictEqual(podcast({ ext: '.flac' }), { mode: 'none', reason: 'container' }, 'podcasts are decided by extension only: flac is not in the podcast set');
+  assert.deepStrictEqual(podcast({ ext: '.ape' }), { mode: 'none', reason: 'container' }, 'podcasts are decided by extension only: ape is not in the podcast set');
   assert.deepStrictEqual(p.decidePlayability({ kind: 'album', ext: '.mp4' }), { mode: 'none', reason: 'kind' });
   assert.deepStrictEqual(p.decidePlayability(null), { mode: 'none', reason: 'kind' });
 });

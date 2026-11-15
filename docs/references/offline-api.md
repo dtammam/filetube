@@ -115,7 +115,7 @@ The rule (lib/offline/playable.js, one pure function):
 |---|---|---|
 | `video`, `tvEpisode` | container `.mp4` / `.m4v` / `.mov`, video `h264` (or `hevc` tagged `hvc1`), audio `aac` / `mp3` / `alac` / `flac` / `ac3` / `eac3` / `pcm*` / `opus` (or an unprobed codec) | the existing H.264 + AAC MP4 transcode (`503 transcoding` until cached); `409 not playable` when ffmpeg is absent or the transcode already failed |
 | `track` (native), library audio | container `.m4a` / `.mp3` / `.aac` / `.flac` / `.wav` / `.caf` / `.ogg` / `.oga` / `.opus` (or an mp4-family container), audio codec as above or `vorbis` | `409 not playable` (`reason: container` or `audioCodec`); audio is never transcoded (ALAC and FLAC stay lossless) |
-| `podcastEpisode` | extension `.mp3` / `.m4a` / `.aac` / `.mp4` / `.ogg` / `.oga` / `.opus` (no stored codec) | `409 not playable` |
+| `podcastEpisode` | extension `.mp3` / `.m4a` / `.aac` / `.mp4` / `.ogg` / `.oga` / `.opus` / `.flac` / `.wav` (no stored codec) | `409 not playable` |
 
 A failed transcode is terminal: `409 { "reason": "transcodeFailed" }` on every later request, never a `503` loop. For a
 `video` the failure is stored with the item; for a `tvEpisode` the server remembers it in memory, so a server restart tries
