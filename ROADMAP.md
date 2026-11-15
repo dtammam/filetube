@@ -991,6 +991,25 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.407.0 - Podcast WAV/FLAC in the app, TV pages without comments, phone chrome polish (2026-11-15)
+
+- Dean (device pass of the beta, 2026-11-14/15): (1) a podcast episode showed "Could not play this" in the iPhone app but played on desktop and in mobile Safari;
+  (2) a grey shimmer bar that never filled on TV episode pages; (3) TV comments are only the fake retro bucket, nobody uses them there; then four phone
+  follow-ups (Select bar over the mini player, controls fade too slow, download chip over a fullscreen video).
+- Podcast cause (measured on the server by the Docker Host Root, not guessed): the show is the Tim Dillon Show Bonus Feed, whose enclosures are raw PCM WAV
+  files (658 MB, pcm_s16le 44.1 kHz stereo, no video stream). `PODCAST_CONTAINERS` (lib/offline/playable.js) lacked `.wav` and `.flac`, so
+  `/api/offline/file/podcastEpisode/<id>` answered 409 container, and the app showed its catch-all toast; the web `/episode` route has no such list. The music table already
+  offers both to AVPlayer. An early hypothesis (a `.mp3` that was really another container) was WRONG for this file; the first diagnosis (the container list) was right.
+- TV: `initTvWatch` hides the comments section outright (no load, no posting form; a Settings toggle was built, gated and then removed on Dean's word), and
+  `paintTvEpisodePanel` hides the `#views-count` skeleton that nothing on the TV path ever cleared. The v1.198 "comments stay on episodes" test assertion is reversed.
+- Phone: the Select bar keeps the bottom slot and the web mini player (and the remote pill, the nav tip) ride above it (`html.has-select-bar` + `--select-bar-h`, one
+  writer in main.js; the native dock keeps the old stacking, CSS cannot lift a native layer); the immersive controls fade after 2 s on `html.is-phone`; `#dl-status-chip` is
+  hidden under `body.ft-css-fullscreen`. Gate r1 found the old top-level desktop lift (0,2,1) still beat the phone rule; measured in headless Chrome 131 (bar 158-214 over dock
+  80-150 before, bar 80-136 under dock 144-214 after), then re-confirmed r2.
+- Gate: Adversary + QA + security-brief on the podcast and toggle waves, Adversary r1/r2 on the phone polish; PRs #192, #193, #195. Known gaps shipped disclosed: nothing
+  republishes the Select bar's height on an orientation or font change; the 206 Range response on a WAV is reasoned (same `sendFile` path as mp3), not measured; none of it is
+  device-verified until DEVICE-CHECKS "Podcast WAV, TV pages and phone polish (v1.407.0)".
+
 ### v1.406.1 - Switching from a docked video: no media-element work in the tap, and the app's item swap relayed (2026-11-08)
 
 - Dean (2026-11-08, iPhone app, right after v1.406.0): "a weird audio burp that happens consistently" going from a docked, playing video to

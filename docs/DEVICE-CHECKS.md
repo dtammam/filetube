@@ -5,6 +5,14 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Podcast WAV, TV pages and phone polish (v1.407.0)
+
+- [ ] v1.407.0 - (a) iPhone app: play the Tim Dillon Show Bonus Feed's "Thanksgiving and Native Americans" episode (a 658 MB WAV): it starts (it may take a moment) and seeks. Other podcasts still play. A failure is a re-root-cause: send the toast text and the Player and timing log.
+- [ ] v1.407.0 - (b) A TV episode page shows no comments section and no grey bar beside "3 months ago"; a video's page still shows its comments.
+- [ ] v1.407.0 - (c) Phone, Home with the mini player showing: long-press a card, Select: the Select bar sits BELOW the mini player (the player is not covered or pushed under it); Cancel puts the mini player back down. Rotate the phone with the bar up and check it still holds.
+- [ ] v1.407.0 - (d) Phone fullscreen video: the controls fade about 2 seconds after the last touch (it was 3).
+- [ ] v1.407.0 - (e) Phone fullscreen video with a download running: the download pill does not float over the picture; it is back after leaving fullscreen.
+
 ## Switch click (v1.406.1; in the iPhone app)
 
 - [ ] v1.406.1 - (a) A video docked and playing, Home, tap another video right away (within a second): no click or glitch in the sound.
