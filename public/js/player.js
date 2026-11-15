@@ -7705,19 +7705,31 @@ if (typeof module !== 'undefined' && module.exports) {
   // 'input' visual is never fought by a stale playback position, but keeps
   // the rAF chain itself alive so the loop resumes updating immediately once
   // the scrub ends, with no extra start/stop bookkeeping needed there.
+  // v1.408.0 (gate r1 adversary W2): under the Click player's Hold dim (skin-surface.js sends `filetube:hold-dim`) nothing may
+  // run every frame, so the loop ticks once a second instead (the chapter follow-along still moves); it is back to every frame
+  // the moment the dim ends.
+  var holdDimmed = false;
+  var seekFillTimer = null;
+  var HOLD_FILL_MS = 1000;
   function fillTick() {
+    seekFillRafId = null;
+    seekFillTimer = null;
     if (!isScrubbing) updateSeekVisual();
     if (mediaPlayer && !mediaPlayer.paused) {
-      seekFillRafId = requestAnimationFrame(fillTick);
-    } else {
-      seekFillRafId = null;
+      if (holdDimmed) seekFillTimer = setTimeout(fillTick, HOLD_FILL_MS);
+      else seekFillRafId = requestAnimationFrame(fillTick);
     }
   }
 
   function startFillLoop() {
-    if (seekFillRafId != null) return;
+    if (seekFillRafId != null || seekFillTimer != null) return;
     seekFillRafId = requestAnimationFrame(fillTick);
   }
+  document.addEventListener('filetube:hold-dim', function (e) {
+    holdDimmed = !!(e && e.detail && e.detail.on);
+    // back from the dim: the 1 s timer gives way to the frame loop at once
+    if (!holdDimmed && seekFillTimer != null) { clearTimeout(seekFillTimer); seekFillTimer = null; startFillLoop(); }
+  });
 
   // docs/RELIABILITY.md: the rAF loop must be cancelled on pause/close --
   // `fillTick` already self-terminates once `mediaPlayer.paused`, and this is
@@ -7725,6 +7737,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // from teardownMediaState()/close() below, for defense-in-depth (e.g. a
   // direct `mediaPlayer.load()` with no intervening 'pause' event).
   function stopFillLoop() {
+    if (seekFillTimer != null) { clearTimeout(seekFillTimer); seekFillTimer = null; }
     if (seekFillRafId != null) {
       cancelAnimationFrame(seekFillRafId);
       seekFillRafId = null;

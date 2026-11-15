@@ -127,7 +127,7 @@ const LAND = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at))
 
 test('CSS: every D7 sideways rule stands aside ONLY for the turned upright player (zero specificity); it still draws the pre-stamp frame (gate r1)', () => {
   const d7 = LAND.filter((r) => /:where\(html\.is-phone/.test(r.sel));
-  assert.strictEqual(d7.length, 18, 'precondition: the D7 block\'s 18 rules (25 selectors)');
+  assert.strictEqual(d7.length, 19, 'precondition: the D7 block\'s 18 rules (25 selectors) and the Sideways top-edge cut (v1.408.0, its own section)');
   for (const r of d7) {
     for (const part of r.sel.split(/,(?![^(]*\))/)) assert.strictEqual(part.trim().indexOf(':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) '), 0, part.trim());
   }
@@ -169,7 +169,7 @@ test('CSS: the upright block turns the full player back by the screen angle, as 
 
 test('CSS: the inset readers fall back to today\'s env() (portrait and Sideways unchanged)', () => {
   const src = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.strictEqual((src.match(/var\(--mms-up-top, var\(--pk-top-inset, env\(safe-area-inset-top,0px\)\)\)/g) || []).length, 3, 'the three chassis top paddings');
+  assert.strictEqual((src.match(/var\(--mms-up-top, var\(--pk-top-inset, env\(safe-area-inset-top,0px\)\)\)/g) || []).length, 4, 'the three chassis top paddings and the iPod top-edge cut (v1.408.0, the same chain)');
   assert.strictEqual((src.match(/var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\)/g) || []).length, 4, 'the chassis bottoms and the sticker (its menu is a sheet on <body> now)');
   assert.match(src, /left:calc\(var\(--mms-up-left, env\(safe-area-inset-left,0px\)\) \+ var\(--space-6\)\)/, 'the sticker\'s corner');
   // the variables are only ever SET inside the upright block

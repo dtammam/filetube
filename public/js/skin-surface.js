@@ -741,10 +741,43 @@
   }
   function barClaim(owner) { hostBindPage(); if (barOwners.indexOf(owner) < 0) barOwners.push(owner); barApply(); }
   function barRelease(owner) { var i = barOwners.indexOf(owner); if (i >= 0) barOwners.splice(i, 1); barApply(); }
+  // v1.408.0 idleDisplay (plan 2026-11-15-ipod-hold-switch, W4): Hold's stages, for a host that can really keep the phone awake
+  // and really dim it (WKWebView may not honour the web's Screen Wake Lock). The web owns the clock (the engine's Hold block);
+  // the host is told two booleans, each only on a change: display.hold (keep awake: stages 1-2) and display.dim (stages 2-3).
+  // The orientation registry's shape: module-level (one phone, two engines can exist), owners { showing(), want() } dropped
+  // by the same 1 s self-heal poll when their panel leaves with no engine call, released on pagehide and re-asserted on a
+  // persisted pageshow.
+  var dispOwners = [];
+  var dispHold = false; // what the host was last told; null = unknown (after a hide): the next apply tells it again
+  var dispDim = false;
+  function displayHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('idleDisplay')) ? h : null;
+  }
+  function dispDrop(h) {
+    if (!h) return;
+    if (dispHold) { dispHold = false; h.post('display.hold', { on: false }); }
+    if (dispDim) { dispDim = false; h.post('display.dim', { on: false }); }
+  }
+  function dispApply() {
+    var h = displayHost();
+    if (!h) return;
+    // a hidden page tells the host nothing (gate r2, both seats: the 1 s poll kept running under Hold's music and re-posted the
+    // stage within a second of leaving the app - a dim the app would apply system-wide); the return tells it both (null above)
+    if (typeof document !== 'undefined' && document.hidden) { hostPollSync(); return; }
+    dispOwners = dispOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    var wantHold = false, wantDim = false;
+    dispOwners.forEach(function (o) { var w = {}; try { w = o.want() || {}; } catch (_) { w = {}; } if (w.hold) wantHold = true; if (w.dim) wantDim = true; });
+    if (wantHold !== dispHold) { dispHold = wantHold; h.post('display.hold', { on: wantHold }); }
+    if (wantDim !== dispDim) { dispDim = wantDim; h.post('display.dim', { on: wantDim }); }
+    hostPollSync();
+  }
+  function dispClaim(owner) { hostBindPage(); if (dispOwners.indexOf(owner) < 0) dispOwners.push(owner); dispApply(); }
+  function dispRelease(owner) { var i = dispOwners.indexOf(owner); if (i >= 0) dispOwners.splice(i, 1); dispApply(); }
   // ONE 1 s self-heal poll for every registry, running only while any holds something or has an owner
   function hostPollSync() {
-    var need = orientOwners.length > 0 || battOwners.length > 0 || barOwners.length > 0 || orientLocked || sbHidden || battSubbed || barSubbed;
-    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); barApply(); }, 1000);
+    var need = orientOwners.length > 0 || battOwners.length > 0 || barOwners.length > 0 || dispOwners.length > 0 || orientLocked || sbHidden || battSubbed || barSubbed || dispHold || dispDim;
+    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); barApply(); dispApply(); }, 1000);
     else if (!need && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
   // pagehide: release EVERYTHING held. pageshow (a bfcache restore runs no script, the host released all on the commit):
@@ -754,16 +787,26 @@
     var sh = statusHost(); if (sh) sbShow(sh);
     var bh = batteryHost(); if (bh) battDrop(bh);
     barDrop(networkHost());
+    dispDrop(displayHost());
     barClockStop();
     if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
-  function hostReassert() { orientApply(); battApply(); barApply(); }
+  function hostReassert() { orientApply(); battApply(); barApply(); dispApply(); }
+  // v1.408.0 (gate r1 adversary W1): the app turns the idle timer back on and restores the brightness whenever it resigns active
+  // (a lock, an app switch, Control Center), so after a HIDE the web no longer knows what the host holds (null: unknown) and, on
+  // the return, tells it BOTH again, whatever they are; the host also re-applies the last state it was sent when it becomes
+  // active (Control Center hides nothing).
+  function hostVisibility() {
+    if (typeof document === 'undefined') return;
+    if (document.hidden) { if (dispOwners.length || dispHold || dispDim) { dispHold = null; dispDim = null; } } else dispApply(); // nothing held: nothing to re-tell (gate r2 S5)
+  }
   function hostBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
     orientPageBound = true;
     try {
       window.addEventListener('pagehide', hostReleaseAll);
       window.addEventListener('pageshow', hostReassert);
+      document.addEventListener('visibilitychange', hostVisibility);
     } catch (_) { /* a bare harness */ }
   }
   function orientClaim(owner) {
@@ -1515,8 +1558,10 @@
       // the drift pauses under it and restarts when the takeover is released.
       var held = false;
       try { held = !!(typeof o.takeoverLive === 'function' && o.takeoverLive()); } catch (_) { held = false; }
+      var frozen = false; // v1.408.0: Hold's dimmed stage (nothing moves under it)
+      try { frozen = !!(typeof o.frozen === 'function' && o.frozen()); } catch (_) { frozen = false; }
       return !!(!destroyed && style() === 'click' && screen === 'menu' && !trayUp() && p && !SK.menuIsItemLevel(p.node) &&
-        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden && !held);
+        panel.classList.contains('mms-full') && !panel.hidden && !doc.hidden && !held && !frozen);
     }
     function stopSlides() {
       slide.timer = cancel(slide.timer);
@@ -1939,6 +1984,61 @@
     };
   }
 
+  // ---- v1.408.0 HOLD (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, W2; Dean's R3 / R6 / R8) ----------------
+  // The real player's Hold switch on the phone's Click full player. While Hold is on, ONE capture-phase listener per event type
+  // on the WINDOW (the first stop of every event's path; registered only while Hold is on, so no global non-passive touch
+  // listener lives otherwise) swallows every way a finger, a mouse, a trackpad or a keyboard reaches the page - except the
+  // Hold switch itself. A touch anywhere else only WAKES the screen (W3). The lock-screen / Control Center controls (the Media
+  // Session's action handlers) and the hardware volume buttons are not DOM events, so nothing here can reach them (R6). A
+  // long press needs no listener of its own: every long-press menu (interaction.js, the one home of the menu event, D6) starts
+  // from a press this swallows, and the swallowed touchstart is what keeps the browser's own press-and-hold menu shut.
+  var HOLD_EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel',
+    'mousedown', 'mousemove', 'mouseup', 'click', 'dblclick', 'auxclick', 'wheel', 'keydown', 'keypress', 'keyup',
+    'gesturestart', 'gesturechange', 'gestureend', 'selectstart', 'dragstart'];
+  // the presses that wake the screen (a touch, a click, a key, a scroll)
+  var HOLD_WAKE = { pointerdown: 1, touchstart: 1, mousedown: 1, keydown: 1, wheel: 1 };
+  // what reaches the switch: its own presses, releases and moves, its click (the keyboard's Space / Enter) and keys aimed at it;
+  // never a long-press menu, a scroll, a pinch, a selection or a drag, even on the switch
+  var HOLD_SWITCH_OK = { pointerdown: 1, pointermove: 1, pointerup: 1, pointercancel: 1, touchstart: 1, touchmove: 1, touchend: 1, touchcancel: 1,
+    mousedown: 1, mousemove: 1, mouseup: 1, click: 1, keydown: 1, keypress: 1, keyup: 1 };
+  // the keys the focused switch takes (its activation); any other key aimed at it is swallowed like every key (gate r1: Tab
+  // would move the focus off the switch, and then no key could reach it again; Escape reached the page's own listeners)
+  var HOLD_SWITCH_KEYS = { ' ': 1, Enter: 1, Spacebar: 1 };
+  // Pure: what Hold does with one event. `onSwitch` = its target is inside the switch; `switchGesture` = a pointer event of a
+  // press that STARTED on the switch (a slide that ends off it is still the switch's). 'allow' | 'block' | 'wake' (block + wake).
+  function holdEventDecision(e) {
+    var type = e && e.type;
+    if (e && e.onSwitch && HOLD_SWITCH_OK[type] && (type.indexOf('key') !== 0 || HOLD_SWITCH_KEYS[e.key])) return 'allow';
+    if (e && e.switchGesture && (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')) return 'allow';
+    return HOLD_WAKE[type] ? 'wake' : 'block';
+  }
+  // Pure: the switch's state after a press. A tap (under HOLD_SLIDE_PX of travel) flips it; a slide toward the CENTRE of the edge
+  // turns Hold on and one toward the end turns it off, as the real switch does (`side` = which end the switch sits at; dx is
+  // the travel in the player's own frame, so the Upright turn is undone first).
+  var HOLD_SLIDE_PX = 8;
+  function holdToggleDecision(o) {
+    var dx = Number(o && o.dx) || 0;
+    var dy = Number(o && o.dy) || 0;
+    // a press that travelled mostly ACROSS the edge (a swipe down from the top, a scroll) is no use of the switch (gate r1 adversary S1)
+    if (Math.abs(dy) >= HOLD_SLIDE_PX && Math.abs(dy) > Math.abs(dx)) return !!(o && o.on);
+    if (Math.abs(dx) < HOLD_SLIDE_PX) return !(o && o.on);
+    return (o && o.side === 'right') ? dx < 0 : dx > 0;
+  }
+  // a click that follows a pointer release by less than this is that press's own click (already decided); a click with no
+  // press before it is the keyboard's or an assistive technology's activation, and flips the switch
+  var HOLD_CLICK_DEDUP_MS = 700;
+  // The stages while Hold is on (W3; Dean's R4, "C"): (1) awake, full brightness; (2) after HOLD_DIM_MS with no touch, the dimmed,
+  // frozen look (no motion, the clock and the progress written once a HOLD_TICK_MS from the engine's own state); (3) after
+  // HOLD_SLEEP_MS with no touch, the app stops keeping the phone awake and lets it lock (iOS's own always-on lock screen takes
+  // over). A touch anywhere wakes back to (1) and restarts the clock; music never stops. One named constant each (R4: Dean may
+  // move the stage-3 time).
+  var HOLD_DIM_MS = 30 * 1000;
+  var HOLD_SLEEP_MS = 5 * 60 * 1000;
+  var HOLD_TICK_MS = 1000;
+  // Pure: how long a stage lasts with no touch before the next one (each wake starts stage 1 again, so a timer only ever moves
+  // one stage on): stage 1 for HOLD_DIM_MS, stage 2 for the rest of HOLD_SLEEP_MS, stage 3 until a touch (null).
+  function holdStageWait(stage) { return stage === 1 ? HOLD_DIM_MS : (stage === 2 ? HOLD_SLEEP_MS - HOLD_DIM_MS : null); }
+
   function create(config) {
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     if (!SKINS || !config || !config.panel) return null;
@@ -2080,6 +2180,186 @@
       hostWatch = new MO(function () { hostSync(); });
       try { hostWatch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hostWatch = null; }
     }
+    // ---- v1.408.0 HOLD: the instance (the pure half is above create()) ----
+    // Per player session, never stored (R8: a reload can never trap anyone in a locked page); released when the full player
+    // closes (the panel hides or loses mms-full - observed, since a view can clear it with no engine call), when the page goes
+    // away for good (pagehide, not persisted) and when the surface is destroyed.
+    var hold = { on: false, gesture: null, armed: false, watch: null, lastPointerToggle: -Infinity,
+      stage: 0, timer: null, ticker: null, ticking: false };
+    // the web half of keeping the phone awake (W3): the Screen Wake Lock where it exists (an iOS 16.4+ home-screen app, Safari 18.4+,
+    // Chromium); absent, nothing happens. The browser releases it whenever the page hides; the return re-asks (onHoldVisible).
+    var wake = { sentinel: null, pending: false, want: false };
+    function keepAwake(want) {
+      wake.want = !!want;
+      if (!wake.want) {
+        if (wake.sentinel) { var held = wake.sentinel; wake.sentinel = null; try { held.release(); } catch (_) { /* already gone */ } }
+        return;
+      }
+      if (wake.sentinel || wake.pending || doc.hidden) return;
+      var api = null;
+      try { api = win.navigator && win.navigator.wakeLock; } catch (_) { api = null; }
+      if (!api || typeof api.request !== 'function') return;
+      var asked;
+      try { asked = api.request('screen'); } catch (_) { return; }
+      wake.pending = true;
+      Promise.resolve(asked).then(function (sentinel) {
+        wake.pending = false;
+        if (!sentinel) return;
+        // let go while the request was in flight (Hold off, stage 3, the surface gone): release what just arrived
+        if (!wake.want) { try { sentinel.release(); } catch (_) { /* gone */ } return; }
+        wake.sentinel = sentinel;
+        try { sentinel.addEventListener('release', function () { if (wake.sentinel === sentinel) wake.sentinel = null; }); } catch (_) { /* no events */ }
+      }, function () { wake.pending = false; });
+    }
+    function holdTimers() {
+      if (hold.timer != null) { try { win.clearTimeout(hold.timer); } catch (_) { /* gone */ } hold.timer = null; }
+    }
+    function holdTicker(on) {
+      if (!on) { if (hold.ticker != null) { try { win.clearInterval(hold.ticker); } catch (_) { /* gone */ } hold.ticker = null; } return; }
+      if (hold.ticker != null) return;
+      hold.ticker = win.setInterval(function () { hold.ticking = true; try { reflect(); } finally { hold.ticking = false; } }, HOLD_TICK_MS);
+    }
+    // the host's half (idleDisplay, W4): this engine is an owner while Hold is on and its full player shows
+    var dispOwner = { showing: function () { return hold.on && fullPlayerShowing(); },
+      want: function () { return { hold: hold.stage === 1 || hold.stage === 2, dim: hold.stage >= 2 }; } };
+    // Enter a stage: the dim layer and the freezes from 2, the keep-awake until 3 (0 = Hold off: everything back).
+    function holdStage(n) {
+      var was = hold.stage;
+      hold.stage = n;
+      var dim = n >= 2;
+      if (panel.classList.contains('mms-hold-dim') !== dim) panel.classList.toggle('mms-hold-dim', dim);
+      holdTicker(dim);
+      keepAwake(n === 1 || n === 2);
+      if (inMainDoc) { if (n > 0) dispClaim(dispOwner); else dispRelease(dispOwner); } // the host's real keep-awake and dim
+      if ((was >= 2) !== dim) {
+        // the player's own position loop (player.js fillTick) runs every frame while playing; under the dim it ticks once a
+        // second instead (gate r1 adversary W2: measured 60 frames per 2 s from it alone)
+        if (inMainDoc) { try { doc.dispatchEvent(new win.CustomEvent('filetube:hold-dim', { detail: { on: dim } })); } catch (_) { /* no CustomEvent */ } }
+        if (pocket) pocket.onVisibility(); // the cover drift stops under the dim and comes back after it
+        if (!dim && lighting) lighting.sync(); // the light follows the phone again (its next sample re-arms the loop)
+        if (!dim) reflect(); // the screen catches up at once
+      }
+    }
+    function holdSchedule() {
+      holdTimers();
+      var wait = hold.on ? holdStageWait(hold.stage) : null;
+      if (wait == null) return;
+      hold.timer = win.setTimeout(function () {
+        hold.timer = null;
+        if (!hold.on) return;
+        holdStage(hold.stage + 1);
+        holdSchedule();
+      }, wait);
+    }
+    function holdNow() { try { return (win.performance && typeof win.performance.now === 'function') ? win.performance.now() : Date.now(); } catch (_) { return Date.now(); } }
+    function holdSwitchEl() { return panel.querySelector('[data-skin-hold]'); }
+    function onHoldSwitch(t) { var sw = holdSwitchEl(); return !!(sw && t && t.nodeType === 1 && sw.contains(t)); }
+    function holdSync() {
+      if (panel.classList.contains('mms-hold') !== hold.on) panel.classList.toggle('mms-hold', hold.on);
+      var sw = holdSwitchEl(); var want = hold.on ? 'true' : 'false';
+      if (sw && sw.getAttribute('aria-checked') !== want) sw.setAttribute('aria-checked', want);
+    }
+    // A touch (or a key, a scroll, the page coming back) while Hold is on: full brightness, the clock restarts. It does nothing else.
+    function holdWake() {
+      if (!hold.on) return;
+      // stage 1, and keep awake again even when already there: a touch while the page was hidden reached stage 1 without its
+      // wake lock (a hidden page may not ask), so the return must ask (test: the page hidden and back)
+      if (hold.stage !== 1) holdStage(1); else keepAwake(true);
+      holdSchedule();
+    }
+    function onHoldVisible() { if (!doc.hidden) holdWake(); }
+    function holdBlock(e) {
+      if (!hold.on) return;
+      var g = hold.gesture;
+      var d = holdEventDecision({ type: e.type, key: e.key, onSwitch: onHoldSwitch(e.target), switchGesture: !!(g && e.pointerId != null && e.pointerId === g.id) });
+      if (d === 'allow') return;
+      if (e.cancelable) e.preventDefault();
+      e.stopImmediatePropagation();
+      if (d === 'wake') holdWake();
+    }
+    function onHoldPageHide(e) { if (!(e && e.persisted)) setHold(false); }
+    function armHold() {
+      if (hold.armed) return;
+      hold.armed = true;
+      HOLD_EVENTS.forEach(function (t) { win.addEventListener(t, holdBlock, { capture: true, passive: false }); });
+      try { win.addEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      try { doc.addEventListener('visibilitychange', onHoldVisible); } catch (_) { /* a detached fixture */ }
+      var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
+      if (MO) {
+        hold.watch = new MO(function () { if (hold.on && !fullPlayerShowing()) setHold(false); });
+        try { hold.watch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hold.watch = null; }
+      }
+    }
+    function disarmHold() {
+      if (!hold.armed) return;
+      hold.armed = false;
+      HOLD_EVENTS.forEach(function (t) { win.removeEventListener(t, holdBlock, { capture: true }); });
+      try { win.removeEventListener('pagehide', onHoldPageHide); } catch (_) { /* a detached fixture window */ }
+      try { doc.removeEventListener('visibilitychange', onHoldVisible); } catch (_) { /* a detached fixture */ }
+      if (hold.watch) { try { hold.watch.disconnect(); } catch (_) { /* gone */ } hold.watch = null; }
+    }
+    // The one writer of Hold. ON only while the full player is on the glass (nobody can be locked out of a player they cannot
+    // see); a live wheel spin ends first, so no gesture outlives the lock.
+    function setHold(on) {
+      on = !!on;
+      if (on === hold.on) return hold.on;
+      if (on && !fullPlayerShowing()) return false;
+      hold.on = on;
+      if (on) {
+        if (wheelSpin) { try { endWheel(wheelSpin, true); } catch (_) { /* the wheel is gone */ } }
+        // a game holding the wheel (Brick) ends as MENU would end it: under Hold nothing could play it, and it must not keep
+        // drawing every frame under the dim (gate r1 adversary W2)
+        releaseWheelTakeover();
+        // a focused control in the player (the Pocket's keyboard-search input, with the phone's keyboard up) lets go: Hold takes
+        // every key, so a keyboard left up could type nothing and nothing could close it
+        var focused = doc.activeElement;
+        if (focused && focused !== doc.body && panel.contains(focused) && !onHoldSwitch(focused) && typeof focused.blur === 'function') { try { focused.blur(); } catch (_) { /* gone */ } }
+        armHold();
+      } else {
+        disarmHold();
+      }
+      holdSync();
+      if (on) { hold.stage = 0; holdWake(); } else { holdTimers(); holdStage(0); }
+      return hold.on;
+    }
+    // The switch's own press, bound with the engine (Hold on or off): a press that starts on the switch is the switch's until it
+    // lifts, wherever it lifts; the engine's own handlers (the wheel, the ghost, the delegated click) never see it.
+    // The release listeners live only while a press on the switch is down (the wheel's own pattern): this press binds them and
+    // endHoldGesture is their one remover, on every arm (the release, a cancel, a second press, the surface dying).
+    function endHoldGesture() {
+      if (!hold.gesture) return;
+      hold.gesture = null;
+      doc.removeEventListener('pointerup', onHoldUp, true);
+      doc.removeEventListener('pointercancel', onHoldUp, true);
+    }
+    function onHoldDown(e) {
+      if (!onHoldSwitch(e.target) || (e.button != null && e.button > 0)) return;
+      endHoldGesture();
+      hold.gesture = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      doc.addEventListener('pointerup', onHoldUp, true);
+      doc.addEventListener('pointercancel', onHoldUp, true);
+      e.stopPropagation();
+      holdWake();
+    }
+    function onHoldUp(e) {
+      var g = hold.gesture;
+      if (!g || e.pointerId !== g.id) return;
+      endHoldGesture();
+      e.stopPropagation();
+      if (e.type !== 'pointerup') return; // a cancelled press (iOS took the touch) changes nothing
+      var deg = SKINS.turnOf ? SKINS.turnOf(panel, win) : 0;
+      var d = (deg && SKINS.unturnDelta) ? SKINS.unturnDelta(e.clientX - g.x, e.clientY - g.y, deg) : { x: e.clientX - g.x, y: e.clientY - g.y };
+      var top = panel.querySelector('.ip-top');
+      hold.lastPointerToggle = holdNow();
+      setHold(holdToggleDecision({ on: hold.on, dx: d.x, dy: d.y, side: top ? top.getAttribute('data-hs-side') : 'left' }));
+    }
+    function onHoldClick(e) {
+      if (!onHoldSwitch(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (holdNow() - hold.lastPointerToggle < HOLD_CLICK_DEDUP_MS) return;
+      setHold(!hold.on);
+    }
     // Addendum C: the menus' Extras > Games > Brick rides the view's Brick hook (the sticker's own
     // Brick row was removed in v1.333, so this is now its only entry), under the SAME gate (main document only - v1.270 slim W4: the game mounts on the
     // IN-TAB engine's LCD, and wire() is per-view, not per-surface). The pop-out gets no hook, so
@@ -2093,10 +2373,12 @@
     var lighting = (LIT && typeof LIT.create === 'function')
       ? LIT.create({ panel: panel, win: win, doc: doc, store: config.lightingStore || null, now: config.lightingNow || null,
         onLight: function (x, y) { onStickerLight(x, y); }, // v1.334: the sticker catches the light
-        isPocket: function () { try { return SKINS.menuStyle(getSkinId()) === 'click'; } catch (_) { return false; } } })
+        isPocket: function () { try { return SKINS.menuStyle(getSkinId()) === 'click'; } catch (_) { return false; } },
+        frozen: function () { return hold.stage >= 2; } }) // v1.408.0: Hold's dim freezes the light
       : null;
     var pocket = (config.menu && typeof config.menu.load === 'function')
       ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames, lighting: lighting,
+        frozen: function () { return hold.stage >= 2; }, // v1.408.0: Hold's dim stops the cover drift
         skinsAvailable: function () { return !!(stickerCfg && typeof stickerCfg.onSkinChange === 'function'); },
         onPreview: function (id) {
           var next = (id && SKINS.menuStyle(id) === 'click') ? id : null;
@@ -2316,6 +2598,7 @@
       healGhostLock(); // v1.256: the lock must never outlive its ghost (the v1.227 leak class)
       hostSync(); // v1.384.0: the same structural check for the host's rotation lock and battery (a no-op without a host)
       if (!panel || !panel.classList.contains('mms-full')) return;
+      if (hold.stage >= 2 && !hold.ticking) return; // v1.408.0: under Hold's dim the screen is written once a second, by its own tick
       var mp = hostCtl('media-player'); if (!mp) return;
       // v1.406.0 A3 (plan 2026-11-08-smoothness): the element can still hold ANOTHER item while this frame is up (the launch
       // frame of a new track, a video left in the player): its time and play state are not this frame's. The view says so
@@ -2741,7 +3024,9 @@
       closeStickerMenu(); // a repaint (an auto-advance, a skin change) replaces the surface the open sheet describes: it closes, as the popover did
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>';
-      panel.appendChild(wrap);
+      // v1.408.0 (gate r1 qa S3): before Hold's dim layer, so the dim (the same local z) paints over it by DOM order
+      var dimLayer = panel.querySelector('.ip-dim');
+      if (dimLayer && dimLayer.parentNode === panel) panel.insertBefore(wrap, dimLayer); else panel.appendChild(wrap);
     }
     // ---- the Skin page: search, the last skins picked, then the registry's own groups (SKIN_LINES via skinFamilies) ----
     function recentSkinIds() {
@@ -3404,6 +3689,8 @@
       // v1.335: the classes come from the registry's ONE builder (a skin's base, and its LOOK - the
       // Original's structure class; music.js's launch cover calls the same builder, gate r1 W1).
       panel.className = SKINS.panelClass(id);
+      if (hold.on) panel.classList.add('mms-hold'); // v1.408.0: Hold survives every repaint (the renderer draws the switch checked)
+      if (hold.stage >= 2) panel.classList.add('mms-hold-dim'); // ...and so does its dimmed stage (gate r1 qa W1: a track change un-dimmed it)
       paintedSkinId = id;
       // a skin without a look starts the wheel at rest (the turn itself lives on the wheel, below)
       if (!skinLook()) wheelTurn = 0;
@@ -3416,7 +3703,7 @@
       // pop-out shell instantiates this same engine, so it follows) - and the view may veto it
       // per track with ctx.artistTap === false (music: a listen video with no channel).
       var ctx = getCtx() || {};
-      panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false }));
+      panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false, hold: hold.on }));
       panel.hidden = false;
       // UI pass D7 (F23 guard): a repaint whose cover is the SAME image the last paint showed is
       // not a reveal - the image is on screen already (and cached), so it is born revealed: no
@@ -3457,6 +3744,9 @@
       if (bound) return; bound = true;
       panel.addEventListener('click', onClick);
       panel.addEventListener('pointerdown', onDown);
+      // v1.408.0: the Hold switch's press, ahead of the engine's own (capture on the panel; its release arms per press)
+      panel.addEventListener('pointerdown', onHoldDown, true);
+      panel.addEventListener('click', onHoldClick, true);
       if (pocket) {
         // pocket menus: the menu list's scroll re-windows its rows (scroll does not bubble - capture).
         panel.addEventListener('scroll', onMenuScroll, true);
@@ -4189,9 +4479,13 @@
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       closeStickerMenu();     // v1.388.0: and an open sticker sheet (it lives on <body>, outside the panel)
       surfaceGone = true;     // v1.386.0: a pick still waiting on its photos saves, but never repaints a dead surface
+      setHold(false);         // v1.408.0: Hold dies with the surface (R8): its window listeners and its observer
+      endHoldGesture();       // ...and a press on the switch still down
       if (bound) {
         panel.removeEventListener('click', onClick);
         panel.removeEventListener('pointerdown', onDown);
+        panel.removeEventListener('pointerdown', onHoldDown, true);
+        panel.removeEventListener('click', onHoldClick, true);
         if (pocket) {
           panel.removeEventListener('scroll', onMenuScroll, true);
           try { doc.removeEventListener('visibilitychange', onDocVisibility); } catch (_) { /* ignore */ }
@@ -4243,6 +4537,10 @@
       isVolumeOpen: function () { return volOpen; },
       // v1.356: the resume on launch lands the pocket menu as a Speakers pick would (false: no menus here)
       landPlayOn: function (hasTrack) { return pocket ? pocket.landPlayOn(hasTrack) : false; },
+      // v1.408.0: Hold (the switch is the user's only way; these are the read and the one writer, for the view and the tests)
+      isHold: function () { return hold.on; },
+      holdStage: function () { return hold.stage; },
+      setHold: setHold,
     };
   }
 
@@ -4465,7 +4763,9 @@
     };
   }
 
-  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu };
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu,
+    HOLD_EVENTS: HOLD_EVENTS, HOLD_SLIDE_PX: HOLD_SLIDE_PX, HOLD_CLICK_DEDUP_MS: HOLD_CLICK_DEDUP_MS, holdEventDecision: holdEventDecision, holdToggleDecision: holdToggleDecision,
+    HOLD_DIM_MS: HOLD_DIM_MS, HOLD_SLEEP_MS: HOLD_SLEEP_MS, HOLD_TICK_MS: HOLD_TICK_MS, holdStageWait: holdStageWait };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

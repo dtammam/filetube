@@ -177,12 +177,21 @@ test('W1 window: destroy() mid-window clears the property, the probe, the timers
 test('W1 CSS: the Pocket portrait top paddings read var(--pk-top-inset, env(safe-area-inset-top)); every other use of the property is none', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
   const uses = css.split('\n').filter((l) => l.includes('--pk-top-inset'));
-  assert.strictEqual(uses.length, 3, 'the apple, spotify and ipod portrait paddings, no more');
-  // the iPod portrait lock: the turned Upright player's own top inset (--mms-up-top) reads first, else this one
-  for (const l of uses) assert.ok(l.includes('calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8))'), 'fallback is today\'s env(): ' + l.trim().slice(0, 80));
+  // v1.408.0: the apple, spotify and ipod portrait paddings, plus the iPod's top-edge cut (--ip-cut), which MUST read the
+  // same effective inset or the edge would jump on a turn (plan 2026-11-15-ipod-hold-switch W1); no more
+  assert.strictEqual(uses.length, 4, 'the three portrait paddings and the iPod cut, no more');
+  const CHAIN = 'var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px)))';
+  // the turned Upright player's own top inset (--mms-up-top) reads first, else this one, else today's env()
+  for (const l of uses) assert.ok(l.includes(CHAIN), 'fallback is today\'s env(): ' + l.trim().slice(0, 80));
+  assert.strictEqual(uses.filter((l) => l.includes('calc(' + CHAIN + ' + var(--space-8))')).length, 2, 'apple and spotify pad by the chain');
+  assert.strictEqual(uses.filter((l) => l.includes('calc(var(--ip-cut, ' + CHAIN + ') + var(--space-8))')).length, 1, 'the iPod pads by its cut (the chain where no cut is set: the pop-out)');
+  assert.strictEqual(uses.filter((l) => l.includes('--ip-cut:max(' + CHAIN + ', var(--pk-hold-strip-min));')).length, 1, 'the cut IS the chain, never under the strip minimum');
   // the landscape layout keeps reading env() directly (no capture of that turn exists)
-  const land = css.slice(css.indexOf('UI pass D7: POCKET IN LANDSCAPE'));
-  assert.ok(!land.includes('--pk-top-inset'), 'the landscape block is untouched');
+  // the landscape layout keeps reading env() directly: the D7 block, and (v1.408.0) the Sideways top-edge cut
+  const land = css.slice(css.indexOf('UI pass D7: POCKET IN LANDSCAPE'), css.indexOf('POCKET STAYS UPRIGHT'));
+  assert.ok(land.length > 1000 && !land.includes('--pk-top-inset'), 'the landscape block is untouched');
+  const sideCut = css.split('\n').filter((l) => l.includes('--ip-cut:max(env(safe-area-inset-top,0px)'));
+  assert.strictEqual(sideCut.length, 1, 'the Sideways cut reads env()');
 });
 
 // ---- the rotate log's new fields --------------------------------------------------------------------

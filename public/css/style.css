@@ -9496,7 +9496,7 @@ a.tv-continue-card { text-decoration: none; }
   /* the body: the colorway's stack, over its 1px edge */
   :where(html.is-phone, html.mms-popout) .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
-    padding:calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8)) var(--space-10) calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-10)); }
+    padding:calc(var(--ip-cut, var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px)))) + var(--space-8)) var(--space-10) calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-10)); }
   /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
      element of the pocket screens - the status title, the Now Playing lines, the list and menu rows,
      their values and times, About's name - may shrink below its text, never wraps, and truncates with
@@ -11661,15 +11661,15 @@ a.tv-continue-card { text-decoration: none; }
      the wheel right, fitted to the SHORT side; the gap and padding from the space scale. */
   :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod{
     --pkl-pad-y:var(--space-6); --pkl-pad-x:var(--space-10); --pkl-gap:var(--space-12);
-    --pkl-h:calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
-    --pkl-h:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
+    --pkl-h:calc(100vh - var(--ip-cut) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
+    --pkl-h:calc(100dvh - var(--ip-cut) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
     --pkl-w:calc(100vw - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px) - 2 * var(--pkl-pad-x));
     /* the chassis wheel (its --pk-wheel-d, capped as in portrait), no taller than the short side
        and no wider than 40% of the row; the .ip-wheel / .ip-center rules below size to it */
     --pkl-wheel:min(var(--pk-wheel-d), var(--pkl-h), calc(var(--pkl-w) * .4));
     display:grid; grid-template-columns:minmax(0, 1fr) var(--pkl-wheel); grid-template-rows:minmax(0, 1fr);
     align-items:center; column-gap:var(--pkl-gap);
-    padding:calc(env(safe-area-inset-top,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-right,0px) + var(--pkl-pad-x))
+    padding:calc(var(--ip-cut) + var(--pkl-pad-y)) calc(env(safe-area-inset-right,0px) + var(--pkl-pad-x))
       calc(env(safe-area-inset-bottom,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-left,0px) + var(--pkl-pad-x)); }
   /* the LCD's height is the row, or less when the column is too narrow for a 4:3 at that height
      (an SE sideways); its width follows from the ratio (contain:size keeps content out of it) */
@@ -11738,6 +11738,72 @@ a.tv-continue-card { text-decoration: none; }
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
 @media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } .mms-look-original .ip-wheel::after{ transform:none; }
   .mms-ipod .ipm-slide, .mms-ipod .ipm-slide.is-drift{ transition:none; transform:none; } }
+
+/* ===================== THE TOP EDGE (v1.408.0, plan 2026-11-15-ipod-hold-switch; Dean's R2 / R12 / R13) =====================
+   PHONE ONLY (html.is-phone; the pop-out window and its tray keep the full-bleed body, like the Upright section above). On the
+   phone's Click full player the body no longer runs under the island: it stops at the phone's top safe area and
+   everything above is black. --ip-cut is that line: the SAME effective inset the chassis padding reads (the Upright turn's own
+   inset, else the turn window's inset from pocket-lighting.js, else env()), so it never jumps on a turn, and never less than
+   --pk-hold-strip-min, so the Hold knob that rises above the edge is on screen where the phone reports no inset (a Safari tab).
+   The Sideways layout (the D7 block, which pads and sizes its row by --ip-cut) cuts by env() like the rest of that block: its
+   rule follows the portrait one here so it wins at equal specificity. The strip (.ip-top, renderIpod draws one for
+   every Click colorway) is absolutely placed over the panel's top padding and later in the DOM than the screen and the wheel,
+   so it paints over the body, its 1px edge and the lit sheen (z-index -1) with no z rung of its own. Its bottom band is the
+   player's top edge seen straight on: chrome, a plastic end cap, or the colorway's own metal (holdSpec, music-skins.js). */
+:where(html.is-phone) .mms-full.mms-ipod{ --ip-cut:max(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))), var(--pk-hold-strip-min)); }
+@media (orientation: landscape) {
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod{ --ip-cut:max(env(safe-area-inset-top,0px), var(--pk-hold-strip-min)); }
+}
+.mms-ipod .ip-top{ display:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top{ display:block; position:absolute; left:0; right:0; top:0; height:var(--ip-cut); background:var(--mms-black); pointer-events:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-edge{ position:absolute; left:0; right:0; top:100%; height:var(--pk-hold-edge-h); background:var(--pk-hold-edge-chrome); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-edge="cap"] .ip-edge{ background:var(--pk-hold-edge-cap); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-edge="metal"] .ip-edge{ background:var(--pk-hold-edge-sheen), var(--pk-c-body-edge); }
+/* THE HOLD SWITCH (W2; Dean's R3 / R13): seen straight on, only the knob shows - a thin sliver raised above the edge, in the
+   black strip, at the model's own place (--hs-c / --hs-w / --hs-k, per data-hs-pos). Hold ON slides it toward the centre of the
+   edge (right for a left-hand switch, left for the two right-hand ones) with a real slide (transform only; none under reduced
+   motion). The button under it is the hit area: well past the sliver on every side (--pk-hold-hit-*), clamped to the glass, the
+   one control that takes a touch while Hold is on (skin-surface.js); the knob is drawn on the strip after it and takes no touch. The status bar's lock replaces the title while Hold is on. */
+:where(html.is-phone) .mms-full.mms-ipod .ip-top{ --hs-c:var(--pk-hold-c-std); --hs-w:var(--pk-hold-w-std); --hs-k:var(--pk-hold-k-std);
+  --hs-off:0%; --hs-on:calc((1 / var(--hs-k) - 1) * 100%); --hs-knob:var(--pk-hold-knob-pill); --hs-knob-r:var(--pk-hold-knob-r); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-side="right"]{ --hs-off:calc((1 / var(--hs-k) - 1) * 100%); --hs-on:0%; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="orig"]{ --hs-c:var(--pk-hold-c-orig); --hs-w:var(--pk-hold-w-orig); --hs-k:var(--pk-hold-k-orig); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="c4"]{ --hs-c:var(--pk-hold-c-c4); --hs-w:var(--pk-hold-w-c4); --hs-k:var(--pk-hold-k-c4); --hs-knob:var(--pk-hold-knob-satin); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="mini"]{ --hs-c:var(--pk-hold-c-mini); --hs-w:var(--pk-hold-w-mini); --hs-k:var(--pk-hold-k-mini); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="slim2"]{ --hs-c:var(--pk-hold-c-slim2); --hs-w:var(--pk-hold-w-slim2); --hs-k:var(--pk-hold-k-slim2); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="slim3"]{ --hs-c:var(--pk-hold-c-slim3); --hs-w:var(--pk-hold-w-slim3); --hs-k:var(--pk-hold-k-slim3); --hs-knob:var(--pk-hold-knob-metal); --hs-knob-r:var(--pk-hold-knob-round); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="slim4"]{ --hs-c:var(--pk-hold-c-slim4); --hs-w:var(--pk-hold-w-slim4); --hs-k:var(--pk-hold-k-slim4); --hs-knob:var(--pk-hold-knob-metal); --hs-knob-r:var(--pk-hold-knob-round); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="slim5"]{ --hs-c:var(--pk-hold-c-slim5); --hs-w:var(--pk-hold-w-slim5); --hs-k:var(--pk-hold-k-slim5); --hs-knob:var(--pk-hold-knob-metal); --hs-knob-r:var(--pk-hold-knob-round); }
+/* the button is the app's ui-switch primitive (ui.css); the skin repaints it, so EVERY property the primitive paints is reset
+   here - its size, radius and background in both states, and its own ::before knob (this one draws .ip-hold-knob) - and
+   only its focus ring is kept (two classes more than .ui-switch[aria-checked="true"], so this wins in both states) */
+:where(html.is-phone) .mms-full.mms-ipod .ip-hold.ui-switch{ position:absolute; pointer-events:auto; margin:0; padding:0; border:0; border-radius:0; background:none; background-color:transparent;
+  left:max(var(--pk-hold-hit-floor), calc(var(--hs-c) - var(--hs-w) / 2 - var(--pk-hold-hit-pad))); width:calc(var(--hs-w) + 2 * var(--pk-hold-hit-pad));
+  top:max(var(--pk-hold-hit-floor), calc(var(--ip-cut) - var(--pk-hold-hit-up))); bottom:calc(-1 * var(--pk-hold-hit-down)); height:auto; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-hold.ui-switch::before{ content:none; display:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-hold-slot{ position:absolute; left:calc(var(--hs-c) - var(--hs-w) / 2); width:var(--hs-w); bottom:0; height:var(--pk-hold-rise); pointer-events:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-hold-knob{ position:absolute; left:0; top:0; bottom:0; width:calc(var(--hs-k) * 100%);
+  border-radius:var(--hs-knob-r) var(--hs-knob-r) 0 0; background:var(--hs-knob); box-shadow:var(--pk-hold-knob-line);
+  transform:translateX(var(--hs-off)); transition:transform var(--dur-slow) var(--ease-ui); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-hold.ui-switch[aria-checked="true"] + .ip-hold-slot .ip-hold-knob{ transform:translateX(var(--hs-on)); }
+:where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="orig"] .ip-hold-knob::after{ content:""; position:absolute; top:var(--pk-hold-ridge-w); bottom:0; left:var(--pk-hold-ridge-x); width:var(--pk-hold-ridge-w); background:var(--pk-hold-ridge); }
+/* the lock takes the title's place: the title keeps its one line and its box (hidden, so the bar never reflows between the two
+   states) and the lock sits over its start, at the bar's own left padding */
+.mms-ipod .ip-lock{ display:none; }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-status{ position:relative; }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-lock{ display:inline-flex; position:absolute; left:var(--space-4); top:50%; transform:translateY(-50%); }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold .ip-np{ visibility:hidden; }
+/* THE DIMMED STAGE (W3, R4): Hold on and ~30 s with no touch. A dark layer over the whole player (.ip-dim, the renderer's last
+   element, local to the panel's stacking context: over every local layer the player draws) fades in (opacity only), every
+   animation and transition under it stops where it is (the marquee, the cover drift, the knob), the light is frozen by the
+   engine and the clock and the progress are written once a second (skin-surface.js). The layer takes no touch: Hold's blocker
+   already holds every touch, and a touch only wakes the screen. */
+.mms-ipod .ip-dim{ display:none; }
+:where(html.is-phone) .mms-full.mms-ipod .ip-dim{ display:block; position:absolute; inset:0; background:var(--pk-hold-dim); z-index:var(--pk-hold-dim-z); pointer-events:none;
+  opacity:0; visibility:hidden; transition:opacity var(--pk-hold-dim-fade) var(--ease-ui), visibility 0s linear var(--pk-hold-dim-fade); }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim .ip-dim{ opacity:1; visibility:visible; transition:opacity var(--pk-hold-dim-fade) var(--ease-ui); }
+:where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim :not(.ip-dim), :where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim *::before, :where(html.is-phone) .mms-full.mms-ipod.mms-hold-dim *::after{ animation-play-state:paused; transition:none; }
+@media (prefers-reduced-motion: reduce){ :where(html.is-phone) .mms-full.mms-ipod .ip-hold-knob, :where(html.is-phone) .mms-full.mms-ipod .ip-dim{ transition:none; } }
 
 /* ===================== v1.388.0: the STICKER SHEET (plan 2026-10-12-sticker-sheet) =====================
    The sticker opens a ui.sheet bottom sheet on <body> (skin-surface.js): FileTube's grab bar, header, scrim and rows, the

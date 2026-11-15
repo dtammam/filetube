@@ -477,8 +477,11 @@
       try { panel.classList.remove('mms-lit'); panel.classList.remove('mms-lit-strong'); panel.classList.remove('mms-lit-ambient'); } catch (_) { /* detached */ }
       tellLight(false);
     }
+    // v1.408.0: Hold's dimmed stage freezes the light where it is (o.frozen, the engine's): no frame is scheduled until it wakes
+    // (a frame already queued when the dim lands reschedules through here, so the loop ends at its next frame)
+    function frozen() { try { return !!(typeof o.frozen === 'function' && o.frozen()); } catch (_) { return false; } }
     function arm() {
-      if (!on || raf != null) return;
+      if (!on || raf != null || frozen()) return;
       try { raf = win.requestAnimationFrame(tick); } catch (_) { raf = null; }
     }
     function disarm() {

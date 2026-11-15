@@ -335,7 +335,8 @@ test('the rules land on the element every pocket skin renders: .ip-status > .ip-
   for (const id of SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id)) {
     const html = SK.renderFull(id, { track: { title: 'x', artist: 'y', album: 'z' } });
     // UI pass S7 (F60): the play mark is two DRAWN glyphs stacked in one cell (play, pause), never text
-    assert.match(html, /<div class="ip-status"><span class="ip-np">Now Playing<\/span><span class="ip-status-rt"><span class="mms-playind"[^>]*><svg class="mms-g mms-g-play"[^>]*><path[^>]*\/><\/svg><svg class="mms-g mms-g-pause"[^>]*><path[^>]*\/><\/svg><\/span><span class="ip-batt"[^>]*><i><\/i><\/span><\/span><\/div>/, id + ' renders the status bar the lock covers');
+    // v1.408.0: the bar opens with Hold's lock mark (hidden unless Hold is on; then it sits over the title, which keeps its box)
+    assert.match(html, /<div class="ip-status"><span class="ip-lock" aria-hidden="true"><svg class="mms-g mms-g-lock"[^>]*><path[^>]*\/><\/svg><\/span><span class="ip-np">Now Playing<\/span><span class="ip-status-rt"><span class="mms-playind"[^>]*><svg class="mms-g mms-g-play"[^>]*><path[^>]*\/><\/svg><svg class="mms-g mms-g-pause"[^>]*><path[^>]*\/><\/svg><\/span><span class="ip-batt"[^>]*><i><\/i><\/span><\/span><\/div>/, id + ' renders the status bar the lock covers');
   }
   for (const id of SK.SKINS.filter((s) => s.menus === 'click' && s.id !== 'ipod').map((s) => s.id)) assert.strictEqual(SK.skinById(id).base, 'ipod', id + ' carries the shared .mms-ipod CSS');
 });
