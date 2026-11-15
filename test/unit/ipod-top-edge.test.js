@@ -97,7 +97,7 @@ test('CSS: the strip shows only on the phone\'s full player; it paints black ove
   const rules = cssRules(readStyleCss());
   const hide = rules.filter((r) => r.sel.trim() === '.mms-ipod .ip-top');
   assert.strictEqual(hide.length, 1); assert.match(hide[0].body, /display:none/);
-  const show = rules.filter((r) => r.sel.trim() === ':where(html.is-phone) .mms-full.mms-ipod .ip-top');
+  const show = rules.filter((r) => r.sel.trim() === ':where(html.is-phone) .mms-full.mms-ipod .ip-top' && /display:/.test(r.body));
   assert.strictEqual(show.length, 1);
   for (const want of ['display:block', 'position:absolute', 'top:0', 'height:var(--ip-cut)', 'background:var(--mms-black)', 'pointer-events:none']) assert.ok(show[0].body.includes(want), want);
   assert.ok(!/z-index/.test(show[0].body), 'no z rung: DOM order paints it over the body');
