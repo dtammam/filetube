@@ -388,3 +388,82 @@ long touch, right click, mouse wheel, MENU and a second finger do nothing under 
 - qa S1 (the nav.bar comment), S2 ("two classes more"), S3 (the dim back to z 40, the top of the local band: the sticker, also 40,
   is inserted BEFORE the dim; R6 and a census that only the sticker shares the dim's z), S5 (the dead guard) - done.
 - Not taken, in ROADMAP Planned: adversary S2 (untrusted script clicks under Hold), qa S6 (Sideways: a DEVICE-CHECKS line).
+
+Gate: CHANGES r2 @39c8de53 - qa
+
+Measured at 39c8de53 (Node 22.23.1): `npm run lint` 0 errors, 6 warnings; `npm run lint:ui` OK; overlay-containment clean
+(0 violations); the 12 Hold-related test files `node --test`: tests 184, pass 184, fail 0. The full suite was not re-run (the builder
+reports 13495 / 13482 pass / 0 fail / 13 skipped). Probes ran in a /tmp `git archive 39c8de53` sandbox.
+
+r1 findings against the fix:
+- W1 (a repaint dropped the dim): FIXED as prescribed. paint() re-adds `mms-hold-dim` when `hold.stage >= 2`, and the test
+  "a repaint under the dim keeps the dim" binds it, plus the control that a repaint after a wake brings no dim back.
+- S1 (the misplaced nav.bar comment): fixed. S2 ("two classes more"): fixed. S3: fixed differently, and the fix is good. The dim is
+  at 40, the sticker is inserted before `.ip-dim` (injectSticker), and a census checks that only `.mms-sticker-wrap` shares the
+  dim's z. A DOM-order test covers it before and after a repaint.
+- S4 (keys on the focused switch): fixed. Only ' ', Enter and Spacebar pass, on keydown, keypress and keyup. Tab, Escape and the
+  arrows are swallowed (and wake). Unit-bound.
+- S5 (dead guard): fixed. S6 (Sideways look): deferred to ROADMAP Planned plus a DEVICE-CHECKS line at release, as ruled.
+
+New in the fix round:
+- WARNING W2 - public/js/skin-surface.js:792-799 (hostVisibility) with dispApply ~762 and the 1 s poll (hostPollSync). On a hide,
+  the registry sets dispHold/dispDim to null ("unknown"). But the self-heal poll keeps running while the page is hidden (Hold
+  owns the registry, so the interval stays alive). On its next tick, dispApply sees null and re-posts the current wants WHILE
+  HIDDEN. Scenario: Hold at stage 2 in the iOS app. The user switches to another app (or locks the phone) with music playing, so
+  the web view's JS keeps running. Native restores the brightness on resign-active, as the contract says. Within 1 s the web posts
+  `display.dim:true`, and the contract tells native to "remember the brightness and ramp it down". The phone dims system-wide in
+  the other app, or on the lock screen. On the return, only the diff is sent, not "BOTH again" as the comment and the plan claim.
+  Evidence (sandbox unit probe, the native-bridge-idle-display harness, real engine + adapter + fake host on a fake clock): Hold,
+  then 30 s gives stage 2 with the host holding {hold:true, dim:true}. The page is hidden, 1.5 s passes, and the host was posted
+  "display.hold:true,display.dim:true" while hidden. On the return it was posted only "display.dim:false". The new test passes
+  because it shows the page again with no clock advance in between. Before this change, a hidden page re-posted only when a stage
+  timer fired; now it happens within 1 s of every hide in stages 1-3. Fix: dispApply posts nothing while `document.hidden` (the
+  owners stay; the null state stays unknown, so the return sends both), plus a test that advances the clock while hidden and
+  asserts no display.* post. Or, as well: the contract (native-bridge.md section 2/6, the schema's display.dim description, the
+  relay) tells native to apply display.* only while active and to store it otherwise.
+- player.js fillTick / startFillLoop / stopFillLoop / the `filetube:hold-dim` listener: no finding. With no Hold, holdDimmed is
+  never true, so fillTick schedules only rAF exactly as before (both handles reset on entry, an equivalent rewrite). startFillLoop's
+  guard and stopFillLoop's clear cover the timer. Every caller (the play-resume start at 8702, ended / close / teardown stops at
+  8555 / 10308 / 11186) is unchanged, so the watch page, the dock and the video paths behave as before. The event is dispatched only
+  by a main-document engine on a dim edge, and every Hold exit (off, the observer, pagehide, destroy) runs holdStage(0), so
+  holdDimmed cannot be left true. This is verified by reasoning and the source lock only: no jsdom harness exists for player.js.
+- releaseWheelTakeover on engage: correct (a no-op with no takeover; onExit once; unit-bound). The vertical-swipe rule: correct;
+  dy is read in the player's frame after the Upright un-turn, a tap's wobble under 8 px still flips, and the integration slide was
+  moved to dy 20 with its intent kept (the release target is still the zone). Doc, schema and relay wording: add-only, accurate
+  apart from W2's "re-sends both after a hide" claim. The ROADMAP entry and the plan's fix map are accurate. No em dashes in the
+  delta. Security: no new surface (a same-document CustomEvent with a boolean detail; no new bridge message).
+
+Gate: CHANGES r2 @39c8de53 - adversary
+
+Measured at 39c8de53 (Node 22.23.1, a `git archive 39c8de53` sandbox): the 12 Hold-related test files 184 tests, 184 pass, 0 fail;
+eslint 0 errors, 6 warnings; overlay-containment clean; ui-lint OK. Full suite not re-run by this seat. 14 delta mutants: 12 red,
+2 survived (S6). Chromium (real music view, real 30 s, rAF calls per 2 s): no Brick 92 awake -> 0 dimmed; Brick open then Hold on:
+Brick ends at engage, 92 awake -> 0 dimmed. Sticker pixel under the dim 255 -> 71; runtime census: only .mms-sticker-wrap (before the
+dim) and .ip-dim at z >= 39 among the panel's children.
+
+r1 findings against the fix:
+- W1 (host not re-told after a hide): NOT closed in the web half; the relay's new didBecomeActive re-apply covers the keep-awake on
+  native's side. See W3.
+- W2 (stage 2 not frame-idle): FIXED. Brick released on engage (unit-bound, mutant red); fillTick on a 1 s timer under the dim
+  (measured 0 rAF dimmed, above).
+- S1 (vertical swipe flips Hold): FIXED. A 160 px drag down from the switch leaves Hold off (CDP, pointer events delivered); dy is
+  read after the Upright un-turn (mutant red).
+- S2 (untrusted clicks): deferral to ROADMAP Planned accepted; it stays a suspicion with no constructed consumer.
+- S3 (switch keys): FIXED. Tab keeps the focus on the switch, Space turns Hold off (CDP keys); Tab / any-key mutants red.
+- S4 (stopPropagation unbound): FIXED (bubble-listener test).
+
+New in the fix round:
+- WARNING W3 - concur with qa r2 W2, measured independently (skin-surface.js hostVisibility ~792-799, dispApply ~762, the 1 s poll).
+  Real engine + adapter + fake host on a fake clock: hidden, then 1.5 s: stage 1 posts `display.hold:true, display.dim:false`
+  WHILE hidden and `[]` on the return; stage 2 posts `display.hold:true, display.dim:true` while hidden and only
+  `display.dim:false` on the return. Music plays under Hold, so the page's JS runs while hidden; a native built to the relay
+  ("true: remember the brightness, ramp it down") dims the phone in another app or on the lock screen. The doc and schema say
+  the web "re-sends both after a hide when the page shows again"; it does not when time passes while hidden. The new test shows the
+  page with no clock advance in between (a fixture that misses the mechanism). Fix: dispApply posts nothing while
+  `document.hidden` (null stays unknown, the return sends both), plus a test that advances the clock while hidden; optionally tell
+  native in the relay to apply display.* only while active.
+- SUGGESTION S5 - the visibility re-send also fires with no Hold at all: an idleDisplay host gets `display.hold:false,
+  display.dim:false` after every hide and show once any registry has bound the page (measured). Harmless (idempotent); note it.
+- SUGGESTION S6 - player.js's half is bound only by a source regex: mutants that drop the wake handover (the 1 s timer giving way to
+  the frame loop) or set HOLD_FILL_MS to 16 both leave 184/184 green. The Chromium probe catches the second; nothing binds the first
+  (worst case a 1 s late return to per-frame updates).
