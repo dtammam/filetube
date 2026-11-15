@@ -257,6 +257,8 @@ Native must also:
 - RE-APPLY the last `display.hold` / `display.dim` it was sent on `didBecomeActive` (Control Center and a notification pull resign
   the app without hiding the page, so the web gets no event then); after a real hide the web also re-sends both values when the page
   shows again (they agree: it is the same state).
+- Apply `display.*` only while the app is active; one that arrives while it is not (the web never sends one from a hidden page, but
+  a message in flight can land late) is stored and applied on `didBecomeActive`.
 - Never time anything: the stage clock is the web's. On return to the foreground the web wakes (stage 1) and posts
   `display.dim { on: false }` / `display.hold { on: true }` itself.
 - Not select an always-on or 1 Hz mode for the unlocked app (iOS gives apps no API for it); stage 3 is exactly "let iOS lock and
@@ -467,3 +469,14 @@ New in the fix round:
 - SUGGESTION S6 - player.js's half is bound only by a source regex: mutants that drop the wake handover (the 1 s timer giving way to
   the frame loop) or set HOLD_FILL_MS to 16 both leave 184/184 green. The Chromium probe catches the second; nothing binds the first
   (worst case a 1 s late return to per-frame updates).
+
+### Fix round 2 (the builder, after r2)
+
+- qa r2 W2 = adversary r2 W3 (the host told the stage while the page was hidden: the 1 s self-heal poll runs on under Hold's music,
+  and the "unknown" state re-posted within a second of leaving the app - `display.dim:true` the app would apply system-wide): dispApply
+  posts NOTHING while `document.hidden` (the unknown state survives to the return, which tells the host both values). Test: hidden 5 s
+  at stage 1 and 2 posts nothing, the return posts `display.hold:true` + `display.dim:false` (mutant R11 red). The relay also tells
+  native to apply `display.*` only while active (a late message is stored for didBecomeActive).
+- adversary r2 S5 (a re-send with nothing held): a hide marks the state unknown only while something is held or owned (R12 red).
+- adversary r2 S6 (player.js's half bound only by a regex): the lock now also pins `HOLD_FILL_MS = 1000` and the wake's hand-over
+  back to the frame loop; the real count stays the probe's (`DIM=1`: 0 rAF dimmed).

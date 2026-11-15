@@ -344,4 +344,6 @@ test('the dim tells the page (filetube:hold-dim) so the player\'s own frame loop
   assert.match(src, /if \(holdDimmed\) seekFillTimer = setTimeout\(fillTick, HOLD_FILL_MS\);\s*else seekFillRafId = requestAnimationFrame\(fillTick\);/);
   assert.match(src, /document\.addEventListener\('filetube:hold-dim', function \(e\) \{\s*holdDimmed = !!\(e && e\.detail && e\.detail\.on\);/);
   assert.match(src, /if \(seekFillTimer != null\) \{ clearTimeout\(seekFillTimer\); seekFillTimer = null; \}/, 'stopFillLoop clears the timer too');
+  assert.match(src, /var HOLD_FILL_MS = 1000;/, 'once a second (gate r2 S6: 16 would be a frame loop again)');
+  assert.match(src, /if \(!holdDimmed && seekFillTimer != null\) \{ clearTimeout\(seekFillTimer\); seekFillTimer = null; startFillLoop\(\); \}/, 'the wake hands the timer back to the frame loop at once (gate r2 S6)');
 });

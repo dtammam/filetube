@@ -159,3 +159,35 @@ test('a hide (the app resigned active: it turned the idle timer back on and rest
     } finally { b.restore(); }
   }
 });
+
+test('a hidden page tells the host nothing however long it stays hidden (the 1 s poll runs on under Hold\'s music); the return tells it both (gate r2, both seats)', () => {
+  for (const at of [0, 30000]) {
+    const b = boot();
+    try {
+      let hidden = false;
+      Object.defineProperty(b.win.document, 'hidden', { configurable: true, get: () => hidden });
+      b.engine.setHold(true); b.clock.advance(at);
+      hidden = true; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+      const n = b.fake.posts.length;
+      b.clock.advance(5000); // the poll ticks five times, the stage clock runs on
+      assert.deepStrictEqual(disp({ fake: { posts: b.fake.posts.slice(n) } }), [], 'nothing while hidden (stage ' + (at ? 2 : 1) + ')');
+      hidden = false; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+      const back = b.fake.posts.slice(n).map((m) => m.type + ':' + m.on);
+      assert.deepStrictEqual(back.slice().sort(), ['display.dim:false', 'display.hold:true'], 'the return tells it BOTH: ' + back.join(','));
+    } finally { b.restore(); }
+  }
+});
+
+test('with nothing held, a hide and a return tell the host nothing (gate r2 S5)', () => {
+  const b = boot();
+  try {
+    let hidden = false;
+    Object.defineProperty(b.win.document, 'hidden', { configurable: true, get: () => hidden });
+    b.engine.setHold(true); b.engine.setHold(false); // the page is bound; nothing is held now
+    const n = b.fake.posts.length;
+    hidden = true; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+    hidden = false; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+    b.clock.advance(2000);
+    assert.deepStrictEqual(b.fake.posts.slice(n).map((m) => m.type), [], 'no re-send');
+  } finally { b.restore(); }
+});

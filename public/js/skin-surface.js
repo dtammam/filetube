@@ -762,6 +762,9 @@
   function dispApply() {
     var h = displayHost();
     if (!h) return;
+    // a hidden page tells the host nothing (gate r2, both seats: the 1 s poll kept running under Hold's music and re-posted the
+    // stage within a second of leaving the app - a dim the app would apply system-wide); the return tells it both (null above)
+    if (typeof document !== 'undefined' && document.hidden) { hostPollSync(); return; }
     dispOwners = dispOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
     var wantHold = false, wantDim = false;
     dispOwners.forEach(function (o) { var w = {}; try { w = o.want() || {}; } catch (_) { w = {}; } if (w.hold) wantHold = true; if (w.dim) wantDim = true; });
@@ -795,7 +798,7 @@
   // active (Control Center hides nothing).
   function hostVisibility() {
     if (typeof document === 'undefined') return;
-    if (document.hidden) { dispHold = null; dispDim = null; } else dispApply();
+    if (document.hidden) { if (dispOwners.length || dispHold || dispDim) { dispHold = null; dispDim = null; } } else dispApply(); // nothing held: nothing to re-tell (gate r2 S5)
   }
   function hostBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
