@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.408.0 W2 - the Hold switch through the REAL path (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md,
+// [INTEGRATION] v1.408.0 W2 - the Hold switch through the REAL path (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md,
 // Dean's R3 / R6 / R8): a real server (isolated DATA_DIR) serving projected library audio, the REAL music.js view + skin engine +
 // Pocket menus in jsdom (test/helpers/pocket-menu-harness.js). Every control is pressed as a finger does (pointerdown, pointerup,
 // click), and every "Hold blocks X" assertion has its control: the same press with Hold off DOES act.

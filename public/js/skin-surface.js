@@ -1984,7 +1984,7 @@
     };
   }
 
-  // ---- v1.408.0 HOLD (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, W2; Dean's R3 / R6 / R8) ----------------
+  // ---- v1.408.0 HOLD (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, W2; Dean's R3 / R6 / R8) ----------------
   // The real player's Hold switch on the phone's Click full player. While Hold is on, ONE capture-phase listener per event type
   // on the WINDOW (the first stop of every event's path; registered only while Hold is on, so no global non-passive touch
   // listener lives otherwise) swallows every way a finger, a mouse, a trackpad or a keyboard reaches the page - except the

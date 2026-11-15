@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.408.0 W1 - the iPod's top edge on the phone (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, R2, R10-R13).
+// [UNIT] v1.408.0 W1 - the iPod's top edge on the phone (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, R2, R10-R13).
 // The Click full player stops under the phone's top safe area (black above) and shows its top EDGE straight on. Bound here:
 //   - holdSpec: DERIVED from the registry for every Click colorway (never a hand list), each family where the photos put it;
 //   - the ONE writer: renderIpod draws exactly one .ip-top carrying that spec, on every Click colorway, and on nothing else;

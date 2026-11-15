@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.408.0 W3 - Hold's stages (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, Dean's R4 "C"): Hold on keeps the
+// [UNIT] v1.408.0 W3 - Hold's stages (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, Dean's R4 "C"): Hold on keeps the
 // phone awake; HOLD_DIM_MS with no touch dims and freezes the player (no motion, the screen written once a HOLD_TICK_MS);
 // HOLD_SLEEP_MS with no touch lets the phone lock; a touch wakes back to stage 1. Through the REAL skin engine with the real
 // pocket lighting and Pocket menus on a fake clock, the Screen Wake Lock stubbed the way the spec shapes it (a promise of a

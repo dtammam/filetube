@@ -1,6 +1,6 @@
 'use strict';
 
-// pocket-top-edge-probe - v1.408.0 (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, W1): measures the Click full
+// pocket-top-edge-probe - v1.408.0 (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, W1): measures the Click full
 // player's top edge in headless Chromium over raw CDP (the pocket-render-probe pattern), per phone size and skin.
 //
 //   node scripts/pocket-top-edge-probe.js [skin ...]

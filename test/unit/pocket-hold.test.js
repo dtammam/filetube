@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.408.0 W2 - Hold on the skin ENGINE itself (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md, R3 / R8):
+// [UNIT] v1.408.0 W2 - Hold on the skin ENGINE itself (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md, R3 / R8):
 // the pure decisions (what Hold does with each event, what a press on the switch does), and the engine's own seams the view
 // suite cannot reach directly - a repaint keeps Hold, a live wheel spin ends when Hold engages, a slide is read in the turned
 // player's own frame, the listeners balance. The real view path (music.js + the menus + a real server) is

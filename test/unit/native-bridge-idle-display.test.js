@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.408.0 W4 - idleDisplay (plan docs/exec-plans/active/2026-11-15-ipod-hold-switch.md; docs/references/native-bridge.md): Hold's
+// [UNIT] v1.408.0 W4 - idleDisplay (plan docs/exec-plans/completed/2026-11-15-ipod-hold-switch.md; docs/references/native-bridge.md): Hold's
 // stages told to a host that can really keep the phone awake and really dim it. Through the REAL skin engine and the REAL adapter
 // with a FAKE host on a fake clock; a tiny host model replays the posts ("what native holds now"). The web owns the clock: the
 // host is told display.hold (stages 1-2) and display.dim (stages 2-3), each only on a change; released on close, Hold off,
