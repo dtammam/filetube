@@ -816,4 +816,23 @@
   --z-panel: 1600;
   --z-modal: 2000;
   --z-top: 2200;
+
+  /* v1.408.0 The Pocket's top edge and Hold switch (plan 2026-11-15-ipod-hold-switch; style.css "THE TOP EDGE").
+     The strip: the least black above the body when the phone reports no top inset (a Safari tab, the
+     sideways layout), so the raised knob is always on screen. The edge band and the knob: straight-on
+     front view, Dean's approved look (R13). Slot positions and lengths are fractions of the body's
+     width read off the reference photos (the plan's Evidence). */
+  --pk-hold-strip-min: 8px;
+  --pk-hold-edge-h: 3px;
+  --pk-hold-rise: 3px;
+  --pk-hold-knob-r: 2px;
+  --pk-hold-edge-chrome: linear-gradient(#fbfbfb, #a9acb0 55%, #6f7276);
+  --pk-hold-edge-cap: linear-gradient(#ffffff, #e2e2e2 60%, #b9b9b9);
+  --pk-hold-edge-sheen: linear-gradient(rgba(255,255,255,.6), rgba(255,255,255,0));
+  --pk-hold-knob-pill: linear-gradient(#ffffff, #cfd0d2);
+  --pk-hold-knob-satin: linear-gradient(#eceef0, #a7a9ac);
+  --pk-hold-knob-metal: linear-gradient(#f6f6f6, #9a9da0);
+  --pk-hold-knob-line: inset 0 .5px 0 rgba(255,255,255,.9), inset 0 0 0 .5px rgba(0,0,0,.25);
+  --pk-hold-ridge: rgba(0,0,0,.18);
+  --pk-hold-ridge-w: 1.5px;
 }

@@ -66,7 +66,11 @@ test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette
   // the chassis reads (v1.332 pocket design system). Paint is jsdom-invisible, so the block's values
   // are locked in source (test/unit/pocket-design-system.test.js pins every colorway's roles).
   const matte = skins.renderFull('ipod-matte', CTX);
-  assert.strictEqual(matte, skins.renderFull('ipod', CTX), 'matte renders byte-identical to silver iPod - the palette lives entirely in CSS, keyed off the .mms-ipod-matte panel class');
+  // v1.408.0: the top edge (.ip-top, the LAST element) carries each model's Hold switch position and edge material
+  // (holdSpec, test/unit/ipod-top-edge.test.js); everything before it - the screen and the wheel - is still shared markup
+  const TOP = /<div class="ip-top"[\s\S]*$/;
+  assert.ok(TOP.test(matte) && TOP.test(skins.renderFull('ipod', CTX)), 'both draw the top edge last');
+  assert.strictEqual(matte.replace(TOP, ''), skins.renderFull('ipod', CTX).replace(TOP, ''), 'matte renders byte-identical to silver iPod - the palette lives entirely in CSS, keyed off the .mms-ipod-matte panel class');
   assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel');
   assert.match(matte, /data-skin-menu/, 'the wheel MENU/back zone (the wheel exit)');
   const fs = require('node:fs'); const path = require('node:path');

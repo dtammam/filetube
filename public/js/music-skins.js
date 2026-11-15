@@ -280,7 +280,41 @@
       '</div></div>';
   }
 
-  function renderIpod(ctx) {
+  // v1.408.0 (plan 2026-11-15-ipod-hold-switch, W0 research + Dean's rulings R10-R13): the player's TOP EDGE as seen straight on
+  // from the front - the body stops under the phone's top safe area (black above), its edge shows as a thin band, and the Hold
+  // knob is a thin raised sliver above that edge. holdSpec is DERIVED from the registry (line, gen, look), never a second list
+  // of ids (the inert-sibling class): every Click colorway gets one. pos = where the real model's switch sits and how long its
+  // slot is (the maker's guides + iFixit / Wikimedia photos, the plan's Evidence): the first model and the 4G on the top RIGHT,
+  // everything else on the top LEFT; a model that had no Hold switch (Slim 6/7, Clip, Touch) takes the shared design (R10), and
+  // Slim 3 draws its on top like the rest (R11). edge = what the top edge is made of: chrome (a chrome back that wraps the top),
+  // cap (a plastic end cap), metal (the colorway's own anodised body).
+  function holdSpec(skin) {
+    var s = (typeof skin === 'string' ? skinById(skin) : skin) || {};
+    if (s.look === 'original') return { pos: 'orig', edge: 'chrome' };
+    var g = s.gen;
+    switch (s.line) {
+      case 'classic': return g === 4 ? { pos: 'c4', edge: 'chrome' } : { pos: 'std', edge: g === 6 ? 'metal' : 'chrome' };
+      case 'mini': return { pos: 'mini', edge: 'cap' };
+      case 'nano':
+        if (g === 1) return { pos: 'std', edge: 'chrome' };
+        if (g === 2) return { pos: 'slim2', edge: 'cap' };
+        if (g === 3) return { pos: 'slim3', edge: 'chrome' };
+        if (g === 4) return { pos: 'slim4', edge: 'cap' };
+        if (g === 5) return { pos: 'slim5', edge: 'metal' };
+        return { pos: 'std', edge: 'metal' };
+      case 'shuffle': return { pos: 'std', edge: 'metal' };
+      case 'touch': return { pos: 'std', edge: g <= 4 ? 'chrome' : 'metal' };
+      default: return { pos: 'std', edge: 'chrome' }; // Custom (a 5G body) and any future line: the shared design
+    }
+  }
+  // The top of the player: the black strip over the phone's status area and the body's edge band (style.css draws it only on the
+  // phone's full player; the pop-out, the tray and the Settings previews hide it).
+  function ipTop(skin) {
+    var h = holdSpec(skin);
+    return '<div class="ip-top" data-hs-pos="' + h.pos + '" data-hs-edge="' + h.edge + '"><span class="ip-edge" aria-hidden="true"></span></div>';
+  }
+
+  function renderIpod(ctx, skin) {
     return ipScreen(ctx) +
       // --- the click wheel (tap zones) ---
       '<div class="ip-wheelwrap"><div class="ip-wheel">' +
@@ -289,7 +323,7 @@
       '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">' + ipFfwdGlyph() + '</button>' +
       '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">' + ipPlayPauseGlyph() + '</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
-      '</div></div>';
+      '</div></div>' + ipTop(skin);
   }
 
   // Labels: every Click colorway reads "<line> <generation> <colour>" in our own words ("Slim 4 Orange"; v1.391.0, R7-R9:
@@ -1423,7 +1457,7 @@
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
-    renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
+    renderFull: function (id, ctx) { ctx = ctx || {}; var sk = skinById(id); return sk.renderFull(ctx, sk); }, holdSpec: holdSpec,
     SIDEWAYS_KEY: SIDEWAYS_KEY, UPRIGHT_CLASS: UPRIGHT_CLASS, pocketSideways: pocketSideways, connGlyph: connGlyph, markUprightClass: markUprightClass, setPocketSideways: setPocketSideways, turnOf: turnOf, unturnDelta: unturnDelta,
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, pocketEntryAvailable: pocketEntryAvailable, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,

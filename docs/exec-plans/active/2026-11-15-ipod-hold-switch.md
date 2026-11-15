@@ -3,8 +3,8 @@ plan: ipod-hold-switch
 harness: v2 · full
 branch: feat/v1.408.0-ipod-hold
 anchor: outcome
-status: Kickoff done, W0 (design) not started
-next: the builder reads Step 0, then W0 (research + a side-by-side look for Dean BEFORE any code)
+status: W0 done (look approved by Dean 2026-11-15, v2), W1 (island cut) in progress
+next: W1 island cut, then W2 Hold switch and touch blocking
 design: Dean, 2026-11-15 (intake, rulings R1-R9 below)
 gate: pending (adversary floor + qa per .harness/scrutiny.toml)
 builder: smart
@@ -130,7 +130,32 @@ Cider and Nordic skins; a Settings option; persisting Hold; the real OS always-o
 
 ## Evidence (the builder fills this)
 
-(empty)
+### W0 - research and the look (2026-11-15)
+
+Reference research (photos opened, sources: Apple support.apple.com/103823 and user guides ma629, ma1194, ma1195, ma1551,
+ma1624; iFixit guides 364, 371, 388, 407, 430, 562, 592, 604, 745, 1157, 171848, 236876; Wikimedia Commons
+File:Ipod_g2_top.jpg, File:IPod_classic_80_GB_(A1238,_YMV)-9877.jpg, File:IPod-nano-5G-end-views-1.png; ipodwiki Hold_switch):
+- On every model Hold ON slides the knob TOWARD THE CENTRE of the edge (Apple: "Slide the switch toward the center (so you can
+  see the orange stripe)"); the screen shows a lock icon in place of the title.
+- Top RIGHT: Original 1G/2G (centre ~77%, slot ~24% of the width, a big white block with a ridge) and the 4G (Classic 1, ~79%,
+  ~21%, satin pill). Top LEFT: everything else (5G, 6G, mini, nano 1G/2G ~17-22%; nano 4G ~12% / nano 5G ~17%, a short slot
+  with a small round knob). Nano 3G: BOTTOM edge. No Hold switch at all: nano 6G/7G, every shuffle, every touch
+  (stop rule b). The U2 red indicator is a one-source claim for the 5.5G only: not used.
+
+Dean's rulings (AskUserQuestion, 2026-11-15):
+- R10 Lines with no real switch (Slim 6, Slim 7, Clip 1-4, Touch 1-4) get the SHARED switch anyway (top left).
+- R11 Slim 3 draws its switch on TOP like the rest (not the real bottom edge).
+- R12 The cut line is the effective top safe-area inset (59 pt on the 15 Pro), not a guessed island bottom.
+- R13 The look (v1 "looked cheap / forced"; v2 approved): a STRAIGHT-ON FRONT VIEW - the body's top EDGE shows as a thin
+  band (chrome on the Original and Classics, the end cap on Mini / Slim) and the Hold knob is a thin raised sliver above it
+  in the black strip; ON slides it toward the centre; no orange visible from the front; the LCD shows the lock in place of
+  the title. Dean on v2: "Generally good, just make the thing slide appropriately and also make it have a generous touch
+  area" (a real slide animation; a hit area well beyond the drawn sliver).
+- W1-W4 are not mechanical (a capture-phase input blocker over the shared Pocket engine, a lifecycle, a host contract): they
+  stay with this Smart builder.
+
+Mock: scratchpad ipod-hold-look-v2.html (rendered from the real app CSS by a scratch CDP shooter, the island and status bar
+drawn in; not committed).
 
 ## Gate
 
