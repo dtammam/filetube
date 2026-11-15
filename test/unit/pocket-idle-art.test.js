@@ -205,3 +205,29 @@ test('W2 (gate r1): a failed sample request is asked again on the next menu rend
     assert.ok(pane() && pane().querySelector('img.ipm-slide'), 'and its covers drift');
   });
 });
+
+test('v1.408.0 W3: Hold\'s dimmed stage stops the cover drift (nothing moves under it) and Hold off brings it back', async () => {
+  await boot({ held: false, sample: () => ({ items: [row(1), row(2), row(3)], total: 3 }) }, async ({ dom, panel, pane }) => {
+    await settleMany(20);
+    await loadSlides(dom, pane());
+    assert.ok(pane() && pane().querySelector('img.ipm-slide'), 'precondition: the covers drift on the idle iPod');
+    // the REAL switch, pressed as a finger does (this harness compresses the long timers: the 30 s dim lands in 5 ms)
+    const sw = panel.querySelector('[data-skin-hold]');
+    assert.ok(sw, 'the idle iPod draws the switch');
+    sw.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    sw.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true, cancelable: true }));
+    assert.ok(panel.classList.contains('mms-hold'), 'Hold on');
+    await settleMany(20);
+    assert.ok(panel.classList.contains('mms-hold-dim'), 'the dimmed stage');
+    assert.strictEqual(pane().querySelectorAll('img.ipm-slide').length, 0, 'the drift stopped');
+    await settleMany(20);
+    assert.strictEqual(pane().querySelectorAll('img.ipm-slide').length, 0, 'and nothing drifts in later');
+    // off: the drift comes back
+    await new Promise((r) => setTimeout(r, 750)); // past the press's own click window
+    sw.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 }));
+    assert.ok(!panel.classList.contains('mms-hold') && !panel.classList.contains('mms-hold-dim'), 'Hold off');
+    await settleMany(20);
+    await loadSlides(dom, pane());
+    assert.ok(pane().querySelector('img.ipm-slide'), 'the covers drift again');
+  });
+});

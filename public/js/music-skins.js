@@ -67,6 +67,7 @@
   // the status bar never re-measures when the state flips.
   var SK_GLYPH = {
     play: 'M8 5v14l11-7z',
+    lock: 'M18 9h-1V7a5 5 0 0 0-10 0v2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM9.2 7a2.8 2.8 0 0 1 5.6 0v2H9.2z', // v1.408.0: Hold's mark in the status bar
     pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
     chevDown: 'M7 9.5l5 5 5-5z',
     chevRight: 'M9.5 7l5 5-5 5z',
@@ -258,7 +259,8 @@
     // v1.353 (R2): with a speaker's volume to drive, the time labels are the one-tap way to it
     var volTap = volLevel(ctx) === null ? '' : ' data-skin-voltap role="button" aria-label="Volume"';
     return '<div class="ip-lcd"><div class="ip-lcd-in">' +
-      '<div class="ip-status"><span class="ip-np">Now Playing</span>' + remoteBadge(ctx) +
+      // v1.408.0: Hold's lock takes the title's place while Hold is on (style.css shows it only then, as the real screen did)
+      '<div class="ip-status"><span class="ip-lock" aria-hidden="true">' + skGlyph('lock') + '</span><span class="ip-np">Now Playing</span>' + remoteBadge(ctx) +
       '<span class="ip-status-rt">' + playIndHtml(ctx.playing === false) + '<span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
       // --- Now Playing view ---
       '<div class="ip-npview">' +
@@ -280,7 +282,48 @@
       '</div></div>';
   }
 
-  function renderIpod(ctx) {
+  // v1.408.0 (plan 2026-11-15-ipod-hold-switch, W0 research + Dean's rulings R10-R13): the player's TOP EDGE as seen straight on
+  // from the front - the body stops under the phone's top safe area (black above), its edge shows as a thin band, and the Hold
+  // knob is a thin raised sliver above that edge. holdSpec is DERIVED from the registry (line, gen, look), never a second list
+  // of ids (the inert-sibling class): every Click colorway gets one. pos = where the real model's switch sits and how long its
+  // slot is (the maker's guides + iFixit / Wikimedia photos, the plan's Evidence): the first model and the 4G on the top RIGHT,
+  // everything else on the top LEFT; a model that had no Hold switch (Slim 6/7, Clip, Touch) takes the shared design (R10), and
+  // Slim 3 draws its on top like the rest (R11). edge = what the top edge is made of: chrome (a chrome back that wraps the top),
+  // cap (a plastic end cap), metal (the colorway's own anodised body).
+  function holdSpec(skin) {
+    var s = (typeof skin === 'string' ? skinById(skin) : skin) || {};
+    if (s.look === 'original') return { pos: 'orig', edge: 'chrome' };
+    var g = s.gen;
+    switch (s.line) {
+      case 'classic': return g === 4 ? { pos: 'c4', edge: 'chrome' } : { pos: 'std', edge: g === 6 ? 'metal' : 'chrome' };
+      case 'mini': return { pos: 'mini', edge: 'cap' };
+      case 'nano':
+        if (g === 1) return { pos: 'std', edge: 'chrome' };
+        if (g === 2) return { pos: 'slim2', edge: 'cap' };
+        if (g === 3) return { pos: 'slim3', edge: 'chrome' };
+        if (g === 4) return { pos: 'slim4', edge: 'cap' };
+        if (g === 5) return { pos: 'slim5', edge: 'metal' };
+        return { pos: 'std', edge: 'metal' };
+      case 'shuffle': return { pos: 'std', edge: 'metal' };
+      case 'touch': return { pos: 'std', edge: g <= 4 ? 'chrome' : 'metal' };
+      default: return { pos: 'std', edge: 'chrome' }; // Custom (a 5G body) and any future line: the shared design
+    }
+  }
+  // Which end of the top edge the switch sits at (the two right-hand models); Hold ON slides the knob toward the CENTRE.
+  function holdSide(pos) { return pos === 'orig' || pos === 'c4' ? 'right' : 'left'; }
+  // The top of the player: the black strip over the phone's status area, the body's edge band and the Hold switch (style.css
+  // draws them only on the phone's full player; the pop-out, the tray and the Settings previews hide them). The switch is a
+  // real role="switch" button (the app's ui-switch primitive, repainted as the knob) whose aria-checked the engine keeps (skin-surface.js, the Hold block); `on` is the engine's state
+  // at paint, so a repaint never flips it. Its box is the generous hit area (Dean, R13); the knob is the sliver drawn on the strip
+  // right after it (its place is a fraction of the BODY's width, so it is the strip's child, not the box's; it takes no touch).
+  function ipTop(skin, on) {
+    var h = holdSpec(skin);
+    return '<div class="ip-top" data-hs-pos="' + h.pos + '" data-hs-edge="' + h.edge + '" data-hs-side="' + holdSide(h.pos) + '"><span class="ip-edge" aria-hidden="true"></span>' +
+      '<button type="button" class="ip-hold ui-switch" data-skin-hold role="switch" aria-checked="' + (on ? 'true' : 'false') + '" aria-label="Hold"></button>' +
+      '<span class="ip-hold-slot" aria-hidden="true"><span class="ip-hold-knob"></span></span></div>';
+  }
+
+  function renderIpod(ctx, skin) {
     return ipScreen(ctx) +
       // --- the click wheel (tap zones) ---
       '<div class="ip-wheelwrap"><div class="ip-wheel">' +
@@ -289,7 +332,9 @@
       '<button type="button" class="ip-zone ip-z-right" data-skin-next aria-label="Next">' + ipFfwdGlyph() + '</button>' +
       '<button type="button" class="ip-zone ip-z-down" data-skin-play aria-label="Play or pause">' + ipPlayPauseGlyph() + '</button>' +
       '<button type="button" class="ip-center" data-skin-select aria-label="Select"></button>' +
-      '</div></div>';
+      '</div></div>' + ipTop(skin, ctx.hold === true) +
+      // v1.408.0 W3: Hold's dimmed stage - a layer over the whole player, last so it covers everything (style.css shows it)
+      '<span class="ip-dim" aria-hidden="true"></span>';
   }
 
   // Labels: every Click colorway reads "<line> <generation> <colour>" in our own words ("Slim 4 Orange"; v1.391.0, R7-R9:
@@ -1423,7 +1468,7 @@
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
-    renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
+    renderFull: function (id, ctx) { ctx = ctx || {}; var sk = skinById(id); return sk.renderFull(ctx, sk); }, holdSpec: holdSpec, holdSide: holdSide,
     SIDEWAYS_KEY: SIDEWAYS_KEY, UPRIGHT_CLASS: UPRIGHT_CLASS, pocketSideways: pocketSideways, connGlyph: connGlyph, markUprightClass: markUprightClass, setPocketSideways: setPocketSideways, turnOf: turnOf, unturnDelta: unturnDelta,
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, pocketEntryAvailable: pocketEntryAvailable, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,

@@ -5,6 +5,17 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Hold switch (v1.408.0; (g) after the app build that announces idleDisplay)
+
+- [ ] v1.408.0 - (a) iPhone 15 Pro, home-screen app and Safari: every Click skin (Original, a Classic, a Mini, a Slim, a Clip, a Touch) stops under the island with a black strip above and a thin edge band; turn the phone and back (Upright on): the edge does not jump.
+- [ ] v1.408.0 - (b) The Hold knob sits where the real model's switch was (Original and Classic 1 top right, the rest top left) and slides toward the centre when you tap it or slide it; the lock replaces the title. Easy to hit with a thumb.
+- [ ] v1.408.0 - (c) Hold on: the wheel, MENU, the center, a scroll in a list, a long press, the sticker and the LCD all do nothing; a touch anywhere only brightens the screen; a tap or slide on the switch turns Hold off and everything works again.
+- [ ] v1.408.0 - (d) Hold on: the lock screen and Control Center play/pause and skip work, and so do the volume buttons.
+- [ ] v1.408.0 - (e) About 30 s after the last touch the player dims and stops moving (no scrolling title, no moving light); the time still counts once a second; a touch brings it back.
+- [ ] v1.408.0 - (f) Leave it alone for 5 min: the phone locks by itself (browser: if it supports keeping the screen awake) and the lock screen shows Now Playing; music never stops. Unlock: the player is bright, Hold still on.
+- [ ] v1.408.0 - (g) App build with idleDisplay: with Hold on the phone does not auto-lock in the first 5 min; at 30 s the screen REALLY dims (brightness, not only the layer) and a touch brings it back; leaving the player, the app or a Control Center pull never leaves the phone dimmed.
+- [ ] v1.408.0 - (h) Sideways setting on, phone turned: an 8 px black strip with the knob at the top (the look was approved in portrait only) - keep it or say what it should be.
+
 ## Podcast WAV, TV pages and phone polish (v1.407.0)
 
 - [ ] v1.407.0 - (a) iPhone app: play the Tim Dillon Show Bonus Feed's "Thanksgiving and Native Americans" episode (a 658 MB WAV): it starts (it may take a moment) and seeks. Other podcasts still play. A failure is a re-root-cause: send the toast text and the Player and timing log.

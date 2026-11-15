@@ -133,6 +133,15 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#3-locks-censuses-and
 
 - **Every render arm is a render path: the EMPTY and ERROR arms call the one reconciler too.** v1.400.0's selection reconciler ran from the card writer; the empty-state arm returned before it, so a filter that emptied the grid left "3 selected" and live verbs over no cards, and the ids came back ticked when the cards did. Guard: enumerate every writer of the list AND every arm that paints the host (empty, error, skeleton) and call the reconciler from each; bind with an empty-then-return test, which is also what kills the "prune dropped" mutant a DOM-tick assertion never sees (the ticks were already filtered by the list). (v1.400.0 gate r1 A2 / W1; x1)
 
+- **A host told a held state "only on a change" must forget it across a hide, and a hidden page tells it nothing.** v1.408.0's Hold told
+  the app `display.hold` / `display.dim` on a change only; the app drops both whenever it resigns active, so after a lock or an app
+  switch the web still "held" them and never re-told it (gate r1); the first fix marked them unknown on a hide, and the 1 s self-heal
+  poll, alive under Hold's music, re-posted the stage within a second of leaving the app - a dim the app would apply system-wide (gate
+  r2, both seats, measured with a fake host on a fake clock). Guard: unknown (null) on a hide, NOTHING posted while `document.hidden`,
+  both values on the return; the host also re-applies its last state on becoming active; a test advances the clock WHILE hidden (the
+  first test returned at once and missed it). Sibling, same wave: an engine state class on a node `paint()` rebuilds is re-added on
+  every paint for EACH such class (`mms-hold` was, `mms-hold-dim` was not: every track change un-dimmed it). (v1.408.0 gate r1-r2; x1)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#4-spa-shell-client-lifecycle-and-async-ui-state).
 - **A deep link or remembered choice aimed at a page revealed LATER is dropped by a menu built before the reveal.** Guard: keep it as a pending key and apply it when its row appears (a click cancels it); test in the REAL boot order (wire first, reveal after), never reveal-then-wire, and set a pre-loaded `#hash` with `history.replaceState` (jsdom fires a `hashchange` a browser does not, which masks the bug). A reorganization that renames ids also needs the old -> new table tested BOTH ways against the real markup (v1.367.0).
 
