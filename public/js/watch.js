@@ -1370,10 +1370,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // a single frame (glow armed but empty - "seemingly not working"). Proven by
     // a live-Chromium probe; initTvWatch assigns the episode descriptor here.
     let mediaData = null;
-    // v1.198 (Dean: fake comments on episodes too): the comments machinery keys
-    // its localStorage bucket + deterministic mock selection off ONE scope id -
-    // the video id normally, the episode id on the tv path (set in initTvWatch).
-    // Hoisted above the ?tv= branch for the same TDZ reason as mediaData.
+    // The comments machinery keys its localStorage bucket + deterministic mock
+    // selection off ONE scope id - the video id (the tv path sets the episode id
+    // in initTvWatch, but shows no comments since 2026-11-14, so nothing reads it
+    // there). Hoisted above the ?tv= branch for the same TDZ reason as mediaData.
     let commentScopeId = mediaId;
     // v1.366.0 (VR / 360): the 360 view's reconciler, set by setupVrView. Hoisted above the ?tv= branch for the same
     // TDZ reason (the capability callback reads it on every path; the tv path never sets it).
@@ -4600,15 +4600,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // bound behaviourally in the integration test). All four helpers are init-level
     // siblings, so they share this closure's consts (root/playerSlot/mediaTitle/signal).
     function hideTvVideoChrome() {
-      // A TV episode has no comments/related and no video-management actions -
-      // those chrome blocks assume a db.metadata id + /api/videos routes. Hidden
+      // A TV episode has no video-management actions - those chrome blocks assume a db.metadata id + /api/videos routes. Hidden
       // by the `hidden` attribute (UI pass: ui.css's global [hidden] rule wins over
       // every author display rule, the standing lesson closed once). v1.197 (W2, Dean): the uploader
       // panel + description container now STAY - the uploader row becomes the
       // SHOW (poster icon, tap -> back) and the description shows the episode's
       // file name + metadata, painted by paintTvEpisodePanel below.
-      // v1.198 (Dean): comments STAY - episodes get the same fake retro comments
-      // as every other media type (loadComments, keyed by the episode id).
+      // v1.198 kept the fake retro comments on episodes; Dean (2026-11-14) reversed
+      // that: initTvWatch hides the comments section outright.
       // v1.198.1 (Dean): the related rail STAYS too - renderTvUpNextRail fills it
       // with the show's next episodes in order, wrapping to episode 1.
       ['.watch-action-bar'].forEach(function (sel) {
@@ -4638,6 +4637,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // typeof-guarded (the shared-global scar): the formatters are common.js
       // page globals, absent in a minimal harness - degrade to blank, not throw.
       if (addedDateText) { addedDateText.textContent = (ep.addedAtMs && typeof formatRelativeTime === 'function') ? formatRelativeTime(ep.addedAtMs) : ''; addedDateText.classList.remove('skeleton-shimmer', 'skel-w60'); }
+      // Dean 2026-11-14: an episode carries no view count, so the markup's #views-count
+      // skeleton was never cleared on the TV path (a forever-shimmering bar). Hidden, not
+      // blanked: an empty span would leave a gap in the meta row.
+      if (viewsCount) { viewsCount.textContent = ''; viewsCount.classList.remove('skeleton-shimmer', 'skel-w120'); viewsCount.hidden = true; }
       if (fileSizeText) { fileSizeText.textContent = (ep.sizeBytes && typeof formatFileSize === 'function') ? formatFileSize(ep.sizeBytes) : ''; fileSizeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       if (fileTypeText) { fileTypeText.textContent = (ep.ext || '').replace('.', '').toUpperCase() || 'Video'; fileTypeText.classList.remove('skeleton-shimmer', 'skel-w60'); }
       // v1.198 (Dean): the file NAME lands in the "File Path:" row (the basename
@@ -4790,11 +4793,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // tv-reachable) - assigning real truth here also future-proofs any
         // shared helper the tv path grows into.
         mediaData = descriptor;
-        commentScopeId = episodeId; // v1.198: the comments bucket + mock seed
+        commentScopeId = episodeId; // the episode-id comments scope (no comments render on tv now)
         var mounted = window.FileTube.player.load(episodeId, descriptor, { slot: playerSlot });
         if (!mounted) { showFatalViewError(root); return; }
-        loadComments();      // v1.198 (Dean): the same fake retro comments as videos
-        wireCommentForm();   // and the same posting form (episode-id-scoped bucket)
+        // Dean 2026-11-14: TV episodes have no real comments, only the fake retro bucket, so the
+        // section is hidden outright (no load, no posting form). Videos and other media are untouched.
+        if (commentsSection) commentsSection.hidden = true;
         // v1.197 (W1): the FULL cog sequence initWatch runs. ensureCogControls-
         // Injected is what INJECTS the autoplay/loop/theatre/ambient rows into
         // the mounted host's cog menu - without it every setup below bailed on a

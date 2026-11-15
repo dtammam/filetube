@@ -541,14 +541,10 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   assert.equal(filePathEl.textContent, 'My Show S01E02 - Pilot.mp4', 'the File Path row paints the BASENAME (was a forever-shimmer)');
   assert.equal(descPara.textContent, '', 'the description is empty now (the filename moved to the File Path row - no duplication)');
   assert.equal(subBtn.hidden, true, 'NO Subscribe on an episode (hidden; ui.css\'s global [hidden] rule closed the [hidden]-loses-to-display class that made it show)');
-  assert.ok(commentsBox.children.length > 0, 'the fake retro comments render on episodes (same machinery as videos, episode-id-scoped)');
-  // Slim-gate WARNING 1: rendering alone is not VISIBILITY - re-adding
-  // '#comments-container' to hideTvVideoChrome's list appends children into a
-  // display:none box and stayed green. Bind the visibility axis too.
-  assert.notEqual(commentsBox.style.display, 'none', 'the comments container is not re-hidden on tv (Dean\'s exact complaint)');
-  // Slim-gate SUGGESTION 1: the episode-id scope binds via the REAL storage key -
-  // deleting `commentScopeId = episodeId` would key every episode on comments_null.
-  assert.ok(storage.has('comments_ep1'), 'comments persist under the EPISODE id bucket');
+  // Dean 2026-11-14 (device pass on the beta) reversed v1.198: TV episodes have only the fake retro
+  // bucket, which nobody uses there, so initTvWatch no longer loads comments at all.
+  assert.equal(commentsBox.children.length, 0, 'no comments render on episodes');
+  assert.ok(!storage.has('comments_ep1'), 'no comments bucket is created for the episode');
   assert.ok(!storage.has('comments_null'), 'never the null bucket');
 
   // v1.198.1 (Dean): the Up-next rail = the show's OTHER episodes ROTATED around
