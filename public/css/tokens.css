@@ -854,9 +854,10 @@
   --pk-hold-c-slim4: 12%; --pk-hold-w-slim4: 16%; --pk-hold-k-slim4: .4;
   --pk-hold-c-slim5: 17%; --pk-hold-w-slim5: 12%; --pk-hold-k-slim5: .45;
   /* W3: the dimmed stage (Hold on, ~30 s with no touch) - a dark layer over the whole player, faded in slowly the way the
-     phone's own always-on screen dims; local to the player, above every local layer it draws (the sticker is 40 and injected
-     after it, the Tap to play cue 39: test/unit/pocket-hold-stages.test.js derives them all) */
+     phone's own always-on screen dims; local to the player, the top of the local band: the sticker shares 40 and is inserted
+     BEFORE the dim (skin-surface.js injectSticker), so the dim paints over it by DOM order; the Tap to play cue is 39
+     (test/unit/pocket-hold-stages.test.js derives them all) */
   --pk-hold-dim: rgba(0,0,0,.72);
-  --pk-hold-dim-z: 41;
+  --pk-hold-dim-z: 40;
   --pk-hold-dim-fade: 1.2s;
 }

@@ -17,7 +17,8 @@
 // knob - turns Hold on; with Hold on a tap on MENU opens nothing; the knob's travel is measured after the slide; a second tap
 // at the opposite corner turns it off and MENU opens the menus again),
 // DIM=1 (W3: per row, Hold on by a real touch, then the REAL 30 s: the dim layer covers the player at full opacity, the wake lock
-// was asked for, and the progress bar's style is written about once a second, not per timeupdate; a touch wakes; SHOTS=<dir>
+// was asked for, the progress bar's style is written about once a second, not per timeupdate, and the page asks for (almost) no
+// animation frames - at most 10 in 5 s; a touch wakes; SHOTS=<dir>
 // saves the dimmed frame).
 
 const os = require('node:os');
@@ -162,22 +163,26 @@ async function main(skins) {
         await ev(`(function () { window.__fw = []; var f = document.querySelector('#music-nowplaying-panel .mms-fill'); new MutationObserver(function () { window.__fw.push(performance.now()); }).observe(f, { attributes: true, attributeFilter: ['style'] }); return true; })()`);
         await ev(`(function () { var m = document.getElementById('media-player'); try { m.play(); } catch (_) {} return true; })()`);
         await sleep(1000);
-        await ev('window.__fw = []; true');
+        // every requestAnimationFrame the page asks for (gate r1 adversary W2: player.js's position loop ran every frame under the dim)
+        await ev(`(function () { window.__raf = 0; var r = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = function (f) { window.__raf += 1; return r(f); }; return true; })()`);
+        await ev('window.__fw = []; window.__raf = 0; true');
         await sleep(5000);
         const awakeWrites = await ev('window.__fw.length'); // the control: awake, the view's own rate (timeupdate)
+        const awakeRaf = await ev('window.__raf');
         await sleep(31000 - 6000 + 1500); // the rest of the real 30 s, then the 1.2 s fade
         const d = await ev(`(function () { var p = document.getElementById('music-nowplaying-panel'); var l = p.querySelector('.ip-dim'); var cs = getComputedStyle(l); var r = l.getBoundingClientRect(); var pr = p.getBoundingClientRect();
           return { dimClass: p.classList.contains('mms-hold-dim'), opacity: cs.opacity, visibility: cs.visibility, covers: r.left <= pr.left && r.top <= pr.top && r.right >= pr.right && r.bottom >= pr.bottom, wl: window.__wl, wlApi: !!navigator.wakeLock }; })()`);
-        await ev('window.__fw = []; true');
+        await ev('window.__fw = []; window.__raf = 0; true');
         await sleep(5000);
         const writes = await ev('window.__fw.length');
+        const dimRaf = await ev('window.__raf');
         if (process.env.SHOTS) { fs.mkdirSync(process.env.SHOTS, { recursive: true }); const shot = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(process.env.SHOTS, `${skin}-${row.w}x${row.h}-dim.png`), Buffer.from(shot.data, 'base64')); }
         await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: row.w / 2, y: row.h * 0.7 }] });
         await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         await sleep(300);
         const woke = await ev(`!document.getElementById('music-nowplaying-panel').classList.contains('mms-hold-dim') && document.getElementById('music-nowplaying-panel').classList.contains('mms-hold')`);
-        dim = Object.assign(d, { awakeWritesIn5s: awakeWrites, writesIn5s: writes, woke });
-        dim.ok = awakeWrites > writes && d.dimClass && d.opacity === '1' && d.visibility === 'visible' && d.covers && (!d.wlApi || d.wl >= 1) && writes <= 6 && woke;
+        dim = Object.assign(d, { awakeWritesIn5s: awakeWrites, writesIn5s: writes, awakeRafIn5s: awakeRaf, dimRafIn5s: dimRaf, woke });
+        dim.ok = awakeWrites > writes && dimRaf <= 10 && d.dimClass && d.opacity === '1' && d.visibility === 'visible' && d.covers && (!d.wlApi || d.wl >= 1) && writes <= 6 && woke;
         if (!dim.ok) failed++;
       }
       if (!ok) failed++;

@@ -157,7 +157,7 @@ test('a slide that STARTS on the switch and ends elsewhere is the switch\'s: tow
     const wheel = h.panel.querySelector('.ip-wheel');
     const next0 = h.spy.next;
     ptr(h, sw(h), 'pointerdown', 9, 40, 2);
-    ptr(h, h.panel.querySelector('[data-skin-next]'), 'pointerup', 9, 90, 200); // slid right (toward the centre) and lifted over the wheel
+    ptr(h, h.panel.querySelector('[data-skin-next]'), 'pointerup', 9, 90, 20); // slid right (toward the centre) and lifted over the wheel
     h.panel.querySelector('[data-skin-next]').dispatchEvent(new h.dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
     assert.ok(isHold(h), 'slid toward the centre: Hold on');
     assert.strictEqual(h.spy.next, next0, 'the zone it lifted over did nothing');

@@ -11776,7 +11776,7 @@ a.tv-continue-card { text-decoration: none; }
 :where(html.is-phone) .mms-full.mms-ipod .ip-top[data-hs-pos="slim5"]{ --hs-c:var(--pk-hold-c-slim5); --hs-w:var(--pk-hold-w-slim5); --hs-k:var(--pk-hold-k-slim5); --hs-knob:var(--pk-hold-knob-metal); --hs-knob-r:var(--pk-hold-knob-round); }
 /* the button is the app's ui-switch primitive (ui.css); the skin repaints it, so EVERY property the primitive paints is reset
    here - its size, radius and background in both states, and its own ::before knob (this one draws .ip-hold-knob) - and
-   only its focus ring is kept (one class more than .ui-switch[aria-checked="true"], so this wins in both states) */
+   only its focus ring is kept (two classes more than .ui-switch[aria-checked="true"], so this wins in both states) */
 :where(html.is-phone) .mms-full.mms-ipod .ip-hold.ui-switch{ position:absolute; pointer-events:auto; margin:0; padding:0; border:0; border-radius:0; background:none; background-color:transparent;
   left:max(var(--pk-hold-hit-floor), calc(var(--hs-c) - var(--hs-w) / 2 - var(--pk-hold-hit-pad))); width:calc(var(--hs-w) + 2 * var(--pk-hold-hit-pad));
   top:max(var(--pk-hold-hit-floor), calc(var(--ip-cut) - var(--pk-hold-hit-up))); bottom:calc(-1 * var(--pk-hold-hit-down)); height:auto; }

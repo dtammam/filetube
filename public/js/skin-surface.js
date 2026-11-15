@@ -748,7 +748,7 @@
   // by the same 1 s self-heal poll when their panel leaves with no engine call, released on pagehide and re-asserted on a
   // persisted pageshow.
   var dispOwners = [];
-  var dispHold = false;
+  var dispHold = false; // what the host was last told; null = unknown (after a hide): the next apply tells it again
   var dispDim = false;
   function displayHost() {
     var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
@@ -789,12 +789,21 @@
     if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
   function hostReassert() { orientApply(); battApply(); barApply(); dispApply(); }
+  // v1.408.0 (gate r1 adversary W1): the app turns the idle timer back on and restores the brightness whenever it resigns active
+  // (a lock, an app switch, Control Center), so after a HIDE the web no longer knows what the host holds (null: unknown) and, on
+  // the return, tells it BOTH again, whatever they are; the host also re-applies the last state it was sent when it becomes
+  // active (Control Center hides nothing).
+  function hostVisibility() {
+    if (typeof document === 'undefined') return;
+    if (document.hidden) { dispHold = null; dispDim = null; } else dispApply();
+  }
   function hostBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
     orientPageBound = true;
     try {
       window.addEventListener('pagehide', hostReleaseAll);
       window.addEventListener('pageshow', hostReassert);
+      document.addEventListener('visibilitychange', hostVisibility);
     } catch (_) { /* a bare harness */ }
   }
   function orientClaim(owner) {
@@ -1989,11 +1998,14 @@
   // never a long-press menu, a scroll, a pinch, a selection or a drag, even on the switch
   var HOLD_SWITCH_OK = { pointerdown: 1, pointermove: 1, pointerup: 1, pointercancel: 1, touchstart: 1, touchmove: 1, touchend: 1, touchcancel: 1,
     mousedown: 1, mousemove: 1, mouseup: 1, click: 1, keydown: 1, keypress: 1, keyup: 1 };
+  // the keys the focused switch takes (its activation); any other key aimed at it is swallowed like every key (gate r1: Tab
+  // would move the focus off the switch, and then no key could reach it again; Escape reached the page's own listeners)
+  var HOLD_SWITCH_KEYS = { ' ': 1, Enter: 1, Spacebar: 1 };
   // Pure: what Hold does with one event. `onSwitch` = its target is inside the switch; `switchGesture` = a pointer event of a
   // press that STARTED on the switch (a slide that ends off it is still the switch's). 'allow' | 'block' | 'wake' (block + wake).
   function holdEventDecision(e) {
     var type = e && e.type;
-    if (e && e.onSwitch && HOLD_SWITCH_OK[type]) return 'allow';
+    if (e && e.onSwitch && HOLD_SWITCH_OK[type] && (type.indexOf('key') !== 0 || HOLD_SWITCH_KEYS[e.key])) return 'allow';
     if (e && e.switchGesture && (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')) return 'allow';
     return HOLD_WAKE[type] ? 'wake' : 'block';
   }
@@ -2003,6 +2015,9 @@
   var HOLD_SLIDE_PX = 8;
   function holdToggleDecision(o) {
     var dx = Number(o && o.dx) || 0;
+    var dy = Number(o && o.dy) || 0;
+    // a press that travelled mostly ACROSS the edge (a swipe down from the top, a scroll) is no use of the switch (gate r1 adversary S1)
+    if (Math.abs(dy) >= HOLD_SLIDE_PX && Math.abs(dy) > Math.abs(dx)) return !!(o && o.on);
     if (Math.abs(dx) < HOLD_SLIDE_PX) return !(o && o.on);
     return (o && o.side === 'right') ? dx < 0 : dx > 0;
   }
@@ -2214,6 +2229,9 @@
       keepAwake(n === 1 || n === 2);
       if (inMainDoc) { if (n > 0) dispClaim(dispOwner); else dispRelease(dispOwner); } // the host's real keep-awake and dim
       if ((was >= 2) !== dim) {
+        // the player's own position loop (player.js fillTick) runs every frame while playing; under the dim it ticks once a
+        // second instead (gate r1 adversary W2: measured 60 frames per 2 s from it alone)
+        if (inMainDoc) { try { doc.dispatchEvent(new win.CustomEvent('filetube:hold-dim', { detail: { on: dim } })); } catch (_) { /* no CustomEvent */ } }
         if (pocket) pocket.onVisibility(); // the cover drift stops under the dim and comes back after it
         if (!dim && lighting) lighting.sync(); // the light follows the phone again (its next sample re-arms the loop)
         if (!dim) reflect(); // the screen catches up at once
@@ -2250,7 +2268,7 @@
     function holdBlock(e) {
       if (!hold.on) return;
       var g = hold.gesture;
-      var d = holdEventDecision({ type: e.type, onSwitch: onHoldSwitch(e.target), switchGesture: !!(g && e.pointerId != null && e.pointerId === g.id) });
+      var d = holdEventDecision({ type: e.type, key: e.key, onSwitch: onHoldSwitch(e.target), switchGesture: !!(g && e.pointerId != null && e.pointerId === g.id) });
       if (d === 'allow') return;
       if (e.cancelable) e.preventDefault();
       e.stopImmediatePropagation();
@@ -2286,6 +2304,9 @@
       hold.on = on;
       if (on) {
         if (wheelSpin) { try { endWheel(wheelSpin, true); } catch (_) { /* the wheel is gone */ } }
+        // a game holding the wheel (Brick) ends as MENU would end it: under Hold nothing could play it, and it must not keep
+        // drawing every frame under the dim (gate r1 adversary W2)
+        releaseWheelTakeover();
         // a focused control in the player (the Pocket's keyboard-search input, with the phone's keyboard up) lets go: Hold takes
         // every key, so a keyboard left up could type nothing and nothing could close it
         var focused = doc.activeElement;
@@ -2327,7 +2348,7 @@
       var d = (deg && SKINS.unturnDelta) ? SKINS.unturnDelta(e.clientX - g.x, e.clientY - g.y, deg) : { x: e.clientX - g.x, y: e.clientY - g.y };
       var top = panel.querySelector('.ip-top');
       hold.lastPointerToggle = holdNow();
-      setHold(holdToggleDecision({ on: hold.on, dx: d.x, side: top ? top.getAttribute('data-hs-side') : 'left' }));
+      setHold(holdToggleDecision({ on: hold.on, dx: d.x, dy: d.y, side: top ? top.getAttribute('data-hs-side') : 'left' }));
     }
     function onHoldClick(e) {
       if (!onHoldSwitch(e.target)) return;
@@ -3000,7 +3021,9 @@
       closeStickerMenu(); // a repaint (an auto-advance, a skin change) replaces the surface the open sheet describes: it closes, as the popover did
       wrap.innerHTML =
         '<button type="button" class="mms-sticker' + imgCls + szCls + tiltCls + '" data-skin-sticker aria-haspopup="true" aria-expanded="false" aria-label="Player options">' + stickerIconHtml() + '</button>';
-      panel.appendChild(wrap);
+      // v1.408.0 (gate r1 qa S3): before Hold's dim layer, so the dim (the same local z) paints over it by DOM order
+      var dimLayer = panel.querySelector('.ip-dim');
+      if (dimLayer && dimLayer.parentNode === panel) panel.insertBefore(wrap, dimLayer); else panel.appendChild(wrap);
     }
     // ---- the Skin page: search, the last skins picked, then the registry's own groups (SKIN_LINES via skinFamilies) ----
     function recentSkinIds() {
@@ -3664,6 +3687,7 @@
       // Original's structure class; music.js's launch cover calls the same builder, gate r1 W1).
       panel.className = SKINS.panelClass(id);
       if (hold.on) panel.classList.add('mms-hold'); // v1.408.0: Hold survives every repaint (the renderer draws the switch checked)
+      if (hold.stage >= 2) panel.classList.add('mms-hold-dim'); // ...and so does its dimmed stage (gate r1 qa W1: a track change un-dimmed it)
       paintedSkinId = id;
       // a skin without a look starts the wheel at rest (the turn itself lives on the wheel, below)
       if (!skinLook()) wheelTurn = 0;

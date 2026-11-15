@@ -57,7 +57,7 @@ function wakeLockStub(win, { auto = true } = {}) {
 }
 const flush = () => new Promise((r) => setImmediate(r));
 
-function boot({ lock = true, auto = true, strength = 'pronounced' } = {}) {
+function boot({ lock = true, auto = true, strength = 'pronounced', sticker = false } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music', pretendToBeVisual: true });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -83,6 +83,7 @@ function boot({ lock = true, auto = true, strength = 'pronounced' } = {}) {
   const engine = win.FileTubeSkinSurface.create({ panel, win, getSkinId: () => 'ipod',
     getCtx: () => ({ track: { title: 'T', artist: 'A' }, upNext: [], fullList: [], playing: true, posLabel: '0:10', remLabel: '-3:10' }),
     hostCtl: (id) => win.document.getElementById(id), lightingStore: ls, lightingNow: clock.now,
+    sticker: sticker ? { onSkinChange() {} } : undefined,
     menu: { load: () => Promise.resolve({ items: [] }), onPlay() {}, onShuffleAll() {}, hasCurrent: () => true, currentId: () => 'now', dataVersion: () => 0 } });
   engine.paint();
   const setHidden = (h) => { hidden = h; if (h && wl) wl.held.slice().forEach((x) => x.release()); win.document.dispatchEvent(new win.Event('visibilitychange')); };
@@ -290,7 +291,57 @@ test('the dim layer: drawn last by the renderer, shown only under the dimmed sta
   const player = rules.filter((r) => /\.(mms-|ip-|ipm-|ipod-brick)/.test(r.sel) && /z-index:\s*\d+/.test(r.body));
   assert.ok(player.length >= 6, 'the census reaches the player layers (' + player.length + ')');
   const top = Math.max(...player.filter((r) => !/\.mms-full\{|\.mms-full\s*$/.test(r.sel.trim()) && !/--z-/.test(r.body)).map((r) => Number(/z-index:\s*(\d+)/.exec(r.body)[1])));
-  assert.ok(dimZ > top, 'the dim (' + dimZ + ') over the highest player layer (' + top + ')');
+  assert.ok(dimZ >= top && dimZ <= 40, 'the dim (' + dimZ + ') at the top of the local band, never under a player layer (' + top + ')');
+  const atTop = player.filter((r) => Number(/z-index:\s*(\d+)/.exec(r.body)[1]) === dimZ).map((r) => r.sel.trim());
+  assert.deepStrictEqual(atTop, [':where(html.is-phone, html.mms-popout) .mms-sticker-wrap'], 'the one layer sharing its z is the sticker, which the engine inserts BEFORE the dim (bound in the next test)');
   const SK = require(skinsPath);
   for (const id of SK.clickColorways()) assert.ok(SK.renderFull(id, {}).endsWith('<span class="ip-dim" aria-hidden="true"></span>'), id);
+});
+
+test('a repaint under the dim keeps the dim (gate r1 qa W1: every track change repainted it away)', async () => {
+  const b = boot();
+  try {
+    b.engine.setHold(true); await flush();
+    b.clock.advance(30000); assert.ok(dimmed(b));
+    b.engine.paint(); // a track change, an autoplay append, a chapter cross
+    assert.ok(dimmed(b), 'still dimmed after the repaint');
+    assert.ok(b.panel.classList.contains('mms-hold'));
+    touchElsewhere(b);
+    b.engine.paint();
+    assert.ok(!dimmed(b), 'awake: a repaint brings no dim back');
+  } finally { b.restore(); }
+});
+
+test('the sticker is inserted BEFORE the dim layer, so the dim (the same local z) covers it by DOM order', () => {
+  const b = boot({ sticker: true });
+  try {
+    const wrap = b.panel.querySelector('.mms-sticker-wrap'); const dim = b.panel.querySelector('.ip-dim');
+    assert.ok(wrap && dim, 'precondition: both are drawn');
+    assert.ok(wrap.compareDocumentPosition(dim) & b.win.Node.DOCUMENT_POSITION_FOLLOWING, 'the dim follows the sticker');
+    b.engine.paint();
+    const wrap2 = b.panel.querySelector('.mms-sticker-wrap'); const dim2 = b.panel.querySelector('.ip-dim');
+    assert.ok(wrap2.compareDocumentPosition(dim2) & b.win.Node.DOCUMENT_POSITION_FOLLOWING, 'after a repaint too');
+  } finally { b.restore(); }
+});
+
+test('the dim tells the page (filetube:hold-dim) so the player\'s own frame loop slows to once a second (player.js; measured in Chromium by the probe)', async () => {
+  const b = boot();
+  try {
+    const seen = [];
+    b.win.document.addEventListener('filetube:hold-dim', (e) => seen.push(e.detail.on));
+    b.engine.setHold(true); await flush();
+    b.clock.advance(30000);
+    assert.deepStrictEqual(seen, [true], 'entering the dim');
+    b.clock.advance(270000);
+    assert.deepStrictEqual(seen, [true], 'stage 3 stays dimmed: nothing new');
+    touchElsewhere(b);
+    assert.deepStrictEqual(seen, [true, false], 'a wake ends it');
+    b.clock.advance(30000); b.engine.setHold(false);
+    assert.deepStrictEqual(seen, [true, false, true, false], 'Hold off from the dim ends it too');
+  } finally { b.restore(); }
+  // player.js's half (no jsdom harness exists for player.js: a SOURCE lock, comments stripped; the real-browser count is the probe's)
+  const src = require('node:fs').readFileSync(require.resolve('../../public/js/player.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(src, /if \(holdDimmed\) seekFillTimer = setTimeout\(fillTick, HOLD_FILL_MS\);\s*else seekFillRafId = requestAnimationFrame\(fillTick\);/);
+  assert.match(src, /document\.addEventListener\('filetube:hold-dim', function \(e\) \{\s*holdDimmed = !!\(e && e\.detail && e\.detail\.on\);/);
+  assert.match(src, /if \(seekFillTimer != null\) \{ clearTimeout\(seekFillTimer\); seekFillTimer = null; \}/, 'stopFillLoop clears the timer too');
 });

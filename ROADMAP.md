@@ -452,6 +452,11 @@
 
 ### Features
 
+- [ ] **v1.408.0 Hold gate r1 suggestions (not taken; none blocks)** _(2026-11-15)_: (1) adversary S2: Hold's blocker also swallows the
+  app's OWN script clicks (`el.click()`, not trusted) - a suspicion only: the Resume countdown's auto-fire (player.js ~8087) on a podcast
+  loaded under Hold in "ask" mode might never start; decide whether untrusted events pass (the jsdom suites dispatch untrusted events, so
+  the binding needs a real-browser proof); (2) qa S6: the Sideways layout now shows the 8 px strip and the knob (the look was approved on
+  portrait mocks) - DEVICE-CHECKS "Hold switch (v1.408.0)" (h) asks Dean.
 - [ ] **v1.406.0 gate r2 suggestions (none blocks; not taken to keep the close-out bookkeeping-only)** _(2026-11-08)_: (1) security S2,
   latent: player.js `applyLateDetail` should skip the surface-flavor keys (readerHref, resumeMode, progressEndpoint, autoAdvanceViaTrackNav,
   browseCtx, startAt, placeFloorSec) - today no media record carries them; (2) adversary S-r2-1: bind the fill loop's "never overrides what the seed

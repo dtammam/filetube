@@ -190,7 +190,7 @@ test('W1 CSS: the Pocket portrait top paddings read var(--pk-top-inset, env(safe
   // the landscape layout keeps reading env() directly: the D7 block, and (v1.408.0) the Sideways top-edge cut
   const land = css.slice(css.indexOf('UI pass D7: POCKET IN LANDSCAPE'), css.indexOf('POCKET STAYS UPRIGHT'));
   assert.ok(land.length > 1000 && !land.includes('--pk-top-inset'), 'the landscape block is untouched');
-  const sideCut = uses.length && css.split('\n').filter((l) => l.includes('--ip-cut:max(env(safe-area-inset-top,0px)'));
+  const sideCut = css.split('\n').filter((l) => l.includes('--ip-cut:max(env(safe-area-inset-top,0px)'));
   assert.strictEqual(sideCut.length, 1, 'the Sideways cut reads env()');
 });
 

@@ -329,5 +329,6 @@ the web view goes away, and the next page's `{ active: false }` at load says so;
 hides on the navigation commit and when the web view goes away, and stays hidden until the next page's first `nav.bar`; a page
 restored from the back-forward cache re-sends its current `nav.bar` on a persisted `pageshow`. Hold's `idleDisplay` (v1.408.0) is released the
 same way: on every main-frame navigation commit, when the web view goes away, and on `willResignActive` / `didEnterBackground`, the
-host turns the idle timer back on and restores the brightness it remembered; the web posts `display.hold` / `display.dim` false on
-`pagehide` and re-sends what Hold still wants on a persisted `pageshow` (the engine's registry, beside the status bar's).
+host turns the idle timer back on and restores the brightness it remembered, and on `didBecomeActive` re-applies the last
+`display.hold` / `display.dim` it was sent; the web posts both false on `pagehide`, re-sends what Hold still wants on a persisted
+`pageshow`, and re-sends both after a hide when the page shows again (the engine's registry, beside the status bar's).

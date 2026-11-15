@@ -141,3 +141,21 @@ test('the adapter: display.hold / display.dim carry exactly a required boolean `
     assert.deepStrictEqual(b.fake.posts.slice(-2), [{ v: 1, type: 'display.hold', on: true }, { v: 1, type: 'display.dim', on: false }], 'unknown fields never leave');
   } finally { b.restore(); }
 });
+
+test('a hide (the app resigned active: it turned the idle timer back on and restored the brightness) and the return: the web tells the host again (gate r1 adversary W1)', () => {
+  for (const at of [0, 30000]) {
+    const b = boot();
+    try {
+      let hidden = false;
+      Object.defineProperty(b.win.document, 'hidden', { configurable: true, get: () => hidden });
+      b.engine.setHold(true); b.clock.advance(at);
+      const before = held(b);
+      hidden = true; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+      const n = b.fake.posts.length;
+      hidden = false; b.win.document.dispatchEvent(new b.win.Event('visibilitychange'));
+      const after = b.fake.posts.slice(n).filter((m) => /^display\./.test(m.type)).map((m) => m.type + ':' + m.on);
+      assert.ok(after.includes('display.hold:true'), 'the return re-sends the keep-awake (stage ' + (at ? 2 : 1) + '): ' + after.join(','));
+      assert.deepStrictEqual(held(b), { hold: true, dim: false }, 'awake and bright after the return (the web wakes on it); before: ' + JSON.stringify(before));
+    } finally { b.restore(); }
+  }
+});

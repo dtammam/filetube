@@ -41,9 +41,13 @@ const sw = (b) => b.panel.querySelector('[data-skin-hold]');
 
 test('holdEventDecision: the switch\'s own presses, moves, releases, click and keys pass; everything else is blocked, the presses also wake', () => {
   const D = SS.holdEventDecision;
-  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click', 'keydown', 'keyup']) {
+  for (const type of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click']) {
     assert.strictEqual(D({ type, onSwitch: true }), 'allow', type + ' on the switch');
   }
+  // gate r1: the focused switch takes only its activation keys; Tab (the focus would leave it for good) and Escape (it reached
+  // the page's own listeners) are swallowed like every other key
+  for (const key of [' ', 'Enter', 'Spacebar']) for (const type of ['keydown', 'keypress', 'keyup']) assert.strictEqual(D({ type, key, onSwitch: true }), 'allow', type + ' ' + JSON.stringify(key));
+  for (const key of ['Tab', 'Escape', 'ArrowDown', 'a', undefined]) assert.strictEqual(D({ type: 'keydown', key, onSwitch: true }), 'wake', 'keydown ' + key + ' on the switch is swallowed');
   for (const type of ['wheel', 'gesturestart', 'selectstart', 'dragstart', 'dblclick', 'auxclick']) {
     assert.notStrictEqual(D({ type, onSwitch: true }), 'allow', type + ' is never the switch\'s');
   }
@@ -69,6 +73,11 @@ test('holdToggleDecision: a tap flips; a slide toward the CENTRE turns Hold on a
   assert.strictEqual(T({ on: false, dx: -s, side: 'left' }), false, 'already off: stays off');
   assert.strictEqual(T({ on: false, dx: -s, side: 'right' }), true, 'right switch, slid left: on');
   assert.strictEqual(T({ on: true, dx: s, side: 'right' }), false, 'right switch, slid right: off');
+  // gate r1 adversary S1: a press that travelled mostly ACROSS the edge (a swipe down from the top) changes nothing
+  assert.strictEqual(T({ on: false, dx: 0, dy: 160, side: 'left' }), false, 'a swipe down: unchanged (off)');
+  assert.strictEqual(T({ on: true, dx: 3, dy: -40, side: 'left' }), true, 'a swipe up: unchanged (on)');
+  assert.strictEqual(T({ on: false, dx: 30, dy: 20, side: 'left' }), true, 'a slide with some drift is still a slide');
+  assert.strictEqual(T({ on: false, dx: 2, dy: s - 1, side: 'left' }), true, 'a tap with a little wobble is still a tap');
 });
 
 test('a repaint keeps Hold: the class comes back on the rebuilt panel and the switch is drawn checked', () => {
@@ -122,8 +131,11 @@ test('a slide is read in the player\'s own frame: on the turned Upright player a
     ptr(b.dom, b.dom.window.document.body, 'pointerup', 3, 100, 260); // 40 px UP the screen = toward the centre in the box
     assert.strictEqual(b.engine.isHold(), true, 'up the turned screen is toward the centre: on');
     ptr(b.dom, sw(b), 'pointerdown', 4, 100, 260);
-    ptr(b.dom, b.dom.window.document.body, 'pointerup', 4, 140, 260); // 40 px RIGHT on screen = across the box: a tap's flip? no - |dx| in the box is 0
-    assert.strictEqual(b.engine.isHold(), false, 'a slide across the turned box is no travel along the edge: a tap, it flips');
+    ptr(b.dom, b.dom.window.document.body, 'pointerup', 4, 140, 260); // 40 px RIGHT on screen = ACROSS the turned box's edge
+    assert.strictEqual(b.engine.isHold(), true, 'a slide across the turned box is no use of the switch (gate r1 S1): unchanged');
+    ptr(b.dom, sw(b), 'pointerdown', 5, 100, 260);
+    ptr(b.dom, b.dom.window.document.body, 'pointerup', 5, 100, 300); // 40 px DOWN the turned screen = toward the end in the box
+    assert.strictEqual(b.engine.isHold(), false, 'down the turned screen is back toward the end: off');
   } finally { b.restore(); }
 });
 
@@ -208,5 +220,33 @@ test('engaging Hold lets go of a focused control in the player (the keyboard-sea
     assert.strictEqual(D.activeElement, sw(b), 'precondition: the switch has the focus');
     b.engine.setHold(true);
     assert.strictEqual(D.activeElement, sw(b), 'the switch keeps it (Space / Enter must still reach it)');
+  } finally { b.restore(); }
+});
+
+test('a game holding the wheel (Brick) ends when Hold engages, as MENU would end it (gate r1 adversary W2)', () => {
+  const b = boot('ipod');
+  try {
+    let exits = 0;
+    b.engine.setWheelTakeover({ onRotate() {}, onExit() { exits += 1; } });
+    b.engine.setHold(true);
+    assert.strictEqual(exits, 1, 'the takeover was released');
+    b.engine.setHold(false); b.engine.setHold(true);
+    assert.strictEqual(exits, 1, 'and only once');
+  } finally { b.restore(); }
+});
+
+test('a press on the switch never reaches the engine\'s own press handling (it stops at the panel, before the wheel or anything under it)', () => {
+  const b = boot('ipod');
+  try {
+    let seen = 0;
+    b.panel.addEventListener('pointerdown', () => { seen += 1; }); // the bubble phase, where the engine's own onDown listens
+    ptr(b.dom, sw(b), 'pointerdown', 1, 10, 0);
+    assert.strictEqual(seen, 0, 'the switch press never bubbles');
+    ptr(b.dom, sw(b), 'pointerup', 1, 10, 0);
+    ptr(b.dom, b.panel.querySelector('.ip-wheel'), 'pointerdown', 2, 10, 0);
+    assert.strictEqual(seen, 0, 'Hold on: a wheel press stops at the window');
+    b.engine.setHold(false);
+    ptr(b.dom, b.panel.querySelector('.ip-wheel'), 'pointerdown', 3, 10, 0);
+    assert.strictEqual(seen, 1, 'control: a wheel press with Hold off does bubble');
   } finally { b.restore(); }
 });

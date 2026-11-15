@@ -190,11 +190,11 @@
     // on the native player's layer. public/js/native-audio.js sends it from the button's click, only while native owns the current video.
     'video.pip': { cap: 'nativeVideoPip', fields: { action: { enum: ['start', 'stop'], req: true } } },
     // v1.405.0 nativeTabBar: the native pill's items + whether it shows. common.js sends it coalesced, only on a change.
+    'nav.bar': { cap: 'nativeTabBar', fields: { items: { is: 'array', req: true, max: NAV_BAR_MAX_ITEMS, items: { is: 'object', props: navBarItemFields() } }, visible: { is: 'boolean', req: true } } },
     // v1.408.0 idleDisplay (plan 2026-11-15-ipod-hold-switch, W4): Hold's stages on the phone (skin-surface.js owns the clock). hold = keep
     // the phone awake (the idle timer off) while true; dim = really dim the screen and ask for the lowest frame rate while true.
     'display.hold': { cap: 'idleDisplay', fields: { on: { is: 'boolean', req: true } } },
     'display.dim': { cap: 'idleDisplay', fields: { on: { is: 'boolean', req: true } } },
-    'nav.bar': { cap: 'nativeTabBar', fields: { items: { is: 'array', req: true, max: NAV_BAR_MAX_ITEMS, items: { is: 'object', props: navBarItemFields() } }, visible: { is: 'boolean', req: true } } },
   };
 
   // Native to web (event.detail of a 'filetube-host' CustomEvent on window).

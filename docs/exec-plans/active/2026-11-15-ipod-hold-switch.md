@@ -254,6 +254,9 @@ Native must also:
 - Restore the brightness and re-enable the idle timer on `willResignActive` / `didEnterBackground` (never leave the system dimmed
   or awake behind the app), on every main-frame navigation commit, and when the web view goes away - like every other held
   capability (native-bridge.md section 6). A page restored from the back-forward cache re-posts what it still wants on `pageshow`.
+- RE-APPLY the last `display.hold` / `display.dim` it was sent on `didBecomeActive` (Control Center and a notification pull resign
+  the app without hiding the page, so the web gets no event then); after a real hide the web also re-sends both values when the page
+  shows again (they agree: it is the same state).
 - Never time anything: the stage clock is the web's. On return to the foreground the web wakes (stage 1) and posts
   `display.dim { on: false }` / `display.hold { on: true }` itself.
 - Not select an always-on or 1 Hz mode for the unlocked app (iOS gives apps no API for it); stage 3 is exactly "let iOS lock and
@@ -364,3 +367,24 @@ long touch, right click, mouse wheel, MENU and a second finger do nothing under 
 - SUGGESTION S4 - presence-not-binding: integration "the switch itself: ... a press there never reaches the wheel": removing
   `e.stopPropagation()` from onHoldDown leaves 178/178 green; the press does reach onDown, whose clearCenterHold() runs before its
   wheel check. Bind it (a pending center hold survives a press on the switch) or drop the claim.
+
+### Fix round 1 (the builder, after r1)
+
+- qa W1 (a repaint dropped the dimmed stage): paint() re-adds `mms-hold-dim` with `mms-hold`; test "a repaint under the dim keeps
+  the dim" (mutant R1 red).
+- adversary W1 (the host was never re-told after a hide): the registry forgets what the host holds on a hide (null = unknown, so
+  the return tells it BOTH values - the first fix forgot to `false` and was caught by its own test: the return posted no
+  `display.dim:false`, which an app re-applying its last state would have dimmed again); the relay now also tells native to
+  re-apply the last state on didBecomeActive (Control Center hides nothing). Test: hide + show at stage 1 and 2 (mutants R2, R3).
+- adversary W2 (stage 2 not idle per frame): Hold engaging ends a wheel takeover (Brick) as MENU would (R4); the dim dispatches
+  `filetube:hold-dim` and player.js's position loop (fillTick) ticks once a second under it, back to every frame on the wake (R5;
+  player.js has no jsdom harness: a source lock R10, and the real count): Chromium `DIM=1`, page rAF calls in 5 s: 298 awake,
+  **0** dimmed (`TOTAL: 2 rows, 0 failed`).
+- adversary S1 (a vertical swipe flipped Hold): a press that travels mostly across the edge changes nothing (R8, the turned-box
+  test updated: a slide across the turned box is now "unchanged", down the turned screen is "off").
+- adversary S3 / qa S4 (keys on the focused switch): only Space / Enter reach it; Tab can no longer move the focus off it, Escape
+  no longer reaches the page (R7).
+- adversary S4 (an unbound claim): a bubble listener proves a switch press never reaches the engine's own press handling (R9).
+- qa S1 (the nav.bar comment), S2 ("two classes more"), S3 (the dim back to z 40, the top of the local band: the sticker, also 40,
+  is inserted BEFORE the dim; R6 and a census that only the sticker shares the dim's z), S5 (the dead guard) - done.
+- Not taken, in ROADMAP Planned: adversary S2 (untrusted script clicks under Hold), qa S6 (Sideways: a DEVICE-CHECKS line).
