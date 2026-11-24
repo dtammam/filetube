@@ -282,3 +282,100 @@ test('a host WITHOUT the haptics capability keeps the browser path: ghost mounte
     assert.deepStrictEqual(b.fake.types(), [], 'no haptics message without the capability');
   } finally { b.restore(); }
 });
+
+// ---- the five wheel BUTTONS: one 'press' tick per accepted click (plan 2026-11-24-press-haptic) ----
+const BUTTONS = ['menu', 'select', 'play', 'prev', 'next'];
+const presses = (b) => ticks(b).filter((m) => m.style === 'press');
+const btn = (b, name) => b.panel.querySelector('[data-skin-' + name + ']');
+
+test('press haptic: each of the five wheel buttons posts exactly one { style: press } with a host announcing haptics', () => {
+  for (const name of BUTTONS) {
+    const b = boot({ host: {} });
+    try {
+      b.fake.clear();
+      tap(b, btn(b, name));
+      assert.deepStrictEqual(ticks(b), [{ v: 1, type: 'haptics.tick', style: 'press' }], name);
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: MENU and Select fire once on every arm (list mode, climbing a pocket menu, dock)', async () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    tap(b, btn(b, 'menu')); // opens the pocket menu or docks
+    tap(b, btn(b, 'select'));
+    tap(b, btn(b, 'menu'));
+    tap(b, btn(b, 'menu'));
+    assert.strictEqual(presses(b).length, 4, 'one per press across menu arms');
+    assert.strictEqual(ticks(b).length, 4, 'nothing else ticked');
+  } finally { b.restore(); }
+});
+
+test('press haptic: a host control that is missing still presses once (the button was pressed)', () => {
+  const b = boot({ host: {} });
+  try {
+    b.win.document.getElementById('pp-btn').remove();
+    b.fake.clear();
+    tap(b, btn(b, 'play'));
+    assert.strictEqual(presses(b).length, 1);
+  } finally { b.restore(); }
+});
+
+test('press haptic: no host (a browser) posts nothing, and no capability posts nothing', () => {
+  for (const host of [null, { capabilities: [] }]) {
+    const b = boot({ host });
+    try {
+      if (b.fake) b.fake.clear();
+      for (const name of BUTTONS) tap(b, btn(b, name));
+      if (b.fake) assert.deepStrictEqual(b.fake.types(), [], 'no message at all');
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: Buzz OFF posts no press', () => {
+  const b = boot({ host: {}, cfg: { engine: 'ghost', detent: 3.75, dither: 18, capture: '8px', buzz: false } });
+  try {
+    b.fake.clear();
+    for (const name of BUTTONS) tap(b, btn(b, name));
+    assert.deepStrictEqual(presses(b), []);
+  } finally { b.restore(); }
+});
+
+test('press haptic: a click swallowed after a wheel hold posts none (the hold already ticked); the next tap presses', () => {
+  const b = boot({ host: {} });
+  try {
+    const menu = btn(b, 'menu');
+    menu.dispatchEvent(mouse(b, 'pointerdown', { clientX: 0, clientY: -100 }));
+    b.clock.advance(700); // the hold fires (one detent tick) and arms the click swallow
+    menu.dispatchEvent(mouse(b, 'pointerup'));
+    b.fake.clear();
+    menu.dispatchEvent(mouse(b, 'click'));
+    assert.deepStrictEqual(presses(b), [], 'the released click after a hold is swallowed');
+    tap(b, menu);
+    assert.strictEqual(presses(b).length, 1, 'the following tap is a real press');
+  } finally { b.restore(); }
+});
+
+test('press haptic: a wheel drag (pointerdown, moves, no click) never presses', () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    spin(b, { moves: 5, step: 4, ms: 20 });
+    assert.deepStrictEqual(presses(b), []);
+  } finally { b.restore(); }
+});
+
+test('press haptic: seek-bar and list-row taps post none', async () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    const seek = b.panel.querySelector('[data-skin-seek]');
+    if (seek) tap(b, seek);
+    await openSongs(b); // presses for MENU and Select here are expected
+    b.fake.clear();
+    const row = b.panel.querySelector('.ipm-row:not(.ipm-skel)');
+    tap(b, row);
+    assert.deepStrictEqual(presses(b), [], 'a menu row tap is not a button press');
+  } finally { b.restore(); }
+});

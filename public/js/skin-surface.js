@@ -3806,9 +3806,9 @@
         }
         return;
       }
-      if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
-      if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
-      if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
+      if (e.target.closest('[data-skin-play]')) { hapticPress(); var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
+      if (e.target.closest('[data-skin-prev]')) { hapticPress(); var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
+      if (e.target.closest('[data-skin-next]')) { hapticPress(); var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
       if (e.target.closest('[data-skin-collapse]')) { onDock(); return; }
       if (onShuffle && e.target.closest('[data-skin-shuffle]')) { onShuffle(); return; }
       // v1.317 (M1): the artist line -> the view's artist drill. Both surfaces (the pop-out's
@@ -3822,6 +3822,7 @@
       // match data-skin-menu -> onDock inside a character window; since the pocket
       // menus it reads this handler's own block and requires its LAST arm to dock.)
       if (e.target.closest('[data-skin-menu]')) {
+        hapticPress(); // once per accepted press, every arm below
         // Through the SAME release as paint()/destroy(), so the pointer is nulled by
         // the engine rather than depending on the view remembering to clear it (the
         // seat's m9: deleting music's setWheelTakeover(null) left a stale pointer and
@@ -3834,6 +3835,7 @@
         return;
       }
       if (e.target.closest('[data-skin-select]')) {
+        hapticPress(); // once per accepted press, every arm below
         if (wheelTakeover) { // v1.270: the takeover's action button
           if (typeof wheelTakeover.onSelect === 'function') { try { wheelTakeover.onSelect(); } catch (_) { /* best effort */ } }
           return;
@@ -4212,6 +4214,16 @@
       var flip = now - st.hapLast >= HAPTIC_MIN_MS;
       if (flip) st.hapLast = now;
       hapticPlaceGhost(st, e.clientX, e.clientY, flip);
+    }
+    // The five wheel BUTTONS (MENU, play, prev, next, Select): one firmest click per accepted press, called from
+    // onClick (the click, never pointerdown, so a touch that turns into a wheel drag never presses). HOST branch
+    // only: with no host this does nothing and the ghost/switch-tracking path is untouched. Off when the user
+    // turned wheel haptics off (buzz is read fresh, as each gesture does). A ghost-routed tap re-dispatches a click
+    // on the real control, so only that re-entered click (non-ghost target) reaches here: once per tap.
+    function hapticPress() {
+      var hh = hostHaptics();
+      if (!hh || readWheelCfg().buzz === false) return;
+      hh.post('haptics.tick', { style: 'press' });
     }
     function hapticGestureEnd() {
       if (wheelGhost && wheelGhost.isConnected) wheelGhost.style.transform = ghostRestTransform(wheelGhost.parentElement);

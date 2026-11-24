@@ -51,7 +51,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `orientation.lock` | `orientation: 'portrait'` | `orientation` | locks the app to portrait now, whatever the phone's own rotation lock says |
 | `orientation.unlock` | (none) | `orientation` | returns to the app's normal rotation |
 | `haptics.prepare` | (none) | `haptics` | warms the haptic engine (sent at the start of a wheel gesture) |
-| `haptics.tick` | `style: 'detent' \| 'letter' \| 'snap'`, optional `intensity` 0..1 | `haptics` | plays one Core Haptics transient |
+| `haptics.tick` | `style: 'detent' \| 'letter' \| 'snap' \| 'press'`, optional `intensity` 0..1 | `haptics` | plays one Core Haptics transient; `press` = a wheel button press, the host plays its firmest click (add-only: an older host drops an unknown style, so it is safe for old apps) |
 | `battery.subscribe` | (none) | `battery` | starts sending `battery` events (one immediately) |
 | `battery.unsubscribe` | (none) | `battery` | stops them |
 | `host.openServerSettings` | (none) | `serverSettings` | shows the native server address screen |
