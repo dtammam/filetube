@@ -38,7 +38,7 @@
         { "properties": { "type": { "const": "orientation.lock" }, "orientation": { "const": "portrait" } }, "required": ["orientation"] },
         { "properties": { "type": { "const": "orientation.unlock" } } },
         { "properties": { "type": { "const": "haptics.prepare" } } },
-        { "properties": { "type": { "const": "haptics.tick" }, "style": { "enum": ["detent", "letter", "snap"] }, "intensity": { "type": "number", "minimum": 0, "maximum": 1 } }, "required": ["style"] },
+        { "properties": { "type": { "const": "haptics.tick" }, "style": { "enum": ["detent", "letter", "snap", "press"] }, "intensity": { "type": "number", "minimum": 0, "maximum": 1 } }, "required": ["style"] },
         { "properties": { "type": { "const": "battery.subscribe" } } },
         { "properties": { "type": { "const": "battery.unsubscribe" } } },
         { "properties": { "type": { "const": "host.openServerSettings" } } },

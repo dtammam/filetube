@@ -124,6 +124,7 @@ test('post: valid messages are sent in the contract shape; invalid ones are drop
   assert.equal(host.post('orientation.lock'), false, 'orientation is required');
   assert.equal(host.post('orientation.unlock'), true);
   assert.equal(host.post('haptics.tick', { style: 'detent', intensity: 0.5 }), true);
+  assert.equal(host.post('haptics.tick', { style: 'press' }), true, 'press (a wheel button press) is in the enum');
   assert.equal(host.post('haptics.tick', { style: 'thud' }), false, 'style is an enum');
   assert.equal(host.post('haptics.tick', { style: 'letter', intensity: 2 }), false, 'intensity is 0..1');
   assert.equal(host.post('haptics.tick'), false, 'style is required');
@@ -136,6 +137,7 @@ test('post: valid messages are sent in the contract shape; invalid ones are drop
     { v: 1, type: 'orientation.lock', orientation: 'portrait' },
     { v: 1, type: 'orientation.unlock' },
     { v: 1, type: 'haptics.tick', style: 'detent', intensity: 0.5 },
+    { v: 1, type: 'haptics.tick', style: 'press' },
     { v: 1, type: 'haptics.tick', style: 'snap' },
   ], 'unknown fields never leave the page; v and type cannot be overridden');
   assert.equal(host.post('orientation.unlock', { v: 9, type: 'x' }), true);
@@ -413,4 +415,20 @@ test('v1.387.1: downloadsAddFailed is validated as data - all three fields requi
   ]);
   assert.ok(!('sneaky' in got[0]), 'unknown fields never reach the listener');
   win.close();
+});
+
+test('conformance: the haptics.tick style enum agrees across schema, adapter and the written contract (press included)', () => {
+  const find = (node) => {
+    if (!node || typeof node !== 'object') return null;
+    if (node.properties && node.properties.type && node.properties.type.const === 'haptics.tick') return node.properties.style.enum;
+    for (const v of Object.values(node)) { const r = find(v); if (r) return r; }
+    return null;
+  };
+  const schemaEnum = find(SCHEMA);
+  assert.ok(schemaEnum && schemaEnum.includes('press'), 'schema lists press');
+  assert.deepEqual(MESSAGES['haptics.tick'].fields.style.enum, schemaEnum, 'adapter enum equals the schema enum');
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'references', 'native-bridge.md'), 'utf8');
+  const row = doc.split('\n').find((l) => l.startsWith('| `haptics.tick`'));
+  assert.ok(row, 'the doc has a haptics.tick row');
+  for (const st of schemaEnum) assert.ok(row.includes("'" + st + "'"), 'the doc row names ' + st);
 });

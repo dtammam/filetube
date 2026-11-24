@@ -82,11 +82,11 @@ function boot(o = {}) {
   const panel = win.document.getElementById('panel');
   const engine = win.FileTubeSkinSurface.create({
     panel, win,
-    getSkinId: () => 'ipod',
-    getCtx: () => ({ track: { title: 'T', artist: 'A', artUrl: '/albumart/now' }, upNext: [], fullList: [], playing: true }),
+    getSkinId: () => o.skin || 'ipod',
+    getCtx: () => ({ track: { title: 'T', artist: 'A', artUrl: '/albumart/now' }, upNext: [], fullList: [], playing: true, volume: o.volume ? 0.5 : undefined }),
     hostCtl: (id) => win.document.getElementById(id),
     onSelectIndex: () => {}, onDock: () => {}, onHome: () => { spy.home += 1; },
-    volume: { available: () => false, level: () => null, set: () => {} },
+    volume: o.volume ? { available: () => true, level: () => 0.5, set: () => {} } : { available: () => false, level: () => null, set: () => {} },
     sticker: {},
     menu: {
       load: (n) => Promise.resolve(n.type === 'songs'
@@ -97,7 +97,7 @@ function boot(o = {}) {
   });
   engine.paint();
   const wheel = panel.querySelector('.ip-wheel');
-  wheel.getBoundingClientRect = () => ({ left: -120, top: -120, width: 240, height: 240, right: 120, bottom: 120 });
+  if (wheel) wheel.getBoundingClientRect = () => ({ left: -120, top: -120, width: 240, height: 240, right: 120, bottom: 120 });
   return { dom, win, fake, engine, panel, wheel, clock, spy, restore: () => { Object.assign(global, saved); try { win.close(); } catch (_) { /* gone */ } } };
 }
 
@@ -280,5 +280,179 @@ test('a host WITHOUT the haptics capability keeps the browser path: ghost mounte
     b.fake.clear();
     spin(b, { moves: 5, step: 4, ms: 20 });
     assert.deepStrictEqual(b.fake.types(), [], 'no haptics message without the capability');
+  } finally { b.restore(); }
+});
+
+// ---- the five wheel BUTTONS: one 'press' tick per accepted click (plan 2026-11-24-press-haptic) ----
+const BUTTONS = ['menu', 'select', 'play', 'prev', 'next'];
+const presses = (b) => ticks(b).filter((m) => m.style === 'press');
+const btn = (b, name) => b.panel.querySelector('[data-skin-' + name + ']');
+
+test('press haptic: each of the five wheel buttons posts exactly one { style: press } with a host announcing haptics', () => {
+  for (const name of BUTTONS) {
+    const b = boot({ host: {} });
+    try {
+      b.fake.clear();
+      tap(b, btn(b, name));
+      assert.deepStrictEqual(ticks(b), [{ v: 1, type: 'haptics.tick', style: 'press' }], name);
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: MENU and Select taps through the pocket menu levels fire once each', async () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    tap(b, btn(b, 'menu')); // opens the pocket menu or docks
+    tap(b, btn(b, 'select'));
+    tap(b, btn(b, 'menu'));
+    tap(b, btn(b, 'menu'));
+    assert.strictEqual(presses(b).length, 4, 'one per press across menu arms');
+    assert.strictEqual(ticks(b).length, 4, 'nothing else ticked');
+  } finally { b.restore(); }
+});
+
+test('press haptic: a host control that is missing still presses once (the button was pressed)', () => {
+  const b = boot({ host: {} });
+  try {
+    b.win.document.getElementById('pp-btn').remove();
+    b.fake.clear();
+    tap(b, btn(b, 'play'));
+    assert.strictEqual(presses(b).length, 1);
+  } finally { b.restore(); }
+});
+
+test('press haptic: no host (a browser) posts nothing, and no capability posts nothing', () => {
+  for (const host of [null, { capabilities: [] }]) {
+    const b = boot({ host });
+    try {
+      if (b.fake) b.fake.clear();
+      for (const name of BUTTONS) tap(b, btn(b, name));
+      if (b.fake) assert.deepStrictEqual(b.fake.types(), [], 'no message at all');
+      else assert.strictEqual(b.win.FileTube && b.win.FileTube.host && b.win.FileTube.host.has('haptics'), false, 'no host in a browser: the adapter has no haptics to post to');
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: Buzz OFF posts no press', () => {
+  const b = boot({ host: {}, cfg: { engine: 'ghost', detent: 3.75, dither: 18, capture: '8px', buzz: false } });
+  try {
+    b.fake.clear();
+    for (const name of BUTTONS) tap(b, btn(b, name));
+    assert.deepStrictEqual(presses(b), []);
+  } finally { b.restore(); }
+});
+
+test('press haptic: a click swallowed after a wheel hold posts none (the hold already ticked); the next tap presses', () => {
+  const b = boot({ host: {} });
+  try {
+    const menu = btn(b, 'menu');
+    menu.dispatchEvent(mouse(b, 'pointerdown', { clientX: 0, clientY: -100 }));
+    b.clock.advance(700); // the hold fires (one detent tick) and arms the click swallow
+    menu.dispatchEvent(mouse(b, 'pointerup'));
+    b.fake.clear();
+    menu.dispatchEvent(mouse(b, 'click'));
+    assert.deepStrictEqual(presses(b), [], 'the released click after a hold is swallowed');
+    tap(b, menu);
+    assert.strictEqual(presses(b).length, 1, 'the following tap is a real press');
+  } finally { b.restore(); }
+});
+
+test('press haptic: a wheel drag (pointerdown, moves, no click) never presses', () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    spin(b, { moves: 5, step: 4, ms: 20 });
+    assert.deepStrictEqual(presses(b), []);
+  } finally { b.restore(); }
+});
+
+test('press haptic: seek-bar and list-row taps post none', async () => {
+  const b = boot({ host: {} });
+  try {
+    b.fake.clear();
+    const seek = b.panel.querySelector('[data-skin-seek]');
+    if (seek) tap(b, seek);
+    await openSongs(b); // presses for MENU and Select here are expected
+    b.fake.clear();
+    const row = b.panel.querySelector('.ipm-row:not(.ipm-skel)');
+    tap(b, row);
+    assert.deepStrictEqual(presses(b), [], 'a menu row tap is not a button press');
+  } finally { b.restore(); }
+});
+
+test('press haptic: MENU and Select during a wheel takeover press once per tap (and run the takeover\'s own action)', () => {
+  const b = boot({ host: {} });
+  try {
+    let selects = 0;
+    b.engine.setWheelTakeover({ onSelect: () => { selects += 1; } });
+    b.fake.clear();
+    tap(b, btn(b, 'select'));
+    assert.strictEqual(selects, 1, 'precondition: the takeover took Select');
+    assert.strictEqual(presses(b).length, 1, 'Select under a takeover');
+    tap(b, btn(b, 'menu')); // releases the takeover
+    assert.strictEqual(presses(b).length, 2, 'MENU releasing a takeover');
+    assert.strictEqual(ticks(b).length, 2);
+  } finally { b.restore(); }
+});
+
+test('press haptic: MENU and Select with the volume bar open press once per tap', () => {
+  for (const name of ['menu', 'select']) {
+    const b = boot({ host: {}, volume: true });
+    try {
+      tap(b, b.panel.querySelector('[data-skin-voltap]'));
+      assert.ok(b.panel.classList.contains('mms-voladj'), 'precondition: the volume bar is open (' + name + ')');
+      b.fake.clear();
+      tap(b, btn(b, name));
+      assert.ok(!b.panel.classList.contains('mms-voladj'), 'the press closed the bar');
+      assert.strictEqual(presses(b).length, 1, name + ' closing the volume bar');
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: MENU and Select in list mode press once per tap', () => {
+  for (const name of ['menu', 'select']) {
+    const b = boot({ host: {} });
+    try {
+      b.panel.classList.add('mms-listmode');
+      b.fake.clear();
+      tap(b, btn(b, name));
+      assert.strictEqual(presses(b).length, 1, name + ' in list mode');
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: Cider and Nordic skins (not a wheel) never press, whatever they tap', () => {
+  for (const skin of ['apple', 'spotify']) {
+    const b = boot({ host: {}, skin });
+    try {
+      b.fake.clear();
+      let n = 0;
+      for (const name of BUTTONS) { const el = btn(b, name); if (el) { n += 1; tap(b, el); } }
+      assert.ok(n >= 3, skin + ' precondition: it has play/prev/next buttons to tap (' + n + ')');
+      assert.strictEqual(b.panel.querySelector('.ip-wheel'), null, skin + ' has no wheel');
+      assert.deepStrictEqual(presses(b), [], skin);
+    } finally { b.restore(); }
+  }
+});
+
+test('press haptic: with the A-Z picker open a wheel button still presses once; any other tap does not', async () => {
+  const b = boot({ host: {} });
+  try {
+    await openSongs(b);
+    const open = () => { tap(b, b.panel.querySelector('[data-skin-letters]')); return b.engine.menuState().grid; };
+    for (const name of ['menu', 'select', 'play', 'next', 'prev']) {
+      assert.strictEqual(open(), true, 'precondition: the picker opens (' + name + ')');
+      b.fake.clear();
+      tap(b, btn(b, name));
+      assert.strictEqual(presses(b).length, 1, name + ' with the picker open');
+      if (b.engine.menuState().grid) tap(b, b.panel.querySelector('[data-skin-menu]'));
+    }
+    assert.strictEqual(open(), true);
+    b.fake.clear();
+    tap(b, b.panel.querySelector('[data-skin-lettergrid]'));
+    assert.deepStrictEqual(presses(b), [], 'the picker\'s own dead space');
+    tap(b, b.panel.querySelector('.ipm-row:not(.ipm-skel)') || b.panel.querySelector('[data-skin-seek]') || b.panel);
+    assert.deepStrictEqual(presses(b), [], 'a tap outside closes the picker with no press');
   } finally { b.restore(); }
 });

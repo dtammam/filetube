@@ -153,7 +153,7 @@
     'orientation.lock': { cap: 'orientation', fields: { orientation: { eq: 'portrait', req: true } } },
     'orientation.unlock': { cap: 'orientation', fields: {} },
     'haptics.prepare': { cap: 'haptics', fields: {} },
-    'haptics.tick': { cap: 'haptics', fields: { style: { enum: ['detent', 'letter', 'snap'], req: true }, intensity: { is: 'number', min: 0, max: 1 } } },
+    'haptics.tick': { cap: 'haptics', fields: { style: { enum: ['detent', 'letter', 'snap', 'press'], req: true }, intensity: { is: 'number', min: 0, max: 1 } } },
     'battery.subscribe': { cap: 'battery', fields: {} },
     'battery.unsubscribe': { cap: 'battery', fields: {} },
     'host.openServerSettings': { cap: 'serverSettings', fields: {} },
