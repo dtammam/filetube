@@ -51,7 +51,7 @@ Every message is a plain object `{ v: 1, type: '<type>', ... }`.
 | `orientation.lock` | `orientation: 'portrait'` | `orientation` | locks the app to portrait now, whatever the phone's own rotation lock says |
 | `orientation.unlock` | (none) | `orientation` | returns to the app's normal rotation |
 | `haptics.prepare` | (none) | `haptics` | warms the haptic engine (sent at the start of a wheel gesture) |
-| `haptics.tick` | `style: 'detent' \| 'letter' \| 'snap' \| 'press'`, optional `intensity` 0..1 | `haptics` | plays one Core Haptics transient; `press` = a wheel button press, the host plays its firmest click (add-only: an older host drops an unknown style, so it is safe for old apps) |
+| `haptics.tick` | `style: 'detent' \| 'letter' \| 'snap' \| 'press'`, optional `intensity` 0..1 | `haptics` | plays one Core Haptics transient; `press` (v1.409.0, add-only) = a click-wheel button press (MENU, play/pause, previous, next, Select), the host plays its firmest click (add-only: an older host drops an unknown style, so it is safe for old apps) |
 | `battery.subscribe` | (none) | `battery` | starts sending `battery` events (one immediately) |
 | `battery.unsubscribe` | (none) | `battery` | stops them |
 | `host.openServerSettings` | (none) | `serverSettings` | shows the native server address screen |
@@ -296,7 +296,7 @@ address is a FileTube server and whether the bridge versions overlap, before loa
 | Capability | State owner | Notes |
 |---|---|---|
 | orientation | web decides when, native enforces | the web's own upright drawing stays as the browser fallback |
-| haptics | web decides when (each detent / letter / snap), native plays | in the app the web's switch-tracking haptic trick is turned off |
+| haptics | web decides when (each detent / letter / snap / button press), native plays | in the app the web's switch-tracking haptic trick is turned off |
 | battery | native | the web only displays it |
 | serverSettings | native | the web shows the entry point only when announced |
 | statusBar | web decides when (Pocket shown or not), native enforces | Sideways does not block it (a sideways Pocket is still immersive) |
