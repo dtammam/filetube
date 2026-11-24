@@ -999,6 +999,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.409.0 - The click wheel's buttons click (2026-11-24)
+
+- Dean: pressing MENU, play/pause, previous, next or the centre Select on the Click wheel should give a firm haptic click in the iPhone app, like the real buttons.
+- New add-only `haptics.tick` style `press` (bridge v1): schema, adapter and doc row agree; an older host drops an unknown style. The iOS app plays its firmest click (intensity 1, sharpness 1; the iOS side, app 0.20.1 or later).
+- Wheel only: the Cider and Nordic bars share the play/prev/next arms but give no press; one tap is one press (ghost re-dispatch, a click swallowed after a hold and drags give none); every arm of MENU and Select (takeover, volume, list mode, pocket, dock) presses; a tap on a wheel button with the A-Z picker open still presses once. Buzz off silences it. The wheel's own detents are unchanged.
+- Gate (adversary + qa, r1 CHANGES then r2 APPROVED @6d606bf6): the Cider/Nordic bars pressed, and the MENU/Select takeover, volume and list-mode arms were unbound; both fixed with mutation-bound tests.
+- Not verified: anything on a device (the feel, the iOS mapping of `press`).
+
 ### v1.408.0 - The Click players stop under the island, get a real Hold switch, and dim to a low-power look (2026-11-15)
 
 - Dean (intake 2026-11-15, R1-R9; the look R10-R13 after two mocks): on the phone the Click full player ran under the Dynamic Island

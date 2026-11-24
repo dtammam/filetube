@@ -5,6 +5,10 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Click wheel buttons (v1.409.0)
+
+- [ ] v1.409.0 - iPhone app 0.20.1 or later: MENU, play/pause, previous, next and the centre button each give one firm click; the Cider and Nordic bar buttons give none; the wheel itself feels unchanged.
+
 ## Hold switch (v1.408.0; (g) after the app build that announces idleDisplay)
 
 - [ ] v1.408.0 - (a) iPhone 15 Pro, home-screen app and Safari: every Click skin (Original, a Classic, a Mini, a Slim, a Clip, a Touch) stops under the island with a black strip above and a thin edge band; turn the phone and back (Upright on): the edge does not jump.

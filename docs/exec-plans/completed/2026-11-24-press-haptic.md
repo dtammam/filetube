@@ -3,7 +3,7 @@ plan: press-haptic
 harness: v2 · solo
 branch: feat/press-haptic
 anchor: outcome
-status: Building
+status: Shipped v1.409.0
 next: supervisor runs the review gate on the committed branch
 gate: pending
 ---
@@ -41,3 +41,25 @@ Gate: CHANGES r1 @a0533353c46f1374ddff5d33d5ff156da9ac9cfa — adversary (W1: Ci
 Gate: APPROVED r2 @6d606bf6 — qa
 
 Gate: APPROVED r2 @6d606bf63405c604e7276aa161459677dc1529ed — adversary (W1, W2 fixed as prescribed, M6/M6b/M6c/M7/M7b killed; S: picker-open tap on the wheel ring itself not bound, mutant "drop the button filter" survives)
+
+## Close-out binding (bookkeeping only since 6d606bf6)
+
+`git diff --name-only 6d606bf6..HEAD` (plus this plan move and the release files, staged in the release commit):
+```
+docs/exec-plans/active/2026-11-24-press-haptic.md
+ROADMAP.md
+docs/DEVICE-CHECKS.md
+docs/references/native-bridge.md
+docs/releases.json
+package-lock.json
+package.json
+```
+`git diff 6d606bf6..HEAD -- package.json package-lock.json` (version lines only):
+```
+-  "version": "1.408.0",
++  "version": "1.409.0",
+-      "version": "1.408.0",
++      "version": "1.409.0",
+-  "version": "1.408.0",
++  "version": "1.409.0",
+```
