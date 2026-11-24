@@ -37,3 +37,7 @@ Dean approved: pressing MENU, play/pause, previous, next and the centre Select o
 Gate: CHANGES r1 @a0533353 — qa
 
 Gate: CHANGES r1 @a0533353c46f1374ddff5d33d5ff156da9ac9cfa — adversary (W1: Cider/Nordic play/prev/next post press, not a wheel; W2: MENU/Select takeover, volume and list-mode arms unbound, mutants survive)
+
+Gate: APPROVED r2 @6d606bf6 — qa
+
+Gate: APPROVED r2 @6d606bf63405c604e7276aa161459677dc1529ed — adversary (W1, W2 fixed as prescribed, M6/M6b/M6c/M7/M7b killed; S: picker-open tap on the wheel ring itself not bound, mutant "drop the button filter" survives)
