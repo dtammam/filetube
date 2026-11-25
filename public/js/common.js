@@ -8180,7 +8180,8 @@ function defaultAlbumArtist(entries) {
 }
 
 // v1.372.0: "Kyle Gordon - Name" -> "Name" for the album artist "Kyle Gordon" (any case; a hyphen, en or em dash), the
-// picker's half of Clean up titles (the noise groups come off on the server: run.playlistEntryFrom `titleClean`). A title
+// first picker step of Clean up titles (the noise groups come off on the server: run.playlistEntryFrom `titleClean`; the
+// second picker step is removeTitleStart). A title
 // that is nothing but the prefix is kept whole.
 function stripArtistPrefix(title, artist) {
   const t = typeof title === 'string' ? title : '';
@@ -8189,6 +8190,68 @@ function stripArtistPrefix(title, artist) {
   const m = new RegExp('^' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-\u2013\u2014]\\s*', 'i').exec(t);
   const rest = m ? t.slice(m[0].length).trim() : t;
   return rest || t;
+}
+
+// v1.410.0 "Remove from start": the text every song name shares ("Some Game Original Soundtrack - <song>"), as the
+// picker's suggestion. The longest common prefix (any case, the first name's spelling) cut back to its last separator
+// run (`-`, dashes, `:`, `|`, `~`, `·`, `/`, with the spaces around it); with no separator, to a word boundary that leaves
+// 3 or more words. A hyphen, colon, slash or middle dot tight between two letters or digits ("Spider-Man", "AC/DC") is
+// part of the word, not a separator; neither is a mark after a space and glued to what follows ("~Dawn~"), which opens
+// the song's own name. '' when there are fewer than 2 names or the cut would empty one of them.
+const TITLE_LEFTOVER = /^[-\s\u2013\u2014:|~\u00b7/]+/;
+function sharedTitlePrefix(names) {
+  const list = (Array.isArray(names) ? names : []).filter((n) => typeof n === 'string' && n);
+  if (list.length < 2) return '';
+  const first = list[0];
+  let len = first.length;
+  list.forEach((n) => {
+    let i = 0;
+    while (i < len && i < n.length && n[i].toLowerCase() === first[i].toLowerCase()) i += 1;
+    len = i;
+  });
+  const common = first.slice(0, len);
+  const word = /[\p{L}\p{N}]/u;
+  let cut = 0;
+  const run = /\s*[-\u2013\u2014:|~\u00b7/](?:\s*[-\u2013\u2014:|~\u00b7/])*\s*/g;
+  for (let m = run.exec(common); m; m = run.exec(common)) {
+    const end = m.index + m[0].length;
+    const insideWord = /^[-:\u00b7/]+$/.test(m[0]) && word.test(first.charAt(m.index - 1)) && word.test(first.charAt(end));
+    const opensName = /\s[-\u2013\u2014:|~\u00b7/]+$/.test(m[0]) && /\S/.test(first.charAt(end));
+    if (!insideWord && !opensName) cut = end;
+  }
+  if (!cut) {
+    const atWord = common.search(/\S*$/); // just past the last space ('' tail when the prefix ends on one)
+    if (common.slice(0, atWord).trim().split(/\s+/).length >= 3) cut = atWord;
+  }
+  const prefix = common.slice(0, cut);
+  if (!prefix || list.some((n) => !afterTitleStart(n, prefix))) return '';
+  return prefix;
+}
+
+// What is left of `name` once its first `start.length` characters go. A `start` that ends in its own separator takes
+// nothing more; otherwise the separators left over go too (a typed "Game OST" takes the " - "), except a mark after a
+// space and glued to the next character, which belongs to the song's name ("Game OST ~Dawn~" keeps both tildes).
+function afterTitleStart(name, start) {
+  let rest = name.slice(start.length);
+  if (!/[-\u2013\u2014:|~\u00b7/]\s*$/.test(start)) {
+    const lead = TITLE_LEFTOVER.exec(rest);
+    if (lead) {
+      const mark = /[-\u2013\u2014:|~\u00b7/]+$/.exec(lead[0]);
+      const before = mark ? (start + lead[0]).slice(0, -mark[0].length) : '';
+      const opens = !!mark && /\s$/.test(before) && rest.length > lead[0].length;
+      rest = rest.slice(opens ? lead[0].length - mark[0].length : lead[0].length);
+    }
+  }
+  return rest.trim();
+}
+
+// The removal half: a name that starts with `start` (any case) loses it (afterTitleStart). Empty `start`, no match, or
+// nothing left: the name as it was.
+function removeTitleStart(name, start) {
+  const n = typeof name === 'string' ? name : '';
+  const p = typeof start === 'string' ? start : '';
+  if (!p || n.slice(0, p.length).toLowerCase() !== p.toLowerCase()) return n;
+  return afterTitleStart(n, p) || n;
 }
 
 // v1.376.0 (Dean's ruling R6): Save as an album numbers the songs that will be DOWNLOADED 1..N, in playlist order, with no
@@ -8248,6 +8311,7 @@ function openPlaylistPicker(opts) {
   }
   // v1.371.0: Save as an album (audio only). One grouped list of two switch rows, the album's two fields under it,
   // all from the existing kit (ui.list / ui.row / ui.field, the native-checkbox ui-switch the video rows use).
+  // (Since then the list also has Clean up titles and Cover rows, and v1.410.0 added a third field, Remove from start.)
   const albumSwitch = (label) => {
     const box = d.createElement('input');
     box.type = 'checkbox';
@@ -8269,14 +8333,17 @@ function openPlaylistPicker(opts) {
   // `help: ' '` gives each field its kit help line (ui-field__help, aria-describedby) for the "already in Music" note
   const albumName = U.field({ label: 'Album', help: ' ', doc: d });
   const albumArtist = U.field({ label: 'Album artist', help: ' ', doc: d });
+  // v1.410.0: the start every song name shares, dropped from them (part of Clean up titles: hidden and inert with it off)
+  const albumStart = U.field({ label: 'Remove from start', doc: d });
   const noteOf = (f) => f.el.querySelector('.ui-field__help');
   [albumName, albumArtist].forEach((f) => { noteOf(f).textContent = ''; noteOf(f).hidden = true; });
-  [albumName.input, albumArtist.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
+  [albumName.input, albumArtist.input, albumStart.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
   const albumFields = d.createElement('div');
   albumFields.className = 'oneoff-form playlist-picker-album-fields';
   albumFields.hidden = true;
   albumFields.appendChild(albumName.el);
   albumFields.appendChild(albumArtist.el);
+  albumFields.appendChild(albumStart.el);
   const cleanRow = U.row({ title: 'Clean up titles', meta: 'Drops tags like [Official Audio]', actions: [cleanOn], doc: d });
   const albumList = U.list({ actions: 1, grouped: true, label: 'Album', doc: d });
   albumList.classList.add('playlist-picker-album');
@@ -8297,9 +8364,10 @@ function openPlaylistPicker(opts) {
   wrap.appendChild(albumList);
   wrap.appendChild(albumFields);
   // what the user typed is kept; the defaults follow the loaded rows until then
-  const albumTouched = { name: false, artist: false };
+  const albumTouched = { name: false, artist: false, start: false };
   albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
   albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); renderRows(); }); // the prefix follows the artist
+  albumStart.input.addEventListener('input', () => { albumTouched.start = true; renderRows(); });
   // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
   // viewer's visible library - the routes filter it), matched without regard to case. Music groups by the EXACT name
   // ("kyle gordon" is a second artist), so an untouched default takes the library's spelling, a typed name is kept
@@ -8428,12 +8496,24 @@ function openPlaylistPicker(opts) {
   }
   // v1.372.0 (Dean: "it wasn't clear what the new saved name would have been"): with Save as an album on, a row shows the
   // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
-  // "Artist - " prefix dropped) when Clean up titles is on, else the reference site's - and "Track N". What it shows is what is written.
+  // "Artist - " prefix dropped, then the "Remove from start" text) when Clean up titles is on, else the reference site's -
+  // and "Track N". What it shows is what is written.
   function songName(r) {
     const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
     if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
     if (!cleanOn.checked) return r.title || r.id;
-    return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
+    const name = cleanedName(r);
+    return name ? removeTitleStart(name, albumStart.input.value) : (r.title || r.id);
+  }
+  // the cleaned name before "Remove from start": what that field's suggestion is read from ('' for a row with no title)
+  function cleanedName(r) {
+    return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title;
+  }
+  // v1.410.0: the field follows the loaded rows (a typed rename aside) until the user types in it
+  function syncStart() {
+    albumStart.el.hidden = !cleanOn.checked;
+    if (albumTouched.start) return;
+    albumStart.input.value = sharedTitlePrefix(state.rows.filter((r) => r.title && !r.unavailable).map(cleanedName));
   }
   function renderRow(r, numbers) {
     if (!r.nameEl) return;
@@ -8447,7 +8527,7 @@ function openPlaylistPicker(opts) {
     r.metaEl.textContent = on ? (n ? `Track ${n}` : ALBUM_ROW_NOT_IN) : '';
     r.metaEl.hidden = !on;
   }
-  function renderRows() { const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
+  function renderRows() { syncStart(); const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
   // the Cover row's line: the picked song's name as the rows show it (a rename follows), else "Each song's own art"
   const coverRec = () => (state.coverId ? state.rows.find((r) => r.id === state.coverId) || null : null);
   function renderCover() {
@@ -19204,6 +19284,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     defaultAlbumArtist, stripArtistPrefix, // v1.371.0: Save as an album; v1.372.0: the song names
+    sharedTitlePrefix, removeTitleStart, // v1.410.0: Remove from start
     albumTrackNumbers, // v1.376.0 R6: 1..N over the songs that will be downloaded
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)

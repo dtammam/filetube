@@ -5,6 +5,13 @@ carries the version that introduced it. A release appends its checks here instea
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
 ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
+## Remove from start (v1.410.0)
+
+- [ ] v1.410.0 - (a) Download box, the soundtrack playlist, Audio, Save as an album and Clean up titles on: "Remove from start" under Album artist holds the shared start. (If Album artist is that same name, the rows are already short and the field is empty: type the real artist and it fills.)
+- [ ] v1.410.0 - (b) The song rows show the clean names (and the Cover row, when a song is picked there).
+- [ ] v1.410.0 - (c) Edit the field, then clear it: the rows follow each time; a song you renamed by hand does not change.
+- [ ] v1.410.0 - (d) Download: the songs carry the clean names in Music.
+
 ## Click wheel buttons (v1.409.0)
 
 - [ ] v1.409.0 - iPhone app 0.20.1 or later: MENU, play/pause, previous, next and the centre button each give one firm click; the Cider and Nordic bar buttons give none; the wheel itself feels unchanged.
