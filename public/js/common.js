@@ -8191,6 +8191,49 @@ function stripArtistPrefix(title, artist) {
   return rest || t;
 }
 
+// v1.410.0 "Remove from start": the text every song name shares ("Some Game Original Soundtrack - <song>"), as the
+// picker's suggestion. The longest common prefix (any case, the first name's spelling) cut back to its last separator
+// run (`-`, dashes, `:`, `|`, `~`, `·`, `/`, with the spaces around it); with no separator, to a word boundary that leaves
+// 3 or more words. A hyphen, colon, slash or middle dot tight between two letters or digits ("Spider-Man", "AC/DC") is
+// part of the word, not a separator. '' when there are fewer than 2 names or the cut would empty one of them.
+const TITLE_LEFTOVER = /^[-\s\u2013\u2014:|~\u00b7/]+/;
+function sharedTitlePrefix(names) {
+  const list = (Array.isArray(names) ? names : []).filter((n) => typeof n === 'string' && n);
+  if (list.length < 2) return '';
+  const first = list[0];
+  let len = first.length;
+  list.forEach((n) => {
+    let i = 0;
+    while (i < len && i < n.length && n[i].toLowerCase() === first[i].toLowerCase()) i += 1;
+    len = i;
+  });
+  const common = first.slice(0, len);
+  const word = /[\p{L}\p{N}]/u;
+  let cut = 0;
+  const run = /\s*[-\u2013\u2014:|~\u00b7/](?:\s*[-\u2013\u2014:|~\u00b7/])*\s*/g;
+  for (let m = run.exec(common); m; m = run.exec(common)) {
+    const end = m.index + m[0].length;
+    const insideWord = /^[-:\u00b7/]+$/.test(m[0]) && word.test(first.charAt(m.index - 1)) && word.test(first.charAt(end));
+    if (!insideWord) cut = end;
+  }
+  if (!cut) {
+    const atWord = common.search(/\S*$/); // just past the last space ('' tail when the prefix ends on one)
+    if (common.slice(0, atWord).trim().split(/\s+/).length >= 3) cut = atWord;
+  }
+  const prefix = common.slice(0, cut);
+  if (!prefix || list.some((n) => !n.slice(prefix.length).replace(TITLE_LEFTOVER, '').trim())) return '';
+  return prefix;
+}
+
+// The removal half: a name that starts with `start` (any case) loses it and any separators left over (a typed "Game OST"
+// takes the " - " too). Empty `start`, no match, or nothing left: the name as it was.
+function removeTitleStart(name, start) {
+  const n = typeof name === 'string' ? name : '';
+  const p = typeof start === 'string' ? start : '';
+  if (!p || n.slice(0, p.length).toLowerCase() !== p.toLowerCase()) return n;
+  return n.slice(p.length).replace(TITLE_LEFTOVER, '').trim() || n;
+}
+
 // v1.376.0 (Dean's ruling R6): Save as an album numbers the songs that will be DOWNLOADED 1..N, in playlist order, with no
 // gaps - a pickable row (not "Already in library", not unavailable: those have no switch) that is ticked, each video
 // once (a video listed twice takes its first ticked row's place). Until v1.375.0 the number was the playlist position,
@@ -19204,6 +19247,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     defaultAlbumArtist, stripArtistPrefix, // v1.371.0: Save as an album; v1.372.0: the song names
+    sharedTitlePrefix, removeTitleStart, // v1.410.0: Remove from start
     albumTrackNumbers, // v1.376.0 R6: 1..N over the songs that will be downloaded
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
