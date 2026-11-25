@@ -3,10 +3,10 @@ plan: remove-from-start
 harness: v2 · full
 branch: feat/v1.410.0-remove-from-start
 anchor: outcome
-status: Building
+status: Shipped v1.410.0
 next: gate r3 (delta re-check, same seats)
 design: Dean 2026-11-25 (below); rulings R1-R2 from AskUserQuestion
-gate: none yet
+gate: APPROVED r2 @9fd58647 (adversary + qa)
 builder: standard
 ---
 
@@ -134,6 +134,15 @@ the leading "-" (typing the "-" into the field removes it); "OST - ~Dawn~" pairs
 dash makes the suggestion depend on row order; the "Clean up titles" row still reads "Drops tags like [Official Audio]";
 saving a rename unchanged pins that row's shown name (as before this release).
 
+Gate r3 (the fix at dc38f0fb): both CHANGES (a closed subtitle in the shared start stopped the suggestion). Dean ruled 2026-11-25
+(AskUserQuestion): back to the approved build. public/js/common.js and the helper test are restored to 9fd58647, so the r2 fix
+note above (dc38f0fb) is NOT in the release; the two wrapped-name cases are in ROADMAP Planned > Bugs. The adversary's
+untaken wrap-tracking prescription: keep an "open mark" while scanning runs, skip cuts until the same mark closes, let a mark at
+position 0 open, and stop the word fallback before the opener.
+
+Release evidence (9fd58647..release commit, `git diff --name-only`): ROADMAP.md, docs/DEVICE-CHECKS.md, docs/LESSONS-rules.md,
+the plan, docs/releases.json, package.json and package-lock.json (version lines only). Also: `git diff --stat 9fd58647 -- public test lib server.js` was empty before the release commit.
+
 ## Gate
 
 (seats write verdicts here)
@@ -142,3 +151,6 @@ Gate: CHANGES r1 @83be892f — qa
 Gate: CHANGES r1 @83be892f — adversary
 Gate: APPROVED r2 @9fd58647 — qa
 Gate: APPROVED r2 @9fd58647 — adversary
+Gate: CHANGES r3 @dc38f0fb — qa
+Gate: CHANGES r3 @dc38f0fb — adversary
+Gate: APPROVED r2 @9fd58647 — adversary, qa (the r2 verdicts above restated by the builder after the r3 revert; the code is that sha's)

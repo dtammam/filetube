@@ -75,18 +75,6 @@ test('a mark that opens the song\'s own name is neither suggested nor removed', 
   assert.strictEqual(remove('OST:~Dawn~', 'OST:'), '~Dawn~', 'a start ending in its separator takes nothing more');
 });
 
-test('names that share words INSIDE their wrapping marks are not cut there', () => {
-  const cases = [
-    [['My Great Game ~Dawn of War~', 'My Great Game ~Dawn of Man~'], 'My Great Game '],
-    [['Game OST - ~Song of the Sea~', 'Game OST - ~Song of the Wind~'], 'Game OST - '],
-    [['Anime Opening Theme -Wings of Fire-', 'Anime Opening Theme -Wings of Ice-'], 'Anime Opening Theme '],
-    [['Series - Game ~Act: One~', 'Series - Game ~Act: Two~'], 'Series - '],
-    [['OST ~Dawn: War~', 'OST ~Dawn: Man~'], ''],
-  ];
-  for (const [names, want] of cases) assert.strictEqual(shared(names), want, names[0]);
-  assert.strictEqual(remove('My Great Game ~Dawn of War~', 'My Great Game '), '~Dawn of War~');
-});
-
 test('removal takes each leftover separator and trims', () => {
   for (const sep of [' - ', ' \u2013 ', ' \u2014 ', ': ', ' | ', ' ~ ', ' \u00b7 ', ' / ', '-', ':']) {
     assert.strictEqual(remove('Game OST' + sep + 'Alpha', 'Game OST'), 'Alpha', JSON.stringify(sep));

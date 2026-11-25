@@ -85,6 +85,14 @@
 
 ### Bugs
 
+- [ ] **Remove from start, wrapped song names** _(v1.410.0 gate)_: when every song name is wrapped in marks, (1) names sharing words inside the wrapper
+  ("Game OST - ~Song of the Sea~" / "... ~Song of the Wind~") are suggested a cut inside it, and (2) a mark at the very first character is cut
+  ("~Dawn~" / "~Dusk~" suggests "~"). The field shows it and is editable. A first fix broke closed subtitles ("Game -Remastered- OST: x") and was
+  reverted on Dean's ruling; the adversary's wrap-tracking prescription is in the completed plan.
+- [ ] **Remove from start, smaller gaps** _(v1.410.0 gate)_: a cut inside an open bracket ("Zelda (OST - Title)"); a list of one video listed twice suggests from
+  its own name; non-BMP letters and combining marks beside a tight hyphen are split; "-Opening" style lists keep the leading "-"; "OST - ~Dawn~" pairs suggest nothing;
+  mixed spacing around a dash makes the suggestion depend on row order; the Clean up titles row still reads "Drops tags like [Official Audio]".
+- [ ] **Playlist picker rows squeeze at 320 px** _(seen at v1.410.0, same on the build before it)_: a song name wraps a few letters per line beside the thumbnail and switch.
 - [ ] **v1.406.1 switch-click follow-ups (gate r1, not taken)** _(2026-11-08)_: (1) if DEVICE-CHECKS "Switch click (v1.406.1)" (a) still
   clicks: make `clearMediaSessionForNative` idempotent (it runs twice per switch, once inside the tap, since v1.406.0) with a binding test;
   (2) a fixture that reaches the keep-alive so its stop can skip an empty element (adversary S3); (3) build the realm's Music track with music.js's
@@ -998,6 +1006,15 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.410.0 - Remove from start: drop the text every song name shares (2026-11-25)
+
+- Dean (2026-11-25): a playlist downloaded as an album named every song "<Something> Original Soundtrack - <song>"; Clean up titles took the noise off the end but not the shared start. Rulings: a prefilled field, new downloads only.
+- Playlist picker, Save as an album with Clean up titles on: a "Remove from start" field under Album artist, prefilled with the start every loaded song shares (cut at the last separator, or at a word boundary when 3+ words remain), editable and clearable; the rows, the Cover line and the downloaded names follow it. Client only, no server change.
+- Empty when the album artist is left at the credited name and Clean up titles already drops it; it fills once the artist is changed.
+- Gate (adversary + qa): r1 CHANGES (the leftover trim ate a song's own opening mark; unbound behaviour; a video test that could not fail), r2 both APPROVED @9fd58647, r3 (an attempted fix for the adversary's open warning) both CHANGES; Dean ruled it reverted, so the shipped code is 9fd58647.
+- Disclosed: two cases only when song names are wrapped in marks (below in Planned > Bugs).
+- Not verified: anything on a device or a real playlist from the reference site.
 
 ### v1.409.0 - The click wheel's buttons click (2026-11-24)
 
