@@ -8180,7 +8180,8 @@ function defaultAlbumArtist(entries) {
 }
 
 // v1.372.0: "Kyle Gordon - Name" -> "Name" for the album artist "Kyle Gordon" (any case; a hyphen, en or em dash), the
-// picker's half of Clean up titles (the noise groups come off on the server: run.playlistEntryFrom `titleClean`). A title
+// first picker step of Clean up titles (the noise groups come off on the server: run.playlistEntryFrom `titleClean`; the
+// second picker step is removeTitleStart). A title
 // that is nothing but the prefix is kept whole.
 function stripArtistPrefix(title, artist) {
   const t = typeof title === 'string' ? title : '';
@@ -8195,7 +8196,8 @@ function stripArtistPrefix(title, artist) {
 // picker's suggestion. The longest common prefix (any case, the first name's spelling) cut back to its last separator
 // run (`-`, dashes, `:`, `|`, `~`, `·`, `/`, with the spaces around it); with no separator, to a word boundary that leaves
 // 3 or more words. A hyphen, colon, slash or middle dot tight between two letters or digits ("Spider-Man", "AC/DC") is
-// part of the word, not a separator. '' when there are fewer than 2 names or the cut would empty one of them.
+// part of the word, not a separator; neither is a mark after a space and glued to what follows ("~Dawn~"), which opens
+// the song's own name. '' when there are fewer than 2 names or the cut would empty one of them.
 const TITLE_LEFTOVER = /^[-\s\u2013\u2014:|~\u00b7/]+/;
 function sharedTitlePrefix(names) {
   const list = (Array.isArray(names) ? names : []).filter((n) => typeof n === 'string' && n);
@@ -8214,24 +8216,42 @@ function sharedTitlePrefix(names) {
   for (let m = run.exec(common); m; m = run.exec(common)) {
     const end = m.index + m[0].length;
     const insideWord = /^[-:\u00b7/]+$/.test(m[0]) && word.test(first.charAt(m.index - 1)) && word.test(first.charAt(end));
-    if (!insideWord) cut = end;
+    const opensName = /\s[-\u2013\u2014:|~\u00b7/]+$/.test(m[0]) && /\S/.test(first.charAt(end));
+    if (!insideWord && !opensName) cut = end;
   }
   if (!cut) {
     const atWord = common.search(/\S*$/); // just past the last space ('' tail when the prefix ends on one)
     if (common.slice(0, atWord).trim().split(/\s+/).length >= 3) cut = atWord;
   }
   const prefix = common.slice(0, cut);
-  if (!prefix || list.some((n) => !n.slice(prefix.length).replace(TITLE_LEFTOVER, '').trim())) return '';
+  if (!prefix || list.some((n) => !afterTitleStart(n, prefix))) return '';
   return prefix;
 }
 
-// The removal half: a name that starts with `start` (any case) loses it and any separators left over (a typed "Game OST"
-// takes the " - " too). Empty `start`, no match, or nothing left: the name as it was.
+// What is left of `name` once its first `start.length` characters go. A `start` that ends in its own separator takes
+// nothing more; otherwise the separators left over go too (a typed "Game OST" takes the " - "), except a mark after a
+// space and glued to the next character, which belongs to the song's name ("Game OST ~Dawn~" keeps both tildes).
+function afterTitleStart(name, start) {
+  let rest = name.slice(start.length);
+  if (!/[-\u2013\u2014:|~\u00b7/]\s*$/.test(start)) {
+    const lead = TITLE_LEFTOVER.exec(rest);
+    if (lead) {
+      const mark = /[-\u2013\u2014:|~\u00b7/]+$/.exec(lead[0]);
+      const before = mark ? (start + lead[0]).slice(0, -mark[0].length) : '';
+      const opens = !!mark && /\s$/.test(before) && rest.length > lead[0].length;
+      rest = rest.slice(opens ? lead[0].length - mark[0].length : lead[0].length);
+    }
+  }
+  return rest.trim();
+}
+
+// The removal half: a name that starts with `start` (any case) loses it (afterTitleStart). Empty `start`, no match, or
+// nothing left: the name as it was.
 function removeTitleStart(name, start) {
   const n = typeof name === 'string' ? name : '';
   const p = typeof start === 'string' ? start : '';
   if (!p || n.slice(0, p.length).toLowerCase() !== p.toLowerCase()) return n;
-  return n.slice(p.length).replace(TITLE_LEFTOVER, '').trim() || n;
+  return afterTitleStart(n, p) || n;
 }
 
 // v1.376.0 (Dean's ruling R6): Save as an album numbers the songs that will be DOWNLOADED 1..N, in playlist order, with no
@@ -8291,6 +8311,7 @@ function openPlaylistPicker(opts) {
   }
   // v1.371.0: Save as an album (audio only). One grouped list of two switch rows, the album's two fields under it,
   // all from the existing kit (ui.list / ui.row / ui.field, the native-checkbox ui-switch the video rows use).
+  // (Since then the list also has Clean up titles and Cover rows, and v1.410.0 added a third field, Remove from start.)
   const albumSwitch = (label) => {
     const box = d.createElement('input');
     box.type = 'checkbox';
@@ -8475,7 +8496,8 @@ function openPlaylistPicker(opts) {
   }
   // v1.372.0 (Dean: "it wasn't clear what the new saved name would have been"): with Save as an album on, a row shows the
   // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
-  // "Artist - " prefix dropped) when Clean up titles is on, else the reference site's - and "Track N". What it shows is what is written.
+  // "Artist - " prefix dropped, then the "Remove from start" text) when Clean up titles is on, else the reference site's -
+  // and "Track N". What it shows is what is written.
   function songName(r) {
     const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
     if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)

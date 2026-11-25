@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.410.0-remove-from-start
 anchor: outcome
 status: Building
-next: gate r1 (adversary + qa)
+next: gate r2 (same seats)
 design: Dean 2026-11-25 (below); rulings R1-R2 from AskUserQuestion
 gate: none yet
 builder: standard
@@ -115,6 +115,21 @@ Builder calls beyond the letter of the acceptance:
 3. With the album artist left at its default for a "<name> - <song>" list, that name IS the artist and Clean up titles already
    drops it, so the field is empty; it fills once the artist is changed.
 
+Gate r1 (both CHANGES, no CRITICAL) and what was done:
+
+- adversary W1: the leftover trim ate a song's own opening mark ("~Reprise~" -> "Reprise~", written to the tags). Fixed:
+  this narrows acceptance 3's "then any leading separators": a start that ends in its own separator takes nothing more;
+  a mark after a space and glued to the next character stays; detection does not cut after such a mark.
+- adversary W2 (stated behaviour unbound): tests added; its survivors re-run, 17 mutants each red.
+- qa W1 (the video test could not fail): rewritten to switch a shortened album to Video. qa W2 (stale comments): fixed.
+- qa S5: that assertion's message reworded. Not taken, to ROADMAP Planned: a cut inside an open bracket; a video listed
+  twice and nothing else suggests from its own name; non-BMP letters and combining marks beside a tight hyphen.
+- Disclosed to Dean: the plan's own rules can shorten to a fragment ("My Great Game Part 1/2" -> "1"/"2"; "The Legend of
+  Zelda"/"... of Mana" -> "Zelda"/"Mana"), and unspaced "...Soundtrack-Opening" suggests "Some Game Original ".
+
 ## Gate
 
 (seats write verdicts here)
+
+Gate: CHANGES r1 @83be892f — qa
+Gate: CHANGES r1 @83be892f — adversary

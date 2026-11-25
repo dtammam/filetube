@@ -16,7 +16,8 @@ test('Dean\'s shape: the soundtrack name and its separator, trailing space kept'
 
 test('en dash, em dash, colon, pipe, tilde, middle dot and slash separate', () => {
   for (const sep of [' – ', ' — ', ': ', ' | ', ' ~ ', ' · ', ' / ', '—', ' -- ']) {
-    assert.strictEqual(shared(['Game OST' + sep + 'Alpha', 'Game OST' + sep + 'Beta']), 'Game OST' + sep, JSON.stringify(sep));
+    // a ONE-word start: with a longer one the 3-word fallback returns the same string and binds nothing
+    assert.strictEqual(shared(['OST' + sep + 'Alpha', 'OST' + sep + 'Beta']), 'OST' + sep, JSON.stringify(sep));
   }
 });
 
@@ -52,9 +53,39 @@ test('a hyphen or slash inside a word is not a separator', () => {
   assert.strictEqual(shared(['Spider-Man - Theme', 'Spider-Man - Attack']), 'Spider-Man - ', 'a spaced one after it still counts');
 });
 
+test('what counts as inside a word: letters or digits on BOTH sides of a tight - : middle dot or slash', () => {
+  assert.strictEqual(shared(['OST)-Alpha', 'OST)-Beta']), 'OST)-', 'no letter before: a separator');
+  assert.strictEqual(shared(['OST-(Alpha)', 'OST-(Beta)']), 'OST-', 'no letter after: a separator');
+  assert.strictEqual(shared(['Col\u00b7legi A', 'Col\u00b7legi B']), '', 'middle dot inside a word');
+  assert.strictEqual(shared(['24/7 Alpha', '24/7 Beta']), '', 'digits count');
+  assert.strictEqual(shared(['Game\u2013Alpha', 'Game\u2013Beta']), 'Game\u2013', 'a tight en dash still separates');
+});
+
+test('a mark that opens the song\'s own name is neither suggested nor removed', () => {
+  assert.strictEqual(shared(['Game OST ~Dawn~', 'Game OST ~Dusk~']), '');
+  assert.strictEqual(shared(['Opening ~Dawn~', 'Opening ~Dusk~']), '');
+  assert.strictEqual(shared(['Anime OST -Dawn-', 'Anime OST -Dusk-']), '');
+  const names = ['Game OST - Alpha', 'Game OST - ~Reprise~', 'Game OST - -Epilogue-', 'Game OST - //Overture'];
+  const start = shared(names);
+  assert.strictEqual(start, 'Game OST - ');
+  assert.deepStrictEqual(names.map((n) => remove(n, start)), ['Alpha', '~Reprise~', '-Epilogue-', '//Overture']);
+  const wrapped = ['Some Game OST ~Dawn~', 'Some Game OST ~Night~'];
+  assert.deepStrictEqual(wrapped.map((n) => remove(n, shared(wrapped))), ['~Dawn~', '~Night~']);
+  assert.strictEqual(remove('Game OST ~Dawn~', 'Game OST'), '~Dawn~', 'a typed start without the space');
+  assert.strictEqual(remove('OST:~Dawn~', 'OST:'), '~Dawn~', 'a start ending in its separator takes nothing more');
+});
+
+test('removal takes each leftover separator and trims', () => {
+  for (const sep of [' - ', ' \u2013 ', ' \u2014 ', ': ', ' | ', ' ~ ', ' \u00b7 ', ' / ', '-', ':']) {
+    assert.strictEqual(remove('Game OST' + sep + 'Alpha', 'Game OST'), 'Alpha', JSON.stringify(sep));
+  }
+  assert.strictEqual(remove('Game OST - Alpha ', 'Game OST - '), 'Alpha');
+});
+
 test('a prefix that would empty a name is not suggested', () => {
-  assert.strictEqual(shared(['One Two Three', 'One Two Three Four']), '', 'one whole name');
+  assert.strictEqual(shared(['One Two Three', 'One Two Three Four']), '', 'one whole name: only 2 words stand before its last');
   assert.strictEqual(shared(['Game - ', 'Game - Battle']), '', 'a name that is only the start');
+  assert.strictEqual(shared(['My Great Game -', 'My Great Game Over']), '', 'a name with only a separator after the start');
 });
 
 test('removal: any case, leftover separators trimmed, a typed start without them', () => {

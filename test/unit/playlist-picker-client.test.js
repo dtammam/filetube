@@ -1083,9 +1083,38 @@ test('v1.410.0: the suggestion is read AFTER the artist prefix, and follows a ty
   assert.deepStrictEqual(rowNames(), ['Alpha', 'Beta']);
 });
 
-test('v1.410.0: video format never shows the field', async () => {
+test('v1.410.0: switching a shortened album to Video takes the field, the album and the short names away', async () => {
   const c = fresh({ pages: { 1: OST1 } });
-  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
-  await sleep(20);
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, withFormatControls: true });
+  await sleep(GUARD_MS + 20);
+  const format = picker().querySelector('select[aria-label="Format"]');
+  format.value = 'audio'; format.dispatchEvent(new global.window.Event('change'));
+  pointerClick(albumSwitch('Save as an album'));
+  type(albumInput('Album artist'), 'The Composer');
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(rowNames()[1], 'Battle');
+  assert.strictEqual(albumFields().hidden, false);
+  format.value = 'video'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(albumSection().hidden, true, 'no album switch for video');
   assert.strictEqual(albumFields().hidden, true);
+  assert.strictEqual(rowNames()[1], OST + 'Battle');
+});
+
+test('v1.410.0: in-library rows count toward the suggestion, a typed rename does not, and a row with no title keeps its id', async () => {
+  const page = { listId: L, title: 'T', total: 3, page: 1, nextPage: null, entries: [
+    entry(1, { title: OST + 'Opening' }), entry(2, { title: OST + 'Battle', inLibrary: true }), entry(3, { title: '' }),
+  ] };
+  await openOst({ 1: page });
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(albumInput('Remove from start').value, OST, 'one pickable row + one already in the library');
+  assert.strictEqual(rowNames()[1], page.entries[2].id);
+  click(picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) .ui-row__link')[0]);
+  await sleep(20);
+  const dialog = [...global.document.querySelectorAll('input')].find((i) => !picker().contains(i) && i.value === 'Opening');
+  dialog.value = 'Prologue';
+  await sleep(GUARD_MS);
+  click([...global.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save'));
+  await sleep(20);
+  assert.strictEqual(rowNames()[0], 'Prologue');
+  assert.strictEqual(albumInput('Remove from start').value, OST);
 });
