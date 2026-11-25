@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.410.0-remove-from-start
 anchor: outcome
 status: Building
-next: gate r2 (same seats)
+next: gate r3 (delta re-check, same seats)
 design: Dean 2026-11-25 (below); rulings R1-R2 from AskUserQuestion
 gate: none yet
 builder: standard
@@ -127,9 +127,18 @@ Gate r1 (both CHANGES, no CRITICAL) and what was done:
 - Disclosed to Dean: the plan's own rules can shorten to a fragment ("My Great Game Part 1/2" -> "1"/"2"; "The Legend of
   Zelda"/"... of Mana" -> "Zelda"/"Mana"), and unspaced "...Soundtrack-Opening" suggests "Some Game Original ".
 
+Gate r2: both APPROVED at 9fd58647; the adversary left one warning open (shared words INSIDE wrapping marks were cut:
+"~Song of the Sea~" / "~Song of the Wind~" -> "Sea~", "Wind~"). Dean ruled 2026-11-25 (AskUserQuestion): fix it now.
+Fixed: nothing at or after a name-opening mark is suggested. Disclosed, not changed: "... -Opening" / "-Battle" lists keep
+the leading "-" (typing the "-" into the field removes it); "OST - ~Dawn~" pairs suggest nothing; mixed spacing around a
+dash makes the suggestion depend on row order; the "Clean up titles" row still reads "Drops tags like [Official Audio]";
+saving a rename unchanged pins that row's shown name (as before this release).
+
 ## Gate
 
 (seats write verdicts here)
 
 Gate: CHANGES r1 @83be892f — qa
 Gate: CHANGES r1 @83be892f — adversary
+Gate: APPROVED r2 @9fd58647 — qa
+Gate: APPROVED r2 @9fd58647 — adversary

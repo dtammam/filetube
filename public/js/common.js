@@ -8196,8 +8196,9 @@ function stripArtistPrefix(title, artist) {
 // picker's suggestion. The longest common prefix (any case, the first name's spelling) cut back to its last separator
 // run (`-`, dashes, `:`, `|`, `~`, `·`, `/`, with the spaces around it); with no separator, to a word boundary that leaves
 // 3 or more words. A hyphen, colon, slash or middle dot tight between two letters or digits ("Spider-Man", "AC/DC") is
-// part of the word, not a separator; neither is a mark after a space and glued to what follows ("~Dawn~"), which opens
-// the song's own name. '' when there are fewer than 2 names or the cut would empty one of them.
+// part of the word, not a separator. A run ending in a mark after a space and glued to what follows ("~Dawn~") opens the
+// song's own name: neither that run nor anything after it is cut at. '' when there are fewer than 2 names or the cut
+// would empty one of them.
 const TITLE_LEFTOVER = /^[-\s\u2013\u2014:|~\u00b7/]+/;
 function sharedTitlePrefix(names) {
   const list = (Array.isArray(names) ? names : []).filter((n) => typeof n === 'string' && n);
@@ -8212,15 +8213,17 @@ function sharedTitlePrefix(names) {
   const common = first.slice(0, len);
   const word = /[\p{L}\p{N}]/u;
   let cut = 0;
+  let opened = common.length; // where a song's own opening mark stands: the word fallback stops short of it too
   const run = /\s*[-\u2013\u2014:|~\u00b7/](?:\s*[-\u2013\u2014:|~\u00b7/])*\s*/g;
   for (let m = run.exec(common); m; m = run.exec(common)) {
     const end = m.index + m[0].length;
     const insideWord = /^[-:\u00b7/]+$/.test(m[0]) && word.test(first.charAt(m.index - 1)) && word.test(first.charAt(end));
     const opensName = /\s[-\u2013\u2014:|~\u00b7/]+$/.test(m[0]) && /\S/.test(first.charAt(end));
-    if (!insideWord && !opensName) cut = end;
+    if (opensName) { opened = end - 1; break; }
+    if (!insideWord) cut = end;
   }
   if (!cut) {
-    const atWord = common.search(/\S*$/); // just past the last space ('' tail when the prefix ends on one)
+    const atWord = common.slice(0, opened).search(/\S*$/); // just past the last space ('' tail when it ends on one)
     if (common.slice(0, atWord).trim().split(/\s+/).length >= 3) cut = atWord;
   }
   const prefix = common.slice(0, cut);
