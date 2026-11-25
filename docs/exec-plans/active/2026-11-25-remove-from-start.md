@@ -3,8 +3,8 @@ plan: remove-from-start
 harness: v2 · full
 branch: feat/v1.410.0-remove-from-start
 anchor: outcome
-status: Planned
-next: build W1-W2 in a worktree, then the gate (adversary + qa, security-brief as a section)
+status: Building
+next: gate r1 (adversary + qa)
 design: Dean 2026-11-25 (below); rulings R1-R2 from AskUserQuestion
 gate: none yet
 builder: standard
@@ -96,7 +96,24 @@ album fields at 320 px without a layout change.
 
 ## Evidence
 
-(builder fills)
+Build: W1 e0a7d4bf, W2 45cfc6b9, base 810940ce.
+
+- Full suite at 45cfc6b9 (`npm test`): Node 22.23.1 and 24.20.0 each 13529 tests, 13516 pass, 0 fail, 0 cancelled, 13 skipped.
+- Targeted: playlist-picker-client + shared-title-prefix, 70 pass. 13 mutants of the helper and wiring, each red (removal call 6,
+  hide with clean off 1, touched guard 2, touched set 2, live re-render 1, unavailable filter 3, syncStart call 4, maxLength 1,
+  inside-word guard 1, 3 words 4, empty-name guard 1, empty start guard 1, min two 1).
+- Real Chromium, 320 and 1280 wide: no horizontal overflow (sheet and document 0), the new field the same box as Album artist
+  (224x64 at 320, 356x64 at 1280), not displayed with Clean up titles off, no page errors.
+- Seen while measuring, NOT this change (same on base 810940ce): at 320 px the picker song rows squeeze a name to a few letters
+  per line. Goes to ROADMAP Planned.
+
+Builder calls beyond the letter of the acceptance:
+
+1. A `-`, `:`, `·` or `/` run tight between two letters or digits ("Spider-Man", "AC/DC", "Re:Zero") is part of the word, not
+   a separator (R1: "cut at a separator or word boundary"). The literal rule would suggest "Spider-".
+2. The suggestion is read from the cleaned names, never from a typed rename (a rename is not removed from either).
+3. With the album artist left at its default for a "<name> - <song>" list, that name IS the artist and Clean up titles already
+   drops it, so the field is empty; it fills once the artist is changed.
 
 ## Gate
 
