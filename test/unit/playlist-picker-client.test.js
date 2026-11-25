@@ -958,3 +958,134 @@ test('v1.374.0 (d): a press on Cover INSIDE the window whose click lands after i
   pointerClick(coverRow());
   assert.ok(coverMenu());
 });
+
+// ---- v1.410.0: Remove from start (plan docs/exec-plans/completed/2026-11-25-remove-from-start.md) ----
+const OST = 'Some Game Original Soundtrack - ';
+const OST1 = { listId: L, title: 'Some Game OST', total: 5, page: 1, nextPage: 2, entries: [
+  entry(1, { title: OST + 'Opening [HQ]', titleClean: OST + 'Opening' }),
+  entry(2, { title: OST + 'Battle' }),
+  entry(3, { title: OST + 'Ending' }),
+  entry(4, { unavailable: true, title: '[Private video]' }),
+] };
+const OST2 = { listId: L, title: 'Some Game OST', total: 5, page: 2, nextPage: null, entries: [entry(5, { title: 'Some Game Bonus' })] };
+const rowNames = () => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) .ui-row__link')].map((n) => n.textContent);
+const startField = () => albumInput('Remove from start').closest('.ui-field');
+const type = (input, value) => { input.value = value; input.dispatchEvent(new global.window.Event('input')); };
+// (the default album artist of a "<name> - <song>" list IS that name, which Clean up titles already drops; the field is
+// for the list whose artist is someone else, so these type one)
+const openOst = async (pages, artist = 'The Composer') => {
+  const c = fresh({ pages: pages || { 1: OST1, 2: OST2 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio', quality: 'best', filetype: 'mp3' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  if (artist) type(albumInput('Album artist'), artist);
+};
+
+test('v1.410.0: Remove from start shows only with Clean up titles, prefilled, and the rows drop it', async () => {
+  await openOst();
+  assert.strictEqual(startField().hidden, true, 'Clean up titles off: no field');
+  assert.deepStrictEqual(rowNames().slice(0, 3), [OST + 'Opening [HQ]', OST + 'Battle', OST + 'Ending'], 'and nothing removed');
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(startField().hidden, false);
+  const labels = [...albumFields().querySelectorAll('.ui-field label')].map((l) => l.textContent);
+  assert.deepStrictEqual(labels, ['Album', 'Album artist', 'Remove from start']);
+  assert.strictEqual(albumInput('Remove from start').value, OST);
+  assert.strictEqual(albumInput('Remove from start').maxLength, 200);
+  assert.deepStrictEqual(rowNames().slice(0, 3), ['Opening', 'Battle', 'Ending']);
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(startField().hidden, true);
+  assert.strictEqual(rowNames()[1], OST + 'Battle');
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(albumFields().hidden, true, 'album off: no fields at all');
+});
+
+test('v1.410.0: typing changes the rows, clearing restores them, a rename wins, and the POST titles carry what the rows show', async () => {
+  await openOst();
+  pointerClick(albumSwitch('Clean up titles'));
+  const input = albumInput('Remove from start');
+  type(input, 'some game original');
+  assert.deepStrictEqual(rowNames().slice(0, 3), ['Soundtrack - Opening', 'Soundtrack - Battle', 'Soundtrack - Ending']);
+  type(input, '');
+  assert.deepStrictEqual(rowNames().slice(0, 3), [OST + 'Opening', OST + 'Battle', OST + 'Ending'], 'cleared: nothing removed, and it stays cleared');
+  assert.strictEqual(input.value, '');
+  type(input, 'Some Game Original Soundtrack');
+  // a typed rename that itself starts with the removed text is left as typed
+  click(picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) .ui-row__link')[1]);
+  await sleep(20);
+  const dialog = [...global.document.querySelectorAll('input')].find((i) => !picker().contains(i) && i.value === 'Battle');
+  assert.ok(dialog, 'the rename prompt is prefilled with the shown name');
+  dialog.value = OST + 'Boss';
+  dialog.dispatchEvent(new global.window.Event('input', { bubbles: true }));
+  await sleep(GUARD_MS);
+  click([...global.document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Save'));
+  await sleep(20);
+  assert.strictEqual(rowNames()[1], OST + 'Boss');
+  switches().forEach((s) => { s.checked = true; });
+  switches()[0].dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(input.value, 'Some Game Original Soundtrack', 'a re-render keeps what was typed');
+  click(btn('Download'));
+  await sleep(20);
+  const [a, b, c3] = OST1.entries.map((e) => e.id);
+  assert.deepStrictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album.titles, { [a]: 'Opening', [b]: OST + 'Boss', [c3]: 'Ending' });
+});
+
+test('v1.410.0: Load more recomputes the suggestion until the user types, then keeps what was typed; the Cover line follows', async () => {
+  await openOst();
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(albumInput('Remove from start').value, OST);
+  click(albumSection().querySelector('.playlist-picker-cover'));
+  await sleep(20);
+  const item = [...global.document.querySelectorAll('button')].find((x) => !picker().contains(x) && x.textContent.trim() === 'Battle');
+  assert.ok(item, 'the Cover menu lists the shortened names');
+  await sleep(GUARD_MS);
+  click(item);
+  await sleep(400);
+  const cover = () => albumSection().querySelector('.playlist-picker-cover .ui-row__meta').textContent;
+  assert.strictEqual(cover(), 'Battle');
+  click(btn('Load more'));
+  await sleep(20);
+  assert.strictEqual(albumInput('Remove from start').value, '', '"Some Game" alone is 2 words: no suggestion over the new rows');
+  assert.strictEqual(rowNames()[1], OST + 'Battle');
+  assert.strictEqual(cover(), OST + 'Battle');
+});
+
+test('v1.410.0: a typed value survives Load more', async () => {
+  await openOst();
+  pointerClick(albumSwitch('Clean up titles'));
+  type(albumInput('Remove from start'), OST);
+  click(btn('Load more'));
+  await sleep(20);
+  assert.strictEqual(albumInput('Remove from start').value, OST);
+  assert.deepStrictEqual([rowNames()[0], rowNames()[3]], ['Opening', 'Some Game Bonus'], 'a song without that start is unchanged');
+});
+
+test('v1.410.0: with the credited name as album artist the rows are already short and nothing is suggested; another artist brings the suggestion', async () => {
+  await openOst(null, '');
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(albumInput('Album artist').value, 'Some Game Original Soundtrack');
+  assert.strictEqual(albumInput('Remove from start').value, '');
+  assert.strictEqual(rowNames()[1], 'Battle');
+  type(albumInput('Album artist'), 'The Composer');
+  assert.strictEqual(albumInput('Remove from start').value, OST);
+  assert.strictEqual(rowNames()[1], 'Battle');
+});
+
+test('v1.410.0: the suggestion is read AFTER the artist prefix, and follows a typed artist', async () => {
+  const page = { listId: L, title: 'T', total: 2, page: 1, nextPage: null, entries: [
+    entry(1, { title: 'Band - Game OST - Alpha' }), entry(2, { title: 'Band - Game OST - Beta' }),
+  ] };
+  await openOst({ 1: page }, '');
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(albumInput('Album artist').value, 'Band');
+  assert.strictEqual(albumInput('Remove from start').value, 'Game OST - ');
+  type(albumInput('Album artist'), 'Someone Else');
+  assert.strictEqual(albumInput('Remove from start').value, 'Band - Game OST - ');
+  assert.deepStrictEqual(rowNames(), ['Alpha', 'Beta']);
+});
+
+test('v1.410.0: video format never shows the field', async () => {
+  const c = fresh({ pages: { 1: OST1 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
+  await sleep(20);
+  assert.strictEqual(albumFields().hidden, true);
+});

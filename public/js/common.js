@@ -8312,14 +8312,17 @@ function openPlaylistPicker(opts) {
   // `help: ' '` gives each field its kit help line (ui-field__help, aria-describedby) for the "already in Music" note
   const albumName = U.field({ label: 'Album', help: ' ', doc: d });
   const albumArtist = U.field({ label: 'Album artist', help: ' ', doc: d });
+  // v1.410.0: the start every song name shares, dropped from them (part of Clean up titles: hidden and inert with it off)
+  const albumStart = U.field({ label: 'Remove from start', doc: d });
   const noteOf = (f) => f.el.querySelector('.ui-field__help');
   [albumName, albumArtist].forEach((f) => { noteOf(f).textContent = ''; noteOf(f).hidden = true; });
-  [albumName.input, albumArtist.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
+  [albumName.input, albumArtist.input, albumStart.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
   const albumFields = d.createElement('div');
   albumFields.className = 'oneoff-form playlist-picker-album-fields';
   albumFields.hidden = true;
   albumFields.appendChild(albumName.el);
   albumFields.appendChild(albumArtist.el);
+  albumFields.appendChild(albumStart.el);
   const cleanRow = U.row({ title: 'Clean up titles', meta: 'Drops tags like [Official Audio]', actions: [cleanOn], doc: d });
   const albumList = U.list({ actions: 1, grouped: true, label: 'Album', doc: d });
   albumList.classList.add('playlist-picker-album');
@@ -8340,9 +8343,10 @@ function openPlaylistPicker(opts) {
   wrap.appendChild(albumList);
   wrap.appendChild(albumFields);
   // what the user typed is kept; the defaults follow the loaded rows until then
-  const albumTouched = { name: false, artist: false };
+  const albumTouched = { name: false, artist: false, start: false };
   albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
   albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); renderRows(); }); // the prefix follows the artist
+  albumStart.input.addEventListener('input', () => { albumTouched.start = true; renderRows(); });
   // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
   // viewer's visible library - the routes filter it), matched without regard to case. Music groups by the EXACT name
   // ("kyle gordon" is a second artist), so an untouched default takes the library's spelling, a typed name is kept
@@ -8476,7 +8480,18 @@ function openPlaylistPicker(opts) {
     const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
     if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
     if (!cleanOn.checked) return r.title || r.id;
-    return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
+    const name = cleanedName(r);
+    return name ? removeTitleStart(name, albumStart.input.value) : (r.title || r.id);
+  }
+  // the cleaned name before "Remove from start": what that field's suggestion is read from ('' for a row with no title)
+  function cleanedName(r) {
+    return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title;
+  }
+  // v1.410.0: the field follows the loaded rows (a typed rename aside) until the user types in it
+  function syncStart() {
+    albumStart.el.hidden = !cleanOn.checked;
+    if (albumTouched.start) return;
+    albumStart.input.value = sharedTitlePrefix(state.rows.filter((r) => r.title && !r.unavailable).map(cleanedName));
   }
   function renderRow(r, numbers) {
     if (!r.nameEl) return;
@@ -8490,7 +8505,7 @@ function openPlaylistPicker(opts) {
     r.metaEl.textContent = on ? (n ? `Track ${n}` : ALBUM_ROW_NOT_IN) : '';
     r.metaEl.hidden = !on;
   }
-  function renderRows() { const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
+  function renderRows() { syncStart(); const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
   // the Cover row's line: the picked song's name as the rows show it (a rename follows), else "Each song's own art"
   const coverRec = () => (state.coverId ? state.rows.find((r) => r.id === state.coverId) || null : null);
   function renderCover() {
